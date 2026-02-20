@@ -6,6 +6,9 @@ export default defineConfig({
   server: {
     port: 5173,
     open: true,
+    hmr: {
+      port: 5173,
+    },
     proxy: {
       '/api/builderbot': {
         target: 'https://app.builderbot.cloud',

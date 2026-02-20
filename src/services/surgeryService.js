@@ -54,7 +54,7 @@ export async function fetchSurgeries({ status, fromDate, toDate, limit = 500, au
     // 'all' no aplica filtro
 
     if (status) query = query.eq('status', status);
-    if (fromDate) query = query.gte('fecha_cirugia', fromDate);
+    if (fromDate) query = query.or(`fecha_cirugia.gte.${fromDate},fecha_cirugia.is.null`);
     if (toDate) query = query.lte('fecha_cirugia', toDate);
     query = query.limit(limit);
 

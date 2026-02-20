@@ -25,7 +25,9 @@ import {
 } from '../services/surgeryService';
 import { parseExcelFile, mapExcelToSurgeries, validateMappedRecords } from '../utils/excelParser';
 import { bulkNormalizePhones } from '../utils/phoneUtils';
-import { sendWhatsAppMessage } from '../services/builderbotApi';
+import { sendWhatsAppMessage, normalizeArgentinePhone } from '../services/builderbotApi';
+import { fetchUnreadCounts, saveOutgoingMessage, subscribeToAllIncoming } from '../services/chatService';
+import ChatWindow from './ChatWindow';
 
 // ============================================================
 // CONSTANTS & CONFIG
@@ -164,6 +166,11 @@ export default function SurgeryPanel({ addToast }) {
     const [customMessage, setCustomMessage] = useState('');
     const [sendingMessage, setSendingMessage] = useState(false);
 
+    // Chat window
+    const [chatOpen, setChatOpen] = useState(false);
+    const [chatPatient, setChatPatient] = useState({ name: '', phone: '' });
+    const [unreadCounts, setUnreadCounts] = useState({});
+
     // ============================================================
     // DATA LOADING
     // ============================================================
@@ -198,6 +205,39 @@ export default function SurgeryPanel({ addToast }) {
     }, [filter, viewMode, addToast]);
 
     useEffect(() => { loadData(); }, [loadData]);
+
+    // Cargar unread counts y suscribirse a nuevos mensajes entrantes
+    useEffect(() => {
+        const loadUnreads = async () => {
+            try {
+                const counts = await fetchUnreadCounts();
+                setUnreadCounts(counts);
+            } catch (e) { console.error('Error loading unread counts:', e); }
+        };
+        loadUnreads();
+
+        // Suscripción en tiempo real a mensajes entrantes
+        const unsub = subscribeToAllIncoming((newMsg) => {
+            if (newMsg.direction === 'incoming') {
+                setUnreadCounts(prev => ({
+                    ...prev,
+                    [newMsg.phone]: (prev[newMsg.phone] || 0) + 1
+                }));
+            }
+        });
+        return () => unsub();
+    }, []);
+
+    // Abrir chat de un paciente
+    const openChat = (surgery) => {
+        setChatPatient({ name: surgery.nombre, phone: surgery.telefono });
+        setChatOpen(true);
+        // Limpiar unread del teléfono
+        const normalized = normalizeArgentinePhone(surgery.telefono);
+        if (normalized) {
+            setUnreadCounts(prev => { const n = { ...prev }; delete n[normalized]; return n; });
+        }
+    };
 
     // ============================================================
     // FILTERED & COMPUTED DATA
@@ -415,6 +455,14 @@ export default function SurgeryPanel({ addToast }) {
                 content: customMessage.trim(),
                 number: surgery.telefono,
             });
+            // Guardar en historial de chat
+            try {
+                await saveOutgoingMessage({
+                    phone: surgery.telefono,
+                    content: customMessage.trim(),
+                    mediaType: 'text',
+                });
+            } catch (_) { /* el webhook outgoing también lo guarda */ }
             addToast?.(`Mensaje enviado a ${surgery.nombre}`, 'success');
             setCustomMessage('');
         } catch (e) { addToast?.('Error al enviar mensaje: ' + e.message, 'error'); }
@@ -925,39 +973,58 @@ export default function SurgeryPanel({ addToast }) {
                                                     <td className="cart__td" style={{ fontSize: '0.78rem' }}>
                                                         {surgery.medico || '—'}
                                                     </td>
-                                                    {/* Teléfono */}
+                                                    {/* Teléfono + badge chat */}
                                                     <td className="cart__td" style={{ fontSize: '0.78rem' }}>
-                                                        {surgery.telefono ? (
-                                                            surgery.telefono.startsWith('549') ? (
-                                                                <span style={{ fontFamily: 'monospace', color: 'var(--neutral-700)' }}>
-                                                                    {surgery.telefono}
-                                                                </span>
-                                                            ) : (
-                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                                    <span style={{ fontFamily: 'monospace', color: '#DC2626' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            {surgery.telefono ? (
+                                                                surgery.telefono.startsWith('549') ? (
+                                                                    <span style={{ fontFamily: 'monospace', color: 'var(--neutral-700)' }}>
                                                                         {surgery.telefono}
                                                                     </span>
+                                                                ) : (
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                        <span style={{ fontFamily: 'monospace', color: '#DC2626' }}>
+                                                                            {surgery.telefono}
+                                                                        </span>
+                                                                        <span style={{
+                                                                            display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                                            padding: '1px 6px', borderRadius: '4px',
+                                                                            background: '#FEE2E2', color: '#DC2626',
+                                                                            fontSize: '0.6rem', fontWeight: 700,
+                                                                            border: '1px solid #FECACA',
+                                                                        }}>
+                                                                            ⚠️ TEL INVÁLIDO
+                                                                        </span>
+                                                                    </div>
+                                                                )
+                                                            ) : (
+                                                                <span style={{
+                                                                    display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                                    padding: '1px 6px', borderRadius: '4px',
+                                                                    background: '#FEF3C7', color: '#92400E',
+                                                                    fontSize: '0.65rem', fontWeight: 600,
+                                                                }}>
+                                                                    📵 SIN TELÉFONO
+                                                                </span>
+                                                            )}
+                                                            {/* Badge de mensajes no leídos */}
+                                                            {(() => {
+                                                                const norm = surgery.telefono ? normalizeArgentinePhone(surgery.telefono) : '';
+                                                                const count = norm ? (unreadCounts[norm] || 0) : 0;
+                                                                return count > 0 ? (
                                                                     <span style={{
-                                                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                                                        padding: '1px 6px', borderRadius: '4px',
-                                                                        background: '#FEE2E2', color: '#DC2626',
-                                                                        fontSize: '0.6rem', fontWeight: 700,
-                                                                        border: '1px solid #FECACA',
+                                                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                                        minWidth: '20px', height: '20px', padding: '0 5px',
+                                                                        borderRadius: '10px', background: '#EF4444', color: '#fff',
+                                                                        fontSize: '0.65rem', fontWeight: 800,
+                                                                        animation: 'pulse 2s infinite',
+                                                                        boxShadow: '0 0 6px rgba(239,68,68,0.4)',
                                                                     }}>
-                                                                        ⚠️ TEL INVÁLIDO
+                                                                        {count}
                                                                     </span>
-                                                                </div>
-                                                            )
-                                                        ) : (
-                                                            <span style={{
-                                                                display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                                                padding: '1px 6px', borderRadius: '4px',
-                                                                background: '#FEF3C7', color: '#92400E',
-                                                                fontSize: '0.65rem', fontWeight: 600,
-                                                            }}>
-                                                                📵 SIN TELÉFONO
-                                                            </span>
-                                                        )}
+                                                                ) : null;
+                                                            })()}
+                                                        </div>
                                                     </td>
                                                 </tr>,
                                             ];
@@ -1103,30 +1170,68 @@ export default function SurgeryPanel({ addToast }) {
                                                                     )}
                                                                 </div>
 
-                                                                {/* COL 3: Mensaje personalizado */}
+                                                                {/* COL 3: Mensaje + Chat */}
                                                                 <div>
                                                                     <h4 style={{ margin: '0 0 10px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                        <MessageSquare size={13} /> Enviar Mensaje
+                                                                        <MessageSquare size={13} /> Comunicación
                                                                     </h4>
+
+                                                                    {/* Botón Ir al Chat */}
+                                                                    {surgery.telefono && (
+                                                                        <button
+                                                                            onClick={(e) => { e.stopPropagation(); openChat(surgery); }}
+                                                                            style={{
+                                                                                width: '100%', padding: '12px 16px',
+                                                                                borderRadius: 'var(--radius-md)',
+                                                                                background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                                                                                color: '#fff', fontSize: '0.85rem', fontWeight: 700,
+                                                                                border: 'none', cursor: 'pointer',
+                                                                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                                                                                transition: 'all 0.2s', position: 'relative',
+                                                                                boxShadow: '0 3px 12px rgba(37,211,102,0.3)',
+                                                                            }}
+                                                                            onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(37,211,102,0.4)'; }}
+                                                                            onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 3px 12px rgba(37,211,102,0.3)'; }}
+                                                                        >
+                                                                            <MessageSquare size={18} />
+                                                                            💬 Ir al Chat
+                                                                            {(() => {
+                                                                                const norm = normalizeArgentinePhone(surgery.telefono);
+                                                                                const count = norm ? (unreadCounts[norm] || 0) : 0;
+                                                                                return count > 0 ? (
+                                                                                    <span style={{
+                                                                                        position: 'absolute', top: '-6px', right: '-6px',
+                                                                                        minWidth: '22px', height: '22px', padding: '0 6px',
+                                                                                        borderRadius: '11px', background: '#EF4444', color: '#fff',
+                                                                                        fontSize: '0.7rem', fontWeight: 800,
+                                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                                        animation: 'pulse 2s infinite',
+                                                                                        boxShadow: '0 0 8px rgba(239,68,68,0.5)',
+                                                                                        border: '2px solid #fff',
+                                                                                    }}>
+                                                                                        {count}
+                                                                                    </span>
+                                                                                ) : null;
+                                                                            })()}
+                                                                        </button>
+                                                                    )}
+
+                                                                    {/* Envío rápido */}
                                                                     <div style={{
                                                                         background: '#fff', borderRadius: 'var(--radius-md)',
                                                                         border: '1px solid var(--neutral-200)', padding: 'var(--space-3)',
+                                                                        marginTop: '10px',
                                                                     }}>
                                                                         <div style={{ fontSize: '0.72rem', color: 'var(--neutral-400)', marginBottom: '8px' }}>
-                                                                            Destinatario: <strong style={{ color: 'var(--neutral-700)' }}>{surgery.nombre}</strong>
-                                                                            {surgery.telefono && (
-                                                                                <span style={{ fontFamily: 'monospace', marginLeft: '6px', color: 'var(--neutral-500)' }}>
-                                                                                    ({surgery.telefono})
-                                                                                </span>
-                                                                            )}
+                                                                            Envío rápido a <strong style={{ color: 'var(--neutral-700)' }}>{surgery.nombre}</strong>
                                                                         </div>
                                                                         <textarea
                                                                             value={customMessage}
                                                                             onChange={e => setCustomMessage(e.target.value)}
                                                                             onClick={e => e.stopPropagation()}
-                                                                            placeholder="Escribí el mensaje para el paciente..."
+                                                                            placeholder="Mensaje rápido..."
                                                                             style={{
-                                                                                width: '100%', minHeight: '90px', padding: '10px',
+                                                                                width: '100%', minHeight: '60px', padding: '10px',
                                                                                 borderRadius: 'var(--radius-md)',
                                                                                 border: '1.5px solid var(--neutral-200)',
                                                                                 fontSize: '0.82rem', fontFamily: 'inherit',
@@ -1153,7 +1258,7 @@ export default function SurgeryPanel({ addToast }) {
                                                                                 {sendingMessage ? (
                                                                                     <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Enviando...</>
                                                                                 ) : (
-                                                                                    <><Send size={14} /> Enviar WhatsApp</>
+                                                                                    <><Send size={14} /> Enviar</>
                                                                                 )}
                                                                             </button>
                                                                         </div>
@@ -1580,6 +1685,14 @@ export default function SurgeryPanel({ addToast }) {
                     </div>
                 </div>
             )}
+            {/* ==================== CHAT WINDOW ==================== */}
+            <ChatWindow
+                open={chatOpen}
+                onClose={() => setChatOpen(false)}
+                patientName={chatPatient.name}
+                patientPhone={chatPatient.phone}
+                addToast={addToast}
+            />
         </div>
     );
 }
