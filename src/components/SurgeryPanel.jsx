@@ -725,7 +725,7 @@ export default function SurgeryPanel({ addToast }) {
                         <div className="patient-header__fields">
                             {[
                                 { key: 'nombre', label: 'Nombre', icon: User, placeholder: 'PÉREZ JUAN' },
-                                { key: 'dni', label: 'DNI', icon: FileText, placeholder: '12345678' },
+                                { key: 'id_paciente', label: 'ID Paciente', icon: FileText, placeholder: '12345' },
                                 { key: 'telefono', label: 'Teléfono', icon: Phone, placeholder: '2645551234' },
                                 { key: 'obraSocial', label: 'Obra Social', icon: Building2, placeholder: 'OSDE' },
                                 { key: 'fechaCirugia', label: 'Fecha Cirugía', icon: Calendar, type: 'date' },
@@ -1068,7 +1068,7 @@ export default function SurgeryPanel({ addToast }) {
                                                                         fontSize: '0.78rem',
                                                                     }}>
                                                                         {[
-                                                                            { label: 'DNI', value: surgery.dni },
+                                                                            { label: 'ID Paciente', value: surgery.id_paciente },
                                                                             { label: 'Módulo', value: surgery.modulo },
                                                                             { label: 'Notas', value: surgery.notas },
                                                                             { label: 'Operador', value: surgery.operador },
@@ -1256,7 +1256,7 @@ export default function SurgeryPanel({ addToast }) {
                             <div className="patient-header__fields">
                                 {[
                                     { key: 'nombre', label: 'Nombre', icon: User, placeholder: 'PÉREZ JUAN' },
-                                    { key: 'dni', label: 'DNI', icon: FileText, placeholder: '12345678' },
+                                    { key: 'id_paciente', label: 'ID Paciente', icon: FileText, placeholder: '12345' },
                                     { key: 'telefono', label: 'Teléfono', icon: Phone, placeholder: '2645551234' },
                                     { key: 'obra_social', label: 'Obra Social', icon: Building2, placeholder: 'OSDE' },
                                     { key: 'fecha_cirugia', label: 'Fecha Cirugía', icon: Calendar, type: 'date' },
