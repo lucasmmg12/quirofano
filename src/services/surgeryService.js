@@ -88,18 +88,60 @@ export async function createSurgery(surgeryData) {
         .from('surgeries')
         .insert({
             nombre: surgeryData.nombre,
-            dni: surgeryData.dni,
-            telefono: surgeryData.telefono,
-            obra_social: surgeryData.obraSocial || surgeryData.obra_social,
+            dni: surgeryData.dni || null,
+            telefono: surgeryData.telefono || '',
+            obra_social: surgeryData.obraSocial || surgeryData.obra_social || null,
             fecha_cirugia: surgeryData.fechaCirugia || surgeryData.fecha_cirugia,
-            medico: surgeryData.medico,
-            modulo: surgeryData.modulo,
+            medico: surgeryData.medico || null,
+            modulo: surgeryData.modulo || null,
             excluido,
         })
         .select()
         .single();
     if (error) throw error;
     return data;
+}
+
+/**
+ * Actualiza una cirugía existente
+ */
+export async function updateSurgery(surgeryId, updates) {
+    const excluido = updates.modulo
+        ? EXCLUDED_MODULES.some(mod => updates.modulo.toLowerCase().includes(mod.toLowerCase()))
+        : undefined;
+
+    const cleanUpdates = {
+        ...(updates.nombre !== undefined && { nombre: updates.nombre }),
+        ...(updates.dni !== undefined && { dni: updates.dni || null }),
+        ...(updates.telefono !== undefined && { telefono: updates.telefono || '' }),
+        ...(updates.obra_social !== undefined && { obra_social: updates.obra_social || null }),
+        ...(updates.fecha_cirugia !== undefined && { fecha_cirugia: updates.fecha_cirugia }),
+        ...(updates.medico !== undefined && { medico: updates.medico || null }),
+        ...(updates.modulo !== undefined && { modulo: updates.modulo || null }),
+        ...(excluido !== undefined && { excluido }),
+    };
+
+    const { data, error } = await supabase
+        .from('surgeries')
+        .update(cleanUpdates)
+        .eq('id', surgeryId)
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+}
+
+/**
+ * Elimina una cirugía y sus eventos asociados
+ */
+export async function deleteSurgery(surgeryId) {
+    // Los eventos se borran por CASCADE (FK con ON DELETE CASCADE)
+    const { error } = await supabase
+        .from('surgeries')
+        .delete()
+        .eq('id', surgeryId);
+    if (error) throw error;
+    return { deleted: true };
 }
 
 /**

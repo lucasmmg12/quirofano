@@ -14,16 +14,18 @@ import {
     Upload, Search, Send, CheckCircle, AlertTriangle, XCircle,
     FileText, Eye, ArrowRight, RefreshCw, User, Calendar, Building2, Phone,
     X, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Clock,
-    ChevronDown, ChevronUp, Timer, Activity, Zap
+    ChevronDown, ChevronUp, Timer, Activity, Zap, Pencil, Trash2,
+    MessageSquare, ChevronRight
 } from 'lucide-react';
 import {
-    fetchSurgeries, createSurgery, getSurgeryStats,
+    fetchSurgeries, createSurgery, updateSurgery, deleteSurgery, getSurgeryStats,
     sendInitialNotification, markDocumentReceived,
     authorizeSurgery, confirmAttendance, flagProblem, manualOverride,
     processScheduledNotifications, bulkUpsertSurgeries, updateAusenteStatus
 } from '../services/surgeryService';
 import { parseExcelFile, mapExcelToSurgeries, validateMappedRecords } from '../utils/excelParser';
 import { bulkNormalizePhones } from '../utils/phoneUtils';
+import { sendWhatsAppMessage } from '../services/builderbotApi';
 
 // ============================================================
 // CONSTANTS & CONFIG
@@ -151,6 +153,16 @@ export default function SurgeryPanel({ addToast }) {
         nombre: '', dni: '', telefono: '', obraSocial: '',
         fechaCirugia: '', medico: '', modulo: '',
     });
+
+    // Edit surgery modal
+    const [editModalOpen, setEditModalOpen] = useState(false);
+    const [editSurgery, setEditSurgery] = useState(null);
+    const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+
+    // Expandable row
+    const [expandedRowId, setExpandedRowId] = useState(null);
+    const [customMessage, setCustomMessage] = useState('');
+    const [sendingMessage, setSendingMessage] = useState(false);
 
     // ============================================================
     // DATA LOADING
@@ -342,6 +354,74 @@ export default function SurgeryPanel({ addToast }) {
     };
 
     // ============================================================
+    // HANDLERS — Edit & Delete
+    // ============================================================
+
+    const handleOpenEdit = (surgery) => {
+        setEditSurgery({
+            id: surgery.id,
+            nombre: surgery.nombre || '',
+            dni: surgery.dni || '',
+            telefono: surgery.telefono || '',
+            obra_social: surgery.obra_social || '',
+            fecha_cirugia: surgery.fecha_cirugia || '',
+            medico: surgery.medico || '',
+            modulo: surgery.modulo || '',
+        });
+        setEditModalOpen(true);
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editSurgery) return;
+        try {
+            setProcessing(true);
+            await updateSurgery(editSurgery.id, {
+                nombre: editSurgery.nombre,
+                dni: editSurgery.dni,
+                telefono: editSurgery.telefono,
+                obra_social: editSurgery.obra_social,
+                fecha_cirugia: editSurgery.fecha_cirugia,
+                medico: editSurgery.medico,
+                modulo: editSurgery.modulo,
+            });
+            addToast?.('Cirugía actualizada', 'success');
+            setEditModalOpen(false);
+            setEditSurgery(null);
+            loadData();
+        } catch (e) { addToast?.('Error al editar: ' + e.message, 'error'); }
+        finally { setProcessing(false); }
+    };
+
+    const handleDeleteSurgery = async (id) => {
+        try {
+            setProcessing(true);
+            await deleteSurgery(id);
+            addToast?.('Cirugía eliminada', 'success');
+            setDeleteConfirmId(null);
+            loadData();
+        } catch (e) { addToast?.('Error al eliminar: ' + e.message, 'error'); }
+        finally { setProcessing(false); }
+    };
+
+    // ============================================================
+    // HANDLERS — Custom WhatsApp Message
+    // ============================================================
+
+    const handleSendCustomMessage = async (surgery) => {
+        if (!customMessage.trim() || !surgery.telefono) return;
+        try {
+            setSendingMessage(true);
+            await sendWhatsAppMessage({
+                content: customMessage.trim(),
+                number: surgery.telefono,
+            });
+            addToast?.(`Mensaje enviado a ${surgery.nombre}`, 'success');
+            setCustomMessage('');
+        } catch (e) { addToast?.('Error al enviar mensaje: ' + e.message, 'error'); }
+        finally { setSendingMessage(false); }
+    };
+
+    // ============================================================
     // HANDLERS — Excel Upload
     // ============================================================
 
@@ -442,10 +522,10 @@ export default function SurgeryPanel({ addToast }) {
     };
 
     // ============================================================
-    // ACTION BUTTONS PER STATUS
+    // ACTION HELPERS FOR EXPANDED ROW
     // ============================================================
 
-    const getActions = (surgery) => {
+    const getStatusActions = (surgery) => {
         const actions = [];
         switch (surgery.status) {
             case 'lila':
@@ -459,19 +539,18 @@ export default function SurgeryPanel({ addToast }) {
                 actions.push({ label: 'Confirmar', icon: CheckCircle, action: () => handleConfirm(surgery.id), color: '#3B82F6' });
                 break;
             case 'rojo':
-                actions.push({ label: '→ Lila', icon: ArrowRight, action: () => handleManualChange(surgery.id, 'lila'), color: '#A855F7' });
+                actions.push({ label: '→ Pendiente', icon: ArrowRight, action: () => handleManualChange(surgery.id, 'lila'), color: '#A855F7' });
                 break;
             default: break;
         }
-        // Botones de resultado (ausente)
-        const effectiveAusente = surgery.ausente;
-        if (effectiveAusente !== '0') {
-            actions.push({ label: '✓ Realizada', icon: CheckCircle, action: () => handleAusenteChange(surgery.id, '0'), color: '#16A34A' });
-        }
-        if (effectiveAusente !== '1') {
-            actions.push({ label: '✗ Suspendida', icon: XCircle, action: () => handleAusenteChange(surgery.id, '1'), color: '#DC2626' });
-        }
         actions.push({ label: 'Problema', icon: AlertTriangle, action: () => handleFlag(surgery.id), color: '#EF4444' });
+        return actions;
+    };
+
+    const getResultActions = (surgery) => {
+        const actions = [];
+        if (surgery.ausente !== '0') actions.push({ label: 'Realizada', icon: CheckCircle, action: () => handleAusenteChange(surgery.id, '0'), color: '#16A34A' });
+        if (surgery.ausente !== '1') actions.push({ label: 'Suspendida', icon: XCircle, action: () => handleAusenteChange(surgery.id, '1'), color: '#DC2626' });
         return actions;
     };
 
@@ -484,17 +563,6 @@ export default function SurgeryPanel({ addToast }) {
             gap: 'var(--space-4)',
             position: 'relative',
         }}>
-            {/* Watermark logo de fondo */}
-            <div style={{
-                position: 'fixed', top: '50%', left: '55%',
-                transform: 'translate(-50%, -50%)',
-                width: '500px', height: '500px',
-                backgroundImage: 'url(/logosanatorio.png)',
-                backgroundSize: 'contain', backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'center',
-                opacity: 0.035, pointerEvents: 'none', zIndex: 0,
-            }} />
-
             {/* ==================== URGENCY ALERT BAR ==================== */}
             {urgencySummary.critical > 0 && (
                 <div style={{
@@ -749,7 +817,8 @@ export default function SurgeryPanel({ addToast }) {
                         <table className="cart__table">
                             <thead>
                                 <tr>
-                                    <th className="cart__th" style={{ width: '56px' }}>⏱️</th>
+                                    <th className="cart__th" style={{ width: '36px' }}></th>
+                                    <th className="cart__th" style={{ width: '46px' }}>⏱️</th>
                                     <th className="cart__th">Estado</th>
                                     <th className="cart__th">Paciente</th>
                                     <th className="cart__th">Obra Social</th>
@@ -757,7 +826,6 @@ export default function SurgeryPanel({ addToast }) {
                                     <th className="cart__th">Faltan</th>
                                     <th className="cart__th">Médico</th>
                                     <th className="cart__th">Teléfono</th>
-                                    <th className="cart__th" style={{ textAlign: 'center' }}>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -787,13 +855,26 @@ export default function SurgeryPanel({ addToast }) {
                                             </td>
                                         </tr>,
                                         /* Rows */
-                                        ...group.items.map(surgery => {
+                                        ...group.items.flatMap(surgery => {
                                             const effectiveStatus = getEffectiveStatus(surgery);
                                             const cfg = STATUS_CONFIG[effectiveStatus] || STATUS_CONFIG.lila;
                                             const cd = getCountdown(surgery.fecha_cirugia);
-                                            const actions = getActions(surgery);
-                                            return (
-                                                <tr key={surgery.id} className="cart__row">
+                                            const isExpanded = expandedRowId === surgery.id;
+                                            const rows = [
+                                                <tr key={surgery.id} className="cart__row"
+                                                    onClick={() => { setExpandedRowId(isExpanded ? null : surgery.id); setCustomMessage(''); }}
+                                                    style={{ cursor: 'pointer', transition: 'background 0.15s' }}
+                                                    onMouseOver={e => { if (!isExpanded) e.currentTarget.style.background = 'var(--neutral-50)'; }}
+                                                    onMouseOut={e => { if (!isExpanded) e.currentTarget.style.background = ''; }}
+                                                >
+                                                    {/* Expand Chevron */}
+                                                    <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }}>
+                                                        <ChevronRight size={14} style={{
+                                                            color: 'var(--neutral-400)',
+                                                            transition: 'transform 0.2s ease',
+                                                            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                                        }} />
+                                                    </td>
                                                     {/* Urgency Indicator */}
                                                     <td className="cart__td" style={{ textAlign: 'center', padding: '6px' }}>
                                                         <div style={{
@@ -861,7 +942,6 @@ export default function SurgeryPanel({ addToast }) {
                                                                         background: '#FEE2E2', color: '#DC2626',
                                                                         fontSize: '0.6rem', fontWeight: 700,
                                                                         border: '1px solid #FECACA',
-                                                                        animation: 'pulse 2s infinite',
                                                                     }}>
                                                                         ⚠️ TEL INVÁLIDO
                                                                     </span>
@@ -878,30 +958,217 @@ export default function SurgeryPanel({ addToast }) {
                                                             </span>
                                                         )}
                                                     </td>
-                                                    {/* Actions */}
-                                                    <td className="cart__td">
-                                                        <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                                                            {actions.map((act, i) => (
-                                                                <button
-                                                                    key={i} onClick={act.action} disabled={processing}
-                                                                    title={act.label}
-                                                                    style={{
-                                                                        display: 'flex', alignItems: 'center', gap: '3px',
-                                                                        padding: '4px 8px', borderRadius: 'var(--radius-md)',
-                                                                        background: act.color + '12', color: act.color,
-                                                                        fontSize: '0.7rem', fontWeight: 600,
-                                                                        border: 'none', cursor: 'pointer', transition: 'all 0.15s',
-                                                                    }}
-                                                                    onMouseOver={e => { e.currentTarget.style.background = act.color + '25'; }}
-                                                                    onMouseOut={e => { e.currentTarget.style.background = act.color + '12'; }}
-                                                                >
-                                                                    <act.icon size={12} />{act.label}
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
+                                                </tr>,
+                                            ];
+                                            /* ===== EXPANDED DETAIL ROW ===== */
+                                            if (isExpanded) {
+                                                const statusActions = getStatusActions(surgery);
+                                                const resultActions = getResultActions(surgery);
+                                                rows.push(
+                                                    <tr key={`${surgery.id}-detail`}>
+                                                        <td colSpan={9} style={{
+                                                            padding: 0, background: 'var(--neutral-50)',
+                                                            borderLeft: `4px solid ${cfg.color}`,
+                                                            animation: 'fadeIn 0.2s ease-out',
+                                                        }}>
+                                                            <div style={{
+                                                                display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
+                                                                gap: 'var(--space-4)', padding: 'var(--space-4) var(--space-5)',
+                                                            }}>
+                                                                {/* COL 1: Info + Status Actions */}
+                                                                <div>
+                                                                    <h4 style={{ margin: '0 0 10px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                                        📋 Estado del Proceso
+                                                                    </h4>
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                                        {statusActions.map((act, i) => (
+                                                                            <button key={i} onClick={(e) => { e.stopPropagation(); act.action(); }} disabled={processing}
+                                                                                style={{
+                                                                                    display: 'flex', alignItems: 'center', gap: '8px',
+                                                                                    padding: '8px 14px', borderRadius: 'var(--radius-md)',
+                                                                                    background: '#fff', color: act.color,
+                                                                                    fontSize: '0.78rem', fontWeight: 600,
+                                                                                    border: `1.5px solid ${act.color}30`, cursor: 'pointer',
+                                                                                    transition: 'all 0.15s', textAlign: 'left',
+                                                                                }}
+                                                                                onMouseOver={e => { e.currentTarget.style.background = act.color + '10'; e.currentTarget.style.borderColor = act.color; }}
+                                                                                onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = act.color + '30'; }}
+                                                                            >
+                                                                                <act.icon size={15} /> {act.label}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                    {/* Resultado */}
+                                                                    <h4 style={{ margin: '14px 0 8px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                                        ✅ Resultado
+                                                                    </h4>
+                                                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                                                        {resultActions.map((act, i) => (
+                                                                            <button key={i} onClick={(e) => { e.stopPropagation(); act.action(); }} disabled={processing}
+                                                                                style={{
+                                                                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                                                                    padding: '7px 14px', borderRadius: 'var(--radius-md)',
+                                                                                    background: '#fff', color: act.color,
+                                                                                    fontSize: '0.78rem', fontWeight: 600,
+                                                                                    border: `1.5px solid ${act.color}30`, cursor: 'pointer',
+                                                                                    transition: 'all 0.15s',
+                                                                                }}
+                                                                                onMouseOver={e => { e.currentTarget.style.background = act.color + '10'; e.currentTarget.style.borderColor = act.color; }}
+                                                                                onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = act.color + '30'; }}
+                                                                            >
+                                                                                <act.icon size={14} /> {act.label}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                    {/* Gestión */}
+                                                                    <h4 style={{ margin: '14px 0 8px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                                        ⚙️ Gestión
+                                                                    </h4>
+                                                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                                                        <button onClick={(e) => { e.stopPropagation(); handleOpenEdit(surgery); }} disabled={processing}
+                                                                            style={{
+                                                                                display: 'flex', alignItems: 'center', gap: '6px',
+                                                                                padding: '7px 14px', borderRadius: 'var(--radius-md)',
+                                                                                background: '#fff', color: '#6366F1',
+                                                                                fontSize: '0.78rem', fontWeight: 600,
+                                                                                border: '1.5px solid #6366F130', cursor: 'pointer',
+                                                                                transition: 'all 0.15s',
+                                                                            }}
+                                                                            onMouseOver={e => { e.currentTarget.style.background = '#6366F110'; e.currentTarget.style.borderColor = '#6366F1'; }}
+                                                                            onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#6366F130'; }}
+                                                                        >
+                                                                            <Pencil size={14} /> Editar
+                                                                        </button>
+                                                                        <button onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(surgery.id); }} disabled={processing}
+                                                                            style={{
+                                                                                display: 'flex', alignItems: 'center', gap: '6px',
+                                                                                padding: '7px 14px', borderRadius: 'var(--radius-md)',
+                                                                                background: '#fff', color: '#EF4444',
+                                                                                fontSize: '0.78rem', fontWeight: 600,
+                                                                                border: '1.5px solid #EF444430', cursor: 'pointer',
+                                                                                transition: 'all 0.15s',
+                                                                            }}
+                                                                            onMouseOver={e => { e.currentTarget.style.background = '#EF444410'; e.currentTarget.style.borderColor = '#EF4444'; }}
+                                                                            onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#EF444430'; }}
+                                                                        >
+                                                                            <Trash2 size={14} /> Borrar
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* COL 2: Datos adicionales */}
+                                                                <div>
+                                                                    <h4 style={{ margin: '0 0 10px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                                        📄 Datos Adicionales
+                                                                    </h4>
+                                                                    <div style={{
+                                                                        background: '#fff', borderRadius: 'var(--radius-md)',
+                                                                        border: '1px solid var(--neutral-200)', padding: 'var(--space-3)',
+                                                                        fontSize: '0.78rem',
+                                                                    }}>
+                                                                        {[
+                                                                            { label: 'DNI', value: surgery.dni },
+                                                                            { label: 'Módulo', value: surgery.modulo },
+                                                                            { label: 'Notas', value: surgery.notas },
+                                                                            { label: 'Operador', value: surgery.operador },
+                                                                            { label: 'Creado', value: surgery.created_at ? new Date(surgery.created_at).toLocaleDateString('es-AR') : null },
+                                                                        ].map(({ label, value }) => (
+                                                                            <div key={label} style={{
+                                                                                display: 'flex', justifyContent: 'space-between',
+                                                                                padding: '5px 0', borderBottom: '1px solid var(--neutral-100)',
+                                                                            }}>
+                                                                                <span style={{ color: 'var(--neutral-400)', fontWeight: 500 }}>{label}</span>
+                                                                                <span style={{ fontWeight: 600, color: 'var(--neutral-700)' }}>{value || '—'}</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                    {/* Event history */}
+                                                                    {surgery.surgery_events?.length > 0 && (
+                                                                        <>
+                                                                            <h4 style={{ margin: '14px 0 8px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                                                📜 Historial
+                                                                            </h4>
+                                                                            <div style={{ maxHeight: '120px', overflow: 'auto', background: '#fff', borderRadius: 'var(--radius-md)', border: '1px solid var(--neutral-200)', padding: '6px' }}>
+                                                                                {surgery.surgery_events.slice().reverse().map((evt, i) => (
+                                                                                    <div key={i} style={{ padding: '4px 6px', fontSize: '0.7rem', borderBottom: '1px solid var(--neutral-50)' }}>
+                                                                                        <span style={{ color: 'var(--neutral-400)', fontFamily: 'monospace', marginRight: '6px' }}>
+                                                                                            {new Date(evt.created_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                                                        </span>
+                                                                                        <span style={{ color: 'var(--neutral-600)' }}>{evt.details}</span>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* COL 3: Mensaje personalizado */}
+                                                                <div>
+                                                                    <h4 style={{ margin: '0 0 10px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                        <MessageSquare size={13} /> Enviar Mensaje
+                                                                    </h4>
+                                                                    <div style={{
+                                                                        background: '#fff', borderRadius: 'var(--radius-md)',
+                                                                        border: '1px solid var(--neutral-200)', padding: 'var(--space-3)',
+                                                                    }}>
+                                                                        <div style={{ fontSize: '0.72rem', color: 'var(--neutral-400)', marginBottom: '8px' }}>
+                                                                            Destinatario: <strong style={{ color: 'var(--neutral-700)' }}>{surgery.nombre}</strong>
+                                                                            {surgery.telefono && (
+                                                                                <span style={{ fontFamily: 'monospace', marginLeft: '6px', color: 'var(--neutral-500)' }}>
+                                                                                    ({surgery.telefono})
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        <textarea
+                                                                            value={customMessage}
+                                                                            onChange={e => setCustomMessage(e.target.value)}
+                                                                            onClick={e => e.stopPropagation()}
+                                                                            placeholder="Escribí el mensaje para el paciente..."
+                                                                            style={{
+                                                                                width: '100%', minHeight: '90px', padding: '10px',
+                                                                                borderRadius: 'var(--radius-md)',
+                                                                                border: '1.5px solid var(--neutral-200)',
+                                                                                fontSize: '0.82rem', fontFamily: 'inherit',
+                                                                                resize: 'vertical', outline: 'none',
+                                                                                transition: 'border-color 0.2s',
+                                                                            }}
+                                                                            onFocus={e => e.target.style.borderColor = '#22C55E'}
+                                                                            onBlur={e => e.target.style.borderColor = 'var(--neutral-200)'}
+                                                                        />
+                                                                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                                                                            <button
+                                                                                onClick={(e) => { e.stopPropagation(); handleSendCustomMessage(surgery); }}
+                                                                                disabled={!customMessage.trim() || !surgery.telefono || sendingMessage}
+                                                                                style={{
+                                                                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                                                                    padding: '8px 16px', borderRadius: 'var(--radius-md)',
+                                                                                    background: (!customMessage.trim() || !surgery.telefono) ? 'var(--neutral-200)' : '#25D366',
+                                                                                    color: (!customMessage.trim() || !surgery.telefono) ? 'var(--neutral-400)' : '#fff',
+                                                                                    fontSize: '0.78rem', fontWeight: 700,
+                                                                                    border: 'none', cursor: (!customMessage.trim() || !surgery.telefono) ? 'not-allowed' : 'pointer',
+                                                                                    transition: 'all 0.15s',
+                                                                                }}
+                                                                            >
+                                                                                {sendingMessage ? (
+                                                                                    <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Enviando...</>
+                                                                                ) : (
+                                                                                    <><Send size={14} /> Enviar WhatsApp</>
+                                                                                )}
+                                                                            </button>
+                                                                        </div>
+                                                                        {!surgery.telefono && (
+                                                                            <p style={{ margin: '6px 0 0', fontSize: '0.7rem', color: '#DC2626', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                                <AlertCircle size={11} /> Sin teléfono — no se puede enviar
+                                                                            </p>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            }
+                                            return rows;
                                         }),
                                     ];
                                 })}
@@ -910,6 +1177,121 @@ export default function SurgeryPanel({ addToast }) {
                     </div>
                 )}
             </div>
+
+            {/* ==================== DELETE CONFIRMATION ==================== */}
+            {deleteConfirmId && (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 10000,
+                    background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(4px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: 'var(--space-4)', animation: 'fadeIn 0.15s ease-out',
+                }} onClick={() => setDeleteConfirmId(null)}>
+                    <div onClick={e => e.stopPropagation()} style={{
+                        background: '#fff', borderRadius: 'var(--radius-xl)', padding: 'var(--space-6)',
+                        maxWidth: '420px', width: '100%', textAlign: 'center',
+                        boxShadow: '0 25px 50px -12px rgba(0,0,0,0.3)',
+                        animation: 'scaleIn 0.2s ease-out',
+                    }}>
+                        <div style={{
+                            width: '56px', height: '56px', borderRadius: '50%',
+                            background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            margin: '0 auto var(--space-4)',
+                        }}>
+                            <Trash2 size={24} style={{ color: '#DC2626' }} />
+                        </div>
+                        <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem', fontWeight: 700 }}>¿Eliminar cirugía?</h3>
+                        <p style={{ margin: '0 0 var(--space-5)', fontSize: '0.85rem', color: 'var(--neutral-500)' }}>
+                            Esta acción es irreversible. Se eliminarán también todos los eventos asociados.
+                        </p>
+                        <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center' }}>
+                            <button className="btn btn--ghost" onClick={() => setDeleteConfirmId(null)}>Cancelar</button>
+                            <button
+                                className="btn" onClick={() => handleDeleteSurgery(deleteConfirmId)} disabled={processing}
+                                style={{
+                                    background: '#DC2626', color: '#fff', border: 'none',
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                }}
+                            >
+                                <Trash2 size={14} /> Eliminar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ==================== EDIT SURGERY MODAL ==================== */}
+            {editModalOpen && editSurgery && (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 10000,
+                    background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(6px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: 'var(--space-4)', animation: 'fadeIn 0.2s ease-out',
+                }} onClick={() => { setEditModalOpen(false); setEditSurgery(null); }}>
+                    <div onClick={e => e.stopPropagation()} style={{
+                        background: '#fff', borderRadius: 'var(--radius-xl)',
+                        width: '100%', maxWidth: '640px', overflow: 'hidden',
+                        boxShadow: '0 25px 50px -12px rgba(0,0,0,0.3)',
+                        animation: 'scaleIn 0.2s ease-out',
+                    }}>
+                        {/* Header */}
+                        <div style={{
+                            padding: 'var(--space-4) var(--space-6)',
+                            borderBottom: '1px solid var(--neutral-200)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        }}>
+                            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Pencil size={18} style={{ color: '#6366F1' }} />
+                                Editar Cirugía
+                            </h3>
+                            <button onClick={() => { setEditModalOpen(false); setEditSurgery(null); }} style={{
+                                background: 'var(--neutral-100)', border: 'none', cursor: 'pointer',
+                                padding: '8px', borderRadius: 'var(--radius-md)', color: 'var(--neutral-500)',
+                            }}>
+                                <X size={18} />
+                            </button>
+                        </div>
+                        {/* Fields */}
+                        <div style={{ padding: 'var(--space-5) var(--space-6)' }}>
+                            <div className="patient-header__fields">
+                                {[
+                                    { key: 'nombre', label: 'Nombre', icon: User, placeholder: 'PÉREZ JUAN' },
+                                    { key: 'dni', label: 'DNI', icon: FileText, placeholder: '12345678' },
+                                    { key: 'telefono', label: 'Teléfono', icon: Phone, placeholder: '2645551234' },
+                                    { key: 'obra_social', label: 'Obra Social', icon: Building2, placeholder: 'OSDE' },
+                                    { key: 'fecha_cirugia', label: 'Fecha Cirugía', icon: Calendar, type: 'date' },
+                                    { key: 'medico', label: 'Médico', icon: User, placeholder: 'Dr. González' },
+                                    { key: 'modulo', label: 'Módulo', icon: FileText, placeholder: 'Cirugía General' },
+                                ].map(field => (
+                                    <div key={field.key} className="field-group">
+                                        <label className="field-label"><field.icon size={14} />{field.label}</label>
+                                        <input
+                                            type={field.type || 'text'} className="field-input"
+                                            placeholder={field.placeholder || ''}
+                                            value={editSurgery[field.key]}
+                                            onChange={e => setEditSurgery(prev => ({ ...prev, [field.key]: e.target.value }))}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        {/* Footer */}
+                        <div style={{
+                            padding: 'var(--space-3) var(--space-6)',
+                            borderTop: '1px solid var(--neutral-200)',
+                            display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)',
+                            background: 'var(--neutral-50)',
+                        }}>
+                            <button className="btn btn--ghost" onClick={() => { setEditModalOpen(false); setEditSurgery(null); }}>Cancelar</button>
+                            <button className="btn btn--primary" onClick={handleSaveEdit} disabled={processing}
+                                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                            >
+                                {processing ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle size={15} />}
+                                Guardar Cambios
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ==================== EXCEL PREVIEW MODAL ==================== */}
             {showUpload && excelPreview && (
