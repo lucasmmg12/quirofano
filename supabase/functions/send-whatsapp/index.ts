@@ -1,9 +1,45 @@
 // Supabase Edge Function: send-whatsapp
 // Proxy server-side para BuilderBot API (evita CORS)
-// Deploy: via Supabase Management API
+// Lee credenciales desde app_config en la DB
 
-const BUILDERBOT_URL = 'https://app.builderbot.cloud/api/v2/c3fd918b-b736-40dc-a841-cbb73d3b2a8d/messages';
-const BUILDERBOT_API_KEY = 'bb-3c45fa69-2776-4275-82b6-2d6df9e08ec6';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const SUPABASE_URL = 'https://hakysnqiryimxbwdslwe.supabase.co';
+const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhha3lzbnFpcnlpbXhid2RzbHdlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDA0MjI3NCwiZXhwIjoyMDg1NjE4Mjc0fQ.v0Zw7yFjGKJX8xsMCZJPwRyhr2eNd1gjASsI7qSK0YM';
+
+// Cache para no leer la DB en cada request
+let cachedConfig: { apiKey: string; projectId: string; cachedAt: number } | null = null;
+const CACHE_TTL = 60 * 1000; // 1 minuto
+
+async function getBuilderBotConfig() {
+    // Si tenemos cache válido, usarlo
+    if (cachedConfig && Date.now() - cachedConfig.cachedAt < CACHE_TTL) {
+        return cachedConfig;
+    }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const { data, error } = await supabase
+        .from('app_config')
+        .select('key, value')
+        .in('key', ['builderbot_api_key', 'builderbot_project_id']);
+
+    if (error) throw new Error('Error leyendo config: ' + error.message);
+
+    const configMap: Record<string, string> = {};
+    (data || []).forEach((row: { key: string; value: string }) => {
+        configMap[row.key] = row.value;
+    });
+
+    const apiKey = configMap['builderbot_api_key'];
+    const projectId = configMap['builderbot_project_id'];
+
+    if (!apiKey || !projectId) {
+        throw new Error('Faltan credenciales de BuilderBot en app_config');
+    }
+
+    cachedConfig = { apiKey, projectId, cachedAt: Date.now() };
+    return cachedConfig;
+}
 
 Deno.serve(async (req) => {
     // CORS headers
@@ -28,6 +64,10 @@ Deno.serve(async (req) => {
             );
         }
 
+        // Leer credenciales desde DB
+        const config = await getBuilderBotConfig();
+        const BUILDERBOT_URL = `https://app.builderbot.cloud/api/v2/${config.projectId}/messages`;
+
         const body = {
             messages: {
                 content,
@@ -37,11 +77,13 @@ Deno.serve(async (req) => {
             checkIfExists: false,
         };
 
+        console.log(`[send-whatsapp] Enviando a ${number}:`, content.substring(0, 50));
+
         const response = await fetch(BUILDERBOT_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'x-api-builderbot': BUILDERBOT_API_KEY,
+                'x-api-builderbot': config.apiKey,
             },
             body: JSON.stringify(body),
         });
@@ -53,6 +95,7 @@ Deno.serve(async (req) => {
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
     } catch (error) {
+        console.error('[send-whatsapp] Error:', error.message);
         return new Response(
             JSON.stringify({ error: error.message }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

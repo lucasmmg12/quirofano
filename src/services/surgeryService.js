@@ -84,6 +84,12 @@ export async function createSurgery(surgeryData) {
         surgeryData.modulo?.toLowerCase().includes(mod.toLowerCase())
     );
 
+    // Si fecha_cirugia está vacío, usar hoy como default
+    const rawDate = surgeryData.fechaCirugia || surgeryData.fecha_cirugia;
+    const fechaCirugia = rawDate && rawDate.trim() !== ''
+        ? rawDate
+        : new Date().toISOString().split('T')[0];
+
     const { data, error } = await supabase
         .from('surgeries')
         .insert({
@@ -91,7 +97,7 @@ export async function createSurgery(surgeryData) {
             dni: surgeryData.dni || null,
             telefono: surgeryData.telefono || '',
             obra_social: surgeryData.obraSocial || surgeryData.obra_social || null,
-            fecha_cirugia: surgeryData.fechaCirugia || surgeryData.fecha_cirugia,
+            fecha_cirugia: fechaCirugia,
             medico: surgeryData.medico || null,
             modulo: surgeryData.modulo || null,
             excluido,

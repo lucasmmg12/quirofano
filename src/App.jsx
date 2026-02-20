@@ -11,13 +11,20 @@ import { sendWhatsAppMessage, formatOrderForWhatsApp } from './services/builderb
 import { createOrder, markOrderPrinted, markOrderSent, fetchOrderHistory } from './services/dataService';
 import { Clock, Printer, Send, CheckCircle } from 'lucide-react';
 import SurgeryPanel from './components/SurgeryPanel.jsx';
+import ConfigPanel from './components/ConfigPanel.jsx';
+import HomePanel from './components/HomePanel.jsx';
 import NomencladorView from './components/NomencladorView.jsx';
 import './App.css';
 
 function App() {
-    // Sidebar
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-    const [activeView, setActiveView] = useState('pedidos');
+    // Sidebar — persist active view across refreshes
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true');
+    const [activeView, setActiveViewRaw] = useState(() => localStorage.getItem('active_view') || 'inicio');
+
+    const setActiveView = useCallback((view) => {
+        setActiveViewRaw(view);
+        localStorage.setItem('active_view', view);
+    }, []);
 
     // Patient data
     const [patientData, setPatientData] = useState({
@@ -179,7 +186,7 @@ function App() {
         <div className="app">
             <Sidebar
                 collapsed={sidebarCollapsed}
-                onToggle={() => setSidebarCollapsed(prev => !prev)}
+                onToggle={() => setSidebarCollapsed(prev => { const next = !prev; localStorage.setItem('sidebar_collapsed', next); return next; })}
                 activeView={activeView}
                 onViewChange={setActiveView}
             />
@@ -188,8 +195,8 @@ function App() {
                 {/* Top Bar */}
                 <header className="topbar no-print">
                     <div className="topbar__left">
-                        <h1 className="topbar__title">Optimizador de Pedidos Médicos</h1>
-                        <span className="topbar__subtitle">Sistema de generación rápida</span>
+                        <h1 className="topbar__title">Administración Sanatorio Argentino</h1>
+                        <span className="topbar__subtitle">Sistema de gestión integral</span>
                     </div>
                     <div className="topbar__right">
                         <span className="topbar__date">
@@ -199,6 +206,10 @@ function App() {
                 </header>
 
                 {/* Content */}
+                {activeView === 'inicio' && (
+                    <HomePanel />
+                )}
+
                 {activeView === 'pedidos' && (
                     <div className="content no-print">
                         <PatientHeader
@@ -295,12 +306,7 @@ function App() {
                 )}
 
                 {activeView === 'config' && (
-                    <div className="content no-print">
-                        <div className="placeholder-view animate-fade-in">
-                            <h2>Configuración</h2>
-                            <p>Próximamente — Ajustes del sistema, datos del sanatorio, médicos frecuentes.</p>
-                        </div>
-                    </div>
+                    <ConfigPanel addToast={addToast} />
                 )}
             </main>
 

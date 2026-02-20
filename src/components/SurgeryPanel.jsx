@@ -134,6 +134,7 @@ export default function SurgeryPanel({ addToast }) {
     const [surgeries, setSurgeries] = useState([]);
     const [stats, setStats] = useState({});
     const [loading, setLoading] = useState(true);
+    const [initialLoadDone, setInitialLoadDone] = useState(false);
     const [filter, setFilter] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [showUpload, setShowUpload] = useState(false);
@@ -163,8 +164,12 @@ export default function SurgeryPanel({ addToast }) {
 
     // Expandable row
     const [expandedRowId, setExpandedRowId] = useState(null);
+    const [statusDropdownId, setStatusDropdownId] = useState(null);
     const [customMessage, setCustomMessage] = useState('');
     const [sendingMessage, setSendingMessage] = useState(false);
+
+    // Collapsible day groups — all collapsed by default, user expands
+    const [expandedDays, setExpandedDays] = useState(new Set());
 
     // Chat window
     const [chatOpen, setChatOpen] = useState(false);
@@ -176,14 +181,11 @@ export default function SurgeryPanel({ addToast }) {
     // ============================================================
 
     const loadData = useCallback(async () => {
-        setLoading(true);
+        if (!initialLoadDone) setLoading(true);
         try {
             const ausenteFilter = viewMode === 'history' ? 'history' : 'pending';
-            // Solo filtrar status a nivel DB si es un status real (no virtual)
             const dbStatusValues = ['lila', 'amarillo', 'verde', 'azul', 'rojo'];
             const dbStatus = dbStatusValues.includes(filter) ? filter : undefined;
-
-            // En "Próximas" solo traer desde hoy en adelante
             const today = new Date().toISOString().split('T')[0];
 
             const [surgeriesData, statsData] = await Promise.all([
@@ -201,8 +203,9 @@ export default function SurgeryPanel({ addToast }) {
             addToast?.('Error al cargar cirugías', 'error');
         } finally {
             setLoading(false);
+            setInitialLoadDone(true);
         }
-    }, [filter, viewMode, addToast]);
+    }, [filter, viewMode, addToast, initialLoadDone]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
@@ -390,7 +393,7 @@ export default function SurgeryPanel({ addToast }) {
             setNewSurgery({ nombre: '', dni: '', telefono: '', obraSocial: '', fechaCirugia: '', medico: '', modulo: '' });
             setShowAddForm(false);
             loadData();
-        } catch (e) { addToast?.('Error: ' + e.message, 'error'); }
+        } catch (e) { console.error('Error creando cirugía:', e); addToast?.('Error: ' + e.message, 'error'); }
     };
 
     // ============================================================
@@ -850,7 +853,7 @@ export default function SurgeryPanel({ addToast }) {
                     </div>
                 </div>
 
-                {loading ? (
+                {loading && !initialLoadDone ? (
                     <div className="cart__empty-state">
                         <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: 'var(--primary-400)' }} />
                         <p style={{ marginTop: '12px' }}>Cargando cirugías...</p>
@@ -880,16 +883,32 @@ export default function SurgeryPanel({ addToast }) {
                             <tbody>
                                 {groups.map(group => {
                                     const gcd = group.countdown;
+                                    const isDayExpanded = expandedDays.has(group.date);
                                     return [
-                                        /* Date Group Header */
-                                        <tr key={`group-${group.date}`}>
+                                        /* Date Group Header — clickeable para expandir/colapsar */
+                                        <tr key={`group-${group.date}`}
+                                            onClick={() => {
+                                                setExpandedDays(prev => {
+                                                    const next = new Set(prev);
+                                                    if (next.has(group.date)) next.delete(group.date);
+                                                    else next.add(group.date);
+                                                    return next;
+                                                });
+                                            }}
+                                            style={{ cursor: 'pointer', userSelect: 'none' }}
+                                        >
                                             <td colSpan={9} style={{
                                                 padding: '10px 16px', background: gcd.bg,
                                                 borderLeft: `4px solid ${gcd.color}`,
                                                 fontWeight: 700, fontSize: '0.82rem', color: gcd.color,
+                                                transition: 'background 0.15s',
                                             }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                                     <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <ChevronRight size={15} style={{
+                                                            transition: 'transform 0.2s ease',
+                                                            transform: isDayExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                                        }} />
                                                         <Timer size={15} />
                                                         {group.date === '_sin_fecha' ? '📭 Sin fecha asignada' : formatGroupDate(group.date)}
                                                     </span>
@@ -903,8 +922,8 @@ export default function SurgeryPanel({ addToast }) {
                                                 </div>
                                             </td>
                                         </tr>,
-                                        /* Rows */
-                                        ...group.items.flatMap(surgery => {
+                                        /* Rows — solo si el día está expandido */
+                                        ...(!isDayExpanded ? [] : group.items.flatMap(surgery => {
                                             const effectiveStatus = getEffectiveStatus(surgery);
                                             const cfg = STATUS_CONFIG[effectiveStatus] || STATUS_CONFIG.lila;
                                             const cd = getCountdown(surgery.fecha_cirugia);
@@ -934,16 +953,73 @@ export default function SurgeryPanel({ addToast }) {
                                                         }} title={cd.label} />
                                                     </td>
                                                     {/* Status */}
-                                                    <td className="cart__td">
-                                                        <span style={{
-                                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                            padding: '3px 10px', borderRadius: 'var(--radius-full)',
-                                                            fontSize: '0.72rem', fontWeight: 600,
-                                                            background: cfg.bg, color: cfg.color,
-                                                            border: `1px solid ${cfg.color}25`,
-                                                        }}>
-                                                            {cfg.icon} {cfg.label}
-                                                        </span>
+                                                    <td className="cart__td" style={{ position: 'relative' }}>
+                                                        <div style={{ position: 'relative', display: 'inline-block' }}>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setStatusDropdownId(prev => prev === surgery.id ? null : surgery.id);
+                                                                }}
+                                                                style={{
+                                                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                                    padding: '3px 10px', borderRadius: 'var(--radius-full)',
+                                                                    fontSize: '0.72rem', fontWeight: 600,
+                                                                    background: cfg.bg, color: cfg.color,
+                                                                    border: `1px solid ${cfg.color}25`,
+                                                                    cursor: 'pointer', transition: 'all 0.15s',
+                                                                }}
+                                                                onMouseOver={e => { e.currentTarget.style.boxShadow = `0 0 0 2px ${cfg.color}30`; }}
+                                                                onMouseOut={e => { e.currentTarget.style.boxShadow = 'none'; }}
+                                                                title="Click para cambiar estado"
+                                                            >
+                                                                {cfg.icon} {cfg.label}
+                                                            </button>
+                                                            {statusDropdownId === surgery.id && (
+                                                                <>
+                                                                    <div
+                                                                        onClick={(e) => { e.stopPropagation(); setStatusDropdownId(null); }}
+                                                                        style={{ position: 'fixed', inset: 0, zIndex: 999 }}
+                                                                    />
+                                                                    <div style={{
+                                                                        position: 'absolute', top: '100%', left: 0,
+                                                                        marginTop: '4px', zIndex: 1000,
+                                                                        background: '#fff', borderRadius: '10px',
+                                                                        boxShadow: '0 8px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
+                                                                        padding: '4px', minWidth: '150px',
+                                                                        animation: 'fadeIn 0.15s ease-out',
+                                                                    }}>
+                                                                        {Object.entries(STATUS_CONFIG)
+                                                                            .filter(([key]) => !['realizada', 'suspendida'].includes(key))
+                                                                            .map(([key, scfg]) => (
+                                                                                <button
+                                                                                    key={key}
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        handleManualChange(surgery.id, key);
+                                                                                        setStatusDropdownId(null);
+                                                                                    }}
+                                                                                    style={{
+                                                                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                                                                        width: '100%', padding: '7px 12px',
+                                                                                        border: 'none', borderRadius: '6px',
+                                                                                        background: effectiveStatus === key ? `${scfg.bg}` : 'transparent',
+                                                                                        color: scfg.color, cursor: 'pointer',
+                                                                                        fontSize: '0.78rem', fontWeight: 600,
+                                                                                        transition: 'background 0.1s',
+                                                                                        textAlign: 'left',
+                                                                                    }}
+                                                                                    onMouseOver={e => e.currentTarget.style.background = scfg.bg}
+                                                                                    onMouseOut={e => e.currentTarget.style.background = effectiveStatus === key ? scfg.bg : 'transparent'}
+                                                                                >
+                                                                                    <span>{scfg.icon}</span>
+                                                                                    <span>{scfg.label}</span>
+                                                                                    {effectiveStatus === key && <span style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>✓</span>}
+                                                                                </button>
+                                                                            ))}
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                     {/* Patient */}
                                                     <td className="cart__td" style={{ fontWeight: 600, fontSize: '0.82rem' }}>
@@ -1154,17 +1230,78 @@ export default function SurgeryPanel({ addToast }) {
                                                                     {surgery.surgery_events?.length > 0 && (
                                                                         <>
                                                                             <h4 style={{ margin: '14px 0 8px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                                                                📜 Historial
+                                                                                📜 Historial ({surgery.surgery_events.length} eventos)
                                                                             </h4>
-                                                                            <div style={{ maxHeight: '120px', overflow: 'auto', background: '#fff', borderRadius: 'var(--radius-md)', border: '1px solid var(--neutral-200)', padding: '6px' }}>
-                                                                                {surgery.surgery_events.slice().reverse().map((evt, i) => (
-                                                                                    <div key={i} style={{ padding: '4px 6px', fontSize: '0.7rem', borderBottom: '1px solid var(--neutral-50)' }}>
-                                                                                        <span style={{ color: 'var(--neutral-400)', fontFamily: 'monospace', marginRight: '6px' }}>
-                                                                                            {new Date(evt.created_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                                                                        </span>
-                                                                                        <span style={{ color: 'var(--neutral-600)' }}>{evt.details}</span>
-                                                                                    </div>
-                                                                                ))}
+                                                                            <div style={{ maxHeight: '220px', overflow: 'auto', background: '#fff', borderRadius: 'var(--radius-md)', border: '1px solid var(--neutral-200)', padding: '4px' }}>
+                                                                                {surgery.surgery_events.slice().reverse().map((evt, i) => {
+                                                                                    const fromCfg = STATUS_CONFIG[evt.from_status];
+                                                                                    const toCfg = STATUS_CONFIG[evt.to_status];
+                                                                                    const isNotification = evt.event_type?.includes('notif') || evt.details?.includes('Notificación');
+                                                                                    const isProblem = evt.to_status === 'rojo' || evt.details?.includes('Problema');
+                                                                                    const isManual = evt.details?.includes('manual') || evt.performed_by === 'operador';
+                                                                                    const eventIcon = isProblem ? '🔴' : isNotification ? '📨' : isManual ? '✋' : '⚡';
+
+                                                                                    return (
+                                                                                        <div key={i} style={{
+                                                                                            padding: '8px 10px', fontSize: '0.73rem',
+                                                                                            borderBottom: i < surgery.surgery_events.length - 1 ? '1px solid var(--neutral-100)' : 'none',
+                                                                                            display: 'flex', flexDirection: 'column', gap: '3px',
+                                                                                            background: i === 0 ? 'var(--neutral-50)' : 'transparent',
+                                                                                            borderRadius: i === 0 ? 'var(--radius-sm)' : '0',
+                                                                                        }}>
+                                                                                            {/* Línea 1: Fecha + Ícono + Detalle */}
+                                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                                <span style={{
+                                                                                                    color: 'var(--neutral-400)', fontFamily: 'monospace',
+                                                                                                    fontSize: '0.68rem', whiteSpace: 'nowrap',
+                                                                                                    minWidth: '110px',
+                                                                                                }}>
+                                                                                                    {new Date(evt.created_at).toLocaleString('es-AR', {
+                                                                                                        day: '2-digit', month: '2-digit', year: '2-digit',
+                                                                                                        hour: '2-digit', minute: '2-digit',
+                                                                                                    })}
+                                                                                                </span>
+                                                                                                <span>{eventIcon}</span>
+                                                                                                <span style={{ color: 'var(--neutral-700)', fontWeight: 500, flex: 1 }}>
+                                                                                                    {evt.details}
+                                                                                                </span>
+                                                                                            </div>
+
+                                                                                            {/* Línea 2: Transición de estado + Performer */}
+                                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '116px' }}>
+                                                                                                {fromCfg && toCfg && (
+                                                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                                                        <span style={{
+                                                                                                            padding: '1px 6px', borderRadius: '8px',
+                                                                                                            fontSize: '0.65rem', fontWeight: 600,
+                                                                                                            background: fromCfg.bg, color: fromCfg.color,
+                                                                                                            border: `1px solid ${fromCfg.color}30`,
+                                                                                                        }}>
+                                                                                                            {fromCfg.icon} {fromCfg.label}
+                                                                                                        </span>
+                                                                                                        <span style={{ color: 'var(--neutral-300)', fontSize: '0.65rem' }}>→</span>
+                                                                                                        <span style={{
+                                                                                                            padding: '1px 6px', borderRadius: '8px',
+                                                                                                            fontSize: '0.65rem', fontWeight: 600,
+                                                                                                            background: toCfg.bg, color: toCfg.color,
+                                                                                                            border: `1px solid ${toCfg.color}30`,
+                                                                                                        }}>
+                                                                                                            {toCfg.icon} {toCfg.label}
+                                                                                                        </span>
+                                                                                                    </div>
+                                                                                                )}
+                                                                                                {evt.performed_by && (
+                                                                                                    <span style={{
+                                                                                                        marginLeft: 'auto', fontSize: '0.65rem',
+                                                                                                        color: 'var(--neutral-400)', fontStyle: 'italic',
+                                                                                                    }}>
+                                                                                                        por {evt.performed_by}
+                                                                                                    </span>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
                                                                             </div>
                                                                         </>
                                                                     )}
@@ -1275,7 +1412,7 @@ export default function SurgeryPanel({ addToast }) {
                                                 );
                                             }
                                             return rows;
-                                        }),
+                                        })),
                                     ];
                                 })}
                             </tbody>

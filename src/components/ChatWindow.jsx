@@ -1,16 +1,27 @@
 /**
  * ChatWindow — Mini CRM WhatsApp con estilo MSN Messenger moderno
  * Modal centrado tipo ventana de chat con burbujas, soporte de media y composer
+ * Features: Emojis, envío de imágenes, grabación de audio, polling + realtime
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
     X, Send, Paperclip, Mic, Image as ImageIcon, Play, Pause,
     Phone, MessageSquare, Clock, CheckCheck, Check, Volume2,
-    Download, Maximize2, Minimize2, Smile
+    Download, Smile, Square, Loader
 } from 'lucide-react';
 import { fetchMessages, markAsRead, saveOutgoingMessage, subscribeToMessages } from '../services/chatService';
 import { sendWhatsAppMessage } from '../services/builderbotApi';
+import { supabase } from '../lib/supabase';
+
+// Emojis populares organizados
+const EMOJI_LIST = [
+    '😀', '😂', '🤣', '😊', '😍', '🥰', '😘', '😎', '🤩', '🥳',
+    '😅', '😆', '😉', '😋', '😜', '🤪', '😝', '🤑', '🤗', '🤭',
+    '👍', '👎', '👏', '🙌', '🤝', '💪', '✌️', '🤞', '🫶', '❤️',
+    '🔥', '⭐', '✅', '❌', '⚠️', '🏥', '💊', '🩺', '📋', '📞',
+    '🙏', '💯', '🎉', '🎊', '👋', '👌', '🤙', '📌', '⏰', '🗓️',
+];
 
 export default function ChatWindow({ open, onClose, patientName, patientPhone, addToast }) {
     const [messages, setMessages] = useState([]);
@@ -19,17 +30,26 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
     const [sending, setSending] = useState(false);
     const [lightboxUrl, setLightboxUrl] = useState(null);
     const [playingAudio, setPlayingAudio] = useState(null);
+    const [showEmojis, setShowEmojis] = useState(false);
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingTime, setRecordingTime] = useState(0);
+    const [uploadingMedia, setUploadingMedia] = useState(false);
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
     const audioRefs = useRef({});
+    const mediaRecorderRef = useRef(null);
+    const recordingChunksRef = useRef([]);
+    const recordingTimerRef = useRef(null);
+    const fileInputRef = useRef(null);
 
     // ==========================================
-    // CARGAR MENSAJES + REALTIME
+    // CARGAR MENSAJES + REALTIME + POLLING
     // ==========================================
     useEffect(() => {
         if (!open || !patientPhone) return;
 
         let unsubscribe = () => { };
+        let pollInterval = null;
 
         const loadMessages = async () => {
             setLoading(true);
@@ -48,15 +68,39 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
         loadMessages();
 
         // Suscribir a nuevos mensajes en tiempo real
+        console.log('[ChatWindow] Subscribing to realtime for:', patientPhone);
         unsubscribe = subscribeToMessages(patientPhone, (newMsg) => {
-            setMessages(prev => [...prev, newMsg]);
-            // Marcar como leído si es incoming y el chat está abierto
+            console.log('[ChatWindow] Realtime message received:', newMsg);
+            setMessages(prev => {
+                const exists = prev.find(m => m.id === newMsg.id);
+                if (exists) return prev;
+                return [...prev, newMsg];
+            });
             if (newMsg.direction === 'incoming') {
                 markAsRead(patientPhone);
             }
         });
 
-        return () => unsubscribe();
+        // Polling fallback cada 5s
+        pollInterval = setInterval(async () => {
+            try {
+                const msgs = await fetchMessages(patientPhone);
+                setMessages(prev => {
+                    if (msgs.length !== prev.length) {
+                        markAsRead(patientPhone);
+                        return msgs;
+                    }
+                    return prev;
+                });
+            } catch (err) {
+                console.error('[ChatWindow] Poll error:', err);
+            }
+        }, 5000);
+
+        return () => {
+            unsubscribe();
+            if (pollInterval) clearInterval(pollInterval);
+        };
     }, [open, patientPhone]);
 
     // Auto-scroll al final
@@ -72,7 +116,30 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
     }, [open]);
 
     // ==========================================
-    // ENVIAR MENSAJE
+    // UPLOAD MEDIA A SUPABASE STORAGE
+    // ==========================================
+    const uploadMedia = async (file, folder = 'chat-media') => {
+        const ext = file.name?.split('.').pop() || 'bin';
+        const fileName = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+
+        const { data, error } = await supabase.storage
+            .from('whatsapp-media')
+            .upload(fileName, file, {
+                contentType: file.type,
+                upsert: false,
+            });
+
+        if (error) throw error;
+
+        const { data: urlData } = supabase.storage
+            .from('whatsapp-media')
+            .getPublicUrl(data.path);
+
+        return urlData.publicUrl;
+    };
+
+    // ==========================================
+    // ENVIAR MENSAJE DE TEXTO
     // ==========================================
     const handleSend = useCallback(async () => {
         if (!inputText.trim() || sending || !patientPhone) return;
@@ -80,19 +147,15 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
         const text = inputText.trim();
         setInputText('');
         setSending(true);
+        setShowEmojis(false);
 
         try {
-            // Enviar por WhatsApp
             await sendWhatsAppMessage({ content: text, number: patientPhone });
-            // Guardar en nuestra tabla
             const saved = await saveOutgoingMessage({
                 phone: patientPhone,
                 content: text,
                 mediaType: 'text',
             });
-            // El webhook outgoing también lo va a guardar,
-            // pero por si el webhook tarda, lo agregamos manualmente
-            // Chequear si ya existe para evitar duplicado
             setMessages(prev => {
                 const exists = prev.find(m => m.id === saved?.id);
                 if (exists) return prev;
@@ -101,11 +164,165 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
         } catch (err) {
             console.error('Error sending message:', err);
             addToast?.('Error enviando mensaje', 'error');
-            setInputText(text); // Restaurar texto
+            setInputText(text);
         } finally {
             setSending(false);
         }
     }, [inputText, sending, patientPhone, addToast]);
+
+    // ==========================================
+    // ENVIAR IMAGEN
+    // ==========================================
+    const handleImageSelect = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file || !patientPhone) return;
+
+        // Reset file input
+        if (fileInputRef.current) fileInputRef.current.value = '';
+
+        // Validar tipo y tamaño
+        if (!file.type.startsWith('image/')) {
+            addToast?.('Solo se aceptan imágenes', 'error');
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            addToast?.('La imagen no puede superar 10MB', 'error');
+            return;
+        }
+
+        setUploadingMedia(true);
+        try {
+            const mediaUrl = await uploadMedia(file, 'images');
+            await sendWhatsAppMessage({
+                content: inputText.trim() || '📷 Imagen',
+                number: patientPhone,
+                mediaUrl,
+            });
+            const saved = await saveOutgoingMessage({
+                phone: patientPhone,
+                content: inputText.trim() || '📷 Imagen',
+                mediaType: 'image',
+                mediaUrl,
+            });
+            setMessages(prev => {
+                const exists = prev.find(m => m.id === saved?.id);
+                if (exists) return prev;
+                return [...prev, saved];
+            });
+            setInputText('');
+            addToast?.('Imagen enviada', 'success');
+        } catch (err) {
+            console.error('Error sending image:', err);
+            addToast?.('Error enviando imagen', 'error');
+        } finally {
+            setUploadingMedia(false);
+        }
+    };
+
+    // ==========================================
+    // GRABAR Y ENVIAR AUDIO
+    // ==========================================
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream, {
+                mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                    ? 'audio/webm;codecs=opus'
+                    : 'audio/webm',
+            });
+            mediaRecorderRef.current = mediaRecorder;
+            recordingChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) {
+                    recordingChunksRef.current.push(e.data);
+                }
+            };
+
+            mediaRecorder.onstop = async () => {
+                stream.getTracks().forEach(t => t.stop());
+                const blob = new Blob(recordingChunksRef.current, { type: 'audio/webm' });
+                if (blob.size < 1000) {
+                    addToast?.('Audio muy corto', 'error');
+                    return;
+                }
+                await sendAudioBlob(blob);
+            };
+
+            mediaRecorder.start(250);
+            setIsRecording(true);
+            setRecordingTime(0);
+            recordingTimerRef.current = setInterval(() => {
+                setRecordingTime(prev => prev + 1);
+            }, 1000);
+        } catch (err) {
+            console.error('Error accessing microphone:', err);
+            addToast?.('No se pudo acceder al micrófono', 'error');
+        }
+    };
+
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+            if (recordingTimerRef.current) {
+                clearInterval(recordingTimerRef.current);
+                recordingTimerRef.current = null;
+            }
+        }
+    };
+
+    const cancelRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stream?.getTracks().forEach(t => t.stop());
+            mediaRecorderRef.current.stop();
+            recordingChunksRef.current = [];
+            setIsRecording(false);
+            setRecordingTime(0);
+            if (recordingTimerRef.current) {
+                clearInterval(recordingTimerRef.current);
+                recordingTimerRef.current = null;
+            }
+        }
+    };
+
+    const sendAudioBlob = async (blob) => {
+        setUploadingMedia(true);
+        try {
+            const file = new File([blob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
+            const mediaUrl = await uploadMedia(file, 'audios');
+            await sendWhatsAppMessage({
+                content: '🎤 Audio',
+                number: patientPhone,
+                mediaUrl,
+            });
+            const saved = await saveOutgoingMessage({
+                phone: patientPhone,
+                content: '🎤 Audio',
+                mediaType: 'audio',
+                mediaUrl,
+            });
+            setMessages(prev => {
+                const exists = prev.find(m => m.id === saved?.id);
+                if (exists) return prev;
+                return [...prev, saved];
+            });
+            addToast?.('Audio enviado', 'success');
+        } catch (err) {
+            console.error('Error sending audio:', err);
+            addToast?.('Error enviando audio', 'error');
+        } finally {
+            setUploadingMedia(false);
+        }
+    };
+
+    // ==========================================
+    // EMOJI PICKER
+    // ==========================================
+    const insertEmoji = (emoji) => {
+        setInputText(prev => prev + emoji);
+        inputRef.current?.focus();
+    };
 
     // Enter para enviar
     const handleKeyDown = (e) => {
@@ -116,7 +333,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
     };
 
     // ==========================================
-    // AUDIO PLAYER
+    // AUDIO PLAYER (para mensajes recibidos)
     // ==========================================
     const toggleAudio = (msgId, url) => {
         const audio = audioRefs.current[msgId];
@@ -130,12 +347,17 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
             audio.pause();
             setPlayingAudio(null);
         } else {
-            // Pausar el que estaba sonando
             Object.values(audioRefs.current).forEach(a => a.pause());
             audio.currentTime = 0;
             audio.play();
             setPlayingAudio(msgId);
         }
+    };
+
+    const formatRecordingTime = (s) => {
+        const m = Math.floor(s / 60);
+        const sec = s % 60;
+        return `${m}:${sec.toString().padStart(2, '0')}`;
     };
 
     // ==========================================
@@ -189,7 +411,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
                             }}
                             onError={(e) => { e.target.style.display = 'none'; }}
                         />
-                        {msg.content && msg.content !== '[image]' && msg.content !== '[sticker]' && (
+                        {msg.content && msg.content !== '[image]' && msg.content !== '[sticker]' && msg.content !== '📷 Imagen' && (
                             <p style={{ margin: '6px 0 0', fontSize: '0.85rem' }}>{msg.content}</p>
                         )}
                     </div>
@@ -288,7 +510,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
                 animation: 'scaleIn 0.25s ease-out',
             }}>
 
-                {/* ===== HEADER (estilo MSN modernizado) ===== */}
+                {/* ===== HEADER ===== */}
                 <div style={{
                     background: 'linear-gradient(135deg, #1E3A5F 0%, #2563EB 50%, #3B82F6 100%)',
                     padding: '16px 20px',
@@ -296,7 +518,6 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
                     color: '#fff', position: 'relative',
                     borderBottom: '3px solid #1D4ED8',
                 }}>
-                    {/* Avatar + Info */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <div style={{
                             width: '44px', height: '44px', borderRadius: '12px',
@@ -337,7 +558,6 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
                         </div>
                     </div>
 
-                    {/* Close button */}
                     <button
                         onClick={onClose}
                         style={{
@@ -427,7 +647,6 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
                                         boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
                                         position: 'relative',
                                     }}>
-                                        {/* Sender name for incoming */}
                                         {!isOut && item.sender_name && (
                                             <p style={{
                                                 margin: '0 0 4px', fontSize: '0.72rem',
@@ -439,7 +658,6 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
 
                                         {renderMessageContent(item)}
 
-                                        {/* Time + status */}
                                         <div style={{
                                             display: 'flex', alignItems: 'center',
                                             justifyContent: 'flex-end', gap: '4px',
@@ -460,64 +678,192 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
                     <div ref={messagesEndRef} />
                 </div>
 
-                {/* ===== COMPOSER (input area) ===== */}
+                {/* ===== EMOJI PICKER ===== */}
+                {showEmojis && (
+                    <div style={{
+                        background: '#F0F2F5',
+                        borderTop: '1px solid #E9EDEF',
+                        padding: '10px 14px',
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(10, 1fr)',
+                        gap: '2px',
+                        maxHeight: '140px',
+                        overflowY: 'auto',
+                    }}>
+                        {EMOJI_LIST.map((emoji, i) => (
+                            <button
+                                key={i}
+                                onClick={() => insertEmoji(emoji)}
+                                style={{
+                                    border: 'none', background: 'none',
+                                    fontSize: '1.3rem', cursor: 'pointer',
+                                    padding: '4px', borderRadius: '6px',
+                                    transition: 'background 0.15s',
+                                }}
+                                onMouseOver={e => e.currentTarget.style.background = 'rgba(0,0,0,0.08)'}
+                                onMouseOut={e => e.currentTarget.style.background = 'none'}
+                            >
+                                {emoji}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {/* ===== COMPOSER ===== */}
                 <div style={{
                     background: '#F0F2F5',
                     padding: '10px 16px',
-                    display: 'flex', alignItems: 'flex-end', gap: '10px',
+                    display: 'flex', alignItems: 'flex-end', gap: '8px',
                     borderTop: '1px solid #E9EDEF',
                 }}>
-                    {/* Emoji placeholder */}
-                    <button style={{
-                        width: '36px', height: '36px', borderRadius: '50%',
-                        background: 'none', border: 'none', color: '#54656F',
-                        cursor: 'pointer', display: 'flex', alignItems: 'center',
-                        justifyContent: 'center', flexShrink: 0,
-                    }}>
-                        <Smile size={22} />
-                    </button>
+                    {/* Hidden file input */}
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageSelect}
+                        style={{ display: 'none' }}
+                    />
 
-                    {/* Text input */}
-                    <div style={{
-                        flex: 1, position: 'relative',
-                    }}>
-                        <textarea
-                            ref={inputRef}
-                            value={inputText}
-                            onChange={e => setInputText(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder="Escribí un mensaje..."
-                            rows={1}
-                            style={{
-                                width: '100%', resize: 'none',
-                                padding: '10px 14px',
-                                borderRadius: '20px', border: 'none',
-                                fontSize: '0.88rem', outline: 'none',
-                                background: '#fff',
-                                maxHeight: '100px', minHeight: '40px',
-                                lineHeight: 1.4,
-                                boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
-                            }}
-                        />
-                    </div>
+                    {isRecording ? (
+                        /* Recording UI */
+                        <div style={{
+                            flex: 1, display: 'flex', alignItems: 'center',
+                            gap: '12px', padding: '8px 16px',
+                            background: '#fff', borderRadius: '20px',
+                        }}>
+                            <div style={{
+                                width: '10px', height: '10px', borderRadius: '50%',
+                                background: '#EF4444', animation: 'pulse 1s ease-in-out infinite',
+                            }} />
+                            <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#EF4444', flex: 1 }}>
+                                Grabando {formatRecordingTime(recordingTime)}
+                            </span>
+                            <button
+                                onClick={cancelRecording}
+                                title="Cancelar"
+                                style={{
+                                    width: '32px', height: '32px', borderRadius: '50%',
+                                    background: '#FEE2E2', border: 'none', color: '#EF4444',
+                                    cursor: 'pointer', display: 'flex',
+                                    alignItems: 'center', justifyContent: 'center',
+                                }}
+                            >
+                                <X size={16} />
+                            </button>
+                            <button
+                                onClick={stopRecording}
+                                title="Enviar audio"
+                                style={{
+                                    width: '42px', height: '42px', borderRadius: '50%',
+                                    background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                                    border: 'none', color: '#fff', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    boxShadow: '0 2px 8px rgba(37,211,102,0.35)',
+                                }}
+                            >
+                                <Send size={18} />
+                            </button>
+                        </div>
+                    ) : uploadingMedia ? (
+                        /* Upload indicator */
+                        <div style={{
+                            flex: 1, display: 'flex', alignItems: 'center',
+                            justifyContent: 'center', gap: '8px', padding: '12px',
+                            background: '#fff', borderRadius: '20px',
+                        }}>
+                            <Loader size={18} style={{ animation: 'spin 1s linear infinite', color: '#25D366' }} />
+                            <span style={{ fontSize: '0.85rem', color: '#667781' }}>Enviando...</span>
+                        </div>
+                    ) : (
+                        /* Normal composer */
+                        <>
+                            {/* Emoji toggle */}
+                            <button
+                                onClick={() => setShowEmojis(!showEmojis)}
+                                style={{
+                                    width: '36px', height: '36px', borderRadius: '50%',
+                                    background: showEmojis ? 'rgba(37,211,102,0.15)' : 'none',
+                                    border: 'none',
+                                    color: showEmojis ? '#25D366' : '#54656F',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                    justifyContent: 'center', flexShrink: 0,
+                                    transition: 'all 0.15s',
+                                }}
+                            >
+                                <Smile size={22} />
+                            </button>
 
-                    {/* Send button */}
-                    <button
-                        onClick={handleSend}
-                        disabled={!inputText.trim() || sending}
-                        style={{
-                            width: '42px', height: '42px', borderRadius: '50%',
-                            background: inputText.trim()
-                                ? 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)'
-                                : '#BFC8D0',
-                            border: 'none', color: '#fff', cursor: inputText.trim() ? 'pointer' : 'default',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            flexShrink: 0, transition: 'all 0.2s',
-                            boxShadow: inputText.trim() ? '0 2px 8px rgba(37,211,102,0.35)' : 'none',
-                        }}
-                    >
-                        <Send size={18} style={{ marginLeft: '2px' }} />
-                    </button>
+                            {/* Image button */}
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                style={{
+                                    width: '36px', height: '36px', borderRadius: '50%',
+                                    background: 'none', border: 'none', color: '#54656F',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                    justifyContent: 'center', flexShrink: 0,
+                                }}
+                                title="Enviar imagen"
+                            >
+                                <ImageIcon size={20} />
+                            </button>
+
+                            {/* Text input */}
+                            <div style={{ flex: 1 }}>
+                                <textarea
+                                    ref={inputRef}
+                                    value={inputText}
+                                    onChange={e => setInputText(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder="Escribí un mensaje..."
+                                    rows={1}
+                                    style={{
+                                        width: '100%', resize: 'none',
+                                        padding: '10px 14px',
+                                        borderRadius: '20px', border: 'none',
+                                        fontSize: '0.88rem', outline: 'none',
+                                        background: '#fff',
+                                        maxHeight: '100px', minHeight: '40px',
+                                        lineHeight: 1.4,
+                                        boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+                                    }}
+                                />
+                            </div>
+
+                            {/* Send or Mic button */}
+                            {inputText.trim() ? (
+                                <button
+                                    onClick={handleSend}
+                                    disabled={sending}
+                                    style={{
+                                        width: '42px', height: '42px', borderRadius: '50%',
+                                        background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                                        border: 'none', color: '#fff', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        flexShrink: 0, transition: 'all 0.2s',
+                                        boxShadow: '0 2px 8px rgba(37,211,102,0.35)',
+                                    }}
+                                >
+                                    <Send size={18} style={{ marginLeft: '2px' }} />
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={startRecording}
+                                    style={{
+                                        width: '42px', height: '42px', borderRadius: '50%',
+                                        background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                                        border: 'none', color: '#fff', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        flexShrink: 0, transition: 'all 0.2s',
+                                        boxShadow: '0 2px 8px rgba(37,211,102,0.35)',
+                                    }}
+                                    title="Grabar audio"
+                                >
+                                    <Mic size={18} />
+                                </button>
+                            )}
+                        </>
+                    )}
                 </div>
             </div>
 
