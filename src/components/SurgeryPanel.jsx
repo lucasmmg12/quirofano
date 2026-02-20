@@ -562,6 +562,7 @@ export default function SurgeryPanel({ addToast }) {
         <div className="content no-print" style={{
             gap: 'var(--space-4)',
             position: 'relative',
+            maxWidth: '100%',
         }}>
             {/* ==================== URGENCY ALERT BAR ==================== */}
             {urgencySummary.critical > 0 && (
