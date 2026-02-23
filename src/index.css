@@ -296,12 +296,13 @@ a {
 
   .print-page {
     width: 148mm;
-    min-height: 210mm;
-    padding: 10mm;
+    height: 210mm;
+    padding: 52mm 12mm 22mm 12mm;
     margin: 0 auto;
     page-break-after: always;
     font-size: 11pt;
     background: white !important;
+    box-sizing: border-box;
   }
 
   .print-page:last-child {

@@ -2,8 +2,9 @@ import { forwardRef } from 'react';
 import { formatDate } from '../utils/searchUtils';
 
 /**
- * Plantilla de impresión que replica el formato actual del Sanatorio.
- * Formato: A5 portrait, simple, con el nombre del estudio prominente.
+ * Plantilla de impresión que replica el formato del membrete A5 del Sanatorio.
+ * El papel ya tiene impreso: encabezado (logo, sedes) y pie (url, redes).
+ * Este template deja espacio arriba y abajo para no pisar esas zonas.
  */
 const PrintTemplate = forwardRef(({ patientData, items, singleItem }, ref) => {
     const practiceList = singleItem ? [singleItem] : items;
@@ -12,52 +13,68 @@ const PrintTemplate = forwardRef(({ patientData, items, singleItem }, ref) => {
         <div ref={ref} className="print-area">
             {practiceList.map((item, idx) => (
                 <div className="print-page" key={item.id || idx}>
-                    {/* Nombre del paciente */}
-                    <div className="print-row print-row--center">
-                        <span className="print-value print-value--name">
-                            {patientData.nombre || '_______________'}
-                        </span>
+                    {/* === ZONA SUPERIOR: Nombre del paciente centrado === */}
+                    <div className="print-patient-name">
+                        {patientData.nombre || '_______________'}
                     </div>
 
-                    {/* Obra Social + N° Afiliado */}
-                    <div className="print-row print-row--split">
-                        <span className="print-value">{patientData.obraSocial || '_______________'}</span>
-                        <span className="print-value">{patientData.afiliado || '_______________'}</span>
+                    {/* === Obra Social + N° Afiliado en una línea === */}
+                    <div className="print-os-line">
+                        {patientData.obraSocial || '_______________'}
+                        {patientData.afiliado ? `: ${patientData.afiliado}` : ''}
                     </div>
 
-                    {/* Separador */}
-                    <div className="print-spacer" />
-
-                    {/* Nombre del estudio — PROMINENTE */}
-                    <div className="print-study">
-                        <span className="print-study__text">
-                            {item.displayName || item.name}
-                        </span>
+                    {/* === Título del estudio — PROMINENTE Y CENTRADO === */}
+                    <div className="print-study-title">
+                        {item.displayName || item.name}
                     </div>
 
-                    {/* Separador */}
-                    <div className="print-spacer" />
+                    {/* === Campos: Diag. / Trat. / Cod. === */}
+                    <div className="print-fields">
+                        <div className="print-field-row">
+                            <span className="print-field-label">Diag.:</span>
+                            <span className="print-field-value">
+                                {patientData.diagnostico || '_______________'}
+                            </span>
+                        </div>
 
-                    {/* Diagnóstico */}
-                    <div className="print-row">
-                        <span className="print-label">DIAGNOSTICO:</span>
-                        <span className="print-value">{patientData.diagnostico || '_______________'}</span>
+                        <div className="print-field-row">
+                            <span className="print-field-label">Trat.:</span>
+                            <span className="print-field-value">
+                                {patientData.tratamiento || (item.displayName || item.name)}
+                            </span>
+                        </div>
+
+                        <div className="print-field-row">
+                            <span className="print-field-label">Cod.:</span>
+                            <span className="print-field-value">
+                                {item.code}{item.quantity > 1 ? ` x ${item.quantity}` : ''}
+                            </span>
+                        </div>
                     </div>
 
-                    {/* Separador */}
-                    <div className="print-spacer--sm" />
+                    {/* === Zona inferior: institucional + firma === */}
+                    <div className="print-bottom-section">
+                        {/* Línea institucional */}
+                        <div className="print-institutional">
+                            <span className="print-institutional__name">Sanatorio Argentino S.R.L.</span>
+                            <span className="print-institutional__type">
+                                {patientData.tratamiento ? patientData.tratamiento : 'INTERNADO'}
+                            </span>
+                        </div>
 
-                    {/* Código x Cantidad */}
-                    <div className="print-row">
-                        <span className="print-label">CODIGO:</span>
-                        <span className="print-value">
-                            {item.code}{item.quantity > 1 ? ` X ${item.quantity}` : ''}
-                        </span>
-                    </div>
-
-                    {/* Fecha — abajo a la derecha */}
-                    <div className="print-date">
-                        <span>{formatDate(item.date || patientData.fecha)}</span>
+                        {/* Zona de firma y fecha */}
+                        <div className="print-signature-area">
+                            <div className="print-signature-block">
+                                <div className="print-signature-line"></div>
+                                <span className="print-signature-label">Firma y Sello del Médico</span>
+                            </div>
+                            <div className="print-date-block">
+                                <span className="print-date-value">
+                                    {formatDate(item.date || patientData.fecha)}
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             ))}

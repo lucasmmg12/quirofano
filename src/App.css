@@ -1113,7 +1113,7 @@
 }
 
 /* ========================================
-   PRINT STYLES (A5)
+   PRINT STYLES (A5 — Membrete pre-impreso)
    ======================================== */
 
 @media print {
@@ -1141,16 +1141,22 @@
 
     .print-page {
         width: 148mm;
-        min-height: 210mm;
-        padding: 12mm 15mm;
+        height: 210mm;
+        /*
+         * Top: 52mm — espacio para el encabezado pre-impreso (logo + sedes)
+         * Bottom: 22mm — espacio para el pie pre-impreso (url + redes)
+         * Left/Right: 12mm — márgenes laterales
+         */
+        padding: 52mm 12mm 22mm 12mm;
         margin: 0 auto;
         page-break-after: always;
-        font-family: 'Inter', Arial, sans-serif;
+        font-family: Arial, 'Inter', sans-serif;
         background: white !important;
         color: #000 !important;
         display: flex;
         flex-direction: column;
         position: relative;
+        box-sizing: border-box;
     }
 
     .print-page:last-child {
@@ -1168,75 +1174,133 @@
     display: none;
 }
 
-/* Print Row */
-.print-row {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    margin-bottom: 6mm;
-    padding: 2mm 0;
-    border-bottom: 1px solid #e0e0e0;
-}
-
-.print-row--center {
-    justify-content: center;
-    border-bottom: none;
-}
-
-.print-row--split {
-    justify-content: space-between;
-}
-
-.print-label {
-    font-size: 11pt;
-    font-weight: 700;
-    color: #333;
-    white-space: nowrap;
-}
-
-.print-value {
-    font-size: 12pt;
-    color: #000;
-}
-
-.print-value--name {
+/* ── Patient Name (centered, bold, prominent) ── */
+.print-patient-name {
+    text-align: center;
     font-size: 14pt;
     font-weight: 700;
+    color: #000;
     text-transform: uppercase;
+    margin-bottom: 3mm;
+    letter-spacing: 0.5px;
 }
 
-/* Print Study (prominent) */
-.print-study {
+/* ── Obra Social line (centered) ── */
+.print-os-line {
     text-align: center;
-    padding: 8mm 4mm;
-    margin: 4mm 0;
+    font-size: 10pt;
+    font-weight: 600;
+    color: #222;
+    margin-bottom: 6mm;
 }
 
-.print-study__text {
-    font-size: 16pt;
+/* ── Study Title (very prominent, centered) ── */
+.print-study-title {
+    text-align: center;
+    font-size: 15pt;
     font-weight: 700;
     color: #000;
     text-transform: uppercase;
-    line-height: 1.4;
+    line-height: 1.35;
+    padding: 6mm 4mm;
+    margin: 2mm 0 6mm 0;
 }
 
-/* Print Spacers */
-.print-spacer {
-    height: 6mm;
-    border-bottom: 1px solid #e0e0e0;
+/* ── Fields Section (Diag. / Trat. / Cod.) ── */
+.print-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 4mm;
+    padding: 0 2mm;
 }
 
-.print-spacer--sm {
-    height: 3mm;
+.print-field-row {
+    display: flex;
+    align-items: baseline;
+    gap: 3mm;
 }
 
-/* Print Date */
-.print-date {
-    margin-top: auto;
-    text-align: right;
+.print-field-label {
     font-size: 11pt;
-    color: #333;
+    font-weight: 700;
+    color: #000;
+    white-space: nowrap;
+    min-width: 14mm;
+}
+
+.print-field-value {
+    font-size: 11pt;
+    color: #000;
+    text-transform: uppercase;
+}
+
+/* ── Bottom Section (pushed to bottom via flex) ── */
+.print-bottom-section {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 5mm;
+}
+
+/* ── Institutional Line ── */
+.print-institutional {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1mm;
     padding-top: 4mm;
+}
+
+.print-institutional__name {
+    font-size: 10pt;
+    font-weight: 600;
+    color: #000;
+    font-style: italic;
+}
+
+.print-institutional__type {
+    font-size: 10pt;
+    font-weight: 700;
+    color: #000;
+    text-transform: uppercase;
+    text-decoration: underline;
+}
+
+/* ── Signature Area ── */
+.print-signature-area {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding-top: 4mm;
+}
+
+.print-signature-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1mm;
+}
+
+.print-signature-line {
+    width: 50mm;
+    border-bottom: 1px solid #666;
+    margin-bottom: 1mm;
+}
+
+.print-signature-label {
+    font-size: 7pt;
+    color: #666;
+    text-align: center;
+}
+
+.print-date-block {
+    text-align: right;
+}
+
+.print-date-value {
+    font-size: 11pt;
+    color: #000;
+    font-weight: 600;
 }
 
 /* ========================================
