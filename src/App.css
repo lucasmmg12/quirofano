@@ -1238,11 +1238,11 @@
         width: 148mm;
         height: 210mm;
         /*
-         * Top: 52mm — espacio para el encabezado pre-impreso (logo + sedes)
+         * Top: 64mm — espacio para el encabezado pre-impreso (logo + sedes)
          * Bottom: 22mm — espacio para el pie pre-impreso (url + redes)
-         * Left/Right: 12mm — márgenes laterales
+         * Left/Right: 16mm — márgenes laterales
          */
-        padding: 52mm 12mm 22mm 12mm;
+        padding: 64mm 16mm 22mm 16mm;
         margin: 0 auto;
         page-break-after: always;
         font-family: Arial, 'Inter', sans-serif;

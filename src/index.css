@@ -297,7 +297,7 @@ a {
   .print-page {
     width: 148mm;
     height: 210mm;
-    padding: 52mm 12mm 22mm 12mm;
+    padding: 64mm 16mm 22mm 16mm;
     margin: 0 auto;
     page-break-after: always;
     font-size: 11pt;
