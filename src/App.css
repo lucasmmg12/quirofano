@@ -1269,24 +1269,23 @@
     display: none;
 }
 
-/* ── Patient Name (centered, bold, prominent) ── */
+/* ── Patient Name (left-aligned, bold, prominent) ── */
 .print-patient-name {
-    text-align: center;
-    font-size: 14pt;
+    text-align: left;
+    font-size: 13pt;
     font-weight: 700;
     color: #000;
     text-transform: uppercase;
-    margin-bottom: 3mm;
-    letter-spacing: 0.5px;
+    margin-bottom: 2mm;
 }
 
-/* ── Obra Social line (centered) ── */
+/* ── Obra Social line (left-aligned) ── */
 .print-os-line {
-    text-align: center;
+    text-align: left;
     font-size: 10pt;
     font-weight: 600;
-    color: #222;
-    margin-bottom: 6mm;
+    color: #000;
+    margin-bottom: 5mm;
 }
 
 /* ── Study Title (very prominent, centered) ── */
