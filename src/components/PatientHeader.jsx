@@ -1,15 +1,45 @@
-import { useState } from 'react';
-import { User, Building2, CreditCard, Stethoscope, Calendar, UserCheck, ChevronDown, ChevronUp, Pill } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { User, Building2, CreditCard, Stethoscope, Calendar, UserCheck, ChevronDown, ChevronUp, Pill, X } from 'lucide-react';
 import { OBRAS_SOCIALES } from '../data/nomenclador';
 
 export default function PatientHeader({ patientData, setPatientData }) {
     const [collapsed, setCollapsed] = useState(false);
+    const [osSearch, setOsSearch] = useState('');
+    const [osOpen, setOsOpen] = useState(false);
+    const osRef = useRef(null);
 
     const handleChange = (field, value) => {
         setPatientData(prev => ({ ...prev, [field]: value }));
     };
 
     const isComplete = patientData.nombre && patientData.obraSocial && patientData.fecha;
+
+    // Filter obras sociales based on search input
+    const filteredOS = OBRAS_SOCIALES.filter(os =>
+        os.toLowerCase().includes(osSearch.toLowerCase())
+    );
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (osRef.current && !osRef.current.contains(e.target)) {
+                setOsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const handleSelectOS = (os) => {
+        handleChange('obraSocial', os);
+        setOsSearch('');
+        setOsOpen(false);
+    };
+
+    const handleClearOS = () => {
+        handleChange('obraSocial', '');
+        setOsSearch('');
+    };
 
     return (
         <div className="patient-header animate-fade-in">
@@ -56,22 +86,59 @@ export default function PatientHeader({ patientData, setPatientData }) {
                         />
                     </div>
 
-                    <div className="field-group">
+                    {/* Obra Social — Searchable Combobox */}
+                    <div className="field-group" ref={osRef}>
                         <label className="field-label">
                             <Building2 size={14} />
                             Obra Social
                         </label>
-                        <select
-                            id="patient-obra-social"
-                            className="field-input field-select"
-                            value={patientData.obraSocial}
-                            onChange={e => handleChange('obraSocial', e.target.value)}
-                        >
-                            <option value="">Seleccionar...</option>
-                            {OBRAS_SOCIALES.map(os => (
-                                <option key={os} value={os}>{os}</option>
-                            ))}
-                        </select>
+                        <div className="os-combobox">
+                            {patientData.obraSocial && !osOpen ? (
+                                /* Selected state: show chip */
+                                <div className="os-combobox__selected" onClick={() => setOsOpen(true)}>
+                                    <span className="os-combobox__selected-text">{patientData.obraSocial}</span>
+                                    <button
+                                        className="os-combobox__clear"
+                                        onClick={(e) => { e.stopPropagation(); handleClearOS(); }}
+                                        aria-label="Quitar obra social"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </div>
+                            ) : (
+                                /* Search state: show input */
+                                <input
+                                    id="patient-obra-social"
+                                    type="text"
+                                    className="field-input"
+                                    placeholder="Buscar por nombre o código..."
+                                    value={osSearch}
+                                    onChange={e => { setOsSearch(e.target.value); setOsOpen(true); }}
+                                    onFocus={() => setOsOpen(true)}
+                                    autoComplete="off"
+                                />
+                            )}
+
+                            {osOpen && (
+                                <div className="os-combobox__dropdown">
+                                    {filteredOS.length === 0 ? (
+                                        <div className="os-combobox__no-results">
+                                            Sin resultados para "{osSearch}"
+                                        </div>
+                                    ) : (
+                                        filteredOS.map(os => (
+                                            <div
+                                                key={os}
+                                                className={`os-combobox__option ${patientData.obraSocial === os ? 'os-combobox__option--selected' : ''}`}
+                                                onClick={() => handleSelectOS(os)}
+                                            >
+                                                {os}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     <div className="field-group">
@@ -152,3 +219,4 @@ export default function PatientHeader({ patientData, setPatientData }) {
         </div>
     );
 }
+

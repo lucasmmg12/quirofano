@@ -383,6 +383,101 @@
     margin-top: 2px;
 }
 
+/* ── Obra Social Combobox ── */
+.os-combobox {
+    position: relative;
+}
+
+.os-combobox__selected {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--primary-200);
+    border-radius: var(--radius-lg);
+    background: var(--primary-50);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    min-height: 42px;
+}
+
+.os-combobox__selected:hover {
+    border-color: var(--primary-400);
+}
+
+.os-combobox__selected-text {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--primary-700);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.os-combobox__clear {
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary-400);
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
+}
+
+.os-combobox__clear:hover {
+    background: var(--primary-100);
+    color: var(--primary-600);
+}
+
+.os-combobox__dropdown {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    margin-top: 4px;
+    background: var(--neutral-0);
+    border: 1px solid var(--neutral-200);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 300;
+    animation: fadeIn 150ms ease-out;
+}
+
+.os-combobox__option {
+    padding: var(--space-3) var(--space-4);
+    font-size: 0.84rem;
+    color: var(--neutral-700);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+    border-bottom: 1px solid var(--neutral-50);
+}
+
+.os-combobox__option:last-child {
+    border-bottom: none;
+}
+
+.os-combobox__option:hover {
+    background: var(--neutral-50);
+}
+
+.os-combobox__option--selected {
+    background: var(--primary-50);
+    color: var(--primary-700);
+    font-weight: 600;
+}
+
+.os-combobox__no-results {
+    padding: var(--space-4);
+    text-align: center;
+    font-size: 0.82rem;
+    color: var(--neutral-400);
+}
+
 /* ========================================
    PRACTICE SEARCH
    ======================================== */
