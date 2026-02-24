@@ -6,17 +6,41 @@ import PracticeSearch from './components/PracticeSearch.jsx';
 import Cart from './components/Cart.jsx';
 import PrintTemplate from './components/PrintTemplate.jsx';
 import WhatsAppModal from './components/WhatsAppModal.jsx';
+import LoginScreen from './components/LoginScreen.jsx';
 import { getTodayISO } from './utils/searchUtils';
 import { sendWhatsAppMessage, formatOrderForWhatsApp } from './services/builderbotApi';
 import { createOrder, markOrderPrinted, markOrderSent, fetchOrderHistory } from './services/dataService';
-import { Clock, Printer, Send, CheckCircle } from 'lucide-react';
+import { getCurrentUser, logout as authLogout } from './services/authService';
+import { logAction } from './services/auditService';
+import { Clock, Printer, Send, CheckCircle, LogOut } from 'lucide-react';
 import SurgeryPanel from './components/SurgeryPanel.jsx';
 import ConfigPanel from './components/ConfigPanel.jsx';
 import HomePanel from './components/HomePanel.jsx';
 import NomencladorView from './components/NomencladorView.jsx';
 import './App.css';
 
-function App() {
+function AppRoot() {
+    const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
+
+    const handleLogin = useCallback((user) => {
+        setCurrentUser(user);
+    }, []);
+
+    const handleLogout = useCallback(async () => {
+        await logAction('logout', { usuario: currentUser?.usuario });
+        authLogout();
+        setCurrentUser(null);
+    }, [currentUser]);
+
+    if (!currentUser) {
+        return <LoginScreen onLogin={handleLogin} />;
+    }
+
+    return <App currentUser={currentUser} onLogout={handleLogout} />;
+}
+
+
+function App({ currentUser, onLogout }) {
     // Sidebar — persist active view across refreshes
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true');
     const [activeView, setActiveViewRaw] = useState(() => localStorage.getItem('active_view') || 'inicio');
@@ -198,10 +222,48 @@ function App() {
                         <h1 className="topbar__title">Administración Sanatorio Argentino</h1>
                         <span className="topbar__subtitle">Sistema de gestión integral</span>
                     </div>
-                    <div className="topbar__right">
+                    <div className="topbar__right" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <span className="topbar__date">
                             {new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                         </span>
+                        {/* User Badge + Logout */}
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '8px',
+                            padding: '4px 4px 4px 12px',
+                            background: 'var(--neutral-50)',
+                            borderRadius: '20px',
+                            border: '1px solid var(--neutral-200)',
+                        }}>
+                            <span style={{
+                                fontSize: '0.78rem', fontWeight: 600,
+                                color: 'var(--neutral-600)',
+                            }}>
+                                {currentUser.nombre}
+                            </span>
+                            <div style={{
+                                width: '28px', height: '28px', borderRadius: '50%',
+                                background: 'linear-gradient(135deg, #6366F1, #4F46E5)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '0.65rem', fontWeight: 800, color: '#fff',
+                            }}>
+                                {currentUser.iniciales}
+                            </div>
+                            <button
+                                onClick={onLogout}
+                                title="Cerrar sesión"
+                                style={{
+                                    width: '28px', height: '28px', borderRadius: '50%',
+                                    background: 'none', border: '1px solid var(--neutral-200)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    cursor: 'pointer', color: 'var(--neutral-400)',
+                                    transition: 'all 0.2s',
+                                }}
+                                onMouseOver={e => { e.currentTarget.style.background = '#FEE2E2'; e.currentTarget.style.color = '#DC2626'; e.currentTarget.style.borderColor = '#FCA5A5'; }}
+                                onMouseOut={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--neutral-400)'; e.currentTarget.style.borderColor = 'var(--neutral-200)'; }}
+                            >
+                                <LogOut size={13} />
+                            </button>
+                        </div>
                     </div>
                 </header>
 
@@ -298,7 +360,7 @@ function App() {
                 )}
 
                 {activeView === 'cirugias' && (
-                    <SurgeryPanel addToast={addToast} />
+                    <SurgeryPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'nomenclador' && (
@@ -341,4 +403,4 @@ function App() {
     );
 }
 
-export default App;
+export default AppRoot;

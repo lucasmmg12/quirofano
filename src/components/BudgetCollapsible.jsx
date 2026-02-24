@@ -139,16 +139,26 @@ export default function BudgetCollapsible({ idPaciente, patientName }) {
                     Presupuestos
                 </span>
 
-                {/* Badge count (only after loaded) */}
+                {/* Badge count + Total (only after loaded) */}
                 {budgets !== null && (
-                    <span style={{
-                        padding: '1px 8px', borderRadius: '10px',
-                        fontSize: '0.68rem', fontWeight: 700,
-                        background: budgetCount > 0 ? '#6366F120' : 'var(--neutral-100)',
-                        color: budgetCount > 0 ? '#4338CA' : 'var(--neutral-400)',
-                    }}>
-                        {budgetCount}
-                    </span>
+                    <>
+                        <span style={{
+                            padding: '1px 8px', borderRadius: '10px',
+                            fontSize: '0.68rem', fontWeight: 700,
+                            background: budgetCount > 0 ? '#6366F120' : 'var(--neutral-100)',
+                            color: budgetCount > 0 ? '#4338CA' : 'var(--neutral-400)',
+                        }}>
+                            {budgetCount}
+                        </span>
+                        {budgetCount > 0 && (
+                            <span style={{
+                                fontSize: '0.78rem', fontWeight: 700,
+                                color: '#4338CA',
+                            }}>
+                                {formatCurrency(budgets.reduce((sum, b) => sum + (parseFloat(b.importe_total) || 0), 0))}
+                            </span>
+                        )}
+                    </>
                 )}
 
                 <span style={{ marginLeft: 'auto', color: 'var(--neutral-400)' }}>
