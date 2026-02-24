@@ -143,3 +143,41 @@ export async function toggleUserActive(userId, activo) {
 
     if (error) throw new Error(error.message);
 }
+
+
+/**
+ * Cambia la contraseña del usuario
+ * @param {string} userId - UUID del usuario
+ * @param {string} oldPassword - Contraseña actual
+ * @param {string} newPassword - Nueva contraseña
+ * @returns {{ success: boolean, error?: string }}
+ */
+export async function changePassword(userId, oldPassword, newPassword) {
+    if (!oldPassword || !newPassword) {
+        return { success: false, error: 'Ambas contraseñas son requeridas' };
+    }
+    if (newPassword.length < 4) {
+        return { success: false, error: 'La nueva contraseña debe tener al menos 4 caracteres' };
+    }
+
+    try {
+        const { data, error } = await supabase.rpc('change_password', {
+            p_user_id: userId,
+            p_old_password: oldPassword,
+            p_new_password: newPassword,
+        });
+
+        if (error) {
+            console.error('[AuthService] Change password error:', error);
+            return { success: false, error: 'Error de conexión. Intente nuevamente.' };
+        }
+
+        if (data === false) {
+            return { success: false, error: 'La contraseña actual es incorrecta' };
+        }
+
+        return { success: true };
+    } catch (err) {
+        return { success: false, error: 'Error: ' + err.message };
+    }
+}

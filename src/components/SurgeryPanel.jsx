@@ -21,8 +21,10 @@ import {
     fetchSurgeries, createSurgery, updateSurgery, deleteSurgery, getSurgeryStats,
     sendInitialNotification, markDocumentReceived,
     authorizeSurgery, confirmAttendance, flagProblem, manualOverride,
-    processScheduledNotifications, bulkUpsertSurgeries, updateAusenteStatus
+    processScheduledNotifications, bulkUpsertSurgeries, updateAusenteStatus,
+    purgeAllData
 } from '../services/surgeryService';
+import { logAction } from '../services/auditService';
 import { parseExcelFile, mapExcelToSurgeries, validateMappedRecords } from '../utils/excelParser';
 import { parseBudgetExcelFile, mapExcelToBudgets, validateBudgets } from '../utils/budgetExcelParser';
 import { bulkNormalizePhones } from '../utils/phoneUtils';
@@ -133,7 +135,7 @@ function groupSurgeriesByDate(surgeries) {
 // COMPONENT
 // ============================================================
 
-export default function SurgeryPanel({ addToast }) {
+export default function SurgeryPanel({ addToast, currentUser }) {
     const [surgeries, setSurgeries] = useState([]);
     const [stats, setStats] = useState({});
     const [loading, setLoading] = useState(true);
@@ -183,6 +185,11 @@ export default function SurgeryPanel({ addToast }) {
     const [chatOpen, setChatOpen] = useState(false);
     const [chatPatient, setChatPatient] = useState({ name: '', phone: '' });
     const [unreadCounts, setUnreadCounts] = useState({});
+
+    // Purge modal
+    const [showPurgeModal, setShowPurgeModal] = useState(false);
+    const [purgeConfirmText, setPurgeConfirmText] = useState('');
+    const [purging, setPurging] = useState(false);
 
     // ============================================================
     // DATA LOADING
@@ -1989,6 +1996,181 @@ export default function SurgeryPanel({ addToast }) {
                     </div>
                 </div>
             )}
+            {/* ==================== PURGE CONFIRMATION MODAL ==================== */}
+            {showPurgeModal && (
+                <div
+                    style={{
+                        position: 'fixed', inset: 0, zIndex: 100000,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: 'rgba(0,0,0,0.5)',
+                        backdropFilter: 'blur(4px)',
+                    }}
+                    onClick={(e) => { if (e.target === e.currentTarget) { setShowPurgeModal(false); setPurgeConfirmText(''); } }}
+                >
+                    <div style={{
+                        width: '100%', maxWidth: '480px', margin: '0 16px',
+                        background: '#fff', borderRadius: '16px',
+                        boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
+                        overflow: 'hidden',
+                    }}>
+                        {/* Header */}
+                        <div style={{
+                            padding: '20px 24px',
+                            background: 'linear-gradient(135deg, #FEF2F2, #FEE2E2)',
+                            borderBottom: '2px solid #FECACA',
+                            display: 'flex', alignItems: 'center', gap: '12px',
+                        }}>
+                            <div style={{
+                                width: '40px', height: '40px', borderRadius: '10px',
+                                background: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                                <Trash2 size={20} style={{ color: '#fff' }} />
+                            </div>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#991B1B' }}>
+                                    ⚠️ Eliminar TODOS los Datos
+                                </h3>
+                                <p style={{ margin: 0, fontSize: '0.75rem', color: '#B91C1C' }}>
+                                    Esta acción es irreversible
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Body */}
+                        <div style={{ padding: '24px' }}>
+                            <div style={{
+                                padding: '14px', borderRadius: '10px',
+                                background: '#FEF2F2', border: '1px solid #FECACA',
+                                marginBottom: '16px',
+                            }}>
+                                <p style={{ margin: '0 0 8px', fontSize: '0.82rem', color: '#991B1B', fontWeight: 600 }}>
+                                    Se eliminarán permanentemente:
+                                </p>
+                                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.78rem', color: '#B91C1C', lineHeight: 1.8 }}>
+                                    <li>Todas las <strong>cirugías</strong> y sus eventos</li>
+                                    <li>Todos los <strong>presupuestos</strong> y sus ítems</li>
+                                </ul>
+                                <p style={{ margin: '10px 0 0', fontSize: '0.75rem', color: '#6B7280' }}>
+                                    ℹ️ Los chats de WhatsApp NO se borran (permanecen asociados al paciente).
+                                </p>
+                            </div>
+
+                            <label style={{
+                                display: 'block', fontSize: '0.75rem', fontWeight: 600,
+                                color: '#374151', marginBottom: '6px',
+                            }}>
+                                Escribí <span style={{ color: '#DC2626', fontWeight: 800, letterSpacing: '1px' }}>BORRAR</span> para confirmar:
+                            </label>
+                            <input
+                                type="text"
+                                value={purgeConfirmText}
+                                onChange={e => setPurgeConfirmText(e.target.value)}
+                                placeholder="BORRAR"
+                                style={{
+                                    width: '100%', padding: '10px 14px',
+                                    borderRadius: '8px',
+                                    border: purgeConfirmText === 'BORRAR' ? '2px solid #DC2626' : '1.5px solid #D1D5DB',
+                                    fontSize: '0.9rem', fontWeight: 700, textAlign: 'center',
+                                    letterSpacing: '2px', outline: 'none',
+                                    transition: 'all 0.2s',
+                                    color: purgeConfirmText === 'BORRAR' ? '#DC2626' : '#374151',
+                                }}
+                                autoFocus
+                            />
+
+                            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                                <button
+                                    onClick={() => { setShowPurgeModal(false); setPurgeConfirmText(''); }}
+                                    style={{
+                                        flex: 1, padding: '11px',
+                                        borderRadius: '8px', border: '1px solid #D1D5DB',
+                                        background: '#fff', color: '#374151',
+                                        fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
+                                    }}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        if (purgeConfirmText !== 'BORRAR') return;
+                                        setPurging(true);
+                                        try {
+                                            const counts = await purgeAllData();
+                                            await logAction('purge_all_data', {
+                                                usuario: currentUser?.usuario,
+                                                nombre: currentUser?.nombre,
+                                                deleted: counts,
+                                            });
+                                            addToast(`Datos eliminados: ${counts.surgeries} cirugías, ${counts.presupuestos} presupuestos`, 'success');
+                                            setShowPurgeModal(false);
+                                            setPurgeConfirmText('');
+                                            loadData();
+                                        } catch (err) {
+                                            addToast('Error al eliminar: ' + err.message, 'error');
+                                        } finally {
+                                            setPurging(false);
+                                        }
+                                    }}
+                                    disabled={purgeConfirmText !== 'BORRAR' || purging}
+                                    style={{
+                                        flex: 1, padding: '11px',
+                                        borderRadius: '8px', border: 'none',
+                                        background: purgeConfirmText === 'BORRAR' ? '#DC2626' : '#F3F4F6',
+                                        color: purgeConfirmText === 'BORRAR' ? '#fff' : '#9CA3AF',
+                                        fontSize: '0.85rem', fontWeight: 700,
+                                        cursor: purgeConfirmText === 'BORRAR' && !purging ? 'pointer' : 'not-allowed',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                        transition: 'all 0.2s',
+                                    }}
+                                >
+                                    {purging ? (
+                                        <><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> Eliminando...</>
+                                    ) : (
+                                        <><Trash2 size={15} /> Eliminar Todo</>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ==================== DANGER ZONE ==================== */}
+            {showExcelZone && (
+                <div style={{
+                    margin: '24px', padding: '20px',
+                    borderRadius: '12px',
+                    border: '2px dashed #FECACA',
+                    background: 'linear-gradient(135deg, #FEF2F2, #FFF1F2)',
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div>
+                            <h4 style={{ margin: '0 0 4px', fontSize: '0.85rem', fontWeight: 700, color: '#991B1B' }}>
+                                ⚠️ Zona de Peligro
+                            </h4>
+                            <p style={{ margin: 0, fontSize: '0.72rem', color: '#B91C1C' }}>
+                                Elimina todas las cirugías y presupuestos. Los chats de pacientes se conservan.
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setShowPurgeModal(true)}
+                            style={{
+                                padding: '8px 16px', borderRadius: '8px',
+                                border: '1.5px solid #DC2626',
+                                background: '#fff', color: '#DC2626',
+                                fontSize: '0.78rem', fontWeight: 700,
+                                cursor: 'pointer', transition: 'all 0.2s',
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                            }}
+                            onMouseOver={e => { e.currentTarget.style.background = '#DC2626'; e.currentTarget.style.color = '#fff'; }}
+                            onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#DC2626'; }}
+                        >
+                            <Trash2 size={14} /> Borrar Todo
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* ==================== CHAT WINDOW ==================== */}
             <ChatWindow
                 open={chatOpen}

@@ -744,3 +744,48 @@ export async function getSurgeryStats() {
     });
     return stats;
 }
+
+
+// =============================================
+// ZONA DE PELIGRO — PURGE TOTAL
+// =============================================
+
+/**
+ * Elimina TODOS los datos de cirugías y presupuestos.
+ * NO toca los chats (whatsapp_chats / whatsapp_messages) porque están mapeados por id_paciente.
+ * 
+ * Tablas afectadas:
+ *   - surgery_events (FK cascade desde surgeries)
+ *   - surgeries
+ *   - presupuesto_items
+ *   - presupuestos
+ * 
+ * @returns {{ surgeries: number, presupuestos: number, presupuestoItems: number }}
+ */
+export async function purgeAllData() {
+    const counts = { surgeries: 0, presupuestos: 0, presupuestoItems: 0 };
+
+    // 1) Contar antes de borrar (para el log)
+    const { data: surgeriesData } = await supabase.from('surgeries').select('id', { count: 'exact', head: false });
+    const { data: presupData } = await supabase.from('presupuestos').select('id_presupuesto', { count: 'exact', head: false });
+    const { data: itemsData } = await supabase.from('presupuesto_items').select('id', { count: 'exact', head: false });
+
+    counts.surgeries = surgeriesData?.length || 0;
+    counts.presupuestos = presupData?.length || 0;
+    counts.presupuestoItems = itemsData?.length || 0;
+
+    // 2) Borrar surgery_events (dependencia FK, pero debería ser CASCADE)
+    await supabase.from('surgery_events').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+    // 3) Borrar surgeries
+    await supabase.from('surgeries').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+    // 4) Borrar presupuesto_items
+    await supabase.from('presupuesto_items').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+    // 5) Borrar presupuestos
+    await supabase.from('presupuestos').delete().neq('id_presupuesto', -999999);
+
+    console.log(`🗑️ Purge completado:`, counts);
+    return counts;
+}

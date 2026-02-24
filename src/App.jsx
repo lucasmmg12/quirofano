@@ -7,12 +7,13 @@ import Cart from './components/Cart.jsx';
 import PrintTemplate from './components/PrintTemplate.jsx';
 import WhatsAppModal from './components/WhatsAppModal.jsx';
 import LoginScreen from './components/LoginScreen.jsx';
+import ChangePasswordModal from './components/ChangePasswordModal.jsx';
 import { getTodayISO } from './utils/searchUtils';
 import { sendWhatsAppMessage, formatOrderForWhatsApp } from './services/builderbotApi';
 import { createOrder, markOrderPrinted, markOrderSent, fetchOrderHistory } from './services/dataService';
 import { getCurrentUser, logout as authLogout } from './services/authService';
 import { logAction } from './services/auditService';
-import { Clock, Printer, Send, CheckCircle, LogOut } from 'lucide-react';
+import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound } from 'lucide-react';
 import SurgeryPanel from './components/SurgeryPanel.jsx';
 import ConfigPanel from './components/ConfigPanel.jsx';
 import HomePanel from './components/HomePanel.jsx';
@@ -70,6 +71,9 @@ function App({ currentUser, onLogout }) {
 
     // WhatsApp Modal
     const [showWhatsApp, setShowWhatsApp] = useState(false);
+
+    // Change Password Modal
+    const [showChangePassword, setShowChangePassword] = useState(false);
 
     // Toast notifications
     const [toasts, setToasts] = useState([]);
@@ -249,6 +253,21 @@ function App({ currentUser, onLogout }) {
                                 {currentUser.iniciales}
                             </div>
                             <button
+                                onClick={() => setShowChangePassword(true)}
+                                title="Cambiar contraseña"
+                                style={{
+                                    width: '28px', height: '28px', borderRadius: '50%',
+                                    background: 'none', border: '1px solid var(--neutral-200)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    cursor: 'pointer', color: 'var(--neutral-400)',
+                                    transition: 'all 0.2s',
+                                }}
+                                onMouseOver={e => { e.currentTarget.style.background = '#EEF2FF'; e.currentTarget.style.color = '#4F46E5'; e.currentTarget.style.borderColor = '#A5B4FC'; }}
+                                onMouseOut={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--neutral-400)'; e.currentTarget.style.borderColor = 'var(--neutral-200)'; }}
+                            >
+                                <KeyRound size={13} />
+                            </button>
+                            <button
                                 onClick={onLogout}
                                 title="Cerrar sesión"
                                 style={{
@@ -387,6 +406,14 @@ function App({ currentUser, onLogout }) {
                 onSend={handleSendWhatsApp}
                 patientData={patientData}
                 items={cartItems}
+            />
+
+            {/* Change Password Modal */}
+            <ChangePasswordModal
+                isOpen={showChangePassword}
+                onClose={() => setShowChangePassword(false)}
+                currentUser={currentUser}
+                addToast={addToast}
             />
 
             {/* Toast Notifications */}
