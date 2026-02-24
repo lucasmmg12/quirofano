@@ -1,11 +1,6 @@
 /**
- * LoginScreen — Pantalla de autenticación premium
- * 
- * Bloquea el acceso a la app hasta que el usuario se identifique.
- * Estilo clínico institucional Sanatorio Argentino.
- * 
- * Props:
- *   - onLogin: (user) => void — Callback cuando el login es exitoso
+ * LoginScreen — Pantalla de autenticación institucional
+ * Diseño clínico limpio, réplica del Login de Calidad DORA
  */
 import { useState, useRef, useEffect } from 'react';
 import { Lock, User, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
@@ -30,8 +25,7 @@ export default function LoginScreen({ onLogin }) {
         e.preventDefault();
         if (!usuario.trim() || !password) {
             setError('Completá usuario y contraseña');
-            setShake(true);
-            setTimeout(() => setShake(false), 500);
+            triggerShake();
             return;
         }
 
@@ -41,234 +35,253 @@ export default function LoginScreen({ onLogin }) {
         const result = await login(usuario, password);
 
         if (result.success) {
-            // Log the login action
             await logAction('login', { usuario: result.user.usuario });
             onLogin(result.user);
         } else {
             setError(result.error);
-            setShake(true);
-            setTimeout(() => setShake(false), 500);
+            triggerShake();
             setPassword('');
         }
 
         setLoading(false);
     };
 
+    const triggerShake = () => {
+        setShake(true);
+        setTimeout(() => setShake(false), 500);
+    };
+
     return (
         <div style={{
             position: 'fixed', inset: 0, zIndex: 99999,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 40%, #334155 100%)',
-            fontFamily: "'Inter', 'Segoe UI', sans-serif",
+            background: 'linear-gradient(135deg, #EBF0F6 0%, #E8EDF5 30%, #F0F4FA 60%, #E6EBF3 100%)',
+            fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
         }}>
-            {/* Background pattern */}
+            {/* Subtle decorative blobs */}
             <div style={{
-                position: 'absolute', inset: 0, opacity: 0.03,
-                backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
-                backgroundSize: '40px 40px',
+                position: 'absolute', width: '400px', height: '400px', borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(30,64,120,0.04) 0%, transparent 70%)',
+                top: '-5%', right: '-5%',
             }} />
-
-            {/* Glow effect */}
             <div style={{
-                position: 'absolute',
-                width: '600px', height: '600px',
-                borderRadius: '50%',
-                background: 'radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%)',
-                top: '50%', left: '50%',
-                transform: 'translate(-50%, -50%)',
-                filter: 'blur(60px)',
+                position: 'absolute', width: '350px', height: '350px', borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(30,64,120,0.03) 0%, transparent 70%)',
+                bottom: '-5%', left: '-5%',
             }} />
 
             {/* Login Card */}
             <div style={{
                 position: 'relative',
-                width: '100%', maxWidth: '420px',
+                width: '100%', maxWidth: '440px',
                 margin: '0 20px',
-                animation: 'scaleIn 0.4s ease-out',
+                animation: 'loginFadeIn 0.5s ease-out',
             }}>
-                {/* Logo / Header */}
-                <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-                    <div style={{
-                        width: '72px', height: '72px',
-                        borderRadius: '20px',
-                        background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)',
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: '0 20px 40px rgba(99,102,241,0.4)',
-                        marginBottom: '16px',
-                    }}>
-                        <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#fff' }}>SA</span>
-                    </div>
-                    <h1 style={{
-                        fontSize: '1.5rem', fontWeight: 800, color: '#F8FAFC',
-                        margin: '0 0 6px', letterSpacing: '-0.02em',
-                    }}>
-                        Sanatorio Argentino
-                    </h1>
-                    <p style={{
-                        fontSize: '0.85rem', color: '#94A3B8',
-                        margin: 0, fontWeight: 500,
-                    }}>
-                        Sistema de Administración Quirúrgica
-                    </p>
-                </div>
-
-                {/* Form Card */}
                 <form
                     onSubmit={handleSubmit}
                     style={{
-                        background: 'rgba(255,255,255,0.05)',
-                        backdropFilter: 'blur(20px)',
-                        borderRadius: '16px',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        padding: '32px',
-                        boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
+                        background: '#FFFFFF',
+                        borderRadius: '20px',
+                        padding: '40px 36px 36px',
+                        boxShadow: '0 8px 40px rgba(30,64,120,0.08), 0 2px 8px rgba(0,0,0,0.04)',
                         animation: shake ? 'shakeX 0.4s ease-out' : 'none',
                     }}
                 >
-                    {/* Error message */}
+                    {/* Logo */}
+                    <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                        <img
+                            src="/logosanatorio.png"
+                            alt="Sanatorio Argentino"
+                            style={{
+                                width: '68px', height: '68px',
+                                objectFit: 'contain',
+                                borderRadius: '14px',
+                                boxShadow: '0 4px 12px rgba(30,64,120,0.12)',
+                            }}
+                        />
+                    </div>
+
+                    {/* Title */}
+                    <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+                        <h1 style={{
+                            margin: '0 0 6px',
+                            fontSize: '1.45rem',
+                            fontWeight: 800,
+                            color: '#1E293B',
+                            letterSpacing: '-0.02em',
+                        }}>
+                            Acceso Administrativo
+                        </h1>
+                        <p style={{
+                            margin: 0,
+                            fontSize: '0.85rem',
+                            color: '#94A3B8',
+                            fontWeight: 500,
+                        }}>
+                            Panel de Administración Quirúrgica
+                        </p>
+                    </div>
+
+                    {/* Error */}
                     {error && (
                         <div style={{
                             display: 'flex', alignItems: 'center', gap: '8px',
                             padding: '10px 14px', borderRadius: '10px',
-                            background: 'rgba(239,68,68,0.1)',
-                            border: '1px solid rgba(239,68,68,0.2)',
+                            background: '#FEF2F2',
+                            border: '1px solid #FECACA',
                             marginBottom: '20px',
-                            animation: 'fadeIn 0.2s ease-out',
+                            animation: 'loginFadeIn 0.2s ease-out',
                         }}>
-                            <AlertCircle size={16} style={{ color: '#EF4444', flexShrink: 0 }} />
-                            <span style={{ fontSize: '0.8rem', color: '#FCA5A5' }}>{error}</span>
+                            <AlertCircle size={16} style={{ color: '#DC2626', flexShrink: 0 }} />
+                            <span style={{ fontSize: '0.8rem', color: '#DC2626', fontWeight: 500 }}>{error}</span>
                         </div>
                     )}
 
-                    {/* Usuario field */}
-                    <div style={{ marginBottom: '16px' }}>
+                    {/* USUARIO */}
+                    <div style={{ marginBottom: '18px' }}>
                         <label style={{
-                            display: 'block', fontSize: '0.75rem', fontWeight: 600,
-                            color: '#94A3B8', marginBottom: '6px',
-                            textTransform: 'uppercase', letterSpacing: '0.5px',
+                            display: 'block',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            color: '#374151',
+                            marginBottom: '8px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.8px',
                         }}>
                             Usuario
                         </label>
-                        <div style={{
-                            position: 'relative',
-                            display: 'flex', alignItems: 'center',
-                        }}>
-                            <User size={16} style={{
-                                position: 'absolute', left: '14px',
-                                color: '#64748B', pointerEvents: 'none',
+                        <div style={{ position: 'relative' }}>
+                            <User size={17} style={{
+                                position: 'absolute', left: '14px', top: '50%',
+                                transform: 'translateY(-50%)',
+                                color: '#94A3B8', pointerEvents: 'none',
                             }} />
                             <input
                                 ref={inputRef}
                                 type="text"
                                 value={usuario}
                                 onChange={e => setUsuario(e.target.value)}
-                                placeholder="Ingresá tu usuario"
+                                placeholder="ej: frojo"
                                 autoComplete="username"
                                 style={{
                                     width: '100%',
-                                    padding: '12px 14px 12px 42px',
+                                    padding: '13px 14px 13px 44px',
                                     borderRadius: '10px',
-                                    border: '1.5px solid rgba(255,255,255,0.1)',
-                                    background: 'rgba(255,255,255,0.05)',
-                                    color: '#F1F5F9',
+                                    border: '1.5px solid #E5E7EB',
+                                    background: '#F9FAFB',
+                                    color: '#1E293B',
                                     fontSize: '0.9rem',
                                     fontWeight: 500,
                                     outline: 'none',
-                                    transition: 'all 0.2s',
+                                    transition: 'all 0.2s ease',
+                                    boxSizing: 'border-box',
                                 }}
                                 onFocus={e => {
-                                    e.target.style.borderColor = '#6366F1';
-                                    e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.15)';
+                                    e.target.style.borderColor = '#1E4078';
+                                    e.target.style.boxShadow = '0 0 0 3px rgba(30,64,120,0.08)';
+                                    e.target.style.background = '#FFFFFF';
                                 }}
                                 onBlur={e => {
-                                    e.target.style.borderColor = 'rgba(255,255,255,0.1)';
+                                    e.target.style.borderColor = '#E5E7EB';
                                     e.target.style.boxShadow = 'none';
+                                    e.target.style.background = '#F9FAFB';
                                 }}
                             />
                         </div>
                     </div>
 
-                    {/* Password field */}
-                    <div style={{ marginBottom: '24px' }}>
+                    {/* CONTRASEÑA */}
+                    <div style={{ marginBottom: '28px' }}>
                         <label style={{
-                            display: 'block', fontSize: '0.75rem', fontWeight: 600,
-                            color: '#94A3B8', marginBottom: '6px',
-                            textTransform: 'uppercase', letterSpacing: '0.5px',
+                            display: 'block',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            color: '#374151',
+                            marginBottom: '8px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.8px',
                         }}>
                             Contraseña
                         </label>
-                        <div style={{
-                            position: 'relative',
-                            display: 'flex', alignItems: 'center',
-                        }}>
-                            <Lock size={16} style={{
-                                position: 'absolute', left: '14px',
-                                color: '#64748B', pointerEvents: 'none',
+                        <div style={{ position: 'relative' }}>
+                            <Lock size={17} style={{
+                                position: 'absolute', left: '14px', top: '50%',
+                                transform: 'translateY(-50%)',
+                                color: '#94A3B8', pointerEvents: 'none',
                             }} />
                             <input
                                 type={showPassword ? 'text' : 'password'}
                                 value={password}
                                 onChange={e => setPassword(e.target.value)}
-                                placeholder="Ingresá tu contraseña"
+                                placeholder="••••••••"
                                 autoComplete="current-password"
                                 style={{
                                     width: '100%',
-                                    padding: '12px 44px 12px 42px',
+                                    padding: '13px 44px 13px 44px',
                                     borderRadius: '10px',
-                                    border: '1.5px solid rgba(255,255,255,0.1)',
-                                    background: 'rgba(255,255,255,0.05)',
-                                    color: '#F1F5F9',
+                                    border: '1.5px solid #E5E7EB',
+                                    background: '#F9FAFB',
+                                    color: '#1E293B',
                                     fontSize: '0.9rem',
                                     fontWeight: 500,
                                     outline: 'none',
-                                    transition: 'all 0.2s',
+                                    transition: 'all 0.2s ease',
+                                    boxSizing: 'border-box',
                                 }}
                                 onFocus={e => {
-                                    e.target.style.borderColor = '#6366F1';
-                                    e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.15)';
+                                    e.target.style.borderColor = '#1E4078';
+                                    e.target.style.boxShadow = '0 0 0 3px rgba(30,64,120,0.08)';
+                                    e.target.style.background = '#FFFFFF';
                                 }}
                                 onBlur={e => {
-                                    e.target.style.borderColor = 'rgba(255,255,255,0.1)';
+                                    e.target.style.borderColor = '#E5E7EB';
                                     e.target.style.boxShadow = 'none';
+                                    e.target.style.background = '#F9FAFB';
                                 }}
                             />
                             <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
                                 style={{
-                                    position: 'absolute', right: '12px',
+                                    position: 'absolute', right: '12px', top: '50%',
+                                    transform: 'translateY(-50%)',
                                     background: 'none', border: 'none',
-                                    cursor: 'pointer', color: '#64748B',
+                                    cursor: 'pointer', color: '#94A3B8',
                                     padding: '4px', display: 'flex',
+                                    transition: 'color 0.2s',
                                 }}
+                                onMouseOver={e => e.currentTarget.style.color = '#64748B'}
+                                onMouseOut={e => e.currentTarget.style.color = '#94A3B8'}
                             >
-                                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
                             </button>
                         </div>
                     </div>
 
-                    {/* Submit button */}
+                    {/* SUBMIT */}
                     <button
                         type="submit"
                         disabled={loading}
                         style={{
                             width: '100%',
-                            padding: '13px',
+                            padding: '14px',
                             borderRadius: '10px',
                             border: 'none',
-                            background: loading
-                                ? '#4338CA'
-                                : 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)',
-                            color: '#fff',
-                            fontSize: '0.9rem',
+                            background: loading ? '#2C5282' : '#1E4078',
+                            color: '#FFFFFF',
+                            fontSize: '0.95rem',
                             fontWeight: 700,
                             cursor: loading ? 'not-allowed' : 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                            transition: 'all 0.2s',
-                            boxShadow: '0 4px 15px rgba(99,102,241,0.3)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            transition: 'all 0.2s ease',
+                            boxShadow: '0 4px 12px rgba(30,64,120,0.25)',
+                            letterSpacing: '0.3px',
                         }}
-                        onMouseOver={e => { if (!loading) e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                        onMouseOut={e => { e.currentTarget.style.transform = 'none'; }}
+                        onMouseOver={e => { if (!loading) { e.currentTarget.style.background = '#163560'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(30,64,120,0.35)'; } }}
+                        onMouseOut={e => { e.currentTarget.style.background = loading ? '#2C5282' : '#1E4078'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(30,64,120,0.25)'; }}
                     >
                         {loading ? (
                             <>
@@ -276,24 +289,24 @@ export default function LoginScreen({ onLogin }) {
                                 Ingresando...
                             </>
                         ) : (
-                            <>
-                                <Lock size={16} />
-                                Ingresar
-                            </>
+                            'Iniciar Sesión'
                         )}
                     </button>
                 </form>
 
                 {/* Footer */}
                 <p style={{
-                    textAlign: 'center', marginTop: '24px',
-                    fontSize: '0.72rem', color: '#475569',
+                    textAlign: 'center',
+                    marginTop: '20px',
+                    fontSize: '0.72rem',
+                    color: '#94A3B8',
+                    fontWeight: 500,
                 }}>
                     Sistema ADM-QUI · Grow Labs © 2026
                 </p>
             </div>
 
-            {/* CSS Animations */}
+            {/* Animations */}
             <style>{`
                 @keyframes shakeX {
                     0%, 100% { transform: translateX(0); }
@@ -302,17 +315,13 @@ export default function LoginScreen({ onLogin }) {
                     60% { transform: translateX(-4px); }
                     80% { transform: translateX(4px); }
                 }
-                @keyframes scaleIn {
-                    from { opacity: 0; transform: scale(0.95) translateY(10px); }
-                    to { opacity: 1; transform: scale(1) translateY(0); }
+                @keyframes loginFadeIn {
+                    from { opacity: 0; transform: translateY(12px); }
+                    to { opacity: 1; transform: translateY(0); }
                 }
                 @keyframes spin {
                     from { transform: rotate(0deg); }
                     to { transform: rotate(360deg); }
-                }
-                @keyframes fadeIn {
-                    from { opacity: 0; }
-                    to { opacity: 1; }
                 }
             `}</style>
         </div>
