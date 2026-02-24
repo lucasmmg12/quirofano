@@ -3,6 +3,19 @@
  * Datos provistos por el equipo administrativo.
  */
 
+export const INTERCONSULTA_SPECIALTIES = [
+    'Cardiología',
+    'Cirugía',
+    'Dermatología',
+    'Endocrinología',
+    'Diabetología',
+    'Gastroenterología',
+    'Kinesiología',
+    'Neurocirugía',
+    'Traumatología',
+    'Urología',
+];
+
 export const CATEGORIES = [
     { id: 'all', label: 'Todos' },
     { id: 'prorroga', label: 'Prórroga' },
@@ -45,7 +58,7 @@ export const PRACTICES = [
     { code: '170113', name: 'Valoración riesgo cardiovascular prequirúrgica', category: 'cardiologia' },
 
     // === INTERCONSULTA ===
-    { code: '420303', name: 'Interconsulta de', category: 'interconsulta', customField: 'specialty', customLabel: 'Especialidad (escribir manualmente)' },
+    { code: '420303', name: 'Interconsulta de', category: 'interconsulta', customField: 'specialty', customLabel: 'Especialidad' },
 
     // === BIOPSIA ===
     { code: 'PROMAC', name: 'PROMAC - Estudio anatomopatológico', category: 'biopsia' },

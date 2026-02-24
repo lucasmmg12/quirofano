@@ -1,7 +1,28 @@
+import { useState } from 'react';
 import { Trash2, Minus, Plus, ShoppingCart, Printer, Send, XCircle, Calendar } from 'lucide-react';
+import { INTERCONSULTA_SPECIALTIES } from '../data/nomenclador';
 
 export default function Cart({ items, onUpdateItem, onRemoveItem, onClearCart, onPrintAll, onPrintSingle, onSendWhatsApp }) {
     const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
+    // Track which items are using the custom "Agregar una" input
+    const [customModeItems, setCustomModeItems] = useState({});
+
+    const handleSpecialtyChange = (itemId, value) => {
+        if (value === '__custom__') {
+            // Switch to custom input mode
+            setCustomModeItems(prev => ({ ...prev, [itemId]: true }));
+            onUpdateItem(itemId, 'customValue', '');
+        } else {
+            // Predefined specialty selected
+            setCustomModeItems(prev => ({ ...prev, [itemId]: false }));
+            onUpdateItem(itemId, 'customValue', value);
+        }
+    };
+
+    const handleBackToSelect = (itemId) => {
+        setCustomModeItems(prev => ({ ...prev, [itemId]: false }));
+        onUpdateItem(itemId, 'customValue', '');
+    };
 
     if (items.length === 0) {
         return (
@@ -46,8 +67,46 @@ export default function Cart({ items, onUpdateItem, onRemoveItem, onClearCart, o
                                 </td>
                                 <td className="cart__td cart__td--name">
                                     {item.name}
-                                    {/* Custom field input for practices that need extra data */}
-                                    {item.customField && (
+                                    {/* Custom field: Specialty selector for interconsultas */}
+                                    {item.customField === 'specialty' && (
+                                        <div className="cart__custom-field">
+                                            <span className="cart__custom-label">{item.customLabel}</span>
+                                            {customModeItems[item.id] ? (
+                                                <div className="cart__specialty-custom">
+                                                    <input
+                                                        type="text"
+                                                        className="cart__custom-input"
+                                                        placeholder="Escribir especialidad..."
+                                                        value={item.customValue || ''}
+                                                        onChange={e => onUpdateItem(item.id, 'customValue', e.target.value)}
+                                                        autoFocus
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        className="cart__back-to-select"
+                                                        onClick={() => handleBackToSelect(item.id)}
+                                                        title="Volver a la lista"
+                                                    >
+                                                        ← Lista
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <select
+                                                    className="cart__custom-select"
+                                                    value={item.customValue || ''}
+                                                    onChange={e => handleSpecialtyChange(item.id, e.target.value)}
+                                                >
+                                                    <option value="" disabled>— Seleccionar especialidad —</option>
+                                                    {INTERCONSULTA_SPECIALTIES.map(spec => (
+                                                        <option key={spec} value={spec}>{spec}</option>
+                                                    ))}
+                                                    <option value="__custom__">✏️ Agregar una...</option>
+                                                </select>
+                                            )}
+                                        </div>
+                                    )}
+                                    {/* Custom field input for other practice types (days, roman, etc.) */}
+                                    {item.customField && item.customField !== 'specialty' && (
                                         <div className="cart__custom-field">
                                             <span className="cart__custom-label">{item.customLabel}</span>
                                             <input

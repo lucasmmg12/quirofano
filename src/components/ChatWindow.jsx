@@ -8,10 +8,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
     X, Send, Paperclip, Mic, Image as ImageIcon, Play, Pause,
     Phone, MessageSquare, Clock, CheckCheck, Check, Volume2,
-    Download, Smile, Square, Loader
+    Download, Smile, Square, Loader, Zap
 } from 'lucide-react';
 import { fetchMessages, markAsRead, saveOutgoingMessage, subscribeToMessages } from '../services/chatService';
 import { sendWhatsAppMessage } from '../services/builderbotApi';
+import { fetchShortcuts } from '../services/shortcutService';
 import { supabase } from '../lib/supabase';
 
 // Emojis populares organizados
@@ -34,6 +35,12 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
     const [isRecording, setIsRecording] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
     const [uploadingMedia, setUploadingMedia] = useState(false);
+    // Shortcuts state
+    const [shortcuts, setShortcuts] = useState([]);
+    const [showShortcuts, setShowShortcuts] = useState(false);
+    const [shortcutFilter, setShortcutFilter] = useState('');
+    const [shortcutIndex, setShortcutIndex] = useState(0);
+
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
     const audioRefs = useRef({});
@@ -41,6 +48,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
     const recordingChunksRef = useRef([]);
     const recordingTimerRef = useRef(null);
     const fileInputRef = useRef(null);
+    const shortcutPopupRef = useRef(null);
 
     // ==========================================
     // CARGAR MENSAJES + REALTIME + POLLING
@@ -113,6 +121,16 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
         if (open) {
             setTimeout(() => inputRef.current?.focus(), 300);
         }
+    }, [open]);
+
+    // ==========================================
+    // CARGAR SHORTCUTS
+    // ==========================================
+    useEffect(() => {
+        if (!open) return;
+        fetchShortcuts().then(setShortcuts).catch(err => {
+            console.warn('Could not load shortcuts:', err);
+        });
     }, [open]);
 
     // ==========================================
@@ -324,8 +342,73 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
         inputRef.current?.focus();
     };
 
-    // Enter para enviar
+    // ==========================================
+    // SHORTCUTS — Lógica de detección y selección
+    // ==========================================
+    const filteredShortcuts = shortcuts.filter(s => {
+        if (!shortcutFilter) return true;
+        const q = shortcutFilter.toLowerCase();
+        return s.shortcut.toLowerCase().includes(q) ||
+            s.label.toLowerCase().includes(q) ||
+            s.category?.toLowerCase().includes(q);
+    });
+
+    const handleInputChange = (e) => {
+        const val = e.target.value;
+        setInputText(val);
+
+        // Detectar si el input comienza con "/" para activar shortcuts
+        if (val.startsWith('/')) {
+            setShowShortcuts(true);
+            setShortcutFilter(val.slice(1)); // quitar el "/" para filtrar
+            setShortcutIndex(0);
+        } else {
+            setShowShortcuts(false);
+            setShortcutFilter('');
+        }
+    };
+
+    const selectShortcut = useCallback((shortcut) => {
+        setInputText(shortcut.message);
+        setShowShortcuts(false);
+        setShortcutFilter('');
+        setShortcutIndex(0);
+        inputRef.current?.focus();
+    }, []);
+
+    // Enter para enviar o seleccionar shortcut
     const handleKeyDown = (e) => {
+        // Navegación en shortcuts popup
+        if (showShortcuts && filteredShortcuts.length > 0) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setShortcutIndex(prev => (prev + 1) % filteredShortcuts.length);
+                return;
+            }
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setShortcutIndex(prev => (prev - 1 + filteredShortcuts.length) % filteredShortcuts.length);
+                return;
+            }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                selectShortcut(filteredShortcuts[shortcutIndex]);
+                return;
+            }
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                selectShortcut(filteredShortcuts[shortcutIndex]);
+                return;
+            }
+        }
+
+        if (e.key === 'Escape' && showShortcuts) {
+            e.preventDefault();
+            setShowShortcuts(false);
+            setInputText('');
+            return;
+        }
+
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSend();
@@ -808,14 +891,127 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
                                 <ImageIcon size={20} />
                             </button>
 
-                            {/* Text input */}
-                            <div style={{ flex: 1 }}>
+                            {/* Text input + Shortcuts popup */}
+                            <div style={{ flex: 1, position: 'relative' }}>
+
+                                {/* ===== SHORTCUTS POPUP ===== */}
+                                {showShortcuts && filteredShortcuts.length > 0 && (
+                                    <div
+                                        ref={shortcutPopupRef}
+                                        style={{
+                                            position: 'absolute',
+                                            bottom: 'calc(100% + 8px)',
+                                            left: 0, right: 0,
+                                            background: '#fff',
+                                            borderRadius: '12px',
+                                            boxShadow: '0 8px 32px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.05)',
+                                            maxHeight: '260px',
+                                            overflowY: 'auto',
+                                            zIndex: 100,
+                                            animation: 'scaleIn 0.15s ease-out',
+                                        }}
+                                    >
+                                        {/* Header */}
+                                        <div style={{
+                                            padding: '10px 14px 6px',
+                                            borderBottom: '1px solid #f0f0f0',
+                                            display: 'flex', alignItems: 'center', gap: '6px',
+                                        }}>
+                                            <Zap size={14} style={{ color: '#F59E0B' }} />
+                                            <span style={{
+                                                fontSize: '0.72rem', fontWeight: 700,
+                                                color: '#8696A0', textTransform: 'uppercase',
+                                                letterSpacing: '0.05em',
+                                            }}>
+                                                Atajos rápidos
+                                            </span>
+                                            <span style={{
+                                                fontSize: '0.65rem', color: '#aaa', marginLeft: 'auto',
+                                            }}>
+                                                ↑↓ navegar · Enter seleccionar
+                                            </span>
+                                        </div>
+
+                                        {/* Shortcut items */}
+                                        {filteredShortcuts.map((sc, idx) => (
+                                            <div
+                                                key={sc.id}
+                                                onClick={() => selectShortcut(sc)}
+                                                style={{
+                                                    padding: '10px 14px',
+                                                    cursor: 'pointer',
+                                                    borderBottom: idx < filteredShortcuts.length - 1 ? '1px solid #f5f5f5' : 'none',
+                                                    background: idx === shortcutIndex ? '#F0FFF4' : 'transparent',
+                                                    transition: 'background 0.1s',
+                                                    display: 'flex', flexDirection: 'column', gap: '3px',
+                                                }}
+                                                onMouseEnter={() => setShortcutIndex(idx)}
+                                            >
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{
+                                                        fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                                                        fontSize: '0.78rem', fontWeight: 700,
+                                                        color: '#25D366',
+                                                        background: 'rgba(37,211,102,0.1)',
+                                                        padding: '2px 8px', borderRadius: '6px',
+                                                    }}>
+                                                        {sc.shortcut}
+                                                    </span>
+                                                    <span style={{
+                                                        fontSize: '0.82rem', fontWeight: 600,
+                                                        color: '#111B21',
+                                                    }}>
+                                                        {sc.label}
+                                                    </span>
+                                                    {sc.category && (
+                                                        <span style={{
+                                                            fontSize: '0.65rem', color: '#8696A0',
+                                                            background: '#F0F2F5', padding: '1px 6px',
+                                                            borderRadius: '4px', marginLeft: 'auto',
+                                                        }}>
+                                                            {sc.category}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p style={{
+                                                    margin: 0, fontSize: '0.75rem', color: '#667781',
+                                                    lineHeight: 1.3,
+                                                    overflow: 'hidden', textOverflow: 'ellipsis',
+                                                    display: '-webkit-box', WebkitLineClamp: 2,
+                                                    WebkitBoxOrient: 'vertical',
+                                                }}>
+                                                    {sc.message}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* No results for shortcut filter */}
+                                {showShortcuts && filteredShortcuts.length === 0 && shortcutFilter && (
+                                    <div style={{
+                                        position: 'absolute',
+                                        bottom: 'calc(100% + 8px)',
+                                        left: 0, right: 0,
+                                        background: '#fff',
+                                        borderRadius: '12px',
+                                        boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+                                        padding: '16px',
+                                        textAlign: 'center',
+                                        zIndex: 100,
+                                    }}>
+                                        <p style={{ margin: 0, fontSize: '0.82rem', color: '#8696A0' }}>
+                                            No se encontraron atajos para <strong>/{shortcutFilter}</strong>
+                                        </p>
+                                    </div>
+                                )}
+
                                 <textarea
                                     ref={inputRef}
                                     value={inputText}
-                                    onChange={e => setInputText(e.target.value)}
+                                    onChange={handleInputChange}
                                     onKeyDown={handleKeyDown}
-                                    placeholder="Escribí un mensaje..."
+                                    placeholder="Escribí un mensaje... (/ para atajos)"
                                     rows={1}
                                     style={{
                                         width: '100%', resize: 'none',

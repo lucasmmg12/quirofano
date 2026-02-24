@@ -15,7 +15,7 @@ import {
     FileText, Eye, ArrowRight, RefreshCw, User, Calendar, Building2, Phone,
     X, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Clock,
     ChevronDown, ChevronUp, Timer, Activity, Zap, Pencil, Trash2,
-    MessageSquare, ChevronRight
+    MessageSquare, ChevronRight, DollarSign
 } from 'lucide-react';
 import {
     fetchSurgeries, createSurgery, updateSurgery, deleteSurgery, getSurgeryStats,
@@ -24,10 +24,13 @@ import {
     processScheduledNotifications, bulkUpsertSurgeries, updateAusenteStatus
 } from '../services/surgeryService';
 import { parseExcelFile, mapExcelToSurgeries, validateMappedRecords } from '../utils/excelParser';
+import { parseBudgetExcelFile, mapExcelToBudgets, validateBudgets } from '../utils/budgetExcelParser';
 import { bulkNormalizePhones } from '../utils/phoneUtils';
 import { sendWhatsAppMessage, normalizeArgentinePhone } from '../services/builderbotApi';
+import { bulkUpsertBudgets } from '../services/budgetService';
 import { fetchUnreadCounts, saveOutgoingMessage, subscribeToAllIncoming } from '../services/chatService';
 import ChatWindow from './ChatWindow';
+import BudgetCollapsible from './BudgetCollapsible';
 
 // ============================================================
 // CONSTANTS & CONFIG
@@ -150,6 +153,11 @@ export default function SurgeryPanel({ addToast }) {
     const [uploadResult, setUploadResult] = useState(null);
     const [uploadProgress, setUploadProgress] = useState(null); // { current, total, results }
     const [dragOver, setDragOver] = useState(false);
+
+    // Budget upload state
+    const [budgetFile, setBudgetFile] = useState(null);
+    const [budgetPreview, setBudgetPreview] = useState(null);
+    const [budgetUploading, setBudgetUploading] = useState(false);
 
     // New surgery form
     const [newSurgery, setNewSurgery] = useState({
@@ -537,14 +545,31 @@ export default function SurgeryPanel({ addToast }) {
             const result = await bulkUpsertSurgeries(phoneResults.records, areaCode, (current, total, partialResults) => {
                 setUploadProgress({ current, total, results: partialResults });
             });
-            setUploadResult(result);
+
+            // --- Upload Budgets if a budget file is attached ---
+            let budgetResult = null;
+            if (budgetPreview && budgetPreview.presupuestos.length > 0) {
+                setUploadProgress({ current: 0, total: 1, results: null, detail: 'Subiendo presupuestos...' });
+                budgetResult = await bulkUpsertBudgets(budgetPreview.presupuestos, (progress) => {
+                    setUploadProgress(prev => ({ ...prev, detail: progress.detail }));
+                });
+            }
+
+            setUploadResult({ ...result, budgetResult });
             setUploadProgress(null);
-            addToast?.(
-                `✅ Carga completada: ${result.inserted} nuevos, ${result.updated} actualizados` +
-                (result.skippedByName > 0 ? `, ${result.skippedByName} descartados (BLOQUE)` : '') +
-                (result.skipped > 0 ? `, ${result.skipped} con errores` : ''),
-                result.skipped > 0 ? 'info' : 'success'
-            );
+
+            let msg = `✅ Cirugías: ${result.inserted} nuevos, ${result.updated} actualizados`;
+            if (result.skippedByName > 0) msg += `, ${result.skippedByName} descartados (BLOQUE)`;
+            if (result.skipped > 0) msg += `, ${result.skipped} con errores`;
+            if (budgetResult) {
+                msg += ` | 💰 Presupuestos: ${budgetResult.inserted} cargados, ${budgetResult.itemsInserted} ítems`;
+            }
+            addToast?.(msg, result.skipped > 0 ? 'info' : 'success');
+
+            // Reset budget state
+            setBudgetFile(null);
+            setBudgetPreview(null);
+
             loadData();
         } catch (e) {
             addToast?.('Error en la carga: ' + e.message, 'error');
@@ -558,6 +583,8 @@ export default function SurgeryPanel({ addToast }) {
         setShowUpload(false);
         setExcelPreview(null);
         setUploadResult(null);
+        setBudgetFile(null);
+        setBudgetPreview(null);
     };
 
     const handleAreaCodeChange = (newCode) => {
@@ -570,6 +597,59 @@ export default function SurgeryPanel({ addToast }) {
                 phoneSummary: phoneResults.summary,
             }));
         }
+    };
+
+    // ============================================================
+    // HANDLERS — Budget Excel Upload
+    // ============================================================
+
+    const handleBudgetFile = async (file) => {
+        if (!file) return;
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        if (ext !== 'xlsx' && ext !== 'xls') {
+            addToast?.('Solo se aceptan archivos .xlsx o .xls para presupuestos', 'error');
+            return;
+        }
+        try {
+            setBudgetUploading(true);
+            const rawRows = await parseBudgetExcelFile(file);
+            if (!rawRows || rawRows.length === 0) {
+                addToast?.('El archivo de presupuestos está vacío', 'error');
+                setBudgetUploading(false);
+                return;
+            }
+
+            const { presupuestos, totalRows, skippedNoPatient, skippedNoBudgetId, columnMapping } = mapExcelToBudgets(rawRows);
+            const { valid, invalid, warnings } = validateBudgets(presupuestos);
+
+            setBudgetFile(file);
+            setBudgetPreview({
+                fileName: file.name,
+                totalRows,
+                presupuestos: valid,
+                totalPresupuestos: valid.length,
+                totalItems: valid.reduce((sum, p) => sum + (p._items?.length || 0), 0),
+                skippedNoPatient,
+                skippedNoBudgetId,
+                invalid: invalid.length,
+                warnings,
+                columnMapping,
+                totalImporte: valid.reduce((sum, p) => sum + p.importe_total, 0),
+            });
+
+            if (skippedNoPatient > 0) {
+                addToast?.(`${skippedNoPatient} filas descartadas (sin ID Paciente)`, 'info');
+            }
+        } catch (e) {
+            addToast?.('Error al leer Excel de presupuestos: ' + e.message, 'error');
+        } finally {
+            setBudgetUploading(false);
+        }
+    };
+
+    const handleBudgetSelect = (e) => {
+        handleBudgetFile(e.target.files[0]);
+        e.target.value = '';
     };
 
     // ============================================================
@@ -729,44 +809,125 @@ export default function SurgeryPanel({ addToast }) {
                     </button>
                 </div>
 
-                {/* Collapsible Excel Drop Zone */}
+                {/* Collapsible Excel Drop Zone — DUAL: Cirugías + Presupuestos */}
                 {showExcelZone && (
-                    <div
-                        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                        onDragLeave={() => setDragOver(false)}
-                        onDrop={handleDrop}
-                        style={{
-                            marginTop: 'var(--space-3)',
-                            padding: dragOver ? 'var(--space-5)' : 'var(--space-3)',
-                            background: dragOver ? 'rgba(34,197,94,0.06)' : 'var(--neutral-50)',
-                            borderRadius: 'var(--radius-md)',
-                            border: `2px dashed ${dragOver ? '#22C55E' : 'var(--neutral-300)'}`,
-                            textAlign: 'center', transition: 'all 0.2s',
-                            animation: 'fadeIn 0.2s ease-out',
-                        }}
-                    >
-                        {uploading ? (
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                                <Loader2 size={16} style={{ animation: 'spin 1s linear infinite', color: 'var(--primary-500)' }} />
-                                <span style={{ fontSize: '0.82rem', color: 'var(--neutral-600)' }}>Procesando archivo...</span>
-                            </div>
-                        ) : (
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-3)' }}>
-                                <FileSpreadsheet size={22} style={{ color: 'var(--neutral-400)' }} />
-                                <div style={{ textAlign: 'left' }}>
-                                    <p style={{ fontSize: '0.82rem', color: 'var(--neutral-600)', margin: 0 }}>
-                                        Arrastrá un <strong>.xlsx</strong> aquí o{' '}
-                                        <label style={{ color: 'var(--primary-500)', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}>
-                                            seleccioná un archivo
-                                            <input type="file" accept=".xlsx,.xls" onChange={handleExcelSelect} style={{ display: 'none' }} />
-                                        </label>
-                                    </p>
-                                    <p style={{ fontSize: '0.7rem', color: 'var(--neutral-400)', margin: '2px 0 0' }}>
-                                        Detección automática de columnas — soporta variaciones de nombres
-                                    </p>
+                    <div style={{
+                        marginTop: 'var(--space-3)',
+                        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)',
+                        animation: 'fadeIn 0.2s ease-out',
+                    }}>
+                        {/* === 1. Cirugías Excel === */}
+                        <div
+                            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                            onDragLeave={() => setDragOver(false)}
+                            onDrop={handleDrop}
+                            style={{
+                                padding: dragOver ? 'var(--space-5)' : 'var(--space-3)',
+                                background: excelPreview
+                                    ? 'rgba(34,197,94,0.04)'
+                                    : dragOver ? 'rgba(34,197,94,0.06)' : 'var(--neutral-50)',
+                                borderRadius: 'var(--radius-md)',
+                                border: `2px dashed ${excelPreview ? '#22C55E' : dragOver ? '#22C55E' : 'var(--neutral-300)'}`,
+                                textAlign: 'center', transition: 'all 0.2s',
+                            }}
+                        >
+                            {uploading ? (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                    <Loader2 size={16} style={{ animation: 'spin 1s linear infinite', color: 'var(--primary-500)' }} />
+                                    <span style={{ fontSize: '0.82rem', color: 'var(--neutral-600)' }}>Procesando...</span>
                                 </div>
-                            </div>
-                        )}
+                            ) : excelPreview ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <CheckCircle2 size={18} style={{ color: '#22C55E' }} />
+                                    <div style={{ textAlign: 'left' }}>
+                                        <p style={{ fontSize: '0.8rem', color: '#16A34A', fontWeight: 700, margin: 0 }}>
+                                            ✅ {excelPreview.fileName}
+                                        </p>
+                                        <p style={{ fontSize: '0.68rem', color: 'var(--neutral-500)', margin: '2px 0 0' }}>
+                                            {excelPreview.totalRows} filas · {excelPreview.validation?.valid?.length || 0} válidos
+                                        </p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-3)' }}>
+                                    <FileSpreadsheet size={22} style={{ color: '#22C55E' }} />
+                                    <div style={{ textAlign: 'left' }}>
+                                        <p style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', margin: 0, fontWeight: 600 }}>
+                                            📋 Cirugías
+                                        </p>
+                                        <p style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', margin: '2px 0 0' }}>
+                                            Arrastrá o{' '}
+                                            <label style={{ color: 'var(--primary-500)', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}>
+                                                seleccioná
+                                                <input type="file" accept=".xlsx,.xls" onChange={handleExcelSelect} style={{ display: 'none' }} />
+                                            </label>
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* === 2. Presupuestos Excel === */}
+                        <div
+                            onDragOver={(e) => { e.preventDefault(); }}
+                            onDrop={(e) => { e.preventDefault(); const file = e.dataTransfer?.files?.[0]; if (file) handleBudgetFile(file); }}
+                            style={{
+                                padding: 'var(--space-3)',
+                                background: budgetPreview
+                                    ? 'rgba(99,102,241,0.04)'
+                                    : 'var(--neutral-50)',
+                                borderRadius: 'var(--radius-md)',
+                                border: `2px dashed ${budgetPreview ? '#6366F1' : 'var(--neutral-300)'}`,
+                                textAlign: 'center', transition: 'all 0.2s',
+                            }}
+                        >
+                            {budgetUploading ? (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                    <Loader2 size={16} style={{ animation: 'spin 1s linear infinite', color: '#6366F1' }} />
+                                    <span style={{ fontSize: '0.82rem', color: 'var(--neutral-600)' }}>Procesando presupuestos...</span>
+                                </div>
+                            ) : budgetPreview ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <CheckCircle2 size={18} style={{ color: '#6366F1' }} />
+                                    <div style={{ textAlign: 'left' }}>
+                                        <p style={{ fontSize: '0.8rem', color: '#4338CA', fontWeight: 700, margin: 0 }}>
+                                            💰 {budgetPreview.fileName}
+                                        </p>
+                                        <p style={{ fontSize: '0.68rem', color: 'var(--neutral-500)', margin: '2px 0 0' }}>
+                                            {budgetPreview.totalPresupuestos} presupuestos · {budgetPreview.totalItems} ítems
+                                            {budgetPreview.skippedNoPatient > 0 && (
+                                                <span style={{ color: '#D97706' }}> · {budgetPreview.skippedNoPatient} sin paciente</span>
+                                            )}
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setBudgetFile(null); setBudgetPreview(null); }}
+                                        style={{
+                                            marginLeft: 'auto', background: 'none', border: 'none',
+                                            cursor: 'pointer', color: 'var(--neutral-400)', padding: '4px',
+                                        }}
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-3)' }}>
+                                    <DollarSign size={22} style={{ color: '#6366F1' }} />
+                                    <div style={{ textAlign: 'left' }}>
+                                        <p style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', margin: 0, fontWeight: 600 }}>
+                                            💰 Presupuestos <span style={{ fontSize: '0.65rem', fontWeight: 400, color: 'var(--neutral-400)' }}>(opcional)</span>
+                                        </p>
+                                        <p style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', margin: '2px 0 0' }}>
+                                            Arrastrá o{' '}
+                                            <label style={{ color: '#6366F1', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}>
+                                                seleccioná
+                                                <input type="file" accept=".xlsx,.xls" onChange={handleBudgetSelect} style={{ display: 'none' }} />
+                                            </label>
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
 
@@ -1305,6 +1466,12 @@ export default function SurgeryPanel({ addToast }) {
                                                                             </div>
                                                                         </>
                                                                     )}
+
+                                                                    {/* ── PRESUPUESTOS COLLAPSIBLE ── */}
+                                                                    <BudgetCollapsible
+                                                                        idPaciente={surgery.id_paciente}
+                                                                        patientName={surgery.nombre}
+                                                                    />
                                                                 </div>
 
                                                                 {/* COL 3: Mensaje + Chat */}
