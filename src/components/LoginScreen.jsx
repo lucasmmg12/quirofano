@@ -53,7 +53,7 @@ export default function LoginScreen({ onLogin }) {
 
     return (
         <div style={{
-            position: 'fixed', inset: 0, zIndex: 99999,
+            position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 99999,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'linear-gradient(135deg, #EBF0F6 0%, #E8EDF5 30%, #F0F4FA 60%, #E6EBF3 100%)',
             fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",

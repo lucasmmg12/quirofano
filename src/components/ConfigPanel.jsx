@@ -141,8 +141,31 @@ export default function ConfigPanel({ addToast }) {
     };
 
     const handleCopy = (value) => {
-        navigator.clipboard.writeText(value);
-        addToast?.('📋 Copiado al portapapeles', 'success');
+        // Fallback for browsers without Clipboard API (pre-2021 or non-HTTPS)
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(value).then(() => {
+                addToast?.('📋 Copiado al portapapeles', 'success');
+            }).catch(() => {
+                fallbackCopy(value);
+            });
+        } else {
+            fallbackCopy(value);
+        }
+    };
+
+    const fallbackCopy = (text) => {
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            addToast?.('📋 Copiado al portapapeles', 'success');
+        } catch (e) {
+            addToast?.('No se pudo copiar', 'error');
+        }
     };
 
     const toggleSecret = (key) => {

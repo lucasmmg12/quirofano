@@ -84,10 +84,10 @@ export default function ChangePasswordModal({ isOpen, onClose, currentUser, addT
     return (
         <div
             style={{
-                position: 'fixed', inset: 0, zIndex: 100000,
+                position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 100000,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: 'rgba(0,0,0,0.4)',
-                backdropFilter: 'blur(4px)',
+                WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)',
                 animation: 'fadeIn 0.15s ease-out',
             }}
             onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}

@@ -186,6 +186,9 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const [chatPatient, setChatPatient] = useState({ name: '', phone: '' });
     const [unreadCounts, setUnreadCounts] = useState({});
 
+
+    // Far days collapsible
+    const [showFarDays, setShowFarDays] = useState(false);
     // Purge modal
     const [showPurgeModal, setShowPurgeModal] = useState(false);
     const [purgeConfirmText, setPurgeConfirmText] = useState('');
@@ -297,6 +300,26 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     }, [surgeries]);
 
     const groups = useMemo(() => groupSurgeriesByDate(filtered), [filtered]);
+
+    // Split: próximos 7 días vs resto (para no sobrecargar DOM)
+    const { nearGroups, farGroups } = useMemo(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const cutoff = new Date(today);
+        cutoff.setDate(cutoff.getDate() + 7);
+        const cutoffStr = cutoff.toISOString().split('T')[0];
+
+        const near = [];
+        const far = [];
+        for (const g of groups) {
+            if (g.date === '_sin_fecha' || g.date <= cutoffStr) {
+                near.push(g);
+            } else {
+                far.push(g);
+            }
+        }
+        return { nearGroups: near, farGroups: far };
+    }, [groups]);
 
     // Urgency summary
     const urgencySummary = useMemo(() => {
@@ -693,8 +716,552 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     };
 
     // ============================================================
-    // RENDER
+    // RENDER GROUP CALLBACK (shared by nearGroups & farGroups)
     // ============================================================
+    const renderGroup = (group) => {
+        const gcd = group.countdown;
+        const isDayExpanded = expandedDays.has(group.date);
+        return [
+            <tr key={`group-${group.date}`}
+                onClick={() => {
+                    setExpandedDays(prev => {
+                        const next = new Set(prev);
+                        if (next.has(group.date)) next.delete(group.date);
+                        else next.add(group.date);
+                        return next;
+                    });
+                }}
+                style={{ cursor: 'pointer', userSelect: 'none' }}
+            >
+                <td colSpan={9} style={{
+                    padding: '10px 16px', background: gcd.bg,
+                    borderLeft: `4px solid ${gcd.color}`,
+                    fontWeight: 700, fontSize: '0.82rem', color: gcd.color,
+                    transition: 'background 0.15s',
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <ChevronRight size={15} style={{
+                                transition: 'transform 0.2s ease',
+                                transform: isDayExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                            }} />
+                            <Timer size={15} />
+                            {group.date === '_sin_fecha' ? '📭 Sin fecha asignada' : formatGroupDate(group.date)}
+                        </span>
+                        <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '5px',
+                            padding: '3px 10px', borderRadius: 'var(--radius-full)',
+                            background: gcd.color + '15', fontSize: '0.75rem',
+                        }}>
+                            {gcd.icon} {gcd.label} — {group.items.length} cx
+                        </span>
+                    </div>
+                </td>
+            </tr>,
+            /* Rows — solo si el día está expandido */
+            ...(!isDayExpanded ? [] : group.items.flatMap(surgery => {
+                const effectiveStatus = getEffectiveStatus(surgery);
+                const cfg = STATUS_CONFIG[effectiveStatus] || STATUS_CONFIG.lila;
+                const cd = getCountdown(surgery.fecha_cirugia);
+                const isExpanded = expandedRowId === surgery.id;
+                return renderSurgeryRows(surgery, effectiveStatus, cfg, cd, isExpanded);
+            })),
+        ];
+    };
+
+    // Render individual surgery rows (extracted for reuse)
+    const renderSurgeryRows = (surgery, effectiveStatus, cfg, cd, isExpanded) => {
+        const rows = [
+            <tr key={surgery.id} className="cart__row"
+                onClick={() => { setExpandedRowId(isExpanded ? null : surgery.id); setCustomMessage(''); }}
+                style={{ cursor: 'pointer', transition: 'background 0.15s' }}
+                onMouseOver={e => { if (!isExpanded) e.currentTarget.style.background = 'var(--neutral-50)'; }}
+                onMouseOut={e => { if (!isExpanded) e.currentTarget.style.background = ''; }}
+            >
+                {/* Expand Chevron */}
+                <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }}>
+                    <ChevronRight size={14} style={{
+                        color: 'var(--neutral-400)',
+                        transition: 'transform 0.2s ease',
+                        transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                    }} />
+                </td>
+                {/* Urgency Indicator */}
+                <td className="cart__td" style={{ textAlign: 'center', padding: '6px' }}>
+                    <div style={{
+                        width: '10px', height: '10px', borderRadius: '50%',
+                        background: cd.color, margin: '0 auto',
+                        boxShadow: cd.urgency === 'critical' ? `0 0 8px ${cd.color}80` : 'none',
+                        animation: cd.urgency === 'critical' ? 'pulse 1.5s ease-in-out infinite' : 'none',
+                    }} title={cd.label} />
+                </td>
+                {/* Status */}
+                <td className="cart__td" style={{ position: 'relative' }}>
+                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setStatusDropdownId(prev => prev === surgery.id ? null : surgery.id);
+                            }}
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                padding: '3px 10px', borderRadius: 'var(--radius-full)',
+                                fontSize: '0.72rem', fontWeight: 600,
+                                background: cfg.bg, color: cfg.color,
+                                border: `1px solid ${cfg.color}25`,
+                                cursor: 'pointer', transition: 'all 0.15s',
+                            }}
+                            onMouseOver={e => { e.currentTarget.style.boxShadow = `0 0 0 2px ${cfg.color}30`; }}
+                            onMouseOut={e => { e.currentTarget.style.boxShadow = 'none'; }}
+                            title="Click para cambiar estado"
+                        >
+                            {cfg.icon} {cfg.label}
+                        </button>
+                        {statusDropdownId === surgery.id && (
+                            <>
+                                <div
+                                    onClick={(e) => { e.stopPropagation(); setStatusDropdownId(null); }}
+                                    style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 999 }}
+                                />
+                                <div style={{
+                                    position: 'absolute', top: '100%', left: 0,
+                                    marginTop: '4px', zIndex: 1000,
+                                    background: '#fff', borderRadius: '10px',
+                                    boxShadow: '0 8px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
+                                    padding: '4px', minWidth: '150px',
+                                    animation: 'fadeIn 0.15s ease-out',
+                                }}>
+                                    {Object.entries(STATUS_CONFIG)
+                                        .filter(([key]) => !['realizada', 'suspendida'].includes(key))
+                                        .map(([key, scfg]) => (
+                                            <button
+                                                key={key}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleManualChange(surgery.id, key);
+                                                    setStatusDropdownId(null);
+                                                }}
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', gap: '8px',
+                                                    width: '100%', padding: '7px 12px',
+                                                    border: 'none', borderRadius: '6px',
+                                                    background: effectiveStatus === key ? `${scfg.bg}` : 'transparent',
+                                                    color: scfg.color, cursor: 'pointer',
+                                                    fontSize: '0.78rem', fontWeight: 600,
+                                                    transition: 'background 0.1s',
+                                                    textAlign: 'left',
+                                                }}
+                                                onMouseOver={e => e.currentTarget.style.background = scfg.bg}
+                                                onMouseOut={e => e.currentTarget.style.background = effectiveStatus === key ? scfg.bg : 'transparent'}
+                                            >
+                                                <span>{scfg.icon}</span>
+                                                <span>{scfg.label}</span>
+                                                {effectiveStatus === key && <span style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>✓</span>}
+                                            </button>
+                                        ))}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </td>
+                {/* Patient */}
+                <td className="cart__td" style={{ fontWeight: 600, fontSize: '0.82rem' }}>
+                    {surgery.nombre}
+                </td>
+                {/* Obra Social */}
+                <td className="cart__td" style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>
+                    {surgery.obra_social || '—'}
+                </td>
+                {/* Fecha */}
+                <td className="cart__td" style={{ fontWeight: 500, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                    {formatFullDate(surgery.fecha_cirugia)}
+                </td>
+                {/* Countdown */}
+                <td className="cart__td">
+                    <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                        padding: '3px 10px', borderRadius: 'var(--radius-full)',
+                        fontSize: '0.75rem', fontWeight: 700,
+                        background: cd.bg, color: cd.color,
+                        fontFamily: 'monospace', letterSpacing: '-0.3px',
+                    }}>
+                        <Clock size={12} /> {cd.label}
+                    </span>
+                </td>
+                {/* Médico */}
+                <td className="cart__td" style={{ fontSize: '0.78rem' }}>
+                    {surgery.medico || '—'}
+                </td>
+                {/* Teléfono + badge chat */}
+                <td className="cart__td" style={{ fontSize: '0.78rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {surgery.telefono ? (
+                            surgery.telefono.startsWith('549') ? (
+                                <span style={{ fontFamily: 'monospace', color: 'var(--neutral-700)' }}>
+                                    {surgery.telefono}
+                                </span>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <span style={{ fontFamily: 'monospace', color: '#DC2626' }}>
+                                        {surgery.telefono}
+                                    </span>
+                                    <span style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                        padding: '1px 6px', borderRadius: '4px',
+                                        background: '#FEE2E2', color: '#DC2626',
+                                        fontSize: '0.6rem', fontWeight: 700,
+                                        border: '1px solid #FECACA',
+                                    }}>
+                                        ⚠️ TEL INVÁLIDO
+                                    </span>
+                                </div>
+                            )
+                        ) : (
+                            <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                padding: '1px 6px', borderRadius: '4px',
+                                background: '#FEF3C7', color: '#92400E',
+                                fontSize: '0.65rem', fontWeight: 600,
+                            }}>
+                                📵 SIN TELÉFONO
+                            </span>
+                        )}
+                        {/* Badge de mensajes no leídos */}
+                        {(() => {
+                            const norm = surgery.telefono ? normalizeArgentinePhone(surgery.telefono) : '';
+                            const count = norm ? (unreadCounts[norm] || 0) : 0;
+                            return count > 0 ? (
+                                <span style={{
+                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                    minWidth: '20px', height: '20px', padding: '0 5px',
+                                    borderRadius: '10px', background: '#EF4444', color: '#fff',
+                                    fontSize: '0.65rem', fontWeight: 800,
+                                    animation: 'pulse 2s infinite',
+                                    boxShadow: '0 0 6px rgba(239,68,68,0.4)',
+                                }}>
+                                    {count}
+                                </span>
+                            ) : null;
+                        })()}
+                    </div>
+                </td>
+            </tr>,
+        ];
+        /* ===== EXPANDED DETAIL ROW ===== */
+        if (isExpanded) {
+            const statusActions = getStatusActions(surgery);
+            const resultActions = getResultActions(surgery);
+            rows.push(
+                <tr key={`${surgery.id}-detail`}>
+                    <td colSpan={9} style={{
+                        padding: 0, background: 'var(--neutral-50)',
+                        borderLeft: `4px solid ${cfg.color}`,
+                        animation: 'fadeIn 0.2s ease-out',
+                    }}>
+                        <div style={{
+                            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
+                            gap: 'var(--space-4)', padding: 'var(--space-4) var(--space-5)',
+                        }}>
+                            {/* COL 1: Info + Status Actions */}
+                            <div>
+                                <h4 style={{ margin: '0 0 10px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    📋 Estado del Proceso
+                                </h4>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    {statusActions.map((act, i) => (
+                                        <button key={i} onClick={(e) => { e.stopPropagation(); act.action(); }} disabled={processing}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '8px',
+                                                padding: '8px 14px', borderRadius: 'var(--radius-md)',
+                                                background: '#fff', color: act.color,
+                                                fontSize: '0.78rem', fontWeight: 600,
+                                                border: `1.5px solid ${act.color}30`, cursor: 'pointer',
+                                                transition: 'all 0.15s', textAlign: 'left',
+                                            }}
+                                            onMouseOver={e => { e.currentTarget.style.background = act.color + '10'; e.currentTarget.style.borderColor = act.color; }}
+                                            onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = act.color + '30'; }}
+                                        >
+                                            <act.icon size={15} /> {act.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                {/* Resultado */}
+                                <h4 style={{ margin: '14px 0 8px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    ✅ Resultado
+                                </h4>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                    {resultActions.map((act, i) => (
+                                        <button key={i} onClick={(e) => { e.stopPropagation(); act.action(); }} disabled={processing}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '6px',
+                                                padding: '7px 14px', borderRadius: 'var(--radius-md)',
+                                                background: '#fff', color: act.color,
+                                                fontSize: '0.78rem', fontWeight: 600,
+                                                border: `1.5px solid ${act.color}30`, cursor: 'pointer',
+                                                transition: 'all 0.15s',
+                                            }}
+                                            onMouseOver={e => { e.currentTarget.style.background = act.color + '10'; e.currentTarget.style.borderColor = act.color; }}
+                                            onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = act.color + '30'; }}
+                                        >
+                                            <act.icon size={14} /> {act.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                {/* Gestión */}
+                                <h4 style={{ margin: '14px 0 8px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    ⚙️ Gestión
+                                </h4>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                    <button onClick={(e) => { e.stopPropagation(); handleOpenEdit(surgery); }} disabled={processing}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '6px',
+                                            padding: '7px 14px', borderRadius: 'var(--radius-md)',
+                                            background: '#fff', color: '#6366F1',
+                                            fontSize: '0.78rem', fontWeight: 600,
+                                            border: '1.5px solid #6366F130', cursor: 'pointer',
+                                            transition: 'all 0.15s',
+                                        }}
+                                        onMouseOver={e => { e.currentTarget.style.background = '#6366F110'; e.currentTarget.style.borderColor = '#6366F1'; }}
+                                        onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#6366F130'; }}
+                                    >
+                                        <Pencil size={14} /> Editar
+                                    </button>
+                                    <button onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(surgery.id); }} disabled={processing}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '6px',
+                                            padding: '7px 14px', borderRadius: 'var(--radius-md)',
+                                            background: '#fff', color: '#EF4444',
+                                            fontSize: '0.78rem', fontWeight: 600,
+                                            border: '1.5px solid #EF444430', cursor: 'pointer',
+                                            transition: 'all 0.15s',
+                                        }}
+                                        onMouseOver={e => { e.currentTarget.style.background = '#EF444410'; e.currentTarget.style.borderColor = '#EF4444'; }}
+                                        onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#EF444430'; }}
+                                    >
+                                        <Trash2 size={14} /> Borrar
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* COL 2: Datos adicionales */}
+                            <div>
+                                <h4 style={{ margin: '0 0 10px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    📄 Datos Adicionales
+                                </h4>
+                                <div style={{
+                                    background: '#fff', borderRadius: 'var(--radius-md)',
+                                    border: '1px solid var(--neutral-200)', padding: 'var(--space-3)',
+                                    fontSize: '0.78rem',
+                                }}>
+                                    {[
+                                        { label: 'ID Paciente', value: surgery.id_paciente },
+                                        { label: 'Módulo', value: surgery.modulo },
+                                        { label: 'Notas', value: surgery.notas },
+                                        { label: 'Operador', value: surgery.operador },
+                                        { label: 'Creado', value: surgery.created_at ? new Date(surgery.created_at).toLocaleDateString('es-AR') : null },
+                                    ].map(({ label, value }) => (
+                                        <div key={label} style={{
+                                            display: 'flex', justifyContent: 'space-between',
+                                            padding: '5px 0', borderBottom: '1px solid var(--neutral-100)',
+                                        }}>
+                                            <span style={{ color: 'var(--neutral-400)', fontWeight: 500 }}>{label}</span>
+                                            <span style={{ fontWeight: 600, color: 'var(--neutral-700)' }}>{value || '—'}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                {/* Event history */}
+                                {surgery.surgery_events?.length > 0 && (
+                                    <>
+                                        <h4 style={{ margin: '14px 0 8px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                            📜 Historial ({surgery.surgery_events.length} eventos)
+                                        </h4>
+                                        <div style={{ maxHeight: '220px', overflow: 'auto', background: '#fff', borderRadius: 'var(--radius-md)', border: '1px solid var(--neutral-200)', padding: '4px' }}>
+                                            {surgery.surgery_events.slice().reverse().map((evt, i) => {
+                                                const fromCfg = STATUS_CONFIG[evt.from_status];
+                                                const toCfg = STATUS_CONFIG[evt.to_status];
+                                                const isNotification = evt.event_type?.includes('notif') || evt.details?.includes('Notificación');
+                                                const isProblem = evt.to_status === 'rojo' || evt.details?.includes('Problema');
+                                                const isManual = evt.details?.includes('manual') || evt.performed_by === 'operador';
+                                                const eventIcon = isProblem ? '🔴' : isNotification ? '📨' : isManual ? '✋' : '⚡';
+
+                                                return (
+                                                    <div key={i} style={{
+                                                        padding: '8px 10px', fontSize: '0.73rem',
+                                                        borderBottom: i < surgery.surgery_events.length - 1 ? '1px solid var(--neutral-100)' : 'none',
+                                                        display: 'flex', flexDirection: 'column', gap: '3px',
+                                                        background: i === 0 ? 'var(--neutral-50)' : 'transparent',
+                                                        borderRadius: i === 0 ? 'var(--radius-sm)' : '0',
+                                                    }}>
+                                                        {/* Línea 1: Fecha + Ícono + Detalle */}
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <span style={{
+                                                                color: 'var(--neutral-400)', fontFamily: 'monospace',
+                                                                fontSize: '0.68rem', whiteSpace: 'nowrap',
+                                                                minWidth: '110px',
+                                                            }}>
+                                                                {new Date(evt.created_at).toLocaleString('es-AR', {
+                                                                    day: '2-digit', month: '2-digit', year: '2-digit',
+                                                                    hour: '2-digit', minute: '2-digit',
+                                                                })}
+                                                            </span>
+                                                            <span>{eventIcon}</span>
+                                                            <span style={{ color: 'var(--neutral-700)', fontWeight: 500, flex: 1 }}>
+                                                                {evt.details}
+                                                            </span>
+                                                        </div>
+
+                                                        {/* Línea 2: Transición de estado + Performer */}
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '116px' }}>
+                                                            {fromCfg && toCfg && (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                    <span style={{
+                                                                        padding: '1px 6px', borderRadius: '8px',
+                                                                        fontSize: '0.65rem', fontWeight: 600,
+                                                                        background: fromCfg.bg, color: fromCfg.color,
+                                                                        border: `1px solid ${fromCfg.color}30`,
+                                                                    }}>
+                                                                        {fromCfg.icon} {fromCfg.label}
+                                                                    </span>
+                                                                    <span style={{ color: 'var(--neutral-300)', fontSize: '0.65rem' }}>→</span>
+                                                                    <span style={{
+                                                                        padding: '1px 6px', borderRadius: '8px',
+                                                                        fontSize: '0.65rem', fontWeight: 600,
+                                                                        background: toCfg.bg, color: toCfg.color,
+                                                                        border: `1px solid ${toCfg.color}30`,
+                                                                    }}>
+                                                                        {toCfg.icon} {toCfg.label}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {evt.performed_by && (
+                                                                <span style={{
+                                                                    marginLeft: 'auto', fontSize: '0.65rem',
+                                                                    color: 'var(--neutral-400)', fontStyle: 'italic',
+                                                                }}>
+                                                                    por {evt.performed_by}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* ── PRESUPUESTOS COLLAPSIBLE ── */}
+                                <BudgetCollapsible
+                                    idPaciente={surgery.id_paciente}
+                                    patientName={surgery.nombre}
+                                />
+                            </div>
+
+                            {/* COL 3: Mensaje + Chat */}
+                            <div>
+                                <h4 style={{ margin: '0 0 10px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <MessageSquare size={13} /> Comunicación
+                                </h4>
+
+                                {/* Botón Ir al Chat */}
+                                {surgery.telefono && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); openChat(surgery); }}
+                                        style={{
+                                            width: '100%', padding: '12px 16px',
+                                            borderRadius: 'var(--radius-md)',
+                                            background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                                            color: '#fff', fontSize: '0.85rem', fontWeight: 700,
+                                            border: 'none', cursor: 'pointer',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                                            transition: 'all 0.2s', position: 'relative',
+                                            boxShadow: '0 3px 12px rgba(37,211,102,0.3)',
+                                        }}
+                                        onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(37,211,102,0.4)'; }}
+                                        onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 3px 12px rgba(37,211,102,0.3)'; }}
+                                    >
+                                        <MessageSquare size={18} />
+                                        💬 Ir al Chat
+                                        {(() => {
+                                            const norm = normalizeArgentinePhone(surgery.telefono);
+                                            const count = norm ? (unreadCounts[norm] || 0) : 0;
+                                            return count > 0 ? (
+                                                <span style={{
+                                                    position: 'absolute', top: '-6px', right: '-6px',
+                                                    minWidth: '22px', height: '22px', padding: '0 6px',
+                                                    borderRadius: '11px', background: '#EF4444', color: '#fff',
+                                                    fontSize: '0.7rem', fontWeight: 800,
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    animation: 'pulse 2s infinite',
+                                                    boxShadow: '0 0 8px rgba(239,68,68,0.5)',
+                                                    border: '2px solid #fff',
+                                                }}>
+                                                    {count}
+                                                </span>
+                                            ) : null;
+                                        })()}
+                                    </button>
+                                )}
+
+                                {/* Envío rápido */}
+                                <div style={{
+                                    background: '#fff', borderRadius: 'var(--radius-md)',
+                                    border: '1px solid var(--neutral-200)', padding: 'var(--space-3)',
+                                    marginTop: '10px',
+                                }}>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--neutral-400)', marginBottom: '8px' }}>
+                                        Envío rápido a <strong style={{ color: 'var(--neutral-700)' }}>{surgery.nombre}</strong>
+                                    </div>
+                                    <textarea
+                                        value={customMessage}
+                                        onChange={e => setCustomMessage(e.target.value)}
+                                        onClick={e => e.stopPropagation()}
+                                        placeholder="Mensaje rápido..."
+                                        style={{
+                                            width: '100%', minHeight: '60px', padding: '10px',
+                                            borderRadius: 'var(--radius-md)',
+                                            border: '1.5px solid var(--neutral-200)',
+                                            fontSize: '0.82rem', fontFamily: 'inherit',
+                                            resize: 'vertical', outline: 'none',
+                                            transition: 'border-color 0.2s',
+                                        }}
+                                        onFocus={e => e.target.style.borderColor = '#22C55E'}
+                                        onBlur={e => e.target.style.borderColor = 'var(--neutral-200)'}
+                                    />
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleSendCustomMessage(surgery); }}
+                                            disabled={!customMessage.trim() || !surgery.telefono || sendingMessage}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '6px',
+                                                padding: '8px 16px', borderRadius: 'var(--radius-md)',
+                                                background: (!customMessage.trim() || !surgery.telefono) ? 'var(--neutral-200)' : '#25D366',
+                                                color: (!customMessage.trim() || !surgery.telefono) ? 'var(--neutral-400)' : '#fff',
+                                                fontSize: '0.78rem', fontWeight: 700,
+                                                border: 'none', cursor: (!customMessage.trim() || !surgery.telefono) ? 'not-allowed' : 'pointer',
+                                                transition: 'all 0.15s',
+                                            }}
+                                        >
+                                            {sendingMessage ? (
+                                                <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Enviando...</>
+                                            ) : (
+                                                <><Send size={14} /> Enviar</>
+                                            )}
+                                        </button>
+                                    </div>
+                                    {!surgery.telefono && (
+                                        <p style={{ margin: '6px 0 0', fontSize: '0.7rem', color: '#DC2626', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <AlertCircle size={11} /> Sin teléfono — no se puede enviar
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            );
+        }
+        return rows;
+    };
 
     return (
         <div className="content no-print" style={{
@@ -1049,546 +1616,51 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                 </tr>
                             </thead>
                             <tbody>
-                                {groups.map(group => {
-                                    const gcd = group.countdown;
-                                    const isDayExpanded = expandedDays.has(group.date);
-                                    return [
-                                        /* Date Group Header — clickeable para expandir/colapsar */
-                                        <tr key={`group-${group.date}`}
-                                            onClick={() => {
-                                                setExpandedDays(prev => {
-                                                    const next = new Set(prev);
-                                                    if (next.has(group.date)) next.delete(group.date);
-                                                    else next.add(group.date);
-                                                    return next;
-                                                });
-                                            }}
-                                            style={{ cursor: 'pointer', userSelect: 'none' }}
-                                        >
-                                            <td colSpan={9} style={{
-                                                padding: '10px 16px', background: gcd.bg,
-                                                borderLeft: `4px solid ${gcd.color}`,
-                                                fontWeight: 700, fontSize: '0.82rem', color: gcd.color,
-                                                transition: 'background 0.15s',
-                                            }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <ChevronRight size={15} style={{
-                                                            transition: 'transform 0.2s ease',
-                                                            transform: isDayExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                                                        }} />
-                                                        <Timer size={15} />
-                                                        {group.date === '_sin_fecha' ? '📭 Sin fecha asignada' : formatGroupDate(group.date)}
-                                                    </span>
-                                                    <span style={{
-                                                        display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                                        padding: '3px 10px', borderRadius: 'var(--radius-full)',
-                                                        background: gcd.color + '15', fontSize: '0.75rem',
-                                                    }}>
-                                                        {gcd.icon} {gcd.label} — {group.items.length} cx
-                                                    </span>
-                                                </div>
-                                            </td>
-                                        </tr>,
-                                        /* Rows — solo si el día está expandido */
-                                        ...(!isDayExpanded ? [] : group.items.flatMap(surgery => {
-                                            const effectiveStatus = getEffectiveStatus(surgery);
-                                            const cfg = STATUS_CONFIG[effectiveStatus] || STATUS_CONFIG.lila;
-                                            const cd = getCountdown(surgery.fecha_cirugia);
-                                            const isExpanded = expandedRowId === surgery.id;
-                                            const rows = [
-                                                <tr key={surgery.id} className="cart__row"
-                                                    onClick={() => { setExpandedRowId(isExpanded ? null : surgery.id); setCustomMessage(''); }}
-                                                    style={{ cursor: 'pointer', transition: 'background 0.15s' }}
-                                                    onMouseOver={e => { if (!isExpanded) e.currentTarget.style.background = 'var(--neutral-50)'; }}
-                                                    onMouseOut={e => { if (!isExpanded) e.currentTarget.style.background = ''; }}
-                                                >
-                                                    {/* Expand Chevron */}
-                                                    <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }}>
-                                                        <ChevronRight size={14} style={{
-                                                            color: 'var(--neutral-400)',
-                                                            transition: 'transform 0.2s ease',
-                                                            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                                                        }} />
-                                                    </td>
-                                                    {/* Urgency Indicator */}
-                                                    <td className="cart__td" style={{ textAlign: 'center', padding: '6px' }}>
-                                                        <div style={{
-                                                            width: '10px', height: '10px', borderRadius: '50%',
-                                                            background: cd.color, margin: '0 auto',
-                                                            boxShadow: cd.urgency === 'critical' ? `0 0 8px ${cd.color}80` : 'none',
-                                                            animation: cd.urgency === 'critical' ? 'pulse 1.5s ease-in-out infinite' : 'none',
-                                                        }} title={cd.label} />
-                                                    </td>
-                                                    {/* Status */}
-                                                    <td className="cart__td" style={{ position: 'relative' }}>
-                                                        <div style={{ position: 'relative', display: 'inline-block' }}>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setStatusDropdownId(prev => prev === surgery.id ? null : surgery.id);
-                                                                }}
-                                                                style={{
-                                                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                                    padding: '3px 10px', borderRadius: 'var(--radius-full)',
-                                                                    fontSize: '0.72rem', fontWeight: 600,
-                                                                    background: cfg.bg, color: cfg.color,
-                                                                    border: `1px solid ${cfg.color}25`,
-                                                                    cursor: 'pointer', transition: 'all 0.15s',
-                                                                }}
-                                                                onMouseOver={e => { e.currentTarget.style.boxShadow = `0 0 0 2px ${cfg.color}30`; }}
-                                                                onMouseOut={e => { e.currentTarget.style.boxShadow = 'none'; }}
-                                                                title="Click para cambiar estado"
-                                                            >
-                                                                {cfg.icon} {cfg.label}
-                                                            </button>
-                                                            {statusDropdownId === surgery.id && (
-                                                                <>
-                                                                    <div
-                                                                        onClick={(e) => { e.stopPropagation(); setStatusDropdownId(null); }}
-                                                                        style={{ position: 'fixed', inset: 0, zIndex: 999 }}
-                                                                    />
-                                                                    <div style={{
-                                                                        position: 'absolute', top: '100%', left: 0,
-                                                                        marginTop: '4px', zIndex: 1000,
-                                                                        background: '#fff', borderRadius: '10px',
-                                                                        boxShadow: '0 8px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
-                                                                        padding: '4px', minWidth: '150px',
-                                                                        animation: 'fadeIn 0.15s ease-out',
-                                                                    }}>
-                                                                        {Object.entries(STATUS_CONFIG)
-                                                                            .filter(([key]) => !['realizada', 'suspendida'].includes(key))
-                                                                            .map(([key, scfg]) => (
-                                                                                <button
-                                                                                    key={key}
-                                                                                    onClick={(e) => {
-                                                                                        e.stopPropagation();
-                                                                                        handleManualChange(surgery.id, key);
-                                                                                        setStatusDropdownId(null);
-                                                                                    }}
-                                                                                    style={{
-                                                                                        display: 'flex', alignItems: 'center', gap: '8px',
-                                                                                        width: '100%', padding: '7px 12px',
-                                                                                        border: 'none', borderRadius: '6px',
-                                                                                        background: effectiveStatus === key ? `${scfg.bg}` : 'transparent',
-                                                                                        color: scfg.color, cursor: 'pointer',
-                                                                                        fontSize: '0.78rem', fontWeight: 600,
-                                                                                        transition: 'background 0.1s',
-                                                                                        textAlign: 'left',
-                                                                                    }}
-                                                                                    onMouseOver={e => e.currentTarget.style.background = scfg.bg}
-                                                                                    onMouseOut={e => e.currentTarget.style.background = effectiveStatus === key ? scfg.bg : 'transparent'}
-                                                                                >
-                                                                                    <span>{scfg.icon}</span>
-                                                                                    <span>{scfg.label}</span>
-                                                                                    {effectiveStatus === key && <span style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>✓</span>}
-                                                                                </button>
-                                                                            ))}
-                                                                    </div>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    {/* Patient */}
-                                                    <td className="cart__td" style={{ fontWeight: 600, fontSize: '0.82rem' }}>
-                                                        {surgery.nombre}
-                                                    </td>
-                                                    {/* Obra Social */}
-                                                    <td className="cart__td" style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>
-                                                        {surgery.obra_social || '—'}
-                                                    </td>
-                                                    {/* Fecha */}
-                                                    <td className="cart__td" style={{ fontWeight: 500, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                                                        {formatFullDate(surgery.fecha_cirugia)}
-                                                    </td>
-                                                    {/* Countdown */}
-                                                    <td className="cart__td">
-                                                        <span style={{
-                                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                            padding: '3px 10px', borderRadius: 'var(--radius-full)',
-                                                            fontSize: '0.75rem', fontWeight: 700,
-                                                            background: cd.bg, color: cd.color,
-                                                            fontFamily: 'monospace', letterSpacing: '-0.3px',
-                                                        }}>
-                                                            <Clock size={12} /> {cd.label}
-                                                        </span>
-                                                    </td>
-                                                    {/* Médico */}
-                                                    <td className="cart__td" style={{ fontSize: '0.78rem' }}>
-                                                        {surgery.medico || '—'}
-                                                    </td>
-                                                    {/* Teléfono + badge chat */}
-                                                    <td className="cart__td" style={{ fontSize: '0.78rem' }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                            {surgery.telefono ? (
-                                                                surgery.telefono.startsWith('549') ? (
-                                                                    <span style={{ fontFamily: 'monospace', color: 'var(--neutral-700)' }}>
-                                                                        {surgery.telefono}
-                                                                    </span>
-                                                                ) : (
-                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                                        <span style={{ fontFamily: 'monospace', color: '#DC2626' }}>
-                                                                            {surgery.telefono}
-                                                                        </span>
-                                                                        <span style={{
-                                                                            display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                                                            padding: '1px 6px', borderRadius: '4px',
-                                                                            background: '#FEE2E2', color: '#DC2626',
-                                                                            fontSize: '0.6rem', fontWeight: 700,
-                                                                            border: '1px solid #FECACA',
-                                                                        }}>
-                                                                            ⚠️ TEL INVÁLIDO
-                                                                        </span>
-                                                                    </div>
-                                                                )
-                                                            ) : (
-                                                                <span style={{
-                                                                    display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                                                    padding: '1px 6px', borderRadius: '4px',
-                                                                    background: '#FEF3C7', color: '#92400E',
-                                                                    fontSize: '0.65rem', fontWeight: 600,
-                                                                }}>
-                                                                    📵 SIN TELÉFONO
-                                                                </span>
-                                                            )}
-                                                            {/* Badge de mensajes no leídos */}
-                                                            {(() => {
-                                                                const norm = surgery.telefono ? normalizeArgentinePhone(surgery.telefono) : '';
-                                                                const count = norm ? (unreadCounts[norm] || 0) : 0;
-                                                                return count > 0 ? (
-                                                                    <span style={{
-                                                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                                        minWidth: '20px', height: '20px', padding: '0 5px',
-                                                                        borderRadius: '10px', background: '#EF4444', color: '#fff',
-                                                                        fontSize: '0.65rem', fontWeight: 800,
-                                                                        animation: 'pulse 2s infinite',
-                                                                        boxShadow: '0 0 6px rgba(239,68,68,0.4)',
-                                                                    }}>
-                                                                        {count}
-                                                                    </span>
-                                                                ) : null;
-                                                            })()}
-                                                        </div>
-                                                    </td>
-                                                </tr>,
-                                            ];
-                                            /* ===== EXPANDED DETAIL ROW ===== */
-                                            if (isExpanded) {
-                                                const statusActions = getStatusActions(surgery);
-                                                const resultActions = getResultActions(surgery);
-                                                rows.push(
-                                                    <tr key={`${surgery.id}-detail`}>
-                                                        <td colSpan={9} style={{
-                                                            padding: 0, background: 'var(--neutral-50)',
-                                                            borderLeft: `4px solid ${cfg.color}`,
-                                                            animation: 'fadeIn 0.2s ease-out',
-                                                        }}>
-                                                            <div style={{
-                                                                display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
-                                                                gap: 'var(--space-4)', padding: 'var(--space-4) var(--space-5)',
-                                                            }}>
-                                                                {/* COL 1: Info + Status Actions */}
-                                                                <div>
-                                                                    <h4 style={{ margin: '0 0 10px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                                                        📋 Estado del Proceso
-                                                                    </h4>
-                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                                        {statusActions.map((act, i) => (
-                                                                            <button key={i} onClick={(e) => { e.stopPropagation(); act.action(); }} disabled={processing}
-                                                                                style={{
-                                                                                    display: 'flex', alignItems: 'center', gap: '8px',
-                                                                                    padding: '8px 14px', borderRadius: 'var(--radius-md)',
-                                                                                    background: '#fff', color: act.color,
-                                                                                    fontSize: '0.78rem', fontWeight: 600,
-                                                                                    border: `1.5px solid ${act.color}30`, cursor: 'pointer',
-                                                                                    transition: 'all 0.15s', textAlign: 'left',
-                                                                                }}
-                                                                                onMouseOver={e => { e.currentTarget.style.background = act.color + '10'; e.currentTarget.style.borderColor = act.color; }}
-                                                                                onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = act.color + '30'; }}
-                                                                            >
-                                                                                <act.icon size={15} /> {act.label}
-                                                                            </button>
-                                                                        ))}
-                                                                    </div>
-                                                                    {/* Resultado */}
-                                                                    <h4 style={{ margin: '14px 0 8px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                                                        ✅ Resultado
-                                                                    </h4>
-                                                                    <div style={{ display: 'flex', gap: '6px' }}>
-                                                                        {resultActions.map((act, i) => (
-                                                                            <button key={i} onClick={(e) => { e.stopPropagation(); act.action(); }} disabled={processing}
-                                                                                style={{
-                                                                                    display: 'flex', alignItems: 'center', gap: '6px',
-                                                                                    padding: '7px 14px', borderRadius: 'var(--radius-md)',
-                                                                                    background: '#fff', color: act.color,
-                                                                                    fontSize: '0.78rem', fontWeight: 600,
-                                                                                    border: `1.5px solid ${act.color}30`, cursor: 'pointer',
-                                                                                    transition: 'all 0.15s',
-                                                                                }}
-                                                                                onMouseOver={e => { e.currentTarget.style.background = act.color + '10'; e.currentTarget.style.borderColor = act.color; }}
-                                                                                onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = act.color + '30'; }}
-                                                                            >
-                                                                                <act.icon size={14} /> {act.label}
-                                                                            </button>
-                                                                        ))}
-                                                                    </div>
-                                                                    {/* Gestión */}
-                                                                    <h4 style={{ margin: '14px 0 8px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                                                        ⚙️ Gestión
-                                                                    </h4>
-                                                                    <div style={{ display: 'flex', gap: '6px' }}>
-                                                                        <button onClick={(e) => { e.stopPropagation(); handleOpenEdit(surgery); }} disabled={processing}
-                                                                            style={{
-                                                                                display: 'flex', alignItems: 'center', gap: '6px',
-                                                                                padding: '7px 14px', borderRadius: 'var(--radius-md)',
-                                                                                background: '#fff', color: '#6366F1',
-                                                                                fontSize: '0.78rem', fontWeight: 600,
-                                                                                border: '1.5px solid #6366F130', cursor: 'pointer',
-                                                                                transition: 'all 0.15s',
-                                                                            }}
-                                                                            onMouseOver={e => { e.currentTarget.style.background = '#6366F110'; e.currentTarget.style.borderColor = '#6366F1'; }}
-                                                                            onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#6366F130'; }}
-                                                                        >
-                                                                            <Pencil size={14} /> Editar
-                                                                        </button>
-                                                                        <button onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(surgery.id); }} disabled={processing}
-                                                                            style={{
-                                                                                display: 'flex', alignItems: 'center', gap: '6px',
-                                                                                padding: '7px 14px', borderRadius: 'var(--radius-md)',
-                                                                                background: '#fff', color: '#EF4444',
-                                                                                fontSize: '0.78rem', fontWeight: 600,
-                                                                                border: '1.5px solid #EF444430', cursor: 'pointer',
-                                                                                transition: 'all 0.15s',
-                                                                            }}
-                                                                            onMouseOver={e => { e.currentTarget.style.background = '#EF444410'; e.currentTarget.style.borderColor = '#EF4444'; }}
-                                                                            onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#EF444430'; }}
-                                                                        >
-                                                                            <Trash2 size={14} /> Borrar
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
+                                {nearGroups.map(renderGroup)}
 
-                                                                {/* COL 2: Datos adicionales */}
-                                                                <div>
-                                                                    <h4 style={{ margin: '0 0 10px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                                                        📄 Datos Adicionales
-                                                                    </h4>
-                                                                    <div style={{
-                                                                        background: '#fff', borderRadius: 'var(--radius-md)',
-                                                                        border: '1px solid var(--neutral-200)', padding: 'var(--space-3)',
-                                                                        fontSize: '0.78rem',
-                                                                    }}>
-                                                                        {[
-                                                                            { label: 'ID Paciente', value: surgery.id_paciente },
-                                                                            { label: 'Módulo', value: surgery.modulo },
-                                                                            { label: 'Notas', value: surgery.notas },
-                                                                            { label: 'Operador', value: surgery.operador },
-                                                                            { label: 'Creado', value: surgery.created_at ? new Date(surgery.created_at).toLocaleDateString('es-AR') : null },
-                                                                        ].map(({ label, value }) => (
-                                                                            <div key={label} style={{
-                                                                                display: 'flex', justifyContent: 'space-between',
-                                                                                padding: '5px 0', borderBottom: '1px solid var(--neutral-100)',
-                                                                            }}>
-                                                                                <span style={{ color: 'var(--neutral-400)', fontWeight: 500 }}>{label}</span>
-                                                                                <span style={{ fontWeight: 600, color: 'var(--neutral-700)' }}>{value || '—'}</span>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                    {/* Event history */}
-                                                                    {surgery.surgery_events?.length > 0 && (
-                                                                        <>
-                                                                            <h4 style={{ margin: '14px 0 8px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                                                                📜 Historial ({surgery.surgery_events.length} eventos)
-                                                                            </h4>
-                                                                            <div style={{ maxHeight: '220px', overflow: 'auto', background: '#fff', borderRadius: 'var(--radius-md)', border: '1px solid var(--neutral-200)', padding: '4px' }}>
-                                                                                {surgery.surgery_events.slice().reverse().map((evt, i) => {
-                                                                                    const fromCfg = STATUS_CONFIG[evt.from_status];
-                                                                                    const toCfg = STATUS_CONFIG[evt.to_status];
-                                                                                    const isNotification = evt.event_type?.includes('notif') || evt.details?.includes('Notificación');
-                                                                                    const isProblem = evt.to_status === 'rojo' || evt.details?.includes('Problema');
-                                                                                    const isManual = evt.details?.includes('manual') || evt.performed_by === 'operador';
-                                                                                    const eventIcon = isProblem ? '🔴' : isNotification ? '📨' : isManual ? '✋' : '⚡';
-
-                                                                                    return (
-                                                                                        <div key={i} style={{
-                                                                                            padding: '8px 10px', fontSize: '0.73rem',
-                                                                                            borderBottom: i < surgery.surgery_events.length - 1 ? '1px solid var(--neutral-100)' : 'none',
-                                                                                            display: 'flex', flexDirection: 'column', gap: '3px',
-                                                                                            background: i === 0 ? 'var(--neutral-50)' : 'transparent',
-                                                                                            borderRadius: i === 0 ? 'var(--radius-sm)' : '0',
-                                                                                        }}>
-                                                                                            {/* Línea 1: Fecha + Ícono + Detalle */}
-                                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                                                <span style={{
-                                                                                                    color: 'var(--neutral-400)', fontFamily: 'monospace',
-                                                                                                    fontSize: '0.68rem', whiteSpace: 'nowrap',
-                                                                                                    minWidth: '110px',
-                                                                                                }}>
-                                                                                                    {new Date(evt.created_at).toLocaleString('es-AR', {
-                                                                                                        day: '2-digit', month: '2-digit', year: '2-digit',
-                                                                                                        hour: '2-digit', minute: '2-digit',
-                                                                                                    })}
-                                                                                                </span>
-                                                                                                <span>{eventIcon}</span>
-                                                                                                <span style={{ color: 'var(--neutral-700)', fontWeight: 500, flex: 1 }}>
-                                                                                                    {evt.details}
-                                                                                                </span>
-                                                                                            </div>
-
-                                                                                            {/* Línea 2: Transición de estado + Performer */}
-                                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '116px' }}>
-                                                                                                {fromCfg && toCfg && (
-                                                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                                                        <span style={{
-                                                                                                            padding: '1px 6px', borderRadius: '8px',
-                                                                                                            fontSize: '0.65rem', fontWeight: 600,
-                                                                                                            background: fromCfg.bg, color: fromCfg.color,
-                                                                                                            border: `1px solid ${fromCfg.color}30`,
-                                                                                                        }}>
-                                                                                                            {fromCfg.icon} {fromCfg.label}
-                                                                                                        </span>
-                                                                                                        <span style={{ color: 'var(--neutral-300)', fontSize: '0.65rem' }}>→</span>
-                                                                                                        <span style={{
-                                                                                                            padding: '1px 6px', borderRadius: '8px',
-                                                                                                            fontSize: '0.65rem', fontWeight: 600,
-                                                                                                            background: toCfg.bg, color: toCfg.color,
-                                                                                                            border: `1px solid ${toCfg.color}30`,
-                                                                                                        }}>
-                                                                                                            {toCfg.icon} {toCfg.label}
-                                                                                                        </span>
-                                                                                                    </div>
-                                                                                                )}
-                                                                                                {evt.performed_by && (
-                                                                                                    <span style={{
-                                                                                                        marginLeft: 'auto', fontSize: '0.65rem',
-                                                                                                        color: 'var(--neutral-400)', fontStyle: 'italic',
-                                                                                                    }}>
-                                                                                                        por {evt.performed_by}
-                                                                                                    </span>
-                                                                                                )}
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    );
-                                                                                })}
-                                                                            </div>
-                                                                        </>
-                                                                    )}
-
-                                                                    {/* ── PRESUPUESTOS COLLAPSIBLE ── */}
-                                                                    <BudgetCollapsible
-                                                                        idPaciente={surgery.id_paciente}
-                                                                        patientName={surgery.nombre}
-                                                                    />
-                                                                </div>
-
-                                                                {/* COL 3: Mensaje + Chat */}
-                                                                <div>
-                                                                    <h4 style={{ margin: '0 0 10px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                        <MessageSquare size={13} /> Comunicación
-                                                                    </h4>
-
-                                                                    {/* Botón Ir al Chat */}
-                                                                    {surgery.telefono && (
-                                                                        <button
-                                                                            onClick={(e) => { e.stopPropagation(); openChat(surgery); }}
-                                                                            style={{
-                                                                                width: '100%', padding: '12px 16px',
-                                                                                borderRadius: 'var(--radius-md)',
-                                                                                background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
-                                                                                color: '#fff', fontSize: '0.85rem', fontWeight: 700,
-                                                                                border: 'none', cursor: 'pointer',
-                                                                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                                                                                transition: 'all 0.2s', position: 'relative',
-                                                                                boxShadow: '0 3px 12px rgba(37,211,102,0.3)',
-                                                                            }}
-                                                                            onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(37,211,102,0.4)'; }}
-                                                                            onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 3px 12px rgba(37,211,102,0.3)'; }}
-                                                                        >
-                                                                            <MessageSquare size={18} />
-                                                                            💬 Ir al Chat
-                                                                            {(() => {
-                                                                                const norm = normalizeArgentinePhone(surgery.telefono);
-                                                                                const count = norm ? (unreadCounts[norm] || 0) : 0;
-                                                                                return count > 0 ? (
-                                                                                    <span style={{
-                                                                                        position: 'absolute', top: '-6px', right: '-6px',
-                                                                                        minWidth: '22px', height: '22px', padding: '0 6px',
-                                                                                        borderRadius: '11px', background: '#EF4444', color: '#fff',
-                                                                                        fontSize: '0.7rem', fontWeight: 800,
-                                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                                                        animation: 'pulse 2s infinite',
-                                                                                        boxShadow: '0 0 8px rgba(239,68,68,0.5)',
-                                                                                        border: '2px solid #fff',
-                                                                                    }}>
-                                                                                        {count}
-                                                                                    </span>
-                                                                                ) : null;
-                                                                            })()}
-                                                                        </button>
-                                                                    )}
-
-                                                                    {/* Envío rápido */}
-                                                                    <div style={{
-                                                                        background: '#fff', borderRadius: 'var(--radius-md)',
-                                                                        border: '1px solid var(--neutral-200)', padding: 'var(--space-3)',
-                                                                        marginTop: '10px',
-                                                                    }}>
-                                                                        <div style={{ fontSize: '0.72rem', color: 'var(--neutral-400)', marginBottom: '8px' }}>
-                                                                            Envío rápido a <strong style={{ color: 'var(--neutral-700)' }}>{surgery.nombre}</strong>
-                                                                        </div>
-                                                                        <textarea
-                                                                            value={customMessage}
-                                                                            onChange={e => setCustomMessage(e.target.value)}
-                                                                            onClick={e => e.stopPropagation()}
-                                                                            placeholder="Mensaje rápido..."
-                                                                            style={{
-                                                                                width: '100%', minHeight: '60px', padding: '10px',
-                                                                                borderRadius: 'var(--radius-md)',
-                                                                                border: '1.5px solid var(--neutral-200)',
-                                                                                fontSize: '0.82rem', fontFamily: 'inherit',
-                                                                                resize: 'vertical', outline: 'none',
-                                                                                transition: 'border-color 0.2s',
-                                                                            }}
-                                                                            onFocus={e => e.target.style.borderColor = '#22C55E'}
-                                                                            onBlur={e => e.target.style.borderColor = 'var(--neutral-200)'}
-                                                                        />
-                                                                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
-                                                                            <button
-                                                                                onClick={(e) => { e.stopPropagation(); handleSendCustomMessage(surgery); }}
-                                                                                disabled={!customMessage.trim() || !surgery.telefono || sendingMessage}
-                                                                                style={{
-                                                                                    display: 'flex', alignItems: 'center', gap: '6px',
-                                                                                    padding: '8px 16px', borderRadius: 'var(--radius-md)',
-                                                                                    background: (!customMessage.trim() || !surgery.telefono) ? 'var(--neutral-200)' : '#25D366',
-                                                                                    color: (!customMessage.trim() || !surgery.telefono) ? 'var(--neutral-400)' : '#fff',
-                                                                                    fontSize: '0.78rem', fontWeight: 700,
-                                                                                    border: 'none', cursor: (!customMessage.trim() || !surgery.telefono) ? 'not-allowed' : 'pointer',
-                                                                                    transition: 'all 0.15s',
-                                                                                }}
-                                                                            >
-                                                                                {sendingMessage ? (
-                                                                                    <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Enviando...</>
-                                                                                ) : (
-                                                                                    <><Send size={14} /> Enviar</>
-                                                                                )}
-                                                                            </button>
-                                                                        </div>
-                                                                        {!surgery.telefono && (
-                                                                            <p style={{ margin: '6px 0 0', fontSize: '0.7rem', color: '#DC2626', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                                <AlertCircle size={11} /> Sin teléfono — no se puede enviar
-                                                                            </p>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            }
-                                            return rows;
-                                        })),
-                                    ];
-                                })}
+                                {/* ==================== FAR DAYS COLLAPSIBLE ==================== */}
+                                {farGroups.length > 0 && (
+                                    <tr key="__far-days-toggle">
+                                        <td colSpan={9} style={{
+                                            padding: 0, border: 'none', background: 'transparent',
+                                        }}>
+                                            <button
+                                                onClick={() => setShowFarDays(prev => !prev)}
+                                                style={{
+                                                    width: '100%', padding: '12px 16px',
+                                                    background: showFarDays
+                                                        ? 'linear-gradient(135deg, #EBF0F6, #E8EDF5)'
+                                                        : 'linear-gradient(135deg, #F8FAFC, #F1F5F9)',
+                                                    border: 'none', borderTop: '2px dashed #CBD5E1',
+                                                    cursor: 'pointer', display: 'flex',
+                                                    alignItems: 'center', justifyContent: 'center', gap: '8px',
+                                                    fontSize: '0.8rem', fontWeight: 700,
+                                                    color: '#475569', transition: 'all 0.2s ease',
+                                                }}
+                                                onMouseOver={e => e.currentTarget.style.background = 'linear-gradient(135deg, #E2E8F0, #DBEAFE)'}
+                                                onMouseOut={e => e.currentTarget.style.background = showFarDays
+                                                    ? 'linear-gradient(135deg, #EBF0F6, #E8EDF5)'
+                                                    : 'linear-gradient(135deg, #F8FAFC, #F1F5F9)'
+                                                }
+                                            >
+                                                <ChevronRight size={15} style={{
+                                                    transition: 'transform 0.2s ease',
+                                                    transform: showFarDays ? 'rotate(90deg)' : 'rotate(0deg)',
+                                                }} />
+                                                <Calendar size={14} />
+                                                {showFarDays ? 'Ocultar días restantes' : `Ver más cirugías (+${farGroups.length} días)`}
+                                                <span style={{
+                                                    padding: '2px 8px', borderRadius: '10px',
+                                                    background: '#1E407815', color: '#1E4078',
+                                                    fontSize: '0.72rem', fontWeight: 800,
+                                                }}>
+                                                    {farGroups.reduce((sum, g) => sum + g.items.length, 0)} cx
+                                                </span>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                )}
+                                {showFarDays && farGroups.map(renderGroup)}
                             </tbody>
                         </table>
                     </div>
@@ -1598,8 +1670,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             {/* ==================== DELETE CONFIRMATION ==================== */}
             {deleteConfirmId && (
                 <div style={{
-                    position: 'fixed', inset: 0, zIndex: 10000,
-                    background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(4px)',
+                    position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10000,
+                    background: 'rgba(15,23,42,0.5)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     padding: 'var(--space-4)', animation: 'fadeIn 0.15s ease-out',
                 }} onClick={() => setDeleteConfirmId(null)}>
@@ -1639,8 +1711,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             {/* ==================== EDIT SURGERY MODAL ==================== */}
             {editModalOpen && editSurgery && (
                 <div style={{
-                    position: 'fixed', inset: 0, zIndex: 10000,
-                    background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(6px)',
+                    position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10000,
+                    background: 'rgba(15,23,42,0.6)', WebkitBackdropFilter: 'blur(6px)', backdropFilter: 'blur(6px)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     padding: 'var(--space-4)', animation: 'fadeIn 0.2s ease-out',
                 }} onClick={() => { setEditModalOpen(false); setEditSurgery(null); }}>
@@ -1713,8 +1785,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             {/* ==================== EXCEL PREVIEW MODAL ==================== */}
             {showUpload && excelPreview && (
                 <div style={{
-                    position: 'fixed', inset: 0, zIndex: 9999,
-                    background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(6px)',
+                    position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 9999,
+                    background: 'rgba(15,23,42,0.6)', WebkitBackdropFilter: 'blur(6px)', backdropFilter: 'blur(6px)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     padding: 'var(--space-4)', animation: 'fadeIn 0.2s ease-out',
                 }} onClick={handleCloseUpload}>
@@ -2000,10 +2072,10 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             {showPurgeModal && (
                 <div
                     style={{
-                        position: 'fixed', inset: 0, zIndex: 100000,
+                        position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 100000,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         background: 'rgba(0,0,0,0.5)',
-                        backdropFilter: 'blur(4px)',
+                        WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)',
                     }}
                     onClick={(e) => { if (e.target === e.currentTarget) { setShowPurgeModal(false); setPurgeConfirmText(''); } }}
                 >

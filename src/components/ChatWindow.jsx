@@ -576,8 +576,8 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
             <div
                 onClick={onClose}
                 style={{
-                    position: 'fixed', inset: 0, zIndex: 10000,
-                    background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(8px)',
+                    position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10000,
+                    background: 'rgba(15,23,42,0.55)', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)',
                     animation: 'fadeIn 0.2s ease-out',
                 }}
             />
@@ -1068,8 +1068,8 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
                 <div
                     onClick={() => setLightboxUrl(null)}
                     style={{
-                        position: 'fixed', inset: 0, zIndex: 10010,
-                        background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
+                        position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10010,
+                        background: 'rgba(0,0,0,0.85)', WebkitBackdropFilter: 'blur(12px)', backdropFilter: 'blur(12px)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         cursor: 'zoom-out', padding: '20px',
                     }}
