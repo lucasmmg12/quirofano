@@ -196,18 +196,20 @@ export function mapExcelToSurgeries(rows) {
             const m = String(rawDate.getMonth() + 1).padStart(2, '0');
             const d = String(rawDate.getDate()).padStart(2, '0');
             fechaCirugia = `${y}-${m}-${d}`;
+        } else if (typeof rawDate === 'number') {
+            // Excel serial number → convertir con la utilidad de XLSX
+            // Método robusto: crear una Date JS desde el serial
+            const jsDate = XLSX.SSF.parse_date_code(rawDate);
+            if (jsDate) {
+                fechaCirugia = `${jsDate.y}-${String(jsDate.m).padStart(2, '0')}-${String(jsDate.d).padStart(2, '0')}`;
+            }
         } else if (typeof rawDate === 'string' && rawDate) {
             fechaCirugia = parseDate(rawDate);
-        } else if (typeof rawDate === 'number') {
-            const excelDate = XLSX.SSF.parse_date_code(rawDate);
-            if (excelDate) {
-                fechaCirugia = `${excelDate.y}-${String(excelDate.m).padStart(2, '0')}-${String(excelDate.d).padStart(2, '0')}`;
-            }
         }
 
-        // Debug: log first record's date
-        if (index === 0) {
-            console.log('📅 Fecha debug:', { rawDate, tipo: typeof rawDate, fechaCirugia });
+        // Debug: log first 5 records' dates
+        if (index < 5) {
+            console.log(`📅 Fecha debug [row ${index + 2}]:`, { rawDate, tipo: typeof rawDate, isDate: rawDate instanceof Date, fechaCirugia });
         }
 
         const nombre = getValue('nombre');

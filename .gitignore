@@ -25,3 +25,10 @@ dist-ssr
 
 antigravity-awesome-skills/
 .env
+
+# Data files (patient data — NEVER commit)
+*.xlsx
+*.xls
+
+# Temp patch scripts
+patch_surgery.*
