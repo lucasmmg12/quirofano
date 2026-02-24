@@ -236,7 +236,10 @@ export function mapExcelToBudgets(rows) {
     let skippedNoPatient = 0;
     let skippedNoBudgetId = 0;
 
+    let globalRowIdx = 0;
+
     for (const row of rows) {
+        globalRowIdx++;
         const idPresupuesto = getValue(row, 'idPresupuesto');
         const idPaciente = getValue(row, 'idPaciente');
 
@@ -267,15 +270,17 @@ export function mapExcelToBudgets(rows) {
                     presup_descripcion: getValue(row, 'presupDescripcion') ? String(getValue(row, 'presupDescripcion')).trim() : null,
                 },
                 items: [],
+                lineCounter: 0,
             };
         }
 
-        // Agregar línea de ítem
+        // Agregar línea de ítem — usar lineCounter propio del presupuesto para garantizar unicidad
+        grouped[budgetKey].lineCounter++;
         const lineNum = getValue(row, 'linea');
         grouped[budgetKey].items.push({
             id_presupuesto: parseInt(budgetKey, 10),
-            linea: lineNum ? parseInt(lineNum, 10) : grouped[budgetKey].items.length + 1,
-            id_articulo: getValue(row, 'idArticulo') ? String(getValue(row, 'idArticulo')).trim() : null,
+            linea: lineNum ? parseInt(lineNum, 10) : grouped[budgetKey].lineCounter,
+            id_articulo: getValue(row, 'idArticulo') ? String(getValue(row, 'idArticulo')).trim() : `ITEM_${grouped[budgetKey].lineCounter}`,
             descripcion: getValue(row, 'descripcion') ? String(getValue(row, 'descripcion')).trim() : null,
             cantidad: parseNumber(getValue(row, 'cantidad')) || 1,
             importe_unitario: parseNumber(getValue(row, 'importeUnitario')),

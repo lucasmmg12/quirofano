@@ -107,7 +107,7 @@ export async function bulkUpsertBudgets(presupuestos, onProgress = null) {
         console.warn('[BudgetService] Non-fatal: error cleaning old items:', err.message);
     }
 
-    // Insertar todos los ítems
+    // Insertar todos los ítems (upsert para evitar conflictos con la constraint)
     const allItems = presupuestos.flatMap(p => p._items || []);
 
     for (let i = 0; i < allItems.length; i += ITEM_BATCH) {
@@ -116,11 +116,14 @@ export async function bulkUpsertBudgets(presupuestos, onProgress = null) {
         try {
             const { data, error } = await supabase
                 .from('presupuesto_items')
-                .insert(batch)
+                .upsert(batch, {
+                    onConflict: 'id_presupuesto,id_articulo,linea',
+                    ignoreDuplicates: false,
+                })
                 .select('id');
 
             if (error) {
-                console.error('[BudgetService] Error inserting items batch:', error);
+                console.error('[BudgetService] Error upserting items batch:', error);
                 errors.push(`Ítems lote ${Math.floor(i / ITEM_BATCH) + 1}: ${error.message}`);
             } else {
                 itemsInserted += data?.length || batch.length;
