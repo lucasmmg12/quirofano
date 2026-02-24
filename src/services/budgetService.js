@@ -107,23 +107,32 @@ export async function bulkUpsertBudgets(presupuestos, onProgress = null) {
         console.warn('[BudgetService] Non-fatal: error cleaning old items:', err.message);
     }
 
-    // Insertar todos los ítems (upsert para evitar conflictos con la constraint)
+    // Insertar todos los ítems (usamos INSERT ya que limpiamos primero)
     const allItems = presupuestos.flatMap(p => p._items || []);
 
-    for (let i = 0; i < allItems.length; i += ITEM_BATCH) {
-        const batch = allItems.slice(i, i + ITEM_BATCH);
+    // ── Deduplicar ítems por (id_presupuesto, id_articulo, linea) ──
+    // El Excel puede tener filas duplicadas que causan error 21000 en PostgreSQL
+    const dedupMap = new Map();
+    for (const item of allItems) {
+        const key = `${item.id_presupuesto}|${item.id_articulo}|${item.linea}`;
+        dedupMap.set(key, item); // Último gana
+    }
+    const uniqueItems = [...dedupMap.values()];
+    if (uniqueItems.length < allItems.length) {
+        console.warn(`[BudgetService] Deduplicados ${allItems.length - uniqueItems.length} ítems duplicados`);
+    }
+
+    for (let i = 0; i < uniqueItems.length; i += ITEM_BATCH) {
+        const batch = uniqueItems.slice(i, i + ITEM_BATCH);
 
         try {
             const { data, error } = await supabase
                 .from('presupuesto_items')
-                .upsert(batch, {
-                    onConflict: 'id_presupuesto,id_articulo,linea',
-                    ignoreDuplicates: false,
-                })
+                .insert(batch)
                 .select('id');
 
             if (error) {
-                console.error('[BudgetService] Error upserting items batch:', error);
+                console.error('[BudgetService] Error inserting items batch:', error);
                 errors.push(`Ítems lote ${Math.floor(i / ITEM_BATCH) + 1}: ${error.message}`);
             } else {
                 itemsInserted += data?.length || batch.length;
