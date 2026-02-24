@@ -56,3 +56,21 @@ export async function deleteComment(id) {
         throw error;
     }
 }
+
+/**
+ * Actualiza el texto de un comentario
+ */
+export async function updateComment(id, newComment) {
+    const { data, error } = await supabase
+        .from('surgery_comments')
+        .update({ comment: newComment.trim() })
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error updating comment:', error);
+        throw error;
+    }
+    return data;
+}

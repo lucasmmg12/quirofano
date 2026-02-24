@@ -6,6 +6,7 @@ import PracticeSearch from './components/PracticeSearch.jsx';
 import Cart from './components/Cart.jsx';
 import PrintTemplate from './components/PrintTemplate.jsx';
 import PrintTemplateInternacion from './components/PrintTemplateInternacion.jsx';
+import InternacionSearch from './components/InternacionSearch.jsx';
 import WhatsAppModal from './components/WhatsAppModal.jsx';
 import LoginScreen from './components/LoginScreen.jsx';
 import ChangePasswordModal from './components/ChangePasswordModal.jsx';
@@ -76,10 +77,9 @@ function App({ currentUser, onLogout }) {
     // Change Password Modal
     const [showChangePassword, setShowChangePassword] = useState(false);
 
-    // Internación
-    const [internacionEncabezado, setInternacionEncabezado] = useState('Solicito internación en Sanatorio Argentino');
-    const [internacionTratamiento, setInternacionTratamiento] = useState('');
-    const [internacionCodigo, setInternacionCodigo] = useState('');
+    // Internación — separate cart
+    const [internacionItems, setInternacionItems] = useState([]);
+    const [internacionPrintItems, setInternacionPrintItems] = useState(null);
     const printInternacionRef = useRef(null);
 
     // Toast notifications
@@ -202,6 +202,74 @@ function App({ currentUser, onLogout }) {
             throw error;
         }
     }, [patientData, cartItems, addToast]);
+
+    // === INTERNACIÓN CART OPERATIONS ===
+    const handleAddToInternacion = useCallback((item) => {
+        setInternacionItems(prev => {
+            const existing = prev.find(i => i.code === item.code && i.name === item.name);
+            if (existing) {
+                addToast(`"${item.name}" ya está en el carrito — cantidad incrementada`, 'info');
+                return prev.map(i =>
+                    (i.code === item.code && i.name === item.name)
+                        ? { ...i, quantity: i.quantity + 1 }
+                        : i
+                );
+            }
+            addToast(`Agregado: ${item.name}`, 'success');
+            return [...prev, {
+                id: uuidv4(),
+                code: item.code,
+                name: item.name,
+                displayName: item.encabezado || item.name,
+                category: 'internacion',
+                quantity: 1,
+                date: patientData.fecha,
+                encabezado: item.encabezado || item.name,
+                isInternacion: true,
+            }];
+        });
+    }, [patientData.fecha, addToast]);
+
+    const handleUpdateInternacion = useCallback((id, field, value) => {
+        setInternacionItems(prev => prev.map(item =>
+            item.id !== id ? item : { ...item, [field]: value }
+        ));
+    }, []);
+
+    const handleRemoveInternacion = useCallback((id) => {
+        setInternacionItems(prev => prev.filter(item => item.id !== id));
+        addToast('Item eliminado del carrito', 'info');
+    }, [addToast]);
+
+    const handleClearInternacion = useCallback(() => {
+        if (internacionItems.length === 0) return;
+        if (window.confirm(`¿Eliminar ${internacionItems.length} item(s) del carrito?`)) {
+            setInternacionItems([]);
+            addToast('Carrito limpiado', 'info');
+        }
+    }, [internacionItems.length, addToast]);
+
+    const handlePrintAllInternacion = useCallback(() => {
+        if (internacionItems.length === 0) {
+            addToast('El carrito está vacío', 'error');
+            return;
+        }
+        if (!patientData.nombre) {
+            addToast('Completá el nombre del paciente', 'error');
+            return;
+        }
+        setInternacionPrintItems(null);
+        setTimeout(() => window.print(), 100);
+    }, [internacionItems.length, patientData.nombre, addToast]);
+
+    const handlePrintSingleInternacion = useCallback((item) => {
+        if (!patientData.nombre) {
+            addToast('Completá el nombre del paciente', 'error');
+            return;
+        }
+        setInternacionPrintItems(item);
+        setTimeout(() => window.print(), 100);
+    }, [patientData.nombre, addToast]);
 
     // === HISTORIAL ===
     const [orderHistory, setOrderHistory] = useState([]);
@@ -400,103 +468,17 @@ function App({ currentUser, onLogout }) {
                             setPatientData={setPatientData}
                         />
 
-                        <div className="cart animate-fade-in">
-                            <div className="cart__header">
-                                <div className="cart__title-group">
-                                    <div className="cart__icon-badge" style={{ background: '#EDE9FE' }}>
-                                        <BedDouble size={18} style={{ color: '#7C3AED' }} />
-                                    </div>
-                                    <h3 className="cart__title">Pedido de Internación</h3>
-                                </div>
-                            </div>
+                        <InternacionSearch onAddToCart={handleAddToInternacion} />
 
-                            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                {/* Encabezado selector */}
-                                <div>
-                                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--neutral-600)', marginBottom: '6px', display: 'block' }}>
-                                        Encabezado institucional
-                                    </label>
-                                    <select
-                                        value={internacionEncabezado}
-                                        onChange={e => setInternacionEncabezado(e.target.value)}
-                                        style={{
-                                            width: '100%', padding: '10px 12px',
-                                            borderRadius: 'var(--radius-md)',
-                                            border: '1.5px solid var(--neutral-200)',
-                                            fontSize: '0.85rem', fontFamily: 'inherit',
-                                            outline: 'none', background: '#fff',
-                                            cursor: 'pointer',
-                                        }}
-                                    >
-                                        <option value="Solicito internación en Sanatorio Argentino">Solicito internación en Sanatorio Argentino</option>
-                                        <option value="Solicito internación en IPAM">Solicito internación en IPAM</option>
-                                    </select>
-                                </div>
-
-                                {/* Tratamiento */}
-                                <div>
-                                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--neutral-600)', marginBottom: '6px', display: 'block' }}>
-                                        Tratamiento
-                                    </label>
-                                    <textarea
-                                        value={internacionTratamiento}
-                                        onChange={e => setInternacionTratamiento(e.target.value)}
-                                        placeholder="Describir tratamiento..."
-                                        rows={3}
-                                        style={{
-                                            width: '100%', padding: '10px 12px',
-                                            borderRadius: 'var(--radius-md)',
-                                            border: '1.5px solid var(--neutral-200)',
-                                            fontSize: '0.85rem', fontFamily: 'inherit',
-                                            resize: 'vertical', outline: 'none',
-                                        }}
-                                    />
-                                </div>
-
-                                {/* Código */}
-                                <div>
-                                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--neutral-600)', marginBottom: '6px', display: 'block' }}>
-                                        Código
-                                    </label>
-                                    <input
-                                        value={internacionCodigo}
-                                        onChange={e => setInternacionCodigo(e.target.value)}
-                                        placeholder="Ingresar código..."
-                                        style={{
-                                            width: '100%', padding: '10px 12px',
-                                            borderRadius: 'var(--radius-md)',
-                                            border: '1.5px solid var(--neutral-200)',
-                                            fontSize: '0.85rem', fontFamily: 'inherit',
-                                            outline: 'none',
-                                        }}
-                                    />
-                                </div>
-
-                                {/* Print button */}
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
-                                    <button
-                                        onClick={() => {
-                                            if (!patientData.nombre) {
-                                                addToast('Completá el nombre del paciente', 'error');
-                                                return;
-                                            }
-                                            setTimeout(() => window.print(), 100);
-                                        }}
-                                        style={{
-                                            display: 'flex', alignItems: 'center', gap: '8px',
-                                            padding: '10px 24px', borderRadius: 'var(--radius-md)',
-                                            background: 'linear-gradient(135deg, #7C3AED, #6D28D9)',
-                                            color: '#fff', fontSize: '0.85rem', fontWeight: 700,
-                                            border: 'none', cursor: 'pointer',
-                                            boxShadow: '0 2px 8px rgba(124,58,237,0.3)',
-                                            transition: 'all 0.2s',
-                                        }}
-                                    >
-                                        <Printer size={16} /> Imprimir Pedido
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+                        <Cart
+                            items={internacionItems}
+                            onUpdateItem={handleUpdateInternacion}
+                            onRemoveItem={handleRemoveInternacion}
+                            onClearCart={handleClearInternacion}
+                            onPrintAll={handlePrintAllInternacion}
+                            onPrintSingle={handlePrintSingleInternacion}
+                            onSendWhatsApp={() => addToast('WhatsApp no disponible para internación', 'info')}
+                        />
                     </div>
                 )}
 
@@ -518,9 +500,8 @@ function App({ currentUser, onLogout }) {
                 <PrintTemplateInternacion
                     ref={printInternacionRef}
                     patientData={patientData}
-                    encabezado={internacionEncabezado}
-                    tratamiento={internacionTratamiento}
-                    codigo={internacionCodigo}
+                    items={internacionItems}
+                    singleItem={internacionPrintItems}
                 />
             )}
 

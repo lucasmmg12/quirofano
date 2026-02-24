@@ -25,7 +25,7 @@ import {
     processScheduledNotifications, bulkUpsertSurgeries, updateAusenteStatus,
     purgeAllData
 } from '../services/surgeryService';
-import { fetchComments, addComment } from '../services/commentService';
+import { fetchComments, addComment, deleteComment, updateComment } from '../services/commentService';
 import { logAction } from '../services/auditService';
 import { parseExcelFile, mapExcelToSurgeries, validateMappedRecords } from '../utils/excelParser';
 import { parseBudgetExcelFile, mapExcelToBudgets, validateBudgets } from '../utils/budgetExcelParser';
@@ -185,6 +185,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const [commentText, setCommentText] = useState('');
     const [savingComment, setSavingComment] = useState(false);
     const [loadingComments, setLoadingComments] = useState(false);
+    const [editingCommentId, setEditingCommentId] = useState(null);
+    const [editingCommentText, setEditingCommentText] = useState('');
 
     // Collapsible day groups — all collapsed by default, user expands
     const [expandedDays, setExpandedDays] = useState(new Set());
@@ -414,6 +416,29 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             addToast?.('Error al guardar comentario: ' + e.message, 'error');
         } finally {
             setSavingComment(false);
+        }
+    };
+
+    const handleDeleteComment = async (commentId, surgeryId) => {
+        try {
+            await deleteComment(commentId);
+            await loadComments(surgeryId);
+            addToast?.('Comentario eliminado', 'success');
+        } catch (e) {
+            addToast?.('Error al eliminar: ' + e.message, 'error');
+        }
+    };
+
+    const handleUpdateComment = async (commentId, surgeryId) => {
+        if (!editingCommentText.trim()) return;
+        try {
+            await updateComment(commentId, editingCommentText.trim());
+            setEditingCommentId(null);
+            setEditingCommentText('');
+            await loadComments(surgeryId);
+            addToast?.('Comentario actualizado', 'success');
+        } catch (e) {
+            addToast?.('Error al actualizar: ' + e.message, 'error');
         }
     };
 
@@ -1282,8 +1307,71 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                                         <span style={{ fontSize: '0.6rem', color: '#94A3B8' }}>
                                                             {new Date(c.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                                         </span>
+                                                        <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setEditingCommentId(c.id);
+                                                                    setEditingCommentText(c.comment);
+                                                                }}
+                                                                title="Editar"
+                                                                style={{
+                                                                    background: 'none', border: 'none', cursor: 'pointer',
+                                                                    padding: '2px', color: '#94A3B8', display: 'flex',
+                                                                }}
+                                                            >
+                                                                <Pencil size={12} />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleDeleteComment(c.id, surgery.id); }}
+                                                                title="Eliminar"
+                                                                style={{
+                                                                    background: 'none', border: 'none', cursor: 'pointer',
+                                                                    padding: '2px', color: '#94A3B8', display: 'flex',
+                                                                }}
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        </div>
                                                     </div>
-                                                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#334155', lineHeight: 1.4 }}>{c.comment}</p>
+                                                    {editingCommentId === c.id ? (
+                                                        <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                                                            <input
+                                                                value={editingCommentText}
+                                                                onChange={e => setEditingCommentText(e.target.value)}
+                                                                onClick={e => e.stopPropagation()}
+                                                                onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); handleUpdateComment(c.id, surgery.id); } if (e.key === 'Escape') { setEditingCommentId(null); } }}
+                                                                autoFocus
+                                                                style={{
+                                                                    flex: 1, padding: '6px 8px', fontSize: '0.78rem',
+                                                                    borderRadius: '6px', border: '1.5px solid #6366F1',
+                                                                    outline: 'none', fontFamily: 'inherit',
+                                                                }}
+                                                            />
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleUpdateComment(c.id, surgery.id); }}
+                                                                style={{
+                                                                    padding: '4px 10px', fontSize: '0.72rem', fontWeight: 700,
+                                                                    borderRadius: '6px', border: 'none',
+                                                                    background: '#6366F1', color: '#fff', cursor: 'pointer',
+                                                                }}
+                                                            >
+                                                                <CheckCircle2 size={13} />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); setEditingCommentId(null); }}
+                                                                style={{
+                                                                    padding: '4px 8px', fontSize: '0.72rem',
+                                                                    borderRadius: '6px', border: '1px solid #E2E8F0',
+                                                                    background: '#fff', color: '#64748B', cursor: 'pointer',
+                                                                }}
+                                                            >
+                                                                <X size={13} />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <p style={{ margin: 0, fontSize: '0.78rem', color: '#334155', lineHeight: 1.4 }}>{c.comment}</p>
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>
