@@ -161,7 +161,7 @@ export default function LoginScreen({ onLogin }) {
                                 type="text"
                                 value={usuario}
                                 onChange={e => setUsuario(e.target.value)}
-                                placeholder="ej: frojo"
+                                placeholder="lmarinero@sanatorioargentino.com.ar"
                                 autoComplete="username"
                                 style={{
                                     width: '100%',
@@ -292,6 +292,25 @@ export default function LoginScreen({ onLogin }) {
                             'Iniciar Sesión'
                         )}
                     </button>
+
+                    {/* Nota cuentas nuevas */}
+                    <p style={{
+                        textAlign: 'center',
+                        marginTop: '18px',
+                        marginBottom: 0,
+                        fontSize: '0.75rem',
+                        color: '#94A3B8',
+                        fontWeight: 500,
+                        lineHeight: 1.5,
+                    }}>
+                        ¿No tenés cuenta? Comunicáte con el{' '}
+                        <a
+                            href="mailto:lmarinero@sanatorioargentino.com.ar?subject=Solicitud%20de%20cuenta%20-%20Sistema%20Control%20de%20Cirug%C3%ADas"
+                            style={{ color: '#1E4078', fontWeight: 600, textDecoration: 'none' }}
+                            onMouseOver={e => e.currentTarget.style.textDecoration = 'underline'}
+                            onMouseOut={e => e.currentTarget.style.textDecoration = 'none'}
+                        >Administrador</a>
+                    </p>
                 </form>
 
                 {/* Footer */}
