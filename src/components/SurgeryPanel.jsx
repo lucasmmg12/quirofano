@@ -21,9 +21,11 @@ import {
     fetchSurgeries, createSurgery, updateSurgery, deleteSurgery, getSurgeryStats,
     sendInitialNotification, markDocumentReceived,
     authorizeSurgery, confirmAttendance, flagProblem, manualOverride,
+    silentNotify, silentAuthorize, silentConfirm,
     processScheduledNotifications, bulkUpsertSurgeries, updateAusenteStatus,
     purgeAllData
 } from '../services/surgeryService';
+import { fetchComments, addComment } from '../services/commentService';
 import { logAction } from '../services/auditService';
 import { parseExcelFile, mapExcelToSurgeries, validateMappedRecords } from '../utils/excelParser';
 import { parseBudgetExcelFile, mapExcelToBudgets, validateBudgets } from '../utils/budgetExcelParser';
@@ -177,6 +179,12 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const [statusDropdownId, setStatusDropdownId] = useState(null);
     const [customMessage, setCustomMessage] = useState('');
     const [sendingMessage, setSendingMessage] = useState(false);
+
+    // Internal comments
+    const [comments, setComments] = useState([]);
+    const [commentText, setCommentText] = useState('');
+    const [savingComment, setSavingComment] = useState(false);
+    const [loadingComments, setLoadingComments] = useState(false);
 
     // Collapsible day groups — all collapsed by default, user expands
     const [expandedDays, setExpandedDays] = useState(new Set());
@@ -341,8 +349,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const handleNotify = async (id) => {
         try {
             setProcessing(true);
-            await sendInitialNotification(id);
-            addToast?.('Notificación enviada', 'success');
+            await silentNotify(id, currentUser?.nombre || 'admin');
+            addToast?.('Estado actualizado a En Revisión', 'success');
             loadData();
         } catch (e) { addToast?.('Error: ' + e.message, 'error'); }
         finally { setProcessing(false); }
@@ -351,8 +359,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const handleAuthorize = async (id) => {
         try {
             setProcessing(true);
-            await authorizeSurgery(id, 'operador');
-            addToast?.('Cirugía autorizada — mensaje enviado', 'success');
+            await silentAuthorize(id, currentUser?.nombre || 'admin');
+            addToast?.('Cirugía autorizada', 'success');
             loadData();
         } catch (e) { addToast?.('Error: ' + e.message, 'error'); }
         finally { setProcessing(false); }
@@ -371,11 +379,42 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const handleConfirm = async (id) => {
         try {
             setProcessing(true);
-            await confirmAttendance(id, 'operador');
+            await silentConfirm(id, currentUser?.nombre || 'admin');
             addToast?.('Asistencia confirmada', 'success');
             loadData();
         } catch (e) { addToast?.('Error: ' + e.message, 'error'); }
         finally { setProcessing(false); }
+    };
+
+    // ============================================================
+    // HANDLERS — Internal Comments
+    // ============================================================
+
+    const loadComments = async (surgeryId) => {
+        setLoadingComments(true);
+        try {
+            const data = await fetchComments(surgeryId);
+            setComments(data);
+        } catch (e) {
+            console.warn('Error loading comments:', e);
+        } finally {
+            setLoadingComments(false);
+        }
+    };
+
+    const handleSaveComment = async (surgeryId) => {
+        if (!commentText.trim()) return;
+        setSavingComment(true);
+        try {
+            await addComment(surgeryId, currentUser?.nombre || 'Usuario', commentText.trim());
+            setCommentText('');
+            await loadComments(surgeryId);
+            addToast?.('Comentario guardado', 'success');
+        } catch (e) {
+            addToast?.('Error al guardar comentario: ' + e.message, 'error');
+        } finally {
+            setSavingComment(false);
+        }
     };
 
     const handleFlag = async (id) => {
@@ -773,7 +812,13 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const renderSurgeryRows = (surgery, effectiveStatus, cfg, cd, isExpanded) => {
         const rows = [
             <tr key={surgery.id} className="cart__row"
-                onClick={() => { setExpandedRowId(isExpanded ? null : surgery.id); setCustomMessage(''); }}
+                onClick={() => {
+                    const expanding = expandedRowId !== surgery.id;
+                    setExpandedRowId(expanding ? surgery.id : null);
+                    setCustomMessage('');
+                    setCommentText('');
+                    if (expanding) loadComments(surgery.id);
+                }}
                 style={{ cursor: 'pointer', transition: 'background 0.15s' }}
                 onMouseOver={e => { if (!isExpanded) e.currentTarget.style.background = 'var(--neutral-50)'; }}
                 onMouseOut={e => { if (!isExpanded) e.currentTarget.style.background = ''; }}
@@ -1202,57 +1247,88 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                     </button>
                                 )}
 
-                                {/* Envío rápido */}
+                                {/* Comentarios Internos */}
                                 <div style={{
                                     background: '#fff', borderRadius: 'var(--radius-md)',
                                     border: '1px solid var(--neutral-200)', padding: 'var(--space-3)',
                                     marginTop: '10px',
                                 }}>
-                                    <div style={{ fontSize: '0.72rem', color: 'var(--neutral-400)', marginBottom: '8px' }}>
-                                        Envío rápido a <strong style={{ color: 'var(--neutral-700)' }}>{surgery.nombre}</strong>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--neutral-400)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <MessageSquare size={13} />
+                                        Seguimiento interno de <strong style={{ color: 'var(--neutral-700)' }}>{surgery.nombre}</strong>
+                                        {comments.length > 0 && (
+                                            <span style={{
+                                                background: '#EFF6FF', color: '#3B82F6',
+                                                fontSize: '0.65rem', fontWeight: 700,
+                                                padding: '1px 6px', borderRadius: '8px',
+                                            }}>{comments.length}</span>
+                                        )}
                                     </div>
+
+                                    {/* Comment list */}
+                                    {loadingComments ? (
+                                        <div style={{ padding: '12px', textAlign: 'center', color: '#94A3B8', fontSize: '0.78rem' }}>
+                                            <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Cargando...
+                                        </div>
+                                    ) : comments.length > 0 ? (
+                                        <div style={{ maxHeight: '160px', overflowY: 'auto', marginBottom: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            {comments.map(c => (
+                                                <div key={c.id} style={{
+                                                    padding: '8px 10px', borderRadius: '8px',
+                                                    background: '#F8FAFC', border: '1px solid #F1F5F9',
+                                                }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                                                        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#4F46E5' }}>{c.user_name}</span>
+                                                        <span style={{ fontSize: '0.6rem', color: '#94A3B8' }}>
+                                                            {new Date(c.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    </div>
+                                                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#334155', lineHeight: 1.4 }}>{c.comment}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p style={{ margin: '0 0 8px', fontSize: '0.72rem', color: '#94A3B8', fontStyle: 'italic' }}>Sin comentarios aún</p>
+                                    )}
+
+                                    {/* New comment input */}
                                     <textarea
-                                        value={customMessage}
-                                        onChange={e => setCustomMessage(e.target.value)}
+                                        value={commentText}
+                                        onChange={e => setCommentText(e.target.value)}
                                         onClick={e => e.stopPropagation()}
-                                        placeholder="Mensaje rápido..."
+                                        placeholder="Escribir comentario interno..."
                                         style={{
-                                            width: '100%', minHeight: '60px', padding: '10px',
+                                            width: '100%', minHeight: '50px', padding: '10px',
                                             borderRadius: 'var(--radius-md)',
                                             border: '1.5px solid var(--neutral-200)',
                                             fontSize: '0.82rem', fontFamily: 'inherit',
                                             resize: 'vertical', outline: 'none',
                                             transition: 'border-color 0.2s',
                                         }}
-                                        onFocus={e => e.target.style.borderColor = '#22C55E'}
+                                        onFocus={e => e.target.style.borderColor = '#6366F1'}
                                         onBlur={e => e.target.style.borderColor = 'var(--neutral-200)'}
                                     />
                                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
                                         <button
-                                            onClick={(e) => { e.stopPropagation(); handleSendCustomMessage(surgery); }}
-                                            disabled={!customMessage.trim() || !surgery.telefono || sendingMessage}
+                                            onClick={(e) => { e.stopPropagation(); handleSaveComment(surgery.id); }}
+                                            disabled={!commentText.trim() || savingComment}
                                             style={{
                                                 display: 'flex', alignItems: 'center', gap: '6px',
                                                 padding: '8px 16px', borderRadius: 'var(--radius-md)',
-                                                background: (!customMessage.trim() || !surgery.telefono) ? 'var(--neutral-200)' : '#25D366',
-                                                color: (!customMessage.trim() || !surgery.telefono) ? 'var(--neutral-400)' : '#fff',
+                                                background: !commentText.trim() ? 'var(--neutral-200)' : '#6366F1',
+                                                color: !commentText.trim() ? 'var(--neutral-400)' : '#fff',
                                                 fontSize: '0.78rem', fontWeight: 700,
-                                                border: 'none', cursor: (!customMessage.trim() || !surgery.telefono) ? 'not-allowed' : 'pointer',
+                                                border: 'none', cursor: !commentText.trim() ? 'not-allowed' : 'pointer',
                                                 transition: 'all 0.15s',
                                             }}
                                         >
-                                            {sendingMessage ? (
-                                                <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Enviando...</>
+                                            {savingComment ? (
+                                                <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Guardando...</>
                                             ) : (
-                                                <><Send size={14} /> Enviar</>
+                                                <><MessageSquare size={14} /> Guardar Nota</>
                                             )}
                                         </button>
                                     </div>
-                                    {!surgery.telefono && (
-                                        <p style={{ margin: '6px 0 0', fontSize: '0.7rem', color: '#DC2626', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <AlertCircle size={11} /> Sin teléfono — no se puede enviar
-                                        </p>
-                                    )}
                                 </div>
                             </div>
                         </div>

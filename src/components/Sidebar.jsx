@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
     ClipboardList, History, BookOpen, Settings, PanelLeftClose, PanelLeft,
-    Stethoscope, ChevronDown, FileText, Home,
+    Stethoscope, ChevronDown, FileText, Home, BedDouble,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange }) {
@@ -10,6 +10,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange 
     // Sub-items dentro de "Emisión de Pedidos"
     const pedidosSubItems = [
         { id: 'pedidos', label: 'Nuevo Pedido', icon: ClipboardList },
+        { id: 'internacion', label: 'Internación', icon: BedDouble },
         { id: 'historial', label: 'Historial', icon: History },
         { id: 'nomenclador', label: 'Nomenclador', icon: BookOpen },
     ];

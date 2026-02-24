@@ -5,6 +5,7 @@ import PatientHeader from './components/PatientHeader.jsx';
 import PracticeSearch from './components/PracticeSearch.jsx';
 import Cart from './components/Cart.jsx';
 import PrintTemplate from './components/PrintTemplate.jsx';
+import PrintTemplateInternacion from './components/PrintTemplateInternacion.jsx';
 import WhatsAppModal from './components/WhatsAppModal.jsx';
 import LoginScreen from './components/LoginScreen.jsx';
 import ChangePasswordModal from './components/ChangePasswordModal.jsx';
@@ -13,7 +14,7 @@ import { sendWhatsAppMessage, formatOrderForWhatsApp } from './services/builderb
 import { createOrder, markOrderPrinted, markOrderSent, fetchOrderHistory } from './services/dataService';
 import { getCurrentUser, logout as authLogout } from './services/authService';
 import { logAction } from './services/auditService';
-import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound } from 'lucide-react';
+import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, BedDouble } from 'lucide-react';
 import SurgeryPanel from './components/SurgeryPanel.jsx';
 import ConfigPanel from './components/ConfigPanel.jsx';
 import HomePanel from './components/HomePanel.jsx';
@@ -74,6 +75,12 @@ function App({ currentUser, onLogout }) {
 
     // Change Password Modal
     const [showChangePassword, setShowChangePassword] = useState(false);
+
+    // Internación
+    const [internacionEncabezado, setInternacionEncabezado] = useState('Solicito internación en Sanatorio Argentino');
+    const [internacionTratamiento, setInternacionTratamiento] = useState('');
+    const [internacionCodigo, setInternacionCodigo] = useState('');
+    const printInternacionRef = useRef(null);
 
     // Toast notifications
     const [toasts, setToasts] = useState([]);
@@ -386,6 +393,113 @@ function App({ currentUser, onLogout }) {
                     <NomencladorView onAddToCart={handleAddToCart} />
                 )}
 
+                {activeView === 'internacion' && (
+                    <div className="content no-print">
+                        <PatientHeader
+                            patientData={patientData}
+                            setPatientData={setPatientData}
+                        />
+
+                        <div className="cart animate-fade-in">
+                            <div className="cart__header">
+                                <div className="cart__title-group">
+                                    <div className="cart__icon-badge" style={{ background: '#EDE9FE' }}>
+                                        <BedDouble size={18} style={{ color: '#7C3AED' }} />
+                                    </div>
+                                    <h3 className="cart__title">Pedido de Internación</h3>
+                                </div>
+                            </div>
+
+                            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                {/* Encabezado selector */}
+                                <div>
+                                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--neutral-600)', marginBottom: '6px', display: 'block' }}>
+                                        Encabezado institucional
+                                    </label>
+                                    <select
+                                        value={internacionEncabezado}
+                                        onChange={e => setInternacionEncabezado(e.target.value)}
+                                        style={{
+                                            width: '100%', padding: '10px 12px',
+                                            borderRadius: 'var(--radius-md)',
+                                            border: '1.5px solid var(--neutral-200)',
+                                            fontSize: '0.85rem', fontFamily: 'inherit',
+                                            outline: 'none', background: '#fff',
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        <option value="Solicito internación en Sanatorio Argentino">Solicito internación en Sanatorio Argentino</option>
+                                        <option value="Solicito internación en IPAM">Solicito internación en IPAM</option>
+                                    </select>
+                                </div>
+
+                                {/* Tratamiento */}
+                                <div>
+                                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--neutral-600)', marginBottom: '6px', display: 'block' }}>
+                                        Tratamiento
+                                    </label>
+                                    <textarea
+                                        value={internacionTratamiento}
+                                        onChange={e => setInternacionTratamiento(e.target.value)}
+                                        placeholder="Describir tratamiento..."
+                                        rows={3}
+                                        style={{
+                                            width: '100%', padding: '10px 12px',
+                                            borderRadius: 'var(--radius-md)',
+                                            border: '1.5px solid var(--neutral-200)',
+                                            fontSize: '0.85rem', fontFamily: 'inherit',
+                                            resize: 'vertical', outline: 'none',
+                                        }}
+                                    />
+                                </div>
+
+                                {/* Código */}
+                                <div>
+                                    <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--neutral-600)', marginBottom: '6px', display: 'block' }}>
+                                        Código
+                                    </label>
+                                    <input
+                                        value={internacionCodigo}
+                                        onChange={e => setInternacionCodigo(e.target.value)}
+                                        placeholder="Ingresar código..."
+                                        style={{
+                                            width: '100%', padding: '10px 12px',
+                                            borderRadius: 'var(--radius-md)',
+                                            border: '1.5px solid var(--neutral-200)',
+                                            fontSize: '0.85rem', fontFamily: 'inherit',
+                                            outline: 'none',
+                                        }}
+                                    />
+                                </div>
+
+                                {/* Print button */}
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
+                                    <button
+                                        onClick={() => {
+                                            if (!patientData.nombre) {
+                                                addToast('Completá el nombre del paciente', 'error');
+                                                return;
+                                            }
+                                            setTimeout(() => window.print(), 100);
+                                        }}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '8px',
+                                            padding: '10px 24px', borderRadius: 'var(--radius-md)',
+                                            background: 'linear-gradient(135deg, #7C3AED, #6D28D9)',
+                                            color: '#fff', fontSize: '0.85rem', fontWeight: 700,
+                                            border: 'none', cursor: 'pointer',
+                                            boxShadow: '0 2px 8px rgba(124,58,237,0.3)',
+                                            transition: 'all 0.2s',
+                                        }}
+                                    >
+                                        <Printer size={16} /> Imprimir Pedido
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {activeView === 'config' && (
                     <ConfigPanel addToast={addToast} />
                 )}
@@ -398,6 +512,17 @@ function App({ currentUser, onLogout }) {
                 items={cartItems}
                 singleItem={printItems}
             />
+
+            {/* Print Template Internación (hidden on screen, visible on print) */}
+            {activeView === 'internacion' && (
+                <PrintTemplateInternacion
+                    ref={printInternacionRef}
+                    patientData={patientData}
+                    encabezado={internacionEncabezado}
+                    tratamiento={internacionTratamiento}
+                    codigo={internacionCodigo}
+                />
+            )}
 
             {/* WhatsApp Modal */}
             <WhatsAppModal

@@ -1299,11 +1299,11 @@
         width: 148mm;
         height: 210mm;
         /*
-         * Top: 64mm — espacio para el encabezado pre-impreso (logo + sedes)
+         * Top: 54mm — subido ~1cm del encabezado pre-impreso
          * Bottom: 22mm — espacio para el pie pre-impreso (url + redes)
          * Left/Right: 16mm — márgenes laterales
          */
-        padding: 64mm 16mm 22mm 16mm;
+        padding: 54mm 16mm 22mm 16mm;
         margin: 0 auto;
         page-break-after: always;
         font-family: Arial, 'Inter', sans-serif;
@@ -1456,6 +1456,42 @@
     font-size: 11pt;
     color: #000;
     font-weight: 600;
+}
+
+/* ========================================
+   PRINT — INTERNACIÓN TEMPLATE
+   ======================================== */
+
+.print-page--internacion {
+    padding-top: 54mm;
+    /* ~10mm less than standard = content shifted up ~1cm */
+    padding-bottom: 15mm;
+}
+
+.print-header-internacion {
+    text-align: center;
+    margin-bottom: 6mm;
+    padding-bottom: 3mm;
+    border-bottom: 1.5px solid #333;
+}
+
+.print-encabezado-internacion {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #000;
+    text-transform: uppercase;
+    letter-spacing: 0.3mm;
+}
+
+.print-date-internacion {
+    margin-top: 10mm;
+    text-align: right;
+    font-size: 10pt;
+    color: #333;
+}
+
+.print-date-internacion p {
+    margin: 0;
 }
 
 /* ========================================

@@ -673,6 +673,53 @@ export async function confirmAttendance(surgeryId) {
     return { status: 'azul', indicacionesSent: true };
 }
 
+// ============================================================
+// TRANSICIONES SILENCIOSAS — Solo cambian estado, sin WhatsApp
+// ============================================================
+
+/**
+ * SILENCIOSO — Notificar (Lila → Amarillo) sin enviar WhatsApp
+ */
+export async function silentNotify(surgeryId, operador = 'admin') {
+    await transitionStatus(surgeryId, 'amarillo', {
+        details: `Estado cambiado a amarillo manualmente por ${operador}`,
+        performedBy: operador,
+        extraFields: {
+            notificado_at: new Date().toISOString(),
+        },
+    });
+    return { status: 'amarillo' };
+}
+
+/**
+ * SILENCIOSO — Autorizar (Amarillo → Verde) sin enviar WhatsApp
+ */
+export async function silentAuthorize(surgeryId, operador = 'admin') {
+    await transitionStatus(surgeryId, 'verde', {
+        details: `Autorizado manualmente por ${operador}`,
+        performedBy: operador,
+        extraFields: {
+            autorizado_at: new Date().toISOString(),
+            operador,
+        },
+    });
+    return { status: 'verde' };
+}
+
+/**
+ * SILENCIOSO — Confirmar asistencia (Verde → Azul) sin enviar WhatsApp
+ */
+export async function silentConfirm(surgeryId, operador = 'admin') {
+    await transitionStatus(surgeryId, 'azul', {
+        details: `Asistencia confirmada manualmente por ${operador}`,
+        performedBy: operador,
+        extraFields: {
+            confirmado_at: new Date().toISOString(),
+        },
+    });
+    return { status: 'azul' };
+}
+
 /**
  * Marcar problema (Cualquier estado → Rojo)
  */

@@ -8,12 +8,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
     X, Send, Paperclip, Mic, Image as ImageIcon, Play, Pause,
     Phone, MessageSquare, Clock, CheckCheck, Check, Volume2,
-    Download, Smile, Square, Loader, Zap
+    Download, Smile, Square, Loader, Zap, Settings
 } from 'lucide-react';
 import { fetchMessages, markAsRead, saveOutgoingMessage, subscribeToMessages } from '../services/chatService';
 import { sendWhatsAppMessage } from '../services/builderbotApi';
 import { fetchShortcuts } from '../services/shortcutService';
 import { supabase } from '../lib/supabase';
+import ShortcutManager from './ShortcutManager';
 
 // Emojis populares organizados
 const EMOJI_LIST = [
@@ -40,6 +41,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
     const [showShortcuts, setShowShortcuts] = useState(false);
     const [shortcutFilter, setShortcutFilter] = useState('');
     const [shortcutIndex, setShortcutIndex] = useState(0);
+    const [showShortcutManager, setShowShortcutManager] = useState(false);
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
@@ -126,12 +128,16 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
     // ==========================================
     // CARGAR SHORTCUTS
     // ==========================================
-    useEffect(() => {
-        if (!open) return;
-        fetchShortcuts().then(setShortcuts).catch(err => {
+    const loadShortcutsData = useCallback(() => {
+        fetchShortcuts(true).then(setShortcuts).catch(err => {
             console.warn('Could not load shortcuts:', err);
         });
-    }, [open]);
+    }, []);
+
+    useEffect(() => {
+        if (!open) return;
+        loadShortcutsData();
+    }, [open, loadShortcutsData]);
 
     // ==========================================
     // UPLOAD MEDIA A SUPABASE STORAGE
@@ -368,13 +374,24 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
         }
     };
 
+    // Personaliza el mensaje reemplazando "Estimado/a" por el nombre del paciente
+    const personalizeMessage = useCallback((message, name) => {
+        if (!name) return message;
+        // Reemplazar variantes comunes: "Estimado/a", "Estimado/a,", "Estimado/a:"
+        return message
+            .replace(/Estimado\/a[,:.]?\s*/gi, `Estimada ${name} `)
+            .replace(/\{nombre\}/gi, name)
+            .replace(/\{paciente\}/gi, name);
+    }, []);
+
     const selectShortcut = useCallback((shortcut) => {
-        setInputText(shortcut.message);
+        const personalized = personalizeMessage(shortcut.message, patientName);
+        setInputText(personalized);
         setShowShortcuts(false);
         setShortcutFilter('');
         setShortcutIndex(0);
         inputRef.current?.focus();
-    }, []);
+    }, [patientName, personalizeMessage]);
 
     // Enter para enviar o seleccionar shortcut
     const handleKeyDown = (e) => {
@@ -930,6 +947,21 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
                                             }}>
                                                 ↑↓ navegar · Enter seleccionar
                                             </span>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setShowShortcutManager(true); setShowShortcuts(false); }}
+                                                title="Administrar atajos"
+                                                style={{
+                                                    width: '24px', height: '24px', borderRadius: '6px',
+                                                    background: 'none', border: '1px solid #E2E8F0',
+                                                    color: '#8696A0', cursor: 'pointer',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    transition: 'all 0.15s',
+                                                }}
+                                                onMouseOver={e => { e.currentTarget.style.background = '#F0F2F5'; e.currentTarget.style.color = '#25D366'; }}
+                                                onMouseOut={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#8696A0'; }}
+                                            >
+                                                <Settings size={12} />
+                                            </button>
                                         </div>
 
                                         {/* Shortcut items */}
@@ -1097,6 +1129,13 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
                     </button>
                 </div>
             )}
+
+            {/* Shortcut Manager Modal */}
+            <ShortcutManager
+                isOpen={showShortcutManager}
+                onClose={() => { setShowShortcutManager(false); loadShortcutsData(); }}
+                addToast={addToast}
+            />
         </>
     );
 }

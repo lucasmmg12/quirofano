@@ -63,12 +63,8 @@ const PrintTemplate = forwardRef(({ patientData, items, singleItem }, ref) => {
                             </span>
                         </div>
 
-                        {/* Zona de firma y fecha */}
+                        {/* Zona de fecha */}
                         <div className="print-signature-area">
-                            <div className="print-signature-block">
-                                <div className="print-signature-line"></div>
-                                <span className="print-signature-label">Firma y Sello del Médico</span>
-                            </div>
                             <div className="print-date-block">
                                 <span className="print-date-value">
                                     {formatDate(item.date || patientData.fecha)}
