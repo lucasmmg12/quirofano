@@ -267,6 +267,30 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
     }
     const uniqueWithId = Array.from(deduped.values());
 
+    // ── PASO PREVIO: Limpiar registros viejos de estos pacientes ──
+    // Si la fecha de un paciente cambió entre cargas Excel, el upsert ON CONFLICT
+    // (id_paciente, fecha_cirugia, nombre) no matchea y crea una fila NUEVA
+    // en vez de actualizar la existente. Borramos las filas previas.
+    const patientIds = [...new Set(uniqueWithId.map(r => r.id_paciente).filter(Boolean))];
+    if (patientIds.length > 0) {
+        console.log(`🗑️ Limpiando registros anteriores de ${patientIds.length} pacientes...`);
+        const DEL_BATCH = 200;
+        for (let i = 0; i < patientIds.length; i += DEL_BATCH) {
+            const idBatch = patientIds.slice(i, i + DEL_BATCH);
+            try {
+                const { error: delErr } = await supabase
+                    .from('surgeries')
+                    .delete()
+                    .in('id_paciente', idBatch);
+                if (delErr) {
+                    console.warn('⚠️ Error limpiando registros previos:', delErr.message);
+                }
+            } catch (err) {
+                console.warn('⚠️ Non-fatal cleanup error:', err.message);
+            }
+        }
+    }
+
     // BATCH SIZE
     const BATCH = 50;
 
