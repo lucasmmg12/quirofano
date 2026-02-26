@@ -61,7 +61,7 @@ export default function LoginScreen({ onLogin }) {
             {/* Background image at 50% opacity */}
             <div style={{
                 position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
-                backgroundImage: "url('/SANARG2021_fondo de pantalla.jpg')",
+                backgroundImage: "url('/SANARG2021_fondo.webp')",
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
                 backgroundRepeat: 'no-repeat',
