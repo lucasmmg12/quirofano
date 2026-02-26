@@ -31,7 +31,7 @@ const PrintTemplateInternacion = forwardRef(({ patientData, items, singleItem },
                     {/* Título SOLICITO */}
                     <div className="print-header-internacion">
                         <p className="print-encabezado-internacion">
-                            SOLICITO INTERNACION EN SANATORIO ARGENTINO
+                            {item.encabezado || item.displayName || item.name}
                         </p>
                     </div>
 
