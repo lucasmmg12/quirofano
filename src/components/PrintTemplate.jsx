@@ -53,23 +53,12 @@ const PrintTemplate = forwardRef(({ patientData, items, singleItem }, ref) => {
                         </div>
                     </div>
 
-                    {/* === Zona inferior: institucional + firma === */}
+                    {/* === Zona inferior: solo fecha a la derecha === */}
                     <div className="print-bottom-section">
-                        {/* Línea institucional */}
-                        <div className="print-institutional">
-                            <span className="print-institutional__name">Sanatorio Argentino S.R.L.</span>
-                            <span className="print-institutional__type">
-                                {patientData.tratamiento ? patientData.tratamiento : 'INTERNADO'}
+                        <div className="print-date-block" style={{ textAlign: 'right' }}>
+                            <span className="print-date-value">
+                                {formatDate(item.date || patientData.fecha)}
                             </span>
-                        </div>
-
-                        {/* Zona de fecha */}
-                        <div className="print-signature-area">
-                            <div className="print-date-block">
-                                <span className="print-date-value">
-                                    {formatDate(item.date || patientData.fecha)}
-                                </span>
-                            </div>
                         </div>
                     </div>
                 </div>
