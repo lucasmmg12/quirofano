@@ -1392,6 +1392,8 @@
 /* ── Bottom Section (pushed to bottom via flex) ── */
 .print-bottom-section {
     margin-top: auto;
+    margin-bottom: 20mm;
+    /* subir fecha 2cm desde el fondo */
     display: flex;
     flex-direction: column;
     gap: 5mm;
@@ -1503,7 +1505,9 @@
 }
 
 .print-date-internacion {
-    margin-top: 10mm;
+    margin-top: auto;
+    margin-bottom: 20mm;
+    /* subir fecha 2cm desde el fondo */
     text-align: right;
     font-size: 10pt;
     color: #333;
