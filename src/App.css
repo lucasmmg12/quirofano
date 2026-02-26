@@ -1472,7 +1472,6 @@
     text-align: center;
     margin-bottom: 6mm;
     padding-bottom: 3mm;
-    border-bottom: 1.5px solid #333;
 }
 
 .print-encabezado-internacion {
@@ -1481,6 +1480,26 @@
     color: #000;
     text-transform: uppercase;
     letter-spacing: 0.3mm;
+}
+
+/* Datos del paciente arriba del título */
+.print-patient-internacion {
+    margin-bottom: 5mm;
+}
+
+.print-patient-internacion__name {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #000;
+    text-transform: uppercase;
+    margin: 0 0 2mm 0;
+}
+
+.print-patient-internacion__os {
+    font-size: 10pt;
+    font-weight: 600;
+    color: #000;
+    margin: 0;
 }
 
 .print-date-internacion {

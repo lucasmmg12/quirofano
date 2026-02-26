@@ -16,35 +16,35 @@ const PrintTemplateInternacion = forwardRef(({ patientData, items, singleItem },
         <div ref={ref} className="print-area">
             {printList.map((item, idx) => (
                 <div className="print-page print-page--internacion" key={item.id || idx}>
-                    {/* Header institucional dinámico */}
-                    <div className="print-header-internacion">
-                        <p className="print-encabezado-internacion">
-                            {item.encabezado || item.displayName || item.name}
+
+                    {/* Datos del paciente (arriba del título) */}
+                    <div className="print-patient-internacion">
+                        <p className="print-patient-internacion__name">
+                            {patientData.nombre || '—'}
+                        </p>
+                        <p className="print-patient-internacion__os">
+                            {patientData.obraSocial || '—'}
+                            {patientData.afiliado ? `: ${patientData.afiliado}` : ''}
                         </p>
                     </div>
 
-                    {/* Datos del paciente */}
-                    <div className="print-fields">
-                        <div className="print-field-row">
-                            <span className="print-field-label">Paciente:</span>
-                            <span className="print-field-value">{patientData.nombre || '—'}</span>
-                        </div>
-                        <div className="print-field-row">
-                            <span className="print-field-label">Obra Social:</span>
-                            <span className="print-field-value">{patientData.obraSocial || '—'}</span>
-                        </div>
-                        <div className="print-field-row">
-                            <span className="print-field-label">N° Afiliado:</span>
-                            <span className="print-field-value">{patientData.afiliado || '—'}</span>
-                        </div>
-                        <div className="print-field-row">
-                            <span className="print-field-label">Diagnóstico:</span>
-                            <span className="print-field-value">{patientData.diagnostico || '—'}</span>
-                        </div>
+                    {/* Título SOLICITO */}
+                    <div className="print-header-internacion">
+                        <p className="print-encabezado-internacion">
+                            SOLICITO INTERNACION EN SANATORIO ARGENTINO
+                        </p>
                     </div>
 
-                    {/* Código + Cantidad */}
-                    <div className="print-fields" style={{ marginTop: '12px' }}>
+                    {/* Diag. / Trat. / Cod. */}
+                    <div className="print-fields" style={{ marginTop: '6mm' }}>
+                        <div className="print-field-row">
+                            <span className="print-field-label">Diag.:</span>
+                            <span className="print-field-value">{patientData.diagnostico || '—'}</span>
+                        </div>
+                        <div className="print-field-row">
+                            <span className="print-field-label">Trat.:</span>
+                            <span className="print-field-value">{patientData.tratamiento || '—'}</span>
+                        </div>
                         <div className="print-field-row">
                             <span className="print-field-label">Cod.:</span>
                             <span className="print-field-value">
@@ -53,17 +53,9 @@ const PrintTemplateInternacion = forwardRef(({ patientData, items, singleItem },
                         </div>
                     </div>
 
-                    {/* Médico */}
-                    <div className="print-fields" style={{ marginTop: '12px' }}>
-                        <div className="print-field-row">
-                            <span className="print-field-label">Médico tratante:</span>
-                            <span className="print-field-value">{patientData.medico || '—'}</span>
-                        </div>
-                    </div>
-
-                    {/* Fecha (sin firma/sello) */}
+                    {/* Fecha (sin San Juan, sin firma) */}
                     <div className="print-date-internacion">
-                        <p>San Juan, {fecha}</p>
+                        <p>{fecha}</p>
                     </div>
                 </div>
             ))}
