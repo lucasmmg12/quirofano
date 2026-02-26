@@ -15,7 +15,7 @@ import { sendWhatsAppMessage, formatOrderForWhatsApp } from './services/builderb
 import { createOrder, markOrderPrinted, markOrderSent, fetchOrderHistory } from './services/dataService';
 import { getCurrentUser, logout as authLogout } from './services/authService';
 import { logAction } from './services/auditService';
-import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, BedDouble } from 'lucide-react';
+import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, BedDouble, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
 import SurgeryPanel from './components/SurgeryPanel.jsx';
 import ConfigPanel from './components/ConfigPanel.jsx';
 import HomePanel from './components/HomePanel.jsx';
@@ -274,6 +274,9 @@ function App({ currentUser, onLogout }) {
     // === HISTORIAL ===
     const [orderHistory, setOrderHistory] = useState([]);
     const [historialLoading, setHistorialLoading] = useState(false);
+    const [expandedOrders, setExpandedOrders] = useState({});
+    const [historialPrintData, setHistorialPrintData] = useState(null); // { patientData, items }
+    const printHistorialRef = useRef(null);
 
     useEffect(() => {
         if (activeView === 'historial') {
@@ -284,6 +287,51 @@ function App({ currentUser, onLogout }) {
                 .finally(() => setHistorialLoading(false));
         }
     }, [activeView, addToast]);
+
+    const toggleOrderExpand = useCallback((orderId) => {
+        setExpandedOrders(prev => ({ ...prev, [orderId]: !prev[orderId] }));
+    }, []);
+
+    const handleReprintOrder = useCallback((order, singleItem = null) => {
+        const pd = {
+            nombre: order.nombre_paciente || '',
+            obraSocial: order.obra_social || '',
+            afiliado: order.afiliado || '',
+            diagnostico: order.diagnostico || '',
+            tratamiento: order.tratamiento || '',
+            fecha: order.fecha || '',
+            medico: order.medico || '',
+        };
+
+        const mapItem = (oi) => ({
+            id: oi.id,
+            code: oi.code,
+            name: oi.name,
+            displayName: oi.display_name || oi.name,
+            category: oi.category,
+            quantity: oi.quantity || 1,
+            date: oi.fecha || order.fecha,
+            customField: oi.custom_field,
+            customValue: oi.custom_value,
+        });
+
+        if (singleItem) {
+            setHistorialPrintData({ patientData: pd, items: null, singleItem: mapItem(singleItem) });
+        } else {
+            const items = (order.order_items || []).sort((a, b) => (a.position || 0) - (b.position || 0)).map(mapItem);
+            setHistorialPrintData({ patientData: pd, items, singleItem: null });
+        }
+
+        setTimeout(() => window.print(), 150);
+        addToast('Reimprimiendo pedido...', 'info');
+    }, [addToast]);
+
+    // Clear historial print data after printing so the normal PrintTemplate is restored
+    useEffect(() => {
+        const clearAfterPrint = () => setHistorialPrintData(null);
+        window.addEventListener('afterprint', clearAfterPrint);
+        return () => window.removeEventListener('afterprint', clearAfterPrint);
+    }, []);
 
     return (
         <div className="app">
@@ -416,34 +464,113 @@ function App({ currentUser, onLogout }) {
                                     <table className="cart__table">
                                         <thead>
                                             <tr>
+                                                <th className="cart__th" style={{ width: '36px' }}></th>
                                                 <th className="cart__th">Paciente</th>
                                                 <th className="cart__th">OS</th>
                                                 <th className="cart__th">Prácticas</th>
                                                 <th className="cart__th">Fecha</th>
                                                 <th className="cart__th">Estado</th>
+                                                <th className="cart__th" style={{ width: '100px', textAlign: 'center' }}>Acciones</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {orderHistory.map(order => (
-                                                <tr key={order.id} className="cart__row">
-                                                    <td className="cart__td" style={{ fontWeight: 600 }}>{order.nombre_paciente}</td>
-                                                    <td className="cart__td">{order.obra_social || '—'}</td>
-                                                    <td className="cart__td">
-                                                        {order.order_items?.length || 0} práctica{(order.order_items?.length || 0) !== 1 ? 's' : ''}
-                                                    </td>
-                                                    <td className="cart__td">
-                                                        {new Date(order.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                                    </td>
-                                                    <td className="cart__td">
-                                                        <span className={`patient-header__status patient-header__status--complete`} style={
-                                                            order.status === 'sent' ? { background: '#dcfce7', color: '#16a34a' } :
-                                                                order.status === 'printed' ? { background: '#dbeafe', color: '#2563eb' } :
-                                                                    { background: '#f1f5f9', color: '#64748b' }
-                                                        }>
-                                                            {order.status === 'sent' ? '✓ Enviado' : order.status === 'printed' ? '🖨 Impreso' : '● Creado'}
-                                                        </span>
-                                                    </td>
-                                                </tr>
+                                                <>
+                                                    <tr key={order.id} className="cart__row" style={{ cursor: 'pointer' }} onClick={() => toggleOrderExpand(order.id)}>
+                                                        <td className="cart__td" style={{ textAlign: 'center', padding: '0 4px' }}>
+                                                            {expandedOrders[order.id]
+                                                                ? <ChevronDown size={16} style={{ color: 'var(--primary-500)', transition: 'transform 0.2s' }} />
+                                                                : <ChevronRight size={16} style={{ color: 'var(--neutral-400)', transition: 'transform 0.2s' }} />
+                                                            }
+                                                        </td>
+                                                        <td className="cart__td" style={{ fontWeight: 600 }}>{order.nombre_paciente}</td>
+                                                        <td className="cart__td">{order.obra_social || '—'}</td>
+                                                        <td className="cart__td">
+                                                            {order.order_items?.length || 0} práctica{(order.order_items?.length || 0) !== 1 ? 's' : ''}
+                                                        </td>
+                                                        <td className="cart__td">
+                                                            {new Date(order.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                        </td>
+                                                        <td className="cart__td">
+                                                            <span className={`patient-header__status patient-header__status--complete`} style={
+                                                                order.status === 'sent' ? { background: '#dcfce7', color: '#16a34a' } :
+                                                                    order.status === 'printed' ? { background: '#dbeafe', color: '#2563eb' } :
+                                                                        { background: '#f1f5f9', color: '#64748b' }
+                                                            }>
+                                                                {order.status === 'sent' ? '✓ Enviado' : order.status === 'printed' ? '🖨 Impreso' : '● Creado'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="cart__td" style={{ textAlign: 'center' }}>
+                                                            <button
+                                                                className="cart__action-btn cart__action-btn--print"
+                                                                onClick={(e) => { e.stopPropagation(); handleReprintOrder(order); }}
+                                                                title="Reimprimir pedido completo"
+                                                                style={{
+                                                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                                    padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600,
+                                                                    borderRadius: '6px', border: '1px solid #93C5FD',
+                                                                    background: '#EFF6FF', color: '#2563EB',
+                                                                    cursor: 'pointer', transition: 'all 0.2s',
+                                                                }}
+                                                                onMouseOver={e => { e.currentTarget.style.background = '#DBEAFE'; e.currentTarget.style.borderColor = '#60A5FA'; }}
+                                                                onMouseOut={e => { e.currentTarget.style.background = '#EFF6FF'; e.currentTarget.style.borderColor = '#93C5FD'; }}
+                                                            >
+                                                                <RotateCcw size={13} />
+                                                                Reimprimir
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                    {/* Expanded detail rows */}
+                                                    {expandedOrders[order.id] && order.order_items && order.order_items.length > 0 && (
+                                                        <tr key={`${order.id}-detail`} className="animate-fade-in">
+                                                            <td colSpan={7} style={{ padding: 0, border: 'none' }}>
+                                                                <div style={{
+                                                                    background: 'var(--neutral-50, #F8FAFC)',
+                                                                    borderLeft: '3px solid var(--primary-400, #60A5FA)',
+                                                                    margin: '0 8px 8px 24px',
+                                                                    borderRadius: '0 8px 8px 0',
+                                                                    padding: '8px 0',
+                                                                }}>
+                                                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                                                        <thead>
+                                                                            <tr>
+                                                                                <th style={{ padding: '4px 12px', fontSize: '0.7rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'left' }}>Código</th>
+                                                                                <th style={{ padding: '4px 12px', fontSize: '0.7rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'left' }}>Práctica</th>
+                                                                                <th style={{ padding: '4px 12px', fontSize: '0.7rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>Cant.</th>
+                                                                                <th style={{ padding: '4px 12px', fontSize: '0.7rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center', width: '80px' }}></th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            {[...order.order_items].sort((a, b) => (a.position || 0) - (b.position || 0)).map((oi) => (
+                                                                                <tr key={oi.id} style={{ borderTop: '1px solid var(--neutral-100, #F1F5F9)' }}>
+                                                                                    <td style={{ padding: '6px 12px' }}>
+                                                                                        <span className="cart__code-chip">{oi.code}</span>
+                                                                                    </td>
+                                                                                    <td style={{ padding: '6px 12px', fontSize: '0.82rem', color: 'var(--neutral-700)' }}>
+                                                                                        {oi.display_name || oi.name}
+                                                                                    </td>
+                                                                                    <td style={{ padding: '6px 12px', textAlign: 'center', fontSize: '0.82rem', fontWeight: 600 }}>
+                                                                                        {oi.quantity || 1}
+                                                                                    </td>
+                                                                                    <td style={{ padding: '6px 12px', textAlign: 'center' }}>
+                                                                                        <button
+                                                                                            className="cart__action-btn cart__action-btn--print"
+                                                                                            onClick={() => handleReprintOrder(order, oi)}
+                                                                                            title={`Reimprimir: ${oi.display_name || oi.name}`}
+                                                                                            style={{ padding: '3px 6px', cursor: 'pointer' }}
+                                                                                        >
+                                                                                            <Printer size={14} />
+                                                                                        </button>
+                                                                                    </td>
+                                                                                </tr>
+                                                                            ))}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </>
                                             ))}
                                         </tbody>
                                     </table>
@@ -488,12 +615,24 @@ function App({ currentUser, onLogout }) {
             </main>
 
             {/* Print Template (hidden on screen, visible on print) */}
-            <PrintTemplate
-                ref={printRef}
-                patientData={patientData}
-                items={cartItems}
-                singleItem={printItems}
-            />
+            {!historialPrintData && (
+                <PrintTemplate
+                    ref={printRef}
+                    patientData={patientData}
+                    items={cartItems}
+                    singleItem={printItems}
+                />
+            )}
+
+            {/* Print Template for Historial Reprint */}
+            {historialPrintData && (
+                <PrintTemplate
+                    ref={printHistorialRef}
+                    patientData={historialPrintData.patientData}
+                    items={historialPrintData.items || []}
+                    singleItem={historialPrintData.singleItem}
+                />
+            )}
 
             {/* Print Template Internación (hidden on screen, visible on print) */}
             {activeView === 'internacion' && (
