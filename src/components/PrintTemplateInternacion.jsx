@@ -4,12 +4,9 @@
  * Renders one page per cart item with dynamic encabezado
  */
 import { forwardRef } from 'react';
+import { formatDate } from '../utils/searchUtils';
 
 const PrintTemplateInternacion = forwardRef(({ patientData, items, singleItem }, ref) => {
-    const fecha = new Date().toLocaleDateString('es-AR', {
-        day: '2-digit', month: '2-digit', year: 'numeric'
-    });
-
     const printList = singleItem ? [singleItem] : items;
 
     return (
@@ -55,7 +52,7 @@ const PrintTemplateInternacion = forwardRef(({ patientData, items, singleItem },
 
                     {/* Fecha (sin San Juan, sin firma) */}
                     <div className="print-date-internacion">
-                        <p>{fecha}</p>
+                        <p>{formatDate(item.date || patientData.fecha)}</p>
                     </div>
                 </div>
             ))}
