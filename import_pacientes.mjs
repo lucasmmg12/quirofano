@@ -1,48 +1,48 @@
-/**
- * import_pacientes.mjs
- * ────────────────────
- * Script para importar el CSV de pacientes a Supabase en batches.
- * 
- * Uso:
- *   node import_pacientes.mjs
- * 
- * Requiere:
- *   - VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en el archivo .env
- *   - listadopacientes.csv en la raíz del proyecto
- */
-
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'fs';
 import { config } from 'dotenv';
 
-// Load env vars
 config();
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
-    console.error('❌ Faltan variables VITE_SUPABASE_URL y/o VITE_SUPABASE_ANON_KEY en .env');
+    console.error('❌ Faltan variables de entorno');
     process.exit(1);
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
-
 const BATCH_SIZE = 1000;
-const CSV_PATH = 'listadopacientes.csv';
+const CSV_PATH = 'listadomejorado.csv';
 
 async function main() {
+    // Step 1: Delete all old data
+    console.log('🗑️  Borrando datos anteriores...');
+    const { error: delError } = await supabase
+        .from('pacientes')
+        .delete()
+        .neq('id_paciente', -1); // delete all rows
+
+    if (delError) {
+        console.error('❌ Error borrando:', delError.message);
+        process.exit(1);
+    }
+    console.log('✅ Datos anteriores borrados');
+
+    // Step 2: Read and parse new CSV
     console.log('📂 Leyendo CSV...');
     const raw = readFileSync(CSV_PATH, 'utf-8');
     const lines = raw.split('\n').filter(l => l.trim());
 
-    // Skip header
     const header = lines[0];
     console.log(`📋 Header: ${header}`);
+    // Header: IdPaciente;Paciente;Edad;Sexo;DNI;E-mail;Centro creación
+    //         0          1        2    3    4   5      6
+
     const dataLines = lines.slice(1);
     console.log(`📊 Total filas: ${dataLines.length}`);
 
-    // Parse CSV (separator: ;)
     const rows = [];
     let skipped = 0;
     for (const line of dataLines) {
@@ -55,9 +55,9 @@ async function main() {
         rows.push({
             id_paciente: idPaciente,
             nombre: (parts[1] || '').trim().replace(/\r/g, ''),
-            dni: (parts[2] || '').trim().replace(/\r/g, '') || null,
-            edad: (parts[3] || '').trim().replace(/\r/g, '') || null,
-            sexo: (parts[4] || '').trim().replace(/\r/g, '') || null,
+            edad: (parts[2] || '').trim().replace(/\r/g, '') || null,
+            sexo: (parts[3] || '').trim().replace(/\r/g, '') || null,
+            dni: (parts[4] || '').trim().replace(/\r/g, '') || null,
             email: (parts[5] || '').trim().replace(/\r/g, '') || null,
             centro: (parts[6] || '').trim().replace(/\r/g, '') || null,
         });
@@ -65,7 +65,7 @@ async function main() {
 
     console.log(`✅ Filas parseadas: ${rows.length} (${skipped} omitidas)`);
 
-    // Upload in batches
+    // Step 3: Upload in batches
     let uploaded = 0;
     let errors = 0;
     const totalBatches = Math.ceil(rows.length / BATCH_SIZE);
@@ -79,11 +79,10 @@ async function main() {
             .upsert(batch, { onConflict: 'id_paciente', ignoreDuplicates: false });
 
         if (error) {
-            console.error(`❌ Batch ${batchNum}/${totalBatches} falló:`, error.message);
+            console.error(`❌ Batch ${batchNum}/${totalBatches}:`, error.message);
             errors++;
         } else {
             uploaded += batch.length;
-            // Progress every 10 batches
             if (batchNum % 10 === 0 || batchNum === totalBatches) {
                 const pct = ((uploaded / rows.length) * 100).toFixed(1);
                 console.log(`📤 Batch ${batchNum}/${totalBatches} — ${uploaded}/${rows.length} (${pct}%)`);

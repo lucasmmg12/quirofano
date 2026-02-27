@@ -236,19 +236,24 @@ export default function PatientHeader({ patientData, setPatientData }) {
                                         className={`patient-autocomplete-option ${idx === selectedPatientIdx ? 'patient-autocomplete-option--selected' : ''}`}
                                         onClick={() => handleSelectPatient(p)}
                                     >
-                                        <div className="patient-autocomplete-option__main">
-                                            <span className="patient-autocomplete-option__name">{p.nombre}</span>
+                                        <span className="patient-autocomplete-option__name">{p.nombre}</span>
+                                        <div className="patient-autocomplete-option__details">
                                             {p.dni && (
                                                 <span className="patient-autocomplete-option__dni">
                                                     DNI: {p.dni}
                                                 </span>
                                             )}
+                                            {p.centro && (
+                                                <span className="patient-autocomplete-option__centro">
+                                                    {p.centro}
+                                                </span>
+                                            )}
+                                            {p.edad && (
+                                                <span className="patient-autocomplete-option__edad">
+                                                    Edad: {p.edad}
+                                                </span>
+                                            )}
                                         </div>
-                                        {(p.edad || p.sexo) && (
-                                            <span className="patient-autocomplete-option__extra">
-                                                {p.sexo}{p.edad ? ` · ${p.edad}` : ''}
-                                            </span>
-                                        )}
                                     </div>
                                 ))}
                             </div>
