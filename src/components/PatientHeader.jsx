@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { User, Building2, CreditCard, Stethoscope, Calendar, UserCheck, ChevronDown, ChevronUp, Pill, X } from 'lucide-react';
+import { User, Building2, CreditCard, Stethoscope, Calendar, UserCheck, ChevronDown, ChevronUp, Pill, X, Eraser } from 'lucide-react';
 import { OBRAS_SOCIALES } from '../data/nomenclador';
+import { getTodayISO } from '../utils/searchUtils';
 
 export default function PatientHeader({ patientData, setPatientData }) {
     const [collapsed, setCollapsed] = useState(false);
@@ -13,6 +14,24 @@ export default function PatientHeader({ patientData, setPatientData }) {
     };
 
     const isComplete = patientData.nombre && patientData.obraSocial && patientData.fecha;
+
+    const hasAnyData = patientData.nombre || patientData.obraSocial || patientData.afiliado || patientData.diagnostico || patientData.tratamiento || patientData.medico;
+
+    const handleClearAll = (e) => {
+        e.stopPropagation();
+        setPatientData({
+            nombre: '',
+            obraSocial: '',
+            afiliado: '',
+            diagnostico: '',
+            tratamiento: '',
+            fecha: getTodayISO(),
+            medico: '',
+        });
+        setOsSearch('');
+        setOsOpen(false);
+        setCollapsed(false);
+    };
 
     // Filter obras sociales based on search input
     const filteredOS = OBRAS_SOCIALES.filter(os =>
@@ -58,6 +77,16 @@ export default function PatientHeader({ patientData, setPatientData }) {
                     </div>
                 </div>
                 <div className="patient-header__toggle-area">
+                    {hasAnyData && (
+                        <button
+                            className="btn-clear-fields"
+                            onClick={handleClearAll}
+                            title="Limpiar todos los campos del paciente"
+                        >
+                            <Eraser size={14} />
+                            Limpiar Campos
+                        </button>
+                    )}
                     {isComplete && (
                         <span className="patient-header__status patient-header__status--complete">
                             ✓ Completo

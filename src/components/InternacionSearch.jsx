@@ -13,7 +13,7 @@ import { filterPractices } from '../utils/searchUtils';
 // Encabezados de internación
 const ENCABEZADOS = [
     { id: 'internacion', label: 'Internación', header: 'Solicito autorización de internación en Sanatorio Argentino', hasCode: true },
-    { id: 'cirugia', label: 'Cirugía', header: 'Solicito autorización de cirugía en Sanatorio Argentino', hasCode: true },
+    { id: 'cirugia', label: 'Cirugía', header: 'Solicito autorización de Cirugía General en Sanatorio Argentino', hasCode: true },
     { id: 'uci', label: 'UCI', header: 'Solicito autorización en UCI en Sanatorio Argentino', hasCode: true },
     { id: 'utip', label: 'UTIP', header: 'Solicito autorización en UTIP en Sanatorio Argentino', hasCode: true },
     { id: 'utin', label: 'UTIN', header: 'Solicito autorización en UTIN en Sanatorio Argentino', hasCode: true },
