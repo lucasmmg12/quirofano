@@ -338,6 +338,92 @@
     border-color: #FECACA;
 }
 
+/* ── Patient Autocomplete Dropdown ── */
+.patient-autocomplete-dropdown {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    margin-top: 4px;
+    background: var(--neutral-0);
+    border: 1px solid var(--neutral-200);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    max-height: 280px;
+    overflow-y: auto;
+    z-index: 300;
+    animation: fadeIn 150ms ease-out;
+}
+
+.patient-autocomplete-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3) var(--space-4);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+    border-bottom: 1px solid var(--neutral-50);
+}
+
+.patient-autocomplete-option:last-child {
+    border-bottom: none;
+}
+
+.patient-autocomplete-option:hover {
+    background: var(--neutral-50);
+}
+
+.patient-autocomplete-option--selected {
+    background: var(--primary-50);
+}
+
+.patient-autocomplete-option__main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.patient-autocomplete-option__name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--neutral-800);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.patient-autocomplete-option__dni {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--primary-600);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.patient-autocomplete-option__extra {
+    font-size: 0.7rem;
+    color: var(--neutral-400);
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-left: var(--space-3);
+}
+
+/* Spinner for patient search loading */
+@keyframes spin {
+    from {
+        transform: translateY(-50%) rotate(0deg);
+    }
+
+    to {
+        transform: translateY(-50%) rotate(360deg);
+    }
+}
+
+.patient-search-spinner {
+    animation: spin 1s linear infinite;
+}
+
 .patient-header__fields {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
