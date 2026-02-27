@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Trash2, Minus, Plus, ShoppingCart, Printer, Send, XCircle, Calendar } from 'lucide-react';
 import { INTERCONSULTA_SPECIALTIES } from '../data/nomenclador';
 
-export default function Cart({ items, onUpdateItem, onRemoveItem, onClearCart, onPrintAll, onPrintSingle, onSendWhatsApp }) {
+export default function Cart({ items, onUpdateItem, onRemoveItem, onClearCart, onPrintAll, onPrintSingle, onSendWhatsApp, hideDate }) {
     const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
     // Track which items are using the custom "Agregar una" input
     const [customModeItems, setCustomModeItems] = useState({});
@@ -55,7 +55,7 @@ export default function Cart({ items, onUpdateItem, onRemoveItem, onClearCart, o
                             <th className="cart__th cart__th--code">Código</th>
                             <th className="cart__th cart__th--name">Práctica</th>
                             <th className="cart__th cart__th--qty">Cantidad</th>
-                            <th className="cart__th cart__th--date">Fecha</th>
+                            {!hideDate && <th className="cart__th cart__th--date">Fecha</th>}
                             <th className="cart__th cart__th--actions">Acciones</th>
                         </tr>
                     </thead>
@@ -146,17 +146,19 @@ export default function Cart({ items, onUpdateItem, onRemoveItem, onClearCart, o
                                         </button>
                                     </div>
                                 </td>
-                                <td className="cart__td cart__td--date">
-                                    <div className="date-picker-inline">
-                                        <Calendar size={14} className="date-picker-inline__icon" />
-                                        <input
-                                            type="date"
-                                            className="date-picker-inline__input"
-                                            value={item.date}
-                                            onChange={e => onUpdateItem(item.id, 'date', e.target.value)}
-                                        />
-                                    </div>
-                                </td>
+                                {!hideDate && (
+                                    <td className="cart__td cart__td--date">
+                                        <div className="date-picker-inline">
+                                            <Calendar size={14} className="date-picker-inline__icon" />
+                                            <input
+                                                type="date"
+                                                className="date-picker-inline__input"
+                                                value={item.date}
+                                                onChange={e => onUpdateItem(item.id, 'date', e.target.value)}
+                                            />
+                                        </div>
+                                    </td>
+                                )}
                                 <td className="cart__td cart__td--actions">
                                     <div className="cart__action-btns">
                                         <button
