@@ -261,7 +261,13 @@ export default function SurgeryPanel({ addToast, currentUser }) {
 
     // Abrir chat de un paciente
     const openChat = (surgery) => {
-        setChatPatient({ name: surgery.nombre, phone: surgery.telefono });
+        setChatPatient({
+            name: surgery.nombre,
+            phone: surgery.telefono,
+            obraSocial: surgery.obra_social || '',
+            fechaCirugia: surgery.fecha_cirugia || '',
+            medico: surgery.medico || '',
+        });
         setChatOpen(true);
         // Limpiar unread del teléfono
         const normalized = normalizeArgentinePhone(surgery.telefono);
@@ -2413,6 +2419,11 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 onClose={() => setChatOpen(false)}
                 patientName={chatPatient.name}
                 patientPhone={chatPatient.phone}
+                patientContext={{
+                    obraSocial: chatPatient.obraSocial,
+                    fechaCirugia: chatPatient.fechaCirugia,
+                    medico: chatPatient.medico,
+                }}
                 addToast={addToast}
             />
         </div>

@@ -25,7 +25,7 @@ const EMOJI_LIST = [
     '🙏', '💯', '🎉', '🎊', '👋', '👌', '🤙', '📌', '⏰', '🗓️',
 ];
 
-export default function ChatWindow({ open, onClose, patientName, patientPhone, addToast }) {
+export default function ChatWindow({ open, onClose, patientName, patientPhone, patientContext = {}, addToast }) {
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
     const [inputText, setInputText] = useState('');
@@ -374,15 +374,52 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, a
         }
     };
 
-    // Personaliza el mensaje reemplazando "Estimado/a" por el nombre del paciente
+    // Personaliza el mensaje reemplazando variables dinámicas con datos del contexto
     const personalizeMessage = useCallback((message, name) => {
-        if (!name) return message;
-        // Reemplazar variantes comunes: "Estimado/a", "Estimado/a,", "Estimado/a:"
-        return message
-            .replace(/Estimado\/a[,:.]?\s*/gi, `Estimada ${name} `)
-            .replace(/\{nombre\}/gi, name)
-            .replace(/\{paciente\}/gi, name);
-    }, []);
+        if (!message) return message;
+
+        // Formatear fecha de cirugía si existe
+        const formatFechaCirugia = (fecha) => {
+            if (!fecha) return '';
+            try {
+                const d = new Date(fecha + 'T12:00:00');
+                return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            } catch { return fecha; }
+        };
+
+        const fechaHoy = new Date().toLocaleDateString('es-AR', {
+            day: '2-digit', month: '2-digit', year: 'numeric'
+        });
+
+        let result = message;
+
+        // Legacy: Reemplazar "Estimado/a" por nombre del paciente
+        if (name) {
+            result = result.replace(/Estimado\/a[,:.]?\s*/gi, `Estimada ${name} `);
+        }
+
+        // Variables de Paciente
+        result = result.replace(/\{nombre\}/gi, name || '');
+        result = result.replace(/\{paciente\}/gi, name || '');
+
+        // Variables de Obra Social
+        result = result.replace(/\{obra_social\}/gi, patientContext.obraSocial || '');
+        result = result.replace(/\{afiliado\}/gi, patientContext.afiliado || '');
+
+        // Variables Clínicas
+        result = result.replace(/\{medico\}/gi, patientContext.medico || '');
+        result = result.replace(/\{diagnostico\}/gi, patientContext.diagnostico || '');
+        result = result.replace(/\{tratamiento\}/gi, patientContext.tratamiento || '');
+
+        // Variables de Fechas
+        result = result.replace(/\{fecha_cirugia\}/gi, formatFechaCirugia(patientContext.fechaCirugia));
+        result = result.replace(/\{fecha_hoy\}/gi, fechaHoy);
+
+        // Variables de Presupuesto
+        result = result.replace(/\{presupuesto_total\}/gi, patientContext.presupuestoTotal || '');
+
+        return result;
+    }, [patientContext]);
 
     const selectShortcut = useCallback((shortcut) => {
         const personalized = personalizeMessage(shortcut.message, patientName);
