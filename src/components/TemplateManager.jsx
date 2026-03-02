@@ -347,8 +347,17 @@ export default function TemplateManager({ addToast }) {
                             Variables disponibles
                             <span style={{ fontWeight: 400, color: '#94A3B8' }}>— click para insertar en el mensaje</span>
                         </label>
+                        <p style={{
+                            margin: '2px 0 6px', fontSize: '0.72rem', color: '#78716C',
+                            lineHeight: 1.4, fontStyle: 'italic',
+                            padding: '5px 10px', borderRadius: '6px',
+                            background: 'rgba(180,83,9,0.05)', border: '1px dashed #D6BFA040',
+                        }}>
+                            💡 Las <strong>variables</strong> son campos que se reemplazan automáticamente por los datos reales del paciente al usar la plantilla en el chat.
+                            Ej: <code style={{ background: '#FEF3C7', padding: '1px 4px', borderRadius: '3px', fontFamily: "'JetBrains Mono', monospace", fontSize: '0.68rem' }}>{'{nombre}'}</code> se convierte en el nombre del paciente.
+                        </p>
                         <div style={{
-                            display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px',
+                            display: 'flex', flexWrap: 'wrap', gap: '6px',
                         }}>
                             {AVAILABLE_VARIABLES.map(v => (
                                 <button
