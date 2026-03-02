@@ -605,7 +605,6 @@ function App({ currentUser, onLogout }) {
                             onPrintAll={handlePrintAllInternacion}
                             onPrintSingle={handlePrintSingleInternacion}
                             onSendWhatsApp={() => addToast('WhatsApp no disponible para internación', 'info')}
-                            hideDate
                         />
                     </div>
                 )}
