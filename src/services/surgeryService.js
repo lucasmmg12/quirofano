@@ -186,7 +186,13 @@ export async function bulkCreateSurgeries(list) {
 /**
  * UPSERT masivo de cirugías desde Excel con normalización de teléfonos
  * 
- * - Si el registro tiene id_paciente y ya existe (id_paciente + fecha_cirugia + nombre) → ACTUALIZA
+ * ESTRATEGIA DE PRESERVACIÓN DE ESTADOS:
+ * - Antes del upsert, se consultan los registros existentes para obtener sus campos de estado
+ * - Se fusionan los datos nuevos del Excel con los campos de estado existentes
+ * - Solo se actualizan campos provenientes del Excel (datos demográficos/clínicos)
+ * - NUNCA se tocan: status, notificado_at, autorizado_at, confirmado_at, archivos, notas, operador
+ * 
+ * - Si el registro tiene id_paciente y ya existe (id_paciente + fecha_cirugia + nombre) → ACTUALIZA solo datos del Excel
  * - Si es nuevo o no tiene id_paciente → INSERTA
  * - Normaliza teléfonos al formato 549XXXXXXXXXX para WhatsApp
  * 
@@ -267,37 +273,69 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
     }
     const uniqueWithId = Array.from(deduped.values());
 
-    // ── PASO PREVIO: Limpiar registros viejos de estos pacientes ──
-    // Si la fecha de un paciente cambió entre cargas Excel, el upsert ON CONFLICT
-    // (id_paciente, fecha_cirugia, nombre) no matchea y crea una fila NUEVA
-    // en vez de actualizar la existente. Borramos las filas previas.
+    // ── PASO PREVIO: Obtener estados existentes para preservarlos ──
+    // Consultamos los registros existentes para fusionar sus campos de estado
+    // con los datos nuevos del Excel. NUNCA se borran registros existentes.
+    const FIELDS_TO_PRESERVE = [
+        'status', 'notificado_at', 'documentacion_recibida_at', 'autorizado_at',
+        'confirmado_at', 'archivos', 'whatsapp_message_id', 'ultimo_mensaje_at',
+        'notas', 'operador',
+    ];
+
+    const existingMap = new Map(); // key → { status, notificado_at, ... }
     const patientIds = [...new Set(uniqueWithId.map(r => r.id_paciente).filter(Boolean))];
+
     if (patientIds.length > 0) {
-        console.log(`🗑️ Limpiando registros anteriores de ${patientIds.length} pacientes...`);
-        const DEL_BATCH = 200;
-        for (let i = 0; i < patientIds.length; i += DEL_BATCH) {
-            const idBatch = patientIds.slice(i, i + DEL_BATCH);
+        console.log(`🔍 Consultando estados existentes de ${patientIds.length} pacientes...`);
+        const FETCH_BATCH = 200;
+        for (let i = 0; i < patientIds.length; i += FETCH_BATCH) {
+            const idBatch = patientIds.slice(i, i + FETCH_BATCH);
             try {
-                const { error: delErr } = await supabase
+                const { data: existingRows, error: fetchErr } = await supabase
                     .from('surgeries')
-                    .delete()
+                    .select(`id_paciente, fecha_cirugia, nombre, ${FIELDS_TO_PRESERVE.join(', ')}`)
                     .in('id_paciente', idBatch);
-                if (delErr) {
-                    console.warn('⚠️ Error limpiando registros previos:', delErr.message);
+
+                if (fetchErr) {
+                    console.warn('⚠️ Error consultando registros existentes:', fetchErr.message);
+                } else if (existingRows) {
+                    for (const row of existingRows) {
+                        const key = `${row.id_paciente}|${row.fecha_cirugia}|${row.nombre}`;
+                        const preserved = {};
+                        for (const field of FIELDS_TO_PRESERVE) {
+                            if (row[field] !== null && row[field] !== undefined) {
+                                preserved[field] = row[field];
+                            }
+                        }
+                        // Solo guardar si tiene al menos un campo de estado modificado
+                        if (Object.keys(preserved).length > 0) {
+                            existingMap.set(key, preserved);
+                        }
+                    }
                 }
             } catch (err) {
-                console.warn('⚠️ Non-fatal cleanup error:', err.message);
+                console.warn('⚠️ Non-fatal fetch error:', err.message);
             }
         }
+        console.log(`✅ Encontrados ${existingMap.size} registros con estados a preservar`);
     }
 
     // BATCH SIZE
     const BATCH = 50;
 
     // 1) UPSERT en lotes para registros CON id_paciente (deduplicados)
+    // Fusionamos los datos del Excel con los estados existentes
     for (let i = 0; i < uniqueWithId.length; i += BATCH) {
         const batch = uniqueWithId.slice(i, i + BATCH);
-        const cleanBatch = batch.map(({ _rowIndex, ...rest }) => rest);
+        const cleanBatch = batch.map(({ _rowIndex, ...rest }) => {
+            const key = `${rest.id_paciente}|${rest.fecha_cirugia}|${rest.nombre}`;
+            const preserved = existingMap.get(key);
+            if (preserved) {
+                // Fusionar: datos del Excel + campos de estado existentes
+                return { ...rest, ...preserved };
+            }
+            return rest;
+        });
 
         try {
             const { data, error } = await supabase
@@ -313,9 +351,13 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
                 // Si el batch falla, intentar uno por uno
                 for (const row of batch) {
                     const { _rowIndex, ...cleanRow } = row;
+                    const key = `${cleanRow.id_paciente}|${cleanRow.fecha_cirugia}|${cleanRow.nombre}`;
+                    const preserved = existingMap.get(key);
+                    const mergedRow = preserved ? { ...cleanRow, ...preserved } : cleanRow;
+
                     const { data: d, error: e } = await supabase
                         .from('surgeries')
-                        .upsert(cleanRow, {
+                        .upsert(mergedRow, {
                             onConflict: 'id_paciente,fecha_cirugia,nombre',
                             ignoreDuplicates: false,
                         })
@@ -388,6 +430,7 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
         total: mappedRecords.length,
         conIdPaciente: withId.length,
         sinIdPaciente: withoutId.length,
+        estadosPreservados: existingMap.size,
         ...results,
         primerosErrores: results.errors.slice(0, 5),
     });
