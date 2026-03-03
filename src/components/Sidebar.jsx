@@ -1,25 +1,17 @@
 import { useState } from 'react';
 import {
     ClipboardList, History, BookOpen, Settings, PanelLeftClose, PanelLeft,
-    Stethoscope, ChevronDown, FileText, Home, BedDouble,
+    Stethoscope, ChevronDown, FileText, Home, MessageSquareText,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange }) {
     const [pedidosOpen, setPedidosOpen] = useState(true);
 
-    // Sub-items dentro de "Emisión de Pedidos"
+    // Sub-items dentro de "Emisión de Pedidos" — UNIFICADO (sin Internación separada)
     const pedidosSubItems = [
         { id: 'pedidos', label: 'Nuevo Pedido', icon: ClipboardList },
-        { id: 'internacion', label: 'Internación', icon: BedDouble },
         { id: 'historial', label: 'Historial', icon: History },
         { id: 'nomenclador', label: 'Nomenclador', icon: BookOpen },
-    ];
-
-    // Items independientes
-    const standaloneItems = [
-        { id: 'inicio', label: 'Inicio', icon: Home },
-        { id: 'cirugias', label: 'Control de Cirugías', icon: Stethoscope },
-        { id: 'config', label: 'Configuración', icon: Settings },
     ];
 
     const isPedidosActive = pedidosSubItems.some(i => activeView === i.id);
@@ -143,6 +135,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange 
                 {[
                     { id: 'cirugias', label: 'Control de Cirugías', icon: Stethoscope },
                     { id: 'config', label: 'Configuración', icon: Settings },
+                    { id: 'plantillas', label: 'Plantillas WhatsApp', icon: MessageSquareText },
                 ].map(item => {
                     const Icon = item.icon;
                     const isActive = activeView === item.id;

@@ -112,10 +112,10 @@ export default function InternacionSearch({ onAddToCart }) {
     const handleAddPractice = (practice) => {
         onAddToCart({
             code: practice.code,
-            name: `Solicito ${practice.name}`,
-            category: 'internacion',
-            encabezado: `Solicito ${practice.name}`,
-            isInternacion: true,
+            name: practice.name,
+            category: practice.category,
+            customField: practice.customField || null,
+            customLabel: practice.customLabel || null,
         });
         setQuery('');
         setSelectedIndex(-1);

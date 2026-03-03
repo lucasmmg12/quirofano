@@ -4,7 +4,6 @@ import {
     Smartphone, Key, Building2, Globe, Copy, ExternalLink, Zap, Shield,
 } from 'lucide-react';
 import { getAllConfig, updateMultipleConfigs } from '../services/configService';
-import TemplateManager from './TemplateManager';
 
 // Configuración de los campos con metadata para UI
 const FIELD_META = {
@@ -453,9 +452,6 @@ export default function ConfigPanel({ addToast }) {
                         Los cambios en API Key y Project ID requieren <strong>re-deploy</strong> de las Edge Functions para tomar efecto.
                     </span>
                 </div>
-
-                {/* ========== PLANTILLAS DE MENSAJES ========== */}
-                <TemplateManager addToast={addToast} />
             </div>
         </div>
     );

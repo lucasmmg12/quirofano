@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { User, Building2, CreditCard, Stethoscope, Calendar, UserCheck, ChevronDown, ChevronUp, Pill, X, Eraser, Search, Loader2 } from 'lucide-react';
+import { User, Building2, CreditCard, Stethoscope, Calendar, UserCheck, ChevronDown, ChevronUp, Pill, X, Eraser, Search, Loader2, Scissors } from 'lucide-react';
 import { OBRAS_SOCIALES } from '../data/nomenclador';
 import { getTodayISO } from '../utils/searchUtils';
 import { searchPatients } from '../services/patientService';
@@ -26,7 +26,7 @@ export default function PatientHeader({ patientData, setPatientData }) {
 
     const isComplete = patientData.nombre && patientData.obraSocial && patientData.fecha;
 
-    const hasAnyData = patientData.nombre || patientData.obraSocial || patientData.afiliado || patientData.diagnostico || patientData.tratamiento || patientData.medico;
+    const hasAnyData = patientData.nombre || patientData.obraSocial || patientData.afiliado || patientData.diagnostico || patientData.tratamiento || patientData.cirugia || patientData.medico;
 
     const handleClearAll = (e) => {
         e.stopPropagation();
@@ -36,6 +36,7 @@ export default function PatientHeader({ patientData, setPatientData }) {
             afiliado: '',
             diagnostico: '',
             tratamiento: '',
+            cirugia: '',
             fecha: getTodayISO(),
             medico: '',
         });
@@ -357,6 +358,21 @@ export default function PatientHeader({ patientData, setPatientData }) {
                             placeholder="Ej: CESAREA"
                             value={patientData.tratamiento}
                             onChange={e => handleChange('tratamiento', e.target.value.toUpperCase())}
+                        />
+                    </div>
+
+                    <div className="field-group">
+                        <label className="field-label">
+                            <Scissors size={14} />
+                            Cirugía
+                        </label>
+                        <input
+                            id="patient-cirugia"
+                            type="text"
+                            className="field-input"
+                            placeholder="Ej: HERNIOPLASTIA INGUINAL"
+                            value={patientData.cirugia || ''}
+                            onChange={e => handleChange('cirugia', e.target.value.toUpperCase())}
                         />
                     </div>
 

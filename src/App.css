@@ -1480,6 +1480,27 @@
     margin: 2mm 0 6mm 0;
 }
 
+/* ── Grouped Studies (multiple practices on same page) ── */
+.print-study-group {
+    text-align: center;
+    padding: 4mm 4mm;
+    margin: 2mm 0 4mm 0;
+}
+
+.print-study-group__item {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #000;
+    text-transform: uppercase;
+    line-height: 1.4;
+    padding: 2mm 0;
+    border-bottom: 1px dotted #ccc;
+}
+
+.print-study-group__item:last-child {
+    border-bottom: none;
+}
+
 /* ── Fields Section (Diag. / Trat. / Cod.) ── */
 .print-fields {
     display: flex;

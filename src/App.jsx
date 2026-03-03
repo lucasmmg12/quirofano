@@ -15,11 +15,12 @@ import { sendWhatsAppMessage, formatOrderForWhatsApp } from './services/builderb
 import { createOrder, markOrderPrinted, markOrderSent, fetchOrderHistory } from './services/dataService';
 import { getCurrentUser, logout as authLogout } from './services/authService';
 import { logAction } from './services/auditService';
-import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, BedDouble, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
+import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
 import SurgeryPanel from './components/SurgeryPanel.jsx';
 import ConfigPanel from './components/ConfigPanel.jsx';
 import HomePanel from './components/HomePanel.jsx';
 import NomencladorView from './components/NomencladorView.jsx';
+import TemplateManager from './components/TemplateManager.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -60,15 +61,17 @@ function App({ currentUser, onLogout }) {
         afiliado: '',
         diagnostico: '',
         tratamiento: '',
+        cirugia: '',
         fecha: getTodayISO(),
         medico: '',
     });
 
-    // Cart items
+    // Cart items (unified — holds both prácticas and internación items)
     const [cartItems, setCartItems] = useState([]);
 
     // Print
     const printRef = useRef(null);
+    const printInternacionRef = useRef(null);
     const [printItems, setPrintItems] = useState(null); // null = all, object = single
 
     // WhatsApp Modal
@@ -76,11 +79,6 @@ function App({ currentUser, onLogout }) {
 
     // Change Password Modal
     const [showChangePassword, setShowChangePassword] = useState(false);
-
-    // Internación — separate cart
-    const [internacionItems, setInternacionItems] = useState([]);
-    const [internacionPrintItems, setInternacionPrintItems] = useState(null);
-    const printInternacionRef = useRef(null);
 
     // Toast notifications
     const [toasts, setToasts] = useState([]);
@@ -93,32 +91,37 @@ function App({ currentUser, onLogout }) {
         }, 3500);
     }, []);
 
-    // === CART OPERATIONS ===
+    // === CART OPERATIONS (unified: prácticas + internación) ===
     const handleAddToCart = useCallback((practice) => {
         setCartItems(prev => {
-            // Check if already in cart
-            const existing = prev.find(item => item.code === practice.code);
+            // For internación items, use encabezado as uniqueness key to allow same code with different headers
+            const matchKey = practice.isInternacion
+                ? (item => item.code === practice.code && item.encabezado === practice.encabezado)
+                : (item => item.code === practice.code && !item.isInternacion);
+
+            const existing = prev.find(matchKey);
             if (existing) {
                 addToast(`"${practice.name}" ya está en el carrito — cantidad incrementada`, 'info');
                 return prev.map(item =>
-                    item.code === practice.code
-                        ? { ...item, quantity: item.quantity + 1 }
-                        : item
+                    matchKey(item) ? { ...item, quantity: item.quantity + 1 } : item
                 );
             }
 
-            addToast(`Agregado: ${practice.name}`, 'success');
+            addToast(`Agregado: ${practice.encabezado || practice.name}`, 'success');
             return [...prev, {
                 id: uuidv4(),
                 code: practice.code,
                 name: practice.name,
-                displayName: practice.name,
+                displayName: practice.encabezado || practice.name,
                 category: practice.category,
                 quantity: 1,
                 date: patientData.fecha,
                 customField: practice.customField || null,
                 customLabel: practice.customLabel || null,
                 customValue: '',
+                // Internación-specific fields
+                encabezado: practice.encabezado || null,
+                isInternacion: practice.isInternacion || false,
             }];
         });
     }, [patientData.fecha, addToast]);
@@ -158,6 +161,10 @@ function App({ currentUser, onLogout }) {
     }, [cartItems.length, addToast]);
 
     // === PRINT OPERATIONS ===
+    // Separate items by type for dual-template rendering
+    const practiceItems = cartItems.filter(i => !i.isInternacion);
+    const internacionItems = cartItems.filter(i => i.isInternacion);
+
     const handlePrint = useCallback(async (singleItem = null) => {
         setPrintItems(singleItem);
         // Save order to Supabase
@@ -203,73 +210,6 @@ function App({ currentUser, onLogout }) {
         }
     }, [patientData, cartItems, addToast]);
 
-    // === INTERNACIÓN CART OPERATIONS ===
-    const handleAddToInternacion = useCallback((item) => {
-        setInternacionItems(prev => {
-            const existing = prev.find(i => i.code === item.code && i.name === item.name);
-            if (existing) {
-                addToast(`"${item.name}" ya está en el carrito — cantidad incrementada`, 'info');
-                return prev.map(i =>
-                    (i.code === item.code && i.name === item.name)
-                        ? { ...i, quantity: i.quantity + 1 }
-                        : i
-                );
-            }
-            addToast(`Agregado: ${item.name}`, 'success');
-            return [...prev, {
-                id: uuidv4(),
-                code: item.code,
-                name: item.name,
-                displayName: item.encabezado || item.name,
-                category: 'internacion',
-                quantity: 1,
-                date: patientData.fecha,
-                encabezado: item.encabezado || item.name,
-                isInternacion: true,
-            }];
-        });
-    }, [patientData.fecha, addToast]);
-
-    const handleUpdateInternacion = useCallback((id, field, value) => {
-        setInternacionItems(prev => prev.map(item =>
-            item.id !== id ? item : { ...item, [field]: value }
-        ));
-    }, []);
-
-    const handleRemoveInternacion = useCallback((id) => {
-        setInternacionItems(prev => prev.filter(item => item.id !== id));
-        addToast('Item eliminado del carrito', 'info');
-    }, [addToast]);
-
-    const handleClearInternacion = useCallback(() => {
-        if (internacionItems.length === 0) return;
-        if (window.confirm(`¿Eliminar ${internacionItems.length} item(s) del carrito?`)) {
-            setInternacionItems([]);
-            addToast('Carrito limpiado', 'info');
-        }
-    }, [internacionItems.length, addToast]);
-
-    const handlePrintAllInternacion = useCallback(() => {
-        if (internacionItems.length === 0) {
-            addToast('El carrito está vacío', 'error');
-            return;
-        }
-        if (!patientData.nombre) {
-            addToast('Completá el nombre del paciente', 'error');
-            return;
-        }
-        setInternacionPrintItems(null);
-        setTimeout(() => window.print(), 100);
-    }, [internacionItems.length, patientData.nombre, addToast]);
-
-    const handlePrintSingleInternacion = useCallback((item) => {
-        if (!patientData.nombre) {
-            addToast('Completá el nombre del paciente', 'error');
-            return;
-        }
-        setInternacionPrintItems(item);
-        setTimeout(() => window.print(), 100);
-    }, [patientData.nombre, addToast]);
 
     // === HISTORIAL ===
     const [orderHistory, setOrderHistory] = useState([]);
@@ -313,6 +253,8 @@ function App({ currentUser, onLogout }) {
             date: oi.fecha || order.fecha,
             customField: oi.custom_field,
             customValue: oi.custom_value,
+            isInternacion: oi.category === 'internacion',
+            encabezado: oi.display_name || oi.name,
         });
 
         if (singleItem) {
@@ -421,8 +363,13 @@ function App({ currentUser, onLogout }) {
                             setPatientData={setPatientData}
                         />
 
+                        {/* === Internación Search (encabezados institucionales) === */}
+                        <InternacionSearch onAddToCart={handleAddToCart} />
+
+                        {/* === Práctica Search (nomenclador general) === */}
                         <PracticeSearch onAddToCart={handleAddToCart} />
 
+                        {/* === Carrito Unificado === */}
                         <Cart
                             items={cartItems}
                             onUpdateItem={handleUpdateItem}
@@ -588,60 +535,55 @@ function App({ currentUser, onLogout }) {
                     <NomencladorView onAddToCart={handleAddToCart} />
                 )}
 
-                {activeView === 'internacion' && (
-                    <div className="content no-print">
-                        <PatientHeader
-                            patientData={patientData}
-                            setPatientData={setPatientData}
-                        />
 
-                        <InternacionSearch onAddToCart={handleAddToInternacion} />
-
-                        <Cart
-                            items={internacionItems}
-                            onUpdateItem={handleUpdateInternacion}
-                            onRemoveItem={handleRemoveInternacion}
-                            onClearCart={handleClearInternacion}
-                            onPrintAll={handlePrintAllInternacion}
-                            onPrintSingle={handlePrintSingleInternacion}
-                            onSendWhatsApp={() => addToast('WhatsApp no disponible para internación', 'info')}
-                        />
-                    </div>
-                )}
 
                 {activeView === 'config' && (
                     <ConfigPanel addToast={addToast} />
                 )}
+
+                {activeView === 'plantillas' && (
+                    <div className="content no-print">
+                        <TemplateManager addToast={addToast} />
+                    </div>
+                )}
             </main>
 
-            {/* Print Template (hidden on screen, visible on print) */}
-            {!historialPrintData && (
-                <PrintTemplate
-                    ref={printRef}
-                    patientData={patientData}
-                    items={cartItems}
-                    singleItem={printItems}
-                />
-            )}
-
-            {/* Print Template for Historial Reprint */}
-            {historialPrintData && (
-                <PrintTemplate
-                    ref={printHistorialRef}
-                    patientData={historialPrintData.patientData}
-                    items={historialPrintData.items || []}
-                    singleItem={historialPrintData.singleItem}
-                />
-            )}
-
-            {/* Print Template Internación (hidden on screen, visible on print) */}
-            {activeView === 'internacion' && (
-                <PrintTemplateInternacion
-                    ref={printInternacionRef}
-                    patientData={patientData}
-                    items={internacionItems}
-                    singleItem={internacionPrintItems}
-                />
+            {/* Print Templates (hidden on screen, visible on print) */}
+            {/* When printing from historial, use historial data; otherwise use current cart */}
+            {historialPrintData ? (
+                <>
+                    {/* Historial reprint — práctica items */}
+                    <PrintTemplate
+                        ref={printHistorialRef}
+                        patientData={historialPrintData.patientData}
+                        items={(historialPrintData.items || []).filter(i => !i.isInternacion)}
+                        singleItem={historialPrintData.singleItem && !historialPrintData.singleItem.isInternacion ? historialPrintData.singleItem : null}
+                    />
+                    {/* Historial reprint — internación items */}
+                    <PrintTemplateInternacion
+                        ref={printInternacionRef}
+                        patientData={historialPrintData.patientData}
+                        items={(historialPrintData.items || []).filter(i => i.isInternacion)}
+                        singleItem={historialPrintData.singleItem && historialPrintData.singleItem.isInternacion ? historialPrintData.singleItem : null}
+                    />
+                </>
+            ) : (
+                <>
+                    {/* Normal print — práctica items */}
+                    <PrintTemplate
+                        ref={printRef}
+                        patientData={patientData}
+                        items={printItems ? [] : practiceItems}
+                        singleItem={printItems && !printItems.isInternacion ? printItems : null}
+                    />
+                    {/* Normal print — internación items */}
+                    <PrintTemplateInternacion
+                        ref={printInternacionRef}
+                        patientData={patientData}
+                        items={printItems ? [] : internacionItems}
+                        singleItem={printItems && printItems.isInternacion ? printItems : null}
+                    />
+                </>
             )}
 
             {/* WhatsApp Modal */}
