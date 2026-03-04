@@ -49,7 +49,9 @@ Deno.serve(async (req) => {
 
         // Extraer datos según la dirección
         const rawContent = direction === 'incoming' ? (data.body || '') : (data.answer || '');
-        const phone = normalizePhone(data.from || '');
+        // Para incoming, data.from = who sent (paciente). 
+        // Para outgoing, data.from = bot number, data.to = destinatario (paciente)
+        const phone = normalizePhone(direction === 'incoming' ? (data.from || '') : (data.to || data.from || ''));
         const senderName = data.name || null;
 
         // =============================================

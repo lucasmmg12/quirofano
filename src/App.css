@@ -2226,6 +2226,14 @@
     padding: 10px 16px;
 }
 
+/* Composer container — needs position:relative for shortcuts popup */
+.msg-panel__composer {
+    position: relative;
+    border-top: 1px solid var(--neutral-200);
+    background: #fff;
+    padding: 8px 12px;
+}
+
 .msg-panel__composer-row {
     display: flex;
     align-items: center;
