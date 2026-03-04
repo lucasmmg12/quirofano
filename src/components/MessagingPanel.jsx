@@ -90,24 +90,66 @@ export default function MessagingPanel({ addToast }) {
     }, []);
 
     // === LOAD CONVERSATIONS ===
-    const loadConversations = useCallback(async () => {
+    const loadConversations = useCallback(async (silent = false) => {
         try {
-            setLoading(true);
+            if (!silent) setLoading(true);
             const data = await fetchConversations();
             setConversations(data);
         } catch (e) {
             console.error(e);
-            addToast?.('Error al cargar conversaciones', 'error');
+            if (!silent) addToast?.('Error al cargar conversaciones', 'error');
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }, [addToast]);
 
-    useEffect(() => { loadConversations(); }, [loadConversations]);
+    useEffect(() => {
+        loadConversations();
+        // Poll conversation list every 8s so new messages show without F5
+        const pollConvos = setInterval(() => loadConversations(true), 8000);
+        return () => clearInterval(pollConvos);
+    }, [loadConversations]);
+
+    // === Notification sound (WhatsApp style) ===
+    const playNotificationSound = useCallback(() => {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            // First tone
+            const osc1 = ctx.createOscillator();
+            const gain1 = ctx.createGain();
+            osc1.type = 'sine';
+            osc1.frequency.value = 880; // A5
+            gain1.gain.setValueAtTime(0.15, ctx.currentTime);
+            gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+            osc1.connect(gain1);
+            gain1.connect(ctx.destination);
+            osc1.start(ctx.currentTime);
+            osc1.stop(ctx.currentTime + 0.15);
+            // Second tone (slightly higher, delayed)
+            const osc2 = ctx.createOscillator();
+            const gain2 = ctx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.value = 1175; // D6
+            gain2.gain.setValueAtTime(0.12, ctx.currentTime + 0.12);
+            gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+            osc2.connect(gain2);
+            gain2.connect(ctx.destination);
+            osc2.start(ctx.currentTime + 0.12);
+            osc2.stop(ctx.currentTime + 0.3);
+            // Cleanup
+            setTimeout(() => ctx.close(), 500);
+        } catch (e) {
+            // Audio not available, silently ignore
+        }
+    }, []);
 
     // === Realtime: new incoming messages ===
     useEffect(() => {
         const unsub = subscribeToAllIncoming((newMsg) => {
+            // Play notification for incoming messages
+            if (newMsg.direction === 'incoming') {
+                playNotificationSound();
+            }
             setConversations(prev => {
                 const idx = prev.findIndex(c => c.phone === newMsg.phone);
                 if (idx >= 0) {
@@ -132,7 +174,7 @@ export default function MessagingPanel({ addToast }) {
             });
         });
         return unsub;
-    }, []);
+    }, [playNotificationSound]);
 
     // === Load messages for selected conversation ===
     useEffect(() => {

@@ -2124,29 +2124,16 @@
     flex: 1;
     overflow-y: auto;
     padding: 16px 20px;
-    background: #E8ECF1;
+    background-color: rgba(232, 236, 241, 0.92);
     background-image: url('/SANARG2021_fondo.webp');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    background-attachment: fixed;
+    background-blend-mode: overlay;
     display: flex;
     flex-direction: column;
     gap: 4px;
-    position: relative;
-}
-
-.msg-panel__messages::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: rgba(232, 236, 241, 0.88);
-    pointer-events: none;
-    z-index: 0;
-}
-
-.msg-panel__messages>* {
-    position: relative;
-    z-index: 1;
 }
 
 .msg-panel__date-separator {
