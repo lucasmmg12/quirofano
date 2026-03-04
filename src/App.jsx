@@ -21,6 +21,7 @@ import ConfigPanel from './components/ConfigPanel.jsx';
 import HomePanel from './components/HomePanel.jsx';
 import NomencladorView from './components/NomencladorView.jsx';
 import TemplateManager from './components/TemplateManager.jsx';
+import MessagingPanel from './components/MessagingPanel.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -354,6 +355,10 @@ function App({ currentUser, onLogout }) {
                 {/* Content */}
                 {activeView === 'inicio' && (
                     <HomePanel />
+                )}
+
+                {activeView === 'mensajeria' && (
+                    <MessagingPanel addToast={addToast} />
                 )}
 
                 {activeView === 'pedidos' && (

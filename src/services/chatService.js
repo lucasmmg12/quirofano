@@ -7,6 +7,44 @@ import { supabase } from '../lib/supabase';
 import { normalizeArgentinePhone } from './builderbotApi';
 
 /**
+ * Obtiene lista de conversaciones agrupadas por teléfono.
+ * Retorna: [{ phone, lastMessage, lastDate, unreadCount, senderName, direction }]
+ */
+export async function fetchConversations() {
+    // Get all messages ordered by created_at DESC
+    const { data, error } = await supabase
+        .from('whatsapp_messages')
+        .select('phone, content, direction, sender_name, is_read, created_at, media_type')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error fetching conversations:', error);
+        throw error;
+    }
+
+    // Group by phone — keep first (latest) as preview
+    const map = {};
+    (data || []).forEach(msg => {
+        if (!map[msg.phone]) {
+            map[msg.phone] = {
+                phone: msg.phone,
+                lastMessage: msg.media_type !== 'text' ? `📎 ${msg.media_type}` : (msg.content || ''),
+                lastDate: msg.created_at,
+                direction: msg.direction,
+                senderName: msg.sender_name || '',
+                unreadCount: 0,
+            };
+        }
+        if (msg.direction === 'incoming' && !msg.is_read) {
+            map[msg.phone].unreadCount += 1;
+        }
+    });
+
+    // Sort by lastDate DESC
+    return Object.values(map).sort((a, b) => new Date(b.lastDate) - new Date(a.lastDate));
+}
+
+/**
  * Obtiene todos los mensajes de un teléfono, ordenados cronológicamente
  */
 export async function fetchMessages(phone) {

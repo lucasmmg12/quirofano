@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
     ClipboardList, History, BookOpen, Settings, PanelLeftClose, PanelLeft,
-    Stethoscope, ChevronDown, FileText, Home, MessageSquareText,
+    Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange }) {
@@ -49,6 +49,22 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange 
                         >
                             <Home size={20} className="sidebar__item-icon" />
                             {!collapsed && <span className="sidebar__item-label">Inicio</span>}
+                            {isActive && <div className="sidebar__item-indicator" />}
+                        </button>
+                    );
+                })()}
+
+                {/* ─── Mensajería (CRM) ─── */}
+                {(() => {
+                    const isActive = activeView === 'mensajeria';
+                    return (
+                        <button
+                            className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
+                            onClick={() => onViewChange('mensajeria')}
+                            title={collapsed ? 'Mensajería' : undefined}
+                        >
+                            <MessageCircle size={20} className="sidebar__item-icon" />
+                            {!collapsed && <span className="sidebar__item-label">Mensajería</span>}
                             {isActive && <div className="sidebar__item-indicator" />}
                         </button>
                     );
