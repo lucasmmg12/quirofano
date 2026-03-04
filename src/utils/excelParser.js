@@ -13,7 +13,8 @@
  *   Descrip       → descripcion / modulo
  *   motivo        → motivo
  *   Ausente       → ausente
- *   GrupoAgendas  → grupo_agendas / medico
+ *   GrupoAgendas  → grupo_agendas
+ *   Doctor        → medico
  */
 import * as XLSX from 'xlsx';
 
@@ -91,7 +92,11 @@ const FIELD_MATCHERS = {
         required: false,
     },
     grupoAgendas: {
-        keywords: ['grupoagendas', 'grupo_agendas', 'grupo agendas', 'agenda', 'grupo', 'medico', 'doctor', 'profesional', 'cirujano', 'dr'],
+        keywords: ['grupoagendas', 'grupo_agendas', 'grupo agendas', 'agenda', 'grupo'],
+        required: false,
+    },
+    doctor: {
+        keywords: ['doctor', 'medico', 'dr', 'profesional', 'cirujano', 'medico_cirujano'],
         required: false,
     },
     obraSocial: {
@@ -219,6 +224,7 @@ export function mapExcelToSurgeries(rows) {
         const motivo = getValue('motivo');
         const ausente = getValue('ausente');
         const grupoAgendas = getValue('grupoAgendas');
+        const doctor = getValue('doctor');
         const obraSocial = getValue('obraSocial');
         const dni = getValue('dni');
 
@@ -234,7 +240,7 @@ export function mapExcelToSurgeries(rows) {
             grupo_agendas: grupoAgendas,
             obra_social: obraSocial,
             dni,
-            medico: grupoAgendas || '',
+            medico: doctor || grupoAgendas || '',
             modulo: descripcion || '',
         };
     });

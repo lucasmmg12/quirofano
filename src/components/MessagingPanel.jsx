@@ -893,6 +893,14 @@ export default function MessagingPanel({ addToast }) {
                                                     : patientContext.surgery.obra_social}
                                             </span>
                                         )}
+                                        {patientContext.surgery.medico && (
+                                            <span className="msg-panel__context-badge" style={{ background: '#F5F3FF', color: '#7C3AED' }}>
+                                                <Stethoscope size={12} />
+                                                {patientContext.surgery.medico.length > 25
+                                                    ? patientContext.surgery.medico.slice(0, 25) + '…'
+                                                    : patientContext.surgery.medico}
+                                            </span>
+                                        )}
                                         {patientContext.budget && (
                                             <button
                                                 className="msg-panel__context-badge"
