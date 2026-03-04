@@ -281,6 +281,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             obraSocial: surgery.obra_social || '',
             fechaCirugia: surgery.fecha_cirugia || '',
             medico: surgery.medico || '',
+            idPaciente: surgery.id_paciente || null,
+            dni: surgery.dni || null,
         });
         setChatOpen(true);
         // Limpiar unread del teléfono
@@ -2451,6 +2453,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                     obraSocial: chatPatient.obraSocial,
                     fechaCirugia: chatPatient.fechaCirugia,
                     medico: chatPatient.medico,
+                    idPaciente: chatPatient.idPaciente,
+                    dni: chatPatient.dni,
                 }}
                 addToast={addToast}
             />

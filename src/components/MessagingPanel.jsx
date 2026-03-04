@@ -13,6 +13,7 @@ import {
 import {
     fetchConversations, fetchMessages, saveOutgoingMessage,
     markAsRead, subscribeToMessages, subscribeToAllIncoming,
+    fetchCrmContacts, upsertCrmContact,
 } from '../services/chatService';
 import { sendWhatsAppMessage, normalizeArgentinePhone } from '../services/builderbotApi';
 import { searchPatients } from '../services/patientService';
@@ -40,36 +41,65 @@ export default function MessagingPanel({ addToast }) {
     const [patientSearching, setPatientSearching] = useState(false);
     const [selectedPatient, setSelectedPatient] = useState(null);
     const [showEmoji, setShowEmoji] = useState(false);
-    // Contact names map: phone → name (from surgeries or manual)
+    // Contact names map: phone → name (from crm_contacts + surgeries fallback)
     const [contactNames, setContactNames] = useState({});
+    // Full CRM contacts data: phone → { nombre, id_paciente, dni, ... }
+    const [crmContacts, setCrmContacts] = useState({});
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
 
-    // === Load contact names from surgeries table ===
+    // === Load contacts: crm_contacts (persistent) + surgeries fallback ===
     useEffect(() => {
-        async function loadContactNames() {
+        async function loadContacts() {
             try {
-                const { data } = await supabase
+                // 1. Load persistent CRM contacts
+                const crmData = await fetchCrmContacts();
+                setCrmContacts(crmData);
+                const names = {};
+                Object.entries(crmData).forEach(([phone, c]) => {
+                    names[phone] = c.nombre;
+                });
+
+                // 2. Fill gaps from surgeries (phone → paciente + id_paciente)
+                const { data: surgeries } = await supabase
                     .from('surgeries')
-                    .select('telefono, paciente')
+                    .select('telefono, paciente, id_paciente, dni')
                     .not('telefono', 'is', null);
 
-                const names = {};
-                (data || []).forEach(s => {
+                const toSeed = []; // Contacts to auto-create in crm_contacts
+                (surgeries || []).forEach(s => {
                     if (s.telefono && s.paciente) {
                         const normalized = normalizeArgentinePhone(s.telefono);
                         if (normalized && !names[normalized]) {
                             names[normalized] = s.paciente;
+                            // Queue for auto-seeding in crm_contacts
+                            if (!crmData[normalized]) {
+                                toSeed.push({
+                                    phone: normalized,
+                                    nombre: s.paciente,
+                                    id_paciente: s.id_paciente || null,
+                                    dni: s.dni || null,
+                                });
+                            }
                         }
                     }
                 });
+
                 setContactNames(names);
+
+                // 3. Auto-seed crm_contacts from surgeries (background, non-blocking)
+                if (toSeed.length > 0) {
+                    console.log(`[CRM] Auto-seeding ${toSeed.length} contacts from surgeries...`);
+                    for (const contact of toSeed.slice(0, 50)) { // Limit batch
+                        upsertCrmContact(contact).catch(() => { }); // Silent fail
+                    }
+                }
             } catch (e) {
-                console.error('Error loading contact names:', e);
+                console.error('Error loading contacts:', e);
             }
         }
-        loadContactNames();
+        loadContacts();
     }, []);
 
     // === LOAD CONVERSATIONS ===
@@ -155,14 +185,24 @@ export default function MessagingPanel({ addToast }) {
     }, [messageText, selectedPhone, sending, addToast]);
 
     // === NEW CONVERSATION ===
-    const handleStartNewChat = useCallback(() => {
+    const handleStartNewChat = useCallback(async () => {
         if (!newChatPhone.trim()) return;
         const normalized = normalizeArgentinePhone(newChatPhone);
-        if (selectedPatient) {
-            setContactNames(prev => ({ ...prev, [normalized]: selectedPatient.nombre }));
-        } else if (newChatName.trim()) {
-            setContactNames(prev => ({ ...prev, [normalized]: newChatName.trim() }));
+        const nombre = selectedPatient?.nombre || newChatName.trim() || normalized;
+
+        // Persist contact in crm_contacts (survives daily Excel updates)
+        try {
+            await upsertCrmContact({
+                phone: normalized,
+                nombre,
+                id_paciente: selectedPatient?.id_paciente || null,
+                dni: selectedPatient?.dni || null,
+            });
+        } catch (e) {
+            console.error('Error saving CRM contact:', e);
         }
+
+        setContactNames(prev => ({ ...prev, [normalized]: nombre }));
         setSelectedPhone(normalized);
         setShowNewChat(false);
         setNewChatPhone('');

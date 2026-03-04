@@ -10,7 +10,7 @@ import {
     Phone, MessageSquare, Clock, CheckCheck, Check, Volume2,
     Download, Smile, Square, Loader, Zap, Settings
 } from 'lucide-react';
-import { fetchMessages, markAsRead, saveOutgoingMessage, subscribeToMessages } from '../services/chatService';
+import { fetchMessages, markAsRead, saveOutgoingMessage, subscribeToMessages, upsertCrmContact } from '../services/chatService';
 import { sendWhatsAppMessage } from '../services/builderbotApi';
 import { fetchShortcuts } from '../services/shortcutService';
 import { supabase } from '../lib/supabase';
@@ -76,6 +76,16 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
         };
 
         loadMessages();
+
+        // Auto-persist CRM contact for this patient (survives daily Excel updates)
+        if (patientName && patientPhone) {
+            upsertCrmContact({
+                phone: patientPhone,
+                nombre: patientName,
+                id_paciente: patientContext?.idPaciente || null,
+                dni: patientContext?.dni || null,
+            }).catch(err => console.warn('[ChatWindow] CRM contact upsert error:', err));
+        }
 
         // Suscribir a nuevos mensajes en tiempo real
         console.log('[ChatWindow] Subscribing to realtime for:', patientPhone);

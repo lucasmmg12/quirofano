@@ -31,9 +31,13 @@ export async function fetchConversations() {
                 lastMessage: msg.media_type !== 'text' ? `📎 ${msg.media_type}` : (msg.content || ''),
                 lastDate: msg.created_at,
                 direction: msg.direction,
-                senderName: msg.sender_name || '',
+                senderName: '',
                 unreadCount: 0,
             };
+        }
+        // Prefer sender_name from incoming messages (outgoing says "Sistema ADM-QUI")
+        if (msg.direction === 'incoming' && msg.sender_name && !map[msg.phone].senderName) {
+            map[msg.phone].senderName = msg.sender_name;
         }
         if (msg.direction === 'incoming' && !msg.is_read) {
             map[msg.phone].unreadCount += 1;
@@ -189,4 +193,77 @@ export function subscribeToAllIncoming(callback) {
     return () => {
         supabase.removeChannel(channel);
     };
+}
+
+// ================================================
+// CRM CONTACTS — Vinculación persistente teléfono ↔ paciente
+// ================================================
+
+/**
+ * Obtiene todos los contactos CRM (mapeo phone → nombre/id_paciente)
+ * @returns {Promise<Object>} — Mapa { phone: { nombre, id_paciente, dni, notas } }
+ */
+export async function fetchCrmContacts() {
+    const { data, error } = await supabase
+        .from('crm_contacts')
+        .select('*')
+        .order('updated_at', { ascending: false });
+
+    if (error) {
+        console.error('Error fetching CRM contacts:', error);
+        return {};
+    }
+
+    const map = {};
+    (data || []).forEach(c => {
+        map[c.phone] = c;
+    });
+    return map;
+}
+
+/**
+ * Crea o actualiza un contacto CRM (upsert por phone)
+ * @param {Object} contact — { phone, nombre, id_paciente?, dni?, notas? }
+ */
+export async function upsertCrmContact({ phone, nombre, id_paciente, dni, notas }) {
+    const normalized = normalizeArgentinePhone(phone);
+    if (!normalized || !nombre) return null;
+
+    const { data, error } = await supabase
+        .from('crm_contacts')
+        .upsert({
+            phone: normalized,
+            nombre,
+            id_paciente: id_paciente || null,
+            dni: dni || null,
+            notas: notas || null,
+        }, { onConflict: 'phone' })
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error upserting CRM contact:', error);
+        throw error;
+    }
+    return data;
+}
+
+/**
+ * Obtiene un contacto CRM por teléfono
+ */
+export async function getCrmContactByPhone(phone) {
+    const normalized = normalizeArgentinePhone(phone);
+    if (!normalized) return null;
+
+    const { data, error } = await supabase
+        .from('crm_contacts')
+        .select('*')
+        .eq('phone', normalized)
+        .maybeSingle();
+
+    if (error) {
+        console.error('Error fetching CRM contact:', error);
+        return null;
+    }
+    return data;
 }
