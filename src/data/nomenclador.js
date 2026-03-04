@@ -131,7 +131,7 @@ export const PRACTICES = [
     { code: '180130', name: 'Eco Doppler pulsado color cardiopatías', category: 'eco_doppler' },
     { code: '180134', name: 'Eco Doppler color de miembros', category: 'eco_doppler' },
     { code: '180135', name: 'Eco Doppler color otras regiones', category: 'eco_doppler' },
-    { code: '180136D', name: 'Eco Doppler color obstétrico', category: 'eco_doppler' },
+    { code: '180136', name: 'Eco Doppler color obstétrico', category: 'eco_doppler' },
 
     // === GINECOLOGÍA ===
     { code: '220101', name: 'Colposcopía', category: 'ginecologia' },
