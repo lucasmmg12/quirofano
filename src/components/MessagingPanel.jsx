@@ -10,7 +10,8 @@ import {
     MessageSquare, Search, Plus, Send, Phone, User, X,
     ArrowLeft, Smile, Image as ImageIcon, Mic, Square, Loader,
     RefreshCw, Play, Pause, Volume2, Download, Paperclip, Zap,
-    Settings, CheckCheck, Check,
+    Settings, CheckCheck, Check, Calendar, Shield, DollarSign,
+    ChevronDown, ChevronUp, Stethoscope, FileText,
 } from 'lucide-react';
 import {
     fetchConversations, fetchMessages, saveOutgoingMessage,
@@ -62,6 +63,9 @@ export default function MessagingPanel({ addToast }) {
     const [shortcutFilter, setShortcutFilter] = useState('');
     const [shortcutIndex, setShortcutIndex] = useState(0);
     const [showShortcutManager, setShowShortcutManager] = useState(false);
+    // Patient context (surgery + budget)
+    const [patientContext, setPatientContext] = useState(null);
+    const [showBudgetDetail, setShowBudgetDetail] = useState(false);
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
@@ -175,6 +179,50 @@ export default function MessagingPanel({ addToast }) {
         });
         return unsub;
     }, [playNotificationSound]);
+
+    // === Load patient context (surgery + budget) for selected conversation ===
+    useEffect(() => {
+        if (!selectedPhone) { setPatientContext(null); setShowBudgetDetail(false); return; }
+        async function loadPatientContext() {
+            try {
+                const contact = crmContacts[selectedPhone];
+                if (!contact?.id_paciente) { setPatientContext(null); return; }
+                const idPac = String(contact.id_paciente);
+                // Fetch surgery data
+                const { data: surgeries } = await supabase
+                    .from('surgeries')
+                    .select('obra_social, fecha_cirugia, medico, modulo, status')
+                    .eq('id_paciente', idPac)
+                    .order('fecha_cirugia', { ascending: false })
+                    .limit(1);
+                // Fetch budget data
+                const { data: budgets } = await supabase
+                    .from('presupuestos')
+                    .select('id_presupuesto, importe_total, fecha, observaciones, aceptado')
+                    .eq('id_paciente', idPac)
+                    .order('fecha', { ascending: false })
+                    .limit(1);
+                let budgetItems = [];
+                if (budgets?.[0]?.id_presupuesto) {
+                    const { data: items } = await supabase
+                        .from('presupuesto_items')
+                        .select('descripcion, cantidad, importe_unitario, importe_total')
+                        .eq('id_presupuesto', budgets[0].id_presupuesto)
+                        .order('linea', { ascending: true });
+                    budgetItems = items || [];
+                }
+                setPatientContext({
+                    surgery: surgeries?.[0] || null,
+                    budget: budgets?.[0] || null,
+                    budgetItems,
+                });
+            } catch (e) {
+                console.error('Error loading patient context:', e);
+                setPatientContext(null);
+            }
+        }
+        loadPatientContext();
+    }, [selectedPhone, crmContacts]);
 
     // === Load messages for selected conversation ===
     useEffect(() => {
@@ -790,16 +838,81 @@ export default function MessagingPanel({ addToast }) {
                     </div>
                 ) : (
                     <>
-                        {/* Chat Header */}
-                        <div className="msg-panel__chat-header">
-                            <button className="msg-panel__btn-icon msg-panel__back-btn" onClick={() => setSelectedPhone(null)}>
-                                <ArrowLeft size={18} />
-                            </button>
-                            <div className="msg-panel__chat-header-avatar">{selectedContactName.charAt(0).toUpperCase()}</div>
-                            <div className="msg-panel__chat-header-info">
-                                <span className="msg-panel__chat-header-name">{selectedContactName}</span>
-                                <span className="msg-panel__chat-header-phone"><Phone size={11} /> {selectedPhone}</span>
+                        {/* Chat Header with Patient Context */}
+                        <div className="msg-panel__chat-header" style={{ flexDirection: 'column', alignItems: 'stretch', padding: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 16px' }}>
+                                <button className="msg-panel__btn-icon msg-panel__back-btn" onClick={() => setSelectedPhone(null)}>
+                                    <ArrowLeft size={18} />
+                                </button>
+                                <div className="msg-panel__chat-header-avatar">{selectedContactName.charAt(0).toUpperCase()}</div>
+                                <div className="msg-panel__chat-header-info" style={{ flex: 1 }}>
+                                    <span className="msg-panel__chat-header-name">{selectedContactName}</span>
+                                    <span className="msg-panel__chat-header-phone"><Phone size={11} /> {selectedPhone}</span>
+                                </div>
+                                {/* Quick info badges */}
+                                {patientContext?.surgery && (
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                        {patientContext.surgery.fecha_cirugia && (
+                                            <span className="msg-panel__context-badge" style={{ background: '#EFF6FF', color: '#2563EB' }}>
+                                                <Calendar size={12} />
+                                                {new Date(patientContext.surgery.fecha_cirugia + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}
+                                            </span>
+                                        )}
+                                        {patientContext.surgery.obra_social && (
+                                            <span className="msg-panel__context-badge" style={{ background: '#F0FDF4', color: '#16A34A' }}>
+                                                <Shield size={12} />
+                                                {patientContext.surgery.obra_social.length > 25
+                                                    ? patientContext.surgery.obra_social.slice(0, 25) + '…'
+                                                    : patientContext.surgery.obra_social}
+                                            </span>
+                                        )}
+                                        {patientContext.budget && (
+                                            <button
+                                                className="msg-panel__context-badge"
+                                                style={{ background: '#FFFBEB', color: '#D97706', cursor: 'pointer', border: 'none' }}
+                                                onClick={() => setShowBudgetDetail(prev => !prev)}
+                                            >
+                                                <DollarSign size={12} />
+                                                ${Number(patientContext.budget.importe_total || 0).toLocaleString('es-AR')}
+                                                {showBudgetDetail ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
                             </div>
+                            {/* Budget Detail Dropdown */}
+                            {showBudgetDetail && patientContext?.budgetItems?.length > 0 && (
+                                <div className="msg-panel__budget-dropdown animate-fade-in">
+                                    <div className="msg-panel__budget-header-row">
+                                        <FileText size={13} />
+                                        <span style={{ fontWeight: 700 }}>Detalle del Presupuesto</span>
+                                        {patientContext.surgery?.medico && (
+                                            <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px', color: '#64748B' }}>
+                                                <Stethoscope size={12} /> {patientContext.surgery.medico}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="msg-panel__budget-items">
+                                        {patientContext.budgetItems.map((item, i) => (
+                                            <div key={i} className="msg-panel__budget-item">
+                                                <span className="msg-panel__budget-item-desc">
+                                                    {item.cantidad > 1 && <span style={{ fontWeight: 700, color: '#2563EB' }}>{item.cantidad}x </span>}
+                                                    {item.descripcion}
+                                                </span>
+                                                <span className="msg-panel__budget-item-amount">
+                                                    ${Number(item.importe_total || 0).toLocaleString('es-AR')}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="msg-panel__budget-total-row">
+                                        <span>TOTAL</span>
+                                        <span style={{ fontWeight: 800, color: '#0F172A', fontSize: '0.9rem' }}>
+                                            ${Number(patientContext.budget.importe_total || 0).toLocaleString('es-AR')}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Messages */}
