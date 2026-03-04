@@ -289,7 +289,7 @@ function App({ currentUser, onLogout }) {
                 {/* Top Bar */}
                 <header className="topbar no-print">
                     <div className="topbar__left">
-                        <h1 className="topbar__title">Administración Sanatorio Argentino</h1>
+                        <h1 className="topbar__title"><span className="topbar__title-accent">Administración</span> Sanatorio Argentino</h1>
                         <span className="topbar__subtitle">Sistema de gestión integral</span>
                     </div>
                     <div className="topbar__right" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

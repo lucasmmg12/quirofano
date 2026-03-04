@@ -8,6 +8,18 @@
     background: var(--neutral-50);
 }
 
+/* Accent gradient line at very top of page */
+.app::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--primary-400), var(--primary-600), #2563EB, var(--primary-400));
+    z-index: 9999;
+}
+
 /* ========================================
    SIDEBAR
    ======================================== */
@@ -111,7 +123,10 @@
 
 .sidebar__item:hover {
     background: var(--neutral-50);
-    color: var(--neutral-800);
+    color: var(--primary-600);
+    padding-left: calc(var(--space-4) + 3px);
+    border-left: 3px solid var(--primary-400);
+    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
 }
 
 .sidebar__item--active {
@@ -189,11 +204,12 @@
     align-items: center;
     justify-content: space-between;
     padding: var(--space-5) var(--space-8);
-    background: var(--neutral-0);
+    background: linear-gradient(135deg, #FFFFFF 0%, #F8FAFF 100%);
     border-bottom: 1px solid var(--neutral-200);
     min-height: var(--header-height);
     position: sticky;
-    top: 0;
+    top: 3px;
+    /* Below accent line */
     z-index: 50;
 }
 
@@ -204,6 +220,12 @@
     letter-spacing: -0.01em;
 }
 
+/* Blue accent on 'Administración' */
+.topbar__title-accent {
+    color: var(--primary-500);
+    font-weight: 800;
+}
+
 .topbar__subtitle {
     font-size: 0.8rem;
     color: var(--neutral-400);
@@ -211,10 +233,14 @@
 }
 
 .topbar__date {
-    font-size: 0.8rem;
-    color: var(--neutral-500);
-    font-weight: 500;
+    font-size: 0.78rem;
+    color: var(--primary-700);
+    font-weight: 600;
     text-transform: capitalize;
+    background: var(--primary-50);
+    padding: 5px 14px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--primary-100);
 }
 
 /* Content */
