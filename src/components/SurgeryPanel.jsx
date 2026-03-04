@@ -35,6 +35,7 @@ import { bulkUpsertBudgets } from '../services/budgetService';
 import { fetchUnreadCounts, saveOutgoingMessage, subscribeToAllIncoming } from '../services/chatService';
 import ChatWindow from './ChatWindow';
 import BudgetCollapsible from './BudgetCollapsible';
+import { fetchPatientsByIds } from '../services/patientService';
 
 // ============================================================
 // CONSTANTS & CONFIG
@@ -141,6 +142,7 @@ function groupSurgeriesByDate(surgeries) {
 export default function SurgeryPanel({ addToast, currentUser }) {
     const [surgeries, setSurgeries] = useState([]);
     const [stats, setStats] = useState({});
+    const [patientDataMap, setPatientDataMap] = useState({});
     const [loading, setLoading] = useState(true);
     const [initialLoadDone, setInitialLoadDone] = useState(false);
     const [filter, setFilter] = useState('all');
@@ -227,6 +229,17 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             ]);
             setSurgeries(surgeriesData || []);
             setStats(statsData);
+
+            // Enriquecer con datos de pacientes (DNI, Edad, Centro)
+            const uniqueIds = [...new Set((surgeriesData || []).map(s => s.id_paciente).filter(Boolean))];
+            if (uniqueIds.length > 0) {
+                try {
+                    const pMap = await fetchPatientsByIds(uniqueIds);
+                    setPatientDataMap(pMap);
+                } catch (pErr) {
+                    console.warn('Error cargando datos de pacientes:', pErr);
+                }
+            }
         } catch (e) {
             console.error(e);
             addToast?.('Error al cargar cirugías', 'error');
@@ -292,7 +305,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 s.dni?.includes(term) ||
                 s.telefono?.includes(term) ||
                 s.medico?.toLowerCase().includes(term) ||
-                s.obra_social?.toLowerCase().includes(term)
+                s.obra_social?.toLowerCase().includes(term) ||
+                patientDataMap[s.id_paciente]?.dni?.includes(term)
             );
         }
 
@@ -309,7 +323,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
         }
 
         return list;
-    }, [surgeries, searchTerm, filter]);
+    }, [surgeries, searchTerm, filter, patientDataMap]);
 
     // Count for tabs (based on ausente from raw data, not filtered)
     const historySurgeries = useMemo(() => {
@@ -808,7 +822,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 }}
                 style={{ cursor: 'pointer', userSelect: 'none' }}
             >
-                <td colSpan={9} style={{
+                <td colSpan={10} style={{
                     padding: '10px 16px', background: gcd.bg,
                     borderLeft: `4px solid ${gcd.color}`,
                     fontWeight: 700, fontSize: '0.82rem', color: gcd.color,
@@ -949,6 +963,10 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 <td className="cart__td" style={{ fontWeight: 600, fontSize: '0.82rem' }}>
                     {surgery.nombre}
                 </td>
+                {/* DNI (from pacientes table) */}
+                <td className="cart__td" style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: 'var(--neutral-600)' }}>
+                    {patientDataMap[surgery.id_paciente]?.dni || surgery.dni || '—'}
+                </td>
                 {/* Obra Social */}
                 <td className="cart__td" style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>
                     {surgery.obra_social || '—'}
@@ -1034,7 +1052,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             const resultActions = getResultActions(surgery);
             rows.push(
                 <tr key={`${surgery.id}-detail`}>
-                    <td colSpan={9} style={{
+                    <td colSpan={10} style={{
                         padding: 0, background: 'var(--neutral-50)',
                         borderLeft: `4px solid ${cfg.color}`,
                         animation: 'fadeIn 0.2s ease-out',
@@ -1136,6 +1154,10 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                 }}>
                                     {[
                                         { label: 'ID Paciente', value: surgery.id_paciente },
+                                        { label: 'DNI', value: patientDataMap[surgery.id_paciente]?.dni || surgery.dni },
+                                        { label: 'Edad', value: patientDataMap[surgery.id_paciente]?.edad },
+                                        { label: 'Sexo', value: patientDataMap[surgery.id_paciente]?.sexo },
+                                        { label: 'Centro', value: patientDataMap[surgery.id_paciente]?.centro },
                                         { label: 'Módulo', value: surgery.modulo },
                                         { label: 'Notas', value: surgery.notas },
                                         { label: 'Operador', value: surgery.operador },
@@ -1783,6 +1805,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                     <th className="cart__th" style={{ width: '46px' }}>⏱️</th>
                                     <th className="cart__th">Estado</th>
                                     <th className="cart__th">Paciente</th>
+                                    <th className="cart__th">DNI</th>
                                     <th className="cart__th">Obra Social</th>
                                     <th className="cart__th">Fecha Cirugía</th>
                                     <th className="cart__th">Faltan</th>
@@ -1796,7 +1819,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                 {/* ==================== FAR DAYS COLLAPSIBLE ==================== */}
                                 {farGroups.length > 0 && (
                                     <tr key="__far-days-toggle">
-                                        <td colSpan={9} style={{
+                                        <td colSpan={10} style={{
                                             padding: 0, border: 'none', background: 'transparent',
                                         }}>
                                             <button

@@ -53,3 +53,44 @@ export async function searchPatients(query) {
 
     return data || [];
 }
+
+/**
+ * Obtiene datos de múltiples pacientes por sus IDs (batch).
+ * Usado para enriquecer las cirugías con datos del paciente (DNI, Edad, Centro).
+ * @param {Array<string|number>} ids — Array de id_paciente
+ * @returns {Promise<Object>} — Mapa { [id_paciente]: { dni, edad, sexo, email, centro, nombre } }
+ */
+export async function fetchPatientsByIds(ids) {
+    if (!ids || ids.length === 0) return {};
+
+    // Convertir a enteros (pacientes.id_paciente es INTEGER)
+    const intIds = ids.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+    if (intIds.length === 0) return {};
+
+    const BATCH = 200;
+    const map = {};
+
+    for (let i = 0; i < intIds.length; i += BATCH) {
+        const batch = intIds.slice(i, i + BATCH);
+        try {
+            const { data, error } = await supabase
+                .from('pacientes')
+                .select('id_paciente, nombre, dni, edad, sexo, email, centro')
+                .in('id_paciente', batch);
+
+            if (error) {
+                console.warn('[patientService] Error fetching batch:', error.message);
+                continue;
+            }
+            if (data) {
+                for (const p of data) {
+                    map[String(p.id_paciente)] = p;
+                }
+            }
+        } catch (err) {
+            console.warn('[patientService] Non-fatal fetch error:', err.message);
+        }
+    }
+
+    return map;
+}
