@@ -113,13 +113,6 @@ function SinglePage({ item, patientData }) {
                 </div>
 
                 <div className="print-field-row">
-                    <span className="print-field-label">Trat.:</span>
-                    <span className="print-field-value">
-                        {patientData.tratamiento || (item.displayName || item.name)}
-                    </span>
-                </div>
-
-                <div className="print-field-row">
                     <span className="print-field-label">Cod.:</span>
                     <span className="print-field-value">
                         {item.code}{item.quantity > 1 ? ` x ${item.quantity}` : ''}
@@ -182,13 +175,6 @@ function GroupedPage({ items, patientData }) {
                     <span className="print-field-label">Diag.:</span>
                     <span className="print-field-value">
                         {patientData.diagnostico || '_______________'}
-                    </span>
-                </div>
-
-                <div className="print-field-row">
-                    <span className="print-field-label">Trat.:</span>
-                    <span className="print-field-value">
-                        {studyNames.join(' + ')}
                     </span>
                 </div>
 
