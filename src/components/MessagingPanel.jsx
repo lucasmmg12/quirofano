@@ -138,11 +138,18 @@ export default function MessagingPanel({ addToast }) {
     useEffect(() => {
         if (!selectedPhone) return;
         let cancelled = false;
+        let pollInterval = null;
+
         async function load() {
             setMessagesLoading(true);
             try {
                 const msgs = await fetchMessages(selectedPhone);
-                if (!cancelled) setMessages(msgs);
+                if (!cancelled) {
+                    setMessages(msgs);
+                    // Scroll to bottom after render
+                    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'instant' }), 100);
+                    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'instant' }), 300);
+                }
                 await markAsRead(selectedPhone);
                 setConversations(prev => prev.map(c =>
                     c.phone === selectedPhone ? { ...c, unreadCount: 0 } : c
@@ -154,7 +161,24 @@ export default function MessagingPanel({ addToast }) {
             }
         }
         load();
-        return () => { cancelled = true; };
+
+        // Polling fallback every 5s (catches messages realtime might miss)
+        pollInterval = setInterval(async () => {
+            try {
+                const msgs = await fetchMessages(selectedPhone);
+                setMessages(prev => {
+                    if (msgs.length !== prev.length) {
+                        markAsRead(selectedPhone);
+                        return msgs;
+                    }
+                    return prev;
+                });
+            } catch (err) {
+                console.error('[MessagingPanel] Poll error:', err);
+            }
+        }, 5000);
+
+        return () => { cancelled = true; if (pollInterval) clearInterval(pollInterval); };
     }, [selectedPhone]);
 
     // === REALTIME: subscribe to selected conversation ===
@@ -180,9 +204,11 @@ export default function MessagingPanel({ addToast }) {
         });
     }, []);
 
-    // === Auto scroll to bottom ===
+    // === Auto scroll to bottom on new messages ===
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (messages.length > 0) {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
     }, [messages]);
 
     // ==========================================
