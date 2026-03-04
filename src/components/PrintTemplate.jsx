@@ -88,12 +88,12 @@ function SinglePage({ item, patientData }) {
         <div className="print-page">
             {/* === ZONA SUPERIOR: Nombre del paciente centrado === */}
             <div className="print-patient-name">
-                {patientData.nombre || '_______________'}
+                {patientData.nombre || ''}
             </div>
 
             {/* === Obra Social + N° Afiliado en una línea === */}
             <div className="print-os-line">
-                {patientData.obraSocial || '_______________'}
+                {patientData.obraSocial || ''}
                 {patientData.afiliado ? `: ${patientData.afiliado}` : ''}
             </div>
 
@@ -108,7 +108,7 @@ function SinglePage({ item, patientData }) {
                 <div className="print-field-row">
                     <span className="print-field-label">Diag.:</span>
                     <span className="print-field-value">
-                        {patientData.diagnostico || '_______________'}
+                        {patientData.diagnostico || ''}
                     </span>
                 </div>
 
@@ -150,12 +150,12 @@ function GroupedPage({ items, patientData }) {
         <div className="print-page">
             {/* === Nombre del paciente === */}
             <div className="print-patient-name">
-                {patientData.nombre || '_______________'}
+                {patientData.nombre || ''}
             </div>
 
             {/* === Obra Social + N° Afiliado === */}
             <div className="print-os-line">
-                {patientData.obraSocial || '_______________'}
+                {patientData.obraSocial || ''}
                 {patientData.afiliado ? `: ${patientData.afiliado}` : ''}
             </div>
 
@@ -174,7 +174,7 @@ function GroupedPage({ items, patientData }) {
                 <div className="print-field-row">
                     <span className="print-field-label">Diag.:</span>
                     <span className="print-field-value">
-                        {patientData.diagnostico || '_______________'}
+                        {patientData.diagnostico || ''}
                     </span>
                 </div>
 
