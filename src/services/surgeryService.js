@@ -3,11 +3,12 @@
  * Gestiona los estados: Lila → Amarillo → Verde → Azul (+ Rojo)
  * 
  * Flujo:
- *  1. LILA: Cirugía cargada, pendiente de notificación (72h/48h antes)
- *  2. AMARILLO: Documentación recibida, en revisión
+ *  1. LILA (Sin Mensaje): Cirugía cargada, sin mensaje enviado (gris)
+ *  2. AMARILLO (En Revisión): Documentación recibida, en revisión (rosado)
  *  3. VERDE: Autorizada por admin, esperando confirmación del paciente
  *  4. AZUL: Paciente confirmó asistencia, indicaciones enviadas
- *  5. ROJO: Problema (documentación faltante, paciente no responde, etc.)
+ *  5. ROJO: Problema (documentación faltante, paciente no responde, tel inválido, etc.)
+ *  6. PRECAUCIÓN: Requiere atención especial (amarillo)
  */
 
 import { supabase } from '../lib/supabase';
@@ -845,7 +846,7 @@ export async function getSurgeryStats() {
 
     if (!data) return {};
 
-    const stats = { lila: 0, amarillo: 0, verde: 0, azul: 0, rojo: 0, realizada: 0, suspendida: 0, total: data.length };
+    const stats = { lila: 0, amarillo: 0, verde: 0, azul: 0, rojo: 0, precaucion: 0, realizada: 0, suspendida: 0, total: data.length };
     data.forEach(s => {
         // Determinar status efectivo basado en ausente
         if (s.ausente === '0') {

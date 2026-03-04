@@ -41,11 +41,12 @@ import BudgetCollapsible from './BudgetCollapsible';
 // ============================================================
 
 const STATUS_CONFIG = {
-    lila: { label: 'Pendiente', color: '#A855F7', bg: '#FAF5FF', icon: '🟣' },
-    amarillo: { label: 'En Revisión', color: '#EAB308', bg: '#FEFCE8', icon: '🟡' },
+    lila: { label: 'Sin Mensaje', color: '#6B7280', bg: '#F3F4F6', icon: '⚪' },
+    amarillo: { label: 'En Revisión', color: '#EC4899', bg: '#FDF2F8', icon: '🩷' },
     verde: { label: 'Autorizado', color: '#22C55E', bg: '#F0FDF4', icon: '🟢' },
     azul: { label: 'Confirmado', color: '#3B82F6', bg: '#EFF6FF', icon: '🔵' },
     rojo: { label: 'Problema', color: '#EF4444', bg: '#FEF2F2', icon: '🔴' },
+    precaucion: { label: 'Precaución', color: '#EAB308', bg: '#FEFCE8', icon: '🟡' },
     realizada: { label: 'Realizada', color: '#059669', bg: '#ECFDF5', icon: '✅' },
     suspendida: { label: 'Suspendida', color: '#6B7280', bg: '#F3F4F6', icon: '⛔' },
 };
@@ -212,7 +213,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
         if (!initialLoadDone) setLoading(true);
         try {
             const ausenteFilter = viewMode === 'history' ? 'history' : 'pending';
-            const dbStatusValues = ['lila', 'amarillo', 'verde', 'azul', 'rojo'];
+            const dbStatusValues = ['lila', 'amarillo', 'verde', 'azul', 'rojo', 'precaucion'];
             const dbStatus = dbStatusValues.includes(filter) ? filter : undefined;
             const today = new Date().toISOString().split('T')[0];
 
@@ -770,11 +771,15 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 actions.push({ label: 'Confirmar', icon: CheckCircle, action: () => handleConfirm(surgery.id), color: '#3B82F6' });
                 break;
             case 'rojo':
-                actions.push({ label: '→ Pendiente', icon: ArrowRight, action: () => handleManualChange(surgery.id, 'lila'), color: '#A855F7' });
+                actions.push({ label: '→ Sin Mensaje', icon: ArrowRight, action: () => handleManualChange(surgery.id, 'lila'), color: '#6B7280' });
+                break;
+            case 'precaucion':
+                actions.push({ label: '→ Sin Mensaje', icon: ArrowRight, action: () => handleManualChange(surgery.id, 'lila'), color: '#6B7280' });
                 break;
             default: break;
         }
         actions.push({ label: 'Problema', icon: AlertTriangle, action: () => handleFlag(surgery.id), color: '#EF4444' });
+        actions.push({ label: 'Precaución', icon: AlertCircle, action: () => handleManualChange(surgery.id, 'precaucion'), color: '#EAB308' });
         return actions;
     };
 
