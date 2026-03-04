@@ -49,52 +49,17 @@ export default function MessagingPanel({ addToast }) {
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
 
-    // === Load contacts: crm_contacts (persistent) + surgeries fallback ===
+    // === Load contacts from crm_contacts (persistent, populated from surgeries) ===
     useEffect(() => {
         async function loadContacts() {
             try {
-                // 1. Load persistent CRM contacts
                 const crmData = await fetchCrmContacts();
                 setCrmContacts(crmData);
                 const names = {};
                 Object.entries(crmData).forEach(([phone, c]) => {
                     names[phone] = c.nombre;
                 });
-
-                // 2. Fill gaps from surgeries (phone → paciente + id_paciente)
-                const { data: surgeries } = await supabase
-                    .from('surgeries')
-                    .select('telefono, paciente, id_paciente, dni')
-                    .not('telefono', 'is', null);
-
-                const toSeed = []; // Contacts to auto-create in crm_contacts
-                (surgeries || []).forEach(s => {
-                    if (s.telefono && s.paciente) {
-                        const normalized = normalizeArgentinePhone(s.telefono);
-                        if (normalized && !names[normalized]) {
-                            names[normalized] = s.paciente;
-                            // Queue for auto-seeding in crm_contacts
-                            if (!crmData[normalized]) {
-                                toSeed.push({
-                                    phone: normalized,
-                                    nombre: s.paciente,
-                                    id_paciente: s.id_paciente || null,
-                                    dni: s.dni || null,
-                                });
-                            }
-                        }
-                    }
-                });
-
                 setContactNames(names);
-
-                // 3. Auto-seed crm_contacts from surgeries (background, non-blocking)
-                if (toSeed.length > 0) {
-                    console.log(`[CRM] Auto-seeding ${toSeed.length} contacts from surgeries...`);
-                    for (const contact of toSeed.slice(0, 50)) { // Limit batch
-                        upsertCrmContact(contact).catch(() => { }); // Silent fail
-                    }
-                }
             } catch (e) {
                 console.error('Error loading contacts:', e);
             }
