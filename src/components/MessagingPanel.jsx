@@ -514,12 +514,39 @@ export default function MessagingPanel({ addToast }) {
         if (!message) return message;
         const fechaHoy = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
         let result = message;
+
+        // Legacy: "Estimado/a" → nombre
         if (name) result = result.replace(/Estimado\/a[,:.]?\s*/gi, `Estimada ${name} `);
+
+        // Variables de Paciente
         result = result.replace(/\{nombre\}/gi, name || '');
         result = result.replace(/\{paciente\}/gi, name || '');
+
+        // Variables de Fechas
         result = result.replace(/\{fecha_hoy\}/gi, fechaHoy);
+        if (patientContext?.surgery?.fecha_cirugia) {
+            const fc = new Date(patientContext.surgery.fecha_cirugia + 'T12:00:00');
+            const fechaStr = fc.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            result = result.replace(/\{fecha_cirugia\}/gi, fechaStr);
+            result = result.replace(/\{fecha\}/gi, fechaStr);
+        } else {
+            result = result.replace(/\{fecha_cirugia\}/gi, '');
+            result = result.replace(/\{fecha\}/gi, '');
+        }
+
+        // Variables de Obra Social
+        result = result.replace(/\{obra_social\}/gi, patientContext?.surgery?.obra_social || '');
+
+        // Variables Clínicas
+        result = result.replace(/\{medico\}/gi, patientContext?.surgery?.medico || '');
+
+        // Variables de Presupuesto
+        const total = patientContext?.budget?.importe_total;
+        result = result.replace(/\{presupuesto_total\}/gi, total ? `$${Number(total).toLocaleString('es-AR')}` : '');
+        result = result.replace(/\{total_presupuesto\}/gi, total ? `$${Number(total).toLocaleString('es-AR')}` : '');
+
         return result;
-    }, []);
+    }, [patientContext]);
 
     const selectShortcut = useCallback((shortcut) => {
         const contactName = selectedPhone ? (contactNames[selectedPhone] || '') : '';
