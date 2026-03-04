@@ -155,7 +155,11 @@ export default function MessagingPanel({ addToast }) {
     useEffect(() => {
         if (!selectedPhone) return;
         const unsub = subscribeToMessages(selectedPhone, (newMsg) => {
-            setMessages(prev => [...prev, newMsg]);
+            setMessages(prev => {
+                const exists = prev.find(m => m.id === newMsg.id);
+                if (exists) return prev;
+                return [...prev, newMsg];
+            });
             if (newMsg.direction === 'incoming') {
                 markAsRead(selectedPhone);
             }
@@ -174,7 +178,15 @@ export default function MessagingPanel({ addToast }) {
         setSending(true);
         try {
             await sendWhatsAppMessage({ content: messageText, number: selectedPhone });
-            await saveOutgoingMessage({ phone: selectedPhone, content: messageText });
+            const saved = await saveOutgoingMessage({ phone: selectedPhone, content: messageText });
+            // Add to local state immediately (dedup against realtime)
+            if (saved) {
+                setMessages(prev => {
+                    const exists = prev.find(m => m.id === saved.id);
+                    if (exists) return prev;
+                    return [...prev, saved];
+                });
+            }
             setMessageText('');
             inputRef.current?.focus();
         } catch (e) {
