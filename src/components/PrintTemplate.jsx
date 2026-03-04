@@ -9,6 +9,12 @@ import { formatDate } from '../utils/searchUtils';
 const GROUPABLE_CATEGORIES = ['ecografia', 'tomografia', 'biopsia', 'eco_doppler'];
 
 /**
+ * Categorías y códigos que NO deben mostrar la línea "Cod.:" en la impresión.
+ */
+const HIDE_CODE_CATEGORIES = ['anestesia', 'prorroga', 'neonatal', 'hemoterapia', 'kinesiologia'];
+const HIDE_CODE_CODES = ['LAB-GF'];
+
+/**
  * Agrupa las prácticas: las de categorías agrupables se consolidan
  * en un único "grupo" por categoría, el resto se mantiene individual.
  */
@@ -103,7 +109,7 @@ function SinglePage({ item, patientData }) {
                 {item.displayName || item.name}
             </div>
 
-            {/* === Campos: Diag. / Trat. / Cod. === */}
+            {/* === Campos: Diag. / Cod. === */}
             <div className="print-fields">
                 <div className="print-field-row">
                     <span className="print-field-label">Diag.:</span>
@@ -112,12 +118,14 @@ function SinglePage({ item, patientData }) {
                     </span>
                 </div>
 
-                <div className="print-field-row">
-                    <span className="print-field-label">Cod.:</span>
-                    <span className="print-field-value">
-                        {item.code}{item.quantity > 1 ? ` x ${item.quantity}` : ''}
-                    </span>
-                </div>
+                {!HIDE_CODE_CATEGORIES.includes(item.category) && !HIDE_CODE_CODES.includes(item.code) && (
+                    <div className="print-field-row">
+                        <span className="print-field-label">Cod.:</span>
+                        <span className="print-field-value">
+                            {item.code}{item.quantity > 1 ? ` x ${item.quantity}` : ''}
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* === Zona inferior: solo fecha a la derecha === */}
@@ -169,7 +177,7 @@ function GroupedPage({ items, patientData }) {
                 ))}
             </div>
 
-            {/* === Campos: Diag. / Trat. / Cod. === */}
+            {/* === Campos: Diag. / Cod. === */}
             <div className="print-fields">
                 <div className="print-field-row">
                     <span className="print-field-label">Diag.:</span>
@@ -178,12 +186,14 @@ function GroupedPage({ items, patientData }) {
                     </span>
                 </div>
 
-                <div className="print-field-row">
-                    <span className="print-field-label">Cod.:</span>
-                    <span className="print-field-value">
-                        {codesList.join(' + ')}
-                    </span>
-                </div>
+                {!HIDE_CODE_CATEGORIES.includes(items[0]?.category) && (
+                    <div className="print-field-row">
+                        <span className="print-field-label">Cod.:</span>
+                        <span className="print-field-value">
+                            {codesList.join(' + ')}
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* === Zona inferior: fecha a la derecha === */}
