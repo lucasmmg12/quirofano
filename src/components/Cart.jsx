@@ -1,11 +1,24 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Trash2, Minus, Plus, ShoppingCart, Printer, Send, XCircle, Calendar } from 'lucide-react';
 import { INTERCONSULTA_SPECIALTIES } from '../data/nomenclador';
 
+/** Categorías que se agrupan en un solo comprobante al imprimir */
+const GROUPABLE_CATEGORIES = ['ecografia', 'tomografia', 'biopsia', 'eco_doppler'];
+
 export default function Cart({ items, onUpdateItem, onRemoveItem, onClearCart, onPrintAll, onPrintSingle, onSendWhatsApp, hideDate }) {
     const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
-    // Track which items are using the custom "Agregar una" input
     const [customModeItems, setCustomModeItems] = useState({});
+
+    // Detectar categorías con 2+ items para mostrar indicador de agrupamiento
+    const groupCounts = useMemo(() => {
+        const counts = {};
+        items.forEach(item => {
+            if (GROUPABLE_CATEGORIES.includes(item.category)) {
+                counts[item.category] = (counts[item.category] || 0) + 1;
+            }
+        });
+        return counts;
+    }, [items]);
 
     const handleSpecialtyChange = (itemId, value) => {
         if (value === '__custom__') {
@@ -67,6 +80,12 @@ export default function Cart({ items, onUpdateItem, onRemoveItem, onClearCart, o
                                 </td>
                                 <td className="cart__td cart__td--name">
                                     {item.name}
+                                    {/* Grouping indicator for ecografía/tomografía/biopsia */}
+                                    {GROUPABLE_CATEGORIES.includes(item.category) && groupCounts[item.category] >= 2 && (
+                                        <div className="cart__group-badge">
+                                            📄 Se imprimirán juntos ({groupCounts[item.category]})
+                                        </div>
+                                    )}
                                     {/* Custom field: Specialty selector for interconsultas */}
                                     {item.customField === 'specialty' && (
                                         <div className="cart__custom-field">

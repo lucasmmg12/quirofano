@@ -97,7 +97,8 @@ function SinglePage({ item, patientData }) {
                 {patientData.afiliado ? `: ${patientData.afiliado}` : ''}
             </div>
 
-            {/* === Título del estudio — PROMINENTE Y CENTRADO === */}
+            {/* === SOLICITO + Título del estudio === */}
+            <div className="print-solicito-label">SOLICITO</div>
             <div className="print-study-title">
                 {item.displayName || item.name}
             </div>
@@ -165,7 +166,8 @@ function GroupedPage({ items, patientData }) {
                 {patientData.afiliado ? `: ${patientData.afiliado}` : ''}
             </div>
 
-            {/* === Lista de estudios — cada uno en su propia línea === */}
+            {/* === SOLICITO + Lista de estudios === */}
+            <div className="print-solicito-label">SOLICITO</div>
             <div className="print-study-group">
                 {studyNames.map((name, i) => (
                     <div key={i} className="print-study-group__item">

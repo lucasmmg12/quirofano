@@ -1468,6 +1468,34 @@
     margin-bottom: 5mm;
 }
 
+/* ── "SOLICITO" Label (centered, bold, before study title) ── */
+.print-solicito-label {
+    text-align: center;
+    font-size: 14pt;
+    font-weight: 700;
+    color: #000;
+    text-transform: uppercase;
+    letter-spacing: 0.5mm;
+    margin-top: 4mm;
+    margin-bottom: 1mm;
+}
+
+/* ── Cart Group Indicator (visible on screen only) ── */
+.cart__group-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #EFF6FF;
+    color: #2563EB;
+    border: 1px solid #BFDBFE;
+    margin-top: 4px;
+    white-space: nowrap;
+}
+
 /* ── Study Title (very prominent, centered) ── */
 .print-study-title {
     text-align: center;
