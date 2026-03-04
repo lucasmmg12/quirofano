@@ -15,10 +15,10 @@ CREATE TABLE IF NOT EXISTS app_config (
 -- Índice por categoría
 CREATE INDEX IF NOT EXISTS idx_app_config_category ON app_config(category);
 
--- Valores iniciales (los actuales hardcodeados)
+-- Valores iniciales (se configuran desde el panel de Configuración)
 INSERT INTO app_config (key, value, label, category, is_secret) VALUES
-    ('builderbot_api_key', 'bb-8070a5aa-c21d-4a70-8c29-801d05cd89c8', 'API Key de BuilderBot', 'whatsapp', TRUE),
-    ('builderbot_project_id', 'c42aa354-f1a3-44a6-b95b-5ccb24562254', 'Project ID de BuilderBot', 'whatsapp', FALSE),
+    ('builderbot_api_key', 'configurar-desde-panel', 'API Key de BuilderBot', 'whatsapp', TRUE),
+    ('builderbot_project_id', 'configurar-desde-panel', 'Project ID de BuilderBot', 'whatsapp', FALSE),
     ('whatsapp_phone', '5492645438114', 'Número de WhatsApp del Sanatorio', 'whatsapp', FALSE),
     ('area_code', '264', 'Código de área predeterminado', 'whatsapp', FALSE),
     ('clinic_name', 'Sanatorio Argentino', 'Nombre del Sanatorio', 'general', FALSE),

@@ -17,13 +17,5 @@ export default defineConfig({
     hmr: {
       port: 5173,
     },
-    proxy: {
-      '/api/builderbot': {
-        target: 'https://app.builderbot.cloud',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/builderbot/, '/api/v2/c42aa354-f1a3-44a6-b95b-5ccb24562254'),
-        secure: true,
-      },
-    },
   },
 })
