@@ -1,14 +1,16 @@
 /**
- * MessagingPanel — CRM WhatsApp integrado
- * Panel de dos columnas: lista de conversaciones + vista de chat
+ * MessagingPanel — CRM WhatsApp integrado con todas las funcionalidades
+ * Panel de dos columnas: lista de conversaciones + vista de chat completa
+ * Features: Imágenes, audio, video, emojis, plantillas (/), lightbox, shortcuts
  * Comparte la misma BD (whatsapp_messages) con ChatWindow del panel de cirugías
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
     MessageSquare, Search, Plus, Send, Phone, User, X,
-    ArrowLeft, Smile, Image, Mic, MicOff, Square, Loader,
-    RefreshCw, ChevronDown,
+    ArrowLeft, Smile, Image as ImageIcon, Mic, Square, Loader,
+    RefreshCw, Play, Pause, Volume2, Download, Paperclip, Zap,
+    Settings, CheckCheck, Check,
 } from 'lucide-react';
 import {
     fetchConversations, fetchMessages, saveOutgoingMessage,
@@ -17,11 +19,16 @@ import {
 } from '../services/chatService';
 import { sendWhatsAppMessage, normalizeArgentinePhone } from '../services/builderbotApi';
 import { searchPatients } from '../services/patientService';
+import { fetchShortcuts } from '../services/shortcutService';
 import { supabase } from '../lib/supabase';
+import ShortcutManager from './ShortcutManager';
 
-const QUICK_EMOJIS = [
-    '👍', '❤️', '😊', '🙏', '✅', '❌', '⚠️', '🏥', '📋', '📞',
-    '💊', '🩺', '👋', '👌', '🤙', '📌', '⏰', '🗓️', '🎉', '💯',
+const EMOJI_LIST = [
+    '😀', '😂', '🤣', '😊', '😍', '🥰', '😘', '😎', '🤩', '🥳',
+    '😅', '😆', '😉', '😋', '😜', '🤪', '😝', '🤑', '🤗', '🤭',
+    '👍', '👎', '👏', '🙌', '🤝', '💪', '✌️', '🤞', '🫶', '❤️',
+    '🔥', '⭐', '✅', '❌', '⚠️', '🏥', '💊', '🩺', '📋', '📞',
+    '🙏', '💯', '🎉', '🎊', '👋', '👌', '🤙', '📌', '⏰', '🗓️',
 ];
 
 export default function MessagingPanel({ addToast }) {
@@ -41,15 +48,30 @@ export default function MessagingPanel({ addToast }) {
     const [patientSearching, setPatientSearching] = useState(false);
     const [selectedPatient, setSelectedPatient] = useState(null);
     const [showEmoji, setShowEmoji] = useState(false);
-    // Contact names map: phone → name (from crm_contacts + surgeries fallback)
     const [contactNames, setContactNames] = useState({});
-    // Full CRM contacts data: phone → { nombre, id_paciente, dni, ... }
     const [crmContacts, setCrmContacts] = useState({});
+    // Media
+    const [lightboxUrl, setLightboxUrl] = useState(null);
+    const [playingAudio, setPlayingAudio] = useState(null);
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingTime, setRecordingTime] = useState(0);
+    const [uploadingMedia, setUploadingMedia] = useState(false);
+    // Shortcuts / Templates
+    const [shortcuts, setShortcuts] = useState([]);
+    const [showShortcuts, setShowShortcuts] = useState(false);
+    const [shortcutFilter, setShortcutFilter] = useState('');
+    const [shortcutIndex, setShortcutIndex] = useState(0);
+    const [showShortcutManager, setShowShortcutManager] = useState(false);
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
+    const audioRefs = useRef({});
+    const mediaRecorderRef = useRef(null);
+    const recordingChunksRef = useRef([]);
+    const recordingTimerRef = useRef(null);
+    const fileInputRef = useRef(null);
 
-    // === Load contacts from crm_contacts (persistent, populated from surgeries) ===
+    // === Load contacts from crm_contacts ===
     useEffect(() => {
         async function loadContacts() {
             try {
@@ -83,29 +105,48 @@ export default function MessagingPanel({ addToast }) {
 
     useEffect(() => { loadConversations(); }, [loadConversations]);
 
-    // === REALTIME: new incoming messages update conversation list ===
+    // === Realtime: new incoming messages ===
     useEffect(() => {
-        const unsub = subscribeToAllIncoming(() => {
-            loadConversations();
+        const unsub = subscribeToAllIncoming((newMsg) => {
+            setConversations(prev => {
+                const idx = prev.findIndex(c => c.phone === newMsg.phone);
+                if (idx >= 0) {
+                    const updated = [...prev];
+                    updated[idx] = {
+                        ...updated[idx],
+                        lastMessage: newMsg.content || '',
+                        lastDate: newMsg.created_at,
+                        direction: newMsg.direction,
+                        unreadCount: (updated[idx].unreadCount || 0) + (newMsg.direction === 'incoming' ? 1 : 0),
+                    };
+                    return updated.sort((a, b) => new Date(b.lastDate) - new Date(a.lastDate));
+                }
+                return [{
+                    phone: newMsg.phone,
+                    lastMessage: newMsg.content || '',
+                    lastDate: newMsg.created_at,
+                    direction: newMsg.direction,
+                    senderName: newMsg.sender_name || '',
+                    unreadCount: newMsg.direction === 'incoming' ? 1 : 0,
+                }, ...prev];
+            });
         });
         return unsub;
-    }, [loadConversations]);
+    }, []);
 
-    // === LOAD MESSAGES for selected conversation ===
+    // === Load messages for selected conversation ===
     useEffect(() => {
         if (!selectedPhone) return;
         let cancelled = false;
-
         async function load() {
             setMessagesLoading(true);
             try {
-                const data = await fetchMessages(selectedPhone);
-                if (!cancelled) setMessages(data);
+                const msgs = await fetchMessages(selectedPhone);
+                if (!cancelled) setMessages(msgs);
                 await markAsRead(selectedPhone);
-                // Update conversation unread count
-                setConversations(prev =>
-                    prev.map(c => c.phone === selectedPhone ? { ...c, unreadCount: 0 } : c)
-                );
+                setConversations(prev => prev.map(c =>
+                    c.phone === selectedPhone ? { ...c, unreadCount: 0 } : c
+                ));
             } catch (e) {
                 console.error(e);
             } finally {
@@ -132,19 +173,42 @@ export default function MessagingPanel({ addToast }) {
         return unsub;
     }, [selectedPhone]);
 
+    // === LOAD SHORTCUTS ===
+    useEffect(() => {
+        fetchShortcuts(true).then(setShortcuts).catch(err => {
+            console.warn('Could not load shortcuts:', err);
+        });
+    }, []);
+
     // === Auto scroll to bottom ===
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    // === SEND MESSAGE ===
+    // ==========================================
+    // UPLOAD MEDIA A SUPABASE STORAGE
+    // ==========================================
+    const uploadMedia = async (file, folder = 'chat-media') => {
+        const ext = file.name?.split('.').pop() || 'bin';
+        const fileName = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+        const { data, error } = await supabase.storage
+            .from('whatsapp-media')
+            .upload(fileName, file, { contentType: file.type, upsert: false });
+        if (error) throw error;
+        const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(data.path);
+        return urlData.publicUrl;
+    };
+
+    // ==========================================
+    // SEND TEXT MESSAGE
+    // ==========================================
     const handleSend = useCallback(async () => {
         if (!messageText.trim() || !selectedPhone || sending) return;
         setSending(true);
+        setShowEmoji(false);
         try {
             await sendWhatsAppMessage({ content: messageText, number: selectedPhone });
             const saved = await saveOutgoingMessage({ phone: selectedPhone, content: messageText });
-            // Add to local state immediately (dedup against realtime)
             if (saved) {
                 setMessages(prev => {
                     const exists = prev.find(m => m.id === saved.id);
@@ -161,43 +225,219 @@ export default function MessagingPanel({ addToast }) {
         }
     }, [messageText, selectedPhone, sending, addToast]);
 
-    // === NEW CONVERSATION ===
+    // ==========================================
+    // SEND IMAGE
+    // ==========================================
+    const handleImageSelect = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file || !selectedPhone) return;
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (!file.type.startsWith('image/')) {
+            addToast?.('Solo se aceptan imágenes', 'error');
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            addToast?.('Máximo 10MB', 'error');
+            return;
+        }
+        setUploadingMedia(true);
+        try {
+            const mediaUrl = await uploadMedia(file, 'images');
+            await sendWhatsAppMessage({ content: messageText.trim() || '📷 Imagen', number: selectedPhone, mediaUrl });
+            const saved = await saveOutgoingMessage({
+                phone: selectedPhone,
+                content: messageText.trim() || '📷 Imagen',
+                mediaType: 'image',
+                mediaUrl,
+            });
+            if (saved) {
+                setMessages(prev => {
+                    const exists = prev.find(m => m.id === saved.id);
+                    if (exists) return prev;
+                    return [...prev, saved];
+                });
+            }
+            setMessageText('');
+            addToast?.('Imagen enviada', 'success');
+        } catch (err) {
+            console.error('Error sending image:', err);
+            addToast?.('Error enviando imagen', 'error');
+        } finally {
+            setUploadingMedia(false);
+        }
+    };
+
+    // ==========================================
+    // AUDIO RECORDING
+    // ==========================================
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream, {
+                mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                    ? 'audio/webm;codecs=opus' : 'audio/webm',
+            });
+            mediaRecorderRef.current = mediaRecorder;
+            recordingChunksRef.current = [];
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) recordingChunksRef.current.push(e.data);
+            };
+            mediaRecorder.onstop = async () => {
+                stream.getTracks().forEach(t => t.stop());
+                const blob = new Blob(recordingChunksRef.current, { type: 'audio/webm' });
+                if (blob.size < 1000) { addToast?.('Audio muy corto', 'error'); return; }
+                await sendAudioBlob(blob);
+            };
+            mediaRecorder.start(250);
+            setIsRecording(true);
+            setRecordingTime(0);
+            recordingTimerRef.current = setInterval(() => setRecordingTime(prev => prev + 1), 1000);
+        } catch (err) {
+            console.error('Microphone error:', err);
+            addToast?.('No se pudo acceder al micrófono', 'error');
+        }
+    };
+
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+            if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+        }
+    };
+
+    const cancelRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stream?.getTracks().forEach(t => t.stop());
+            mediaRecorderRef.current.stop();
+            recordingChunksRef.current = [];
+            setIsRecording(false);
+            setRecordingTime(0);
+            if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+        }
+    };
+
+    const sendAudioBlob = async (blob) => {
+        setUploadingMedia(true);
+        try {
+            const file = new File([blob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
+            const mediaUrl = await uploadMedia(file, 'audios');
+            await sendWhatsAppMessage({ content: '🎤 Audio', number: selectedPhone, mediaUrl });
+            const saved = await saveOutgoingMessage({
+                phone: selectedPhone, content: '🎤 Audio', mediaType: 'audio', mediaUrl,
+            });
+            if (saved) {
+                setMessages(prev => {
+                    const exists = prev.find(m => m.id === saved.id);
+                    if (exists) return prev;
+                    return [...prev, saved];
+                });
+            }
+            addToast?.('Audio enviado', 'success');
+        } catch (err) {
+            console.error('Error sending audio:', err);
+            addToast?.('Error enviando audio', 'error');
+        } finally {
+            setUploadingMedia(false);
+        }
+    };
+
+    const formatRecordingTime = (s) => {
+        const m = Math.floor(s / 60);
+        const sec = s % 60;
+        return `${m}:${sec.toString().padStart(2, '0')}`;
+    };
+
+    // ==========================================
+    // AUDIO PLAYER
+    // ==========================================
+    const toggleAudio = (msgId, url) => {
+        const audio = audioRefs.current[msgId];
+        if (!audio) {
+            const newAudio = new Audio(url);
+            audioRefs.current[msgId] = newAudio;
+            newAudio.onended = () => setPlayingAudio(null);
+            newAudio.play();
+            setPlayingAudio(msgId);
+        } else if (playingAudio === msgId) {
+            audio.pause();
+            setPlayingAudio(null);
+        } else {
+            Object.values(audioRefs.current).forEach(a => a.pause());
+            audio.currentTime = 0;
+            audio.play();
+            setPlayingAudio(msgId);
+        }
+    };
+
+    // ==========================================
+    // SHORTCUTS / TEMPLATES
+    // ==========================================
+    const filteredShortcuts = shortcuts.filter(s => {
+        if (!shortcutFilter) return true;
+        const q = shortcutFilter.toLowerCase();
+        return s.shortcut.toLowerCase().includes(q) ||
+            s.label.toLowerCase().includes(q) ||
+            s.category?.toLowerCase().includes(q);
+    });
+
+    const handleInputChange = (e) => {
+        const val = e.target.value;
+        setMessageText(val);
+        if (val.startsWith('/')) {
+            setShowShortcuts(true);
+            setShortcutFilter(val.slice(1));
+            setShortcutIndex(0);
+        } else {
+            setShowShortcuts(false);
+            setShortcutFilter('');
+        }
+    };
+
+    const personalizeMessage = useCallback((message, name) => {
+        if (!message) return message;
+        const fechaHoy = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        let result = message;
+        if (name) result = result.replace(/Estimado\/a[,:.]?\s*/gi, `Estimada ${name} `);
+        result = result.replace(/\{nombre\}/gi, name || '');
+        result = result.replace(/\{paciente\}/gi, name || '');
+        result = result.replace(/\{fecha_hoy\}/gi, fechaHoy);
+        return result;
+    }, []);
+
+    const selectShortcut = useCallback((shortcut) => {
+        const contactName = selectedPhone ? (contactNames[selectedPhone] || '') : '';
+        const personalized = personalizeMessage(shortcut.message, contactName);
+        setMessageText(personalized);
+        setShowShortcuts(false);
+        setShortcutFilter('');
+        setShortcutIndex(0);
+        inputRef.current?.focus();
+    }, [selectedPhone, contactNames, personalizeMessage]);
+
+    // ==========================================
+    // NEW CONVERSATION
+    // ==========================================
     const handleStartNewChat = useCallback(async () => {
         if (!newChatPhone.trim()) return;
         const normalized = normalizeArgentinePhone(newChatPhone);
         const nombre = selectedPatient?.nombre || newChatName.trim() || normalized;
-
-        // Persist contact in crm_contacts (survives daily Excel updates)
         try {
             await upsertCrmContact({
-                phone: normalized,
-                nombre,
+                phone: normalized, nombre,
                 id_paciente: selectedPatient?.id_paciente || null,
                 dni: selectedPatient?.dni || null,
             });
-        } catch (e) {
-            console.error('Error saving CRM contact:', e);
-        }
-
+        } catch (e) { console.error('Error saving CRM contact:', e); }
         setContactNames(prev => ({ ...prev, [normalized]: nombre }));
         setSelectedPhone(normalized);
         setShowNewChat(false);
-        setNewChatPhone('');
-        setNewChatName('');
-        setSelectedPatient(null);
-        setPatientResults([]);
-        // Add to conversations if not present
+        setNewChatPhone(''); setNewChatName('');
+        setSelectedPatient(null); setPatientResults([]);
         setConversations(prev => {
             const existing = prev.find(c => c.phone === normalized);
             if (existing) return prev;
-            return [{
-                phone: normalized,
-                lastMessage: '',
-                lastDate: new Date().toISOString(),
-                direction: 'outgoing',
-                senderName: '',
-                unreadCount: 0,
-            }, ...prev];
+            return [{ phone: normalized, lastMessage: '', lastDate: new Date().toISOString(), direction: 'outgoing', senderName: '', unreadCount: 0 }, ...prev];
         });
     }, [newChatPhone, newChatName, selectedPatient]);
 
@@ -205,52 +445,63 @@ export default function MessagingPanel({ addToast }) {
     const handlePatientSearch = useCallback(async (query) => {
         setNewChatName(query);
         setSelectedPatient(null);
-        if (query.length < 2) {
-            setPatientResults([]);
-            return;
-        }
+        if (query.length < 2) { setPatientResults([]); return; }
         setPatientSearching(true);
         try {
             const results = await searchPatients(query);
             setPatientResults(results?.slice(0, 8) || []);
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setPatientSearching(false);
-        }
+        } catch (e) { console.error(e); } finally { setPatientSearching(false); }
     }, []);
 
-    const selectPatient = useCallback((patient) => {
+    const selectPatientResult = useCallback((patient) => {
         setSelectedPatient(patient);
         setNewChatName(patient.nombre || '');
         setPatientResults([]);
     }, []);
 
-    // === FILTERED CONVERSATIONS ===
+    // === KEY HANDLER ===
+    const handleKeyDown = (e) => {
+        if (showShortcuts && filteredShortcuts.length > 0) {
+            if (e.key === 'ArrowDown') { e.preventDefault(); setShortcutIndex(prev => (prev + 1) % filteredShortcuts.length); return; }
+            if (e.key === 'ArrowUp') { e.preventDefault(); setShortcutIndex(prev => (prev - 1 + filteredShortcuts.length) % filteredShortcuts.length); return; }
+            if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selectShortcut(filteredShortcuts[shortcutIndex]); return; }
+        }
+        if (e.key === 'Escape' && showShortcuts) { e.preventDefault(); setShowShortcuts(false); setMessageText(''); return; }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+    };
+
+    // === FILTERED CONVERSATIONS — unread first ===
     const filtered = useMemo(() => {
-        if (!searchQuery.trim()) return conversations;
-        const q = searchQuery.toLowerCase();
-        return conversations.filter(c => {
-            const name = contactNames[c.phone] || c.senderName || '';
-            return c.phone.includes(q) || name.toLowerCase().includes(q) ||
-                c.lastMessage.toLowerCase().includes(q);
+        let list = conversations;
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            list = list.filter(c => {
+                const name = contactNames[c.phone] || c.senderName || '';
+                return c.phone.includes(q) || name.toLowerCase().includes(q) || c.lastMessage.toLowerCase().includes(q);
+            });
+        }
+        // Sort: unread first, then by date
+        return [...list].sort((a, b) => {
+            if (a.unreadCount > 0 && b.unreadCount === 0) return -1;
+            if (b.unreadCount > 0 && a.unreadCount === 0) return 1;
+            return new Date(b.lastDate) - new Date(a.lastDate);
         });
     }, [conversations, searchQuery, contactNames]);
+
+    // Total unread count
+    const totalUnread = useMemo(() => conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0), [conversations]);
 
     // === HELPERS ===
     const formatTime = (dateStr) => {
         if (!dateStr) return '';
-        const d = new Date(dateStr);
-        return d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+        return new Date(dateStr).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
     };
 
     const formatDate = (dateStr) => {
         if (!dateStr) return '';
         const d = new Date(dateStr);
         const today = new Date();
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-
+        const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
         if (d.toDateString() === today.toDateString()) return 'Hoy';
         if (d.toDateString() === yesterday.toDateString()) return 'Ayer';
         return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -258,22 +509,15 @@ export default function MessagingPanel({ addToast }) {
 
     const formatFullDate = (dateStr) => {
         if (!dateStr) return '';
-        const d = new Date(dateStr);
-        return d.toLocaleDateString('es-AR', {
-            weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-        });
+        return new Date(dateStr).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     };
 
-    // Group messages by date for date separators
     const groupedMessages = useMemo(() => {
         const groups = [];
         let lastDate = null;
         messages.forEach(msg => {
             const msgDate = new Date(msg.created_at).toDateString();
-            if (msgDate !== lastDate) {
-                groups.push({ type: 'date', date: msg.created_at });
-                lastDate = msgDate;
-            }
+            if (msgDate !== lastDate) { groups.push({ type: 'date', date: msg.created_at }); lastDate = msgDate; }
             groups.push({ type: 'message', ...msg });
         });
         return groups;
@@ -282,6 +526,62 @@ export default function MessagingPanel({ addToast }) {
     const selectedContactName = selectedPhone
         ? (contactNames[selectedPhone] || conversations.find(c => c.phone === selectedPhone)?.senderName || selectedPhone)
         : '';
+
+    // ==========================================
+    // RENDER MESSAGE CONTENT (images, audio, video, docs, text)
+    // ==========================================
+    const renderMessageContent = (msg) => {
+        switch (msg.media_type) {
+            case 'image':
+            case 'sticker':
+                return (
+                    <div>
+                        <img
+                            src={msg.media_url}
+                            alt="Imagen"
+                            className="msg-panel__bubble-image"
+                            onClick={() => setLightboxUrl(msg.media_url)}
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                        {msg.content && msg.content !== '[image]' && msg.content !== '[sticker]' && msg.content !== '📷 Imagen' && (
+                            <p className="msg-panel__bubble-text">{msg.content}</p>
+                        )}
+                    </div>
+                );
+            case 'audio':
+                return (
+                    <div className="msg-panel__audio-player">
+                        <button
+                            className="msg-panel__audio-play-btn"
+                            onClick={() => toggleAudio(msg.id, msg.media_url)}
+                            style={{ background: msg.direction === 'outgoing' ? 'rgba(0,0,0,0.08)' : '#25D366' }}
+                        >
+                            {playingAudio === msg.id ? <Pause size={14} color="#fff" /> : <Play size={14} color="#fff" />}
+                        </button>
+                        <div className="msg-panel__audio-bar">
+                            <div className="msg-panel__audio-progress" style={{ width: playingAudio === msg.id ? '60%' : '0%' }} />
+                        </div>
+                        <Volume2 size={12} style={{ opacity: 0.4 }} />
+                    </div>
+                );
+            case 'video':
+                return (
+                    <div>
+                        <video src={msg.media_url} controls style={{ maxWidth: '280px', borderRadius: '8px', display: 'block' }} />
+                        {msg.content && msg.content !== '[video]' && <p className="msg-panel__bubble-text">{msg.content}</p>}
+                    </div>
+                );
+            case 'document':
+                return (
+                    <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="msg-panel__doc-link">
+                        <Download size={16} />
+                        <span>{msg.content || 'Documento adjunto'}</span>
+                    </a>
+                );
+            default:
+                return <p className="msg-panel__bubble-text">{msg.content}</p>;
+        }
+    };
 
     // ===========================
     //  RENDER
@@ -294,12 +594,11 @@ export default function MessagingPanel({ addToast }) {
                     <h3 className="msg-panel__sidebar-title">
                         <MessageSquare size={18} />
                         Mensajería
+                        {totalUnread > 0 && (
+                            <span className="msg-panel__total-badge">{totalUnread}</span>
+                        )}
                     </h3>
-                    <button
-                        className="msg-panel__btn-icon"
-                        onClick={() => setShowNewChat(true)}
-                        title="Nueva conversación"
-                    >
+                    <button className="msg-panel__btn-icon" onClick={() => setShowNewChat(true)} title="Nueva conversación">
                         <Plus size={18} />
                     </button>
                 </div>
@@ -308,10 +607,8 @@ export default function MessagingPanel({ addToast }) {
                 <div className="msg-panel__search">
                     <Search size={15} className="msg-panel__search-icon" />
                     <input
-                        type="text"
-                        placeholder="Buscar conversación..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
+                        type="text" placeholder="Buscar conversación..."
+                        value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                         className="msg-panel__search-input"
                     />
                 </div>
@@ -328,45 +625,28 @@ export default function MessagingPanel({ addToast }) {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             <div style={{ position: 'relative' }}>
                                 <Phone size={14} style={{ position: 'absolute', left: '10px', top: '9px', color: '#94A3B8' }} />
-                                <input
-                                    type="tel"
-                                    placeholder="Número de teléfono"
-                                    value={newChatPhone}
+                                <input type="tel" placeholder="Número de teléfono" value={newChatPhone}
                                     onChange={e => setNewChatPhone(e.target.value)}
-                                    className="msg-panel__new-chat-input"
-                                    style={{ paddingLeft: '32px' }}
+                                    className="msg-panel__new-chat-input" style={{ paddingLeft: '32px' }}
                                 />
                             </div>
                             <div style={{ position: 'relative' }}>
                                 <User size={14} style={{ position: 'absolute', left: '10px', top: '9px', color: '#94A3B8' }} />
-                                <input
-                                    type="text"
-                                    placeholder="Buscar paciente o ingresar nombre..."
-                                    value={newChatName}
-                                    onChange={e => handlePatientSearch(e.target.value)}
-                                    className="msg-panel__new-chat-input"
-                                    style={{ paddingLeft: '32px' }}
+                                <input type="text" placeholder="Buscar paciente o ingresar nombre..."
+                                    value={newChatName} onChange={e => handlePatientSearch(e.target.value)}
+                                    className="msg-panel__new-chat-input" style={{ paddingLeft: '32px' }}
                                 />
-                                {/* Patient search results dropdown */}
                                 {patientResults.length > 0 && (
                                     <div className="msg-panel__patient-results animate-fade-in">
                                         {patientResults.map(p => (
-                                            <button
-                                                key={p.id_paciente}
-                                                className="msg-panel__patient-item"
-                                                onClick={() => selectPatient(p)}
-                                            >
+                                            <button key={p.id_paciente} className="msg-panel__patient-item" onClick={() => selectPatientResult(p)}>
                                                 <span style={{ fontWeight: 600 }}>{p.nombre}</span>
                                                 {p.dni && <span style={{ color: '#94A3B8', fontSize: '0.72rem' }}>DNI: {p.dni}</span>}
                                             </button>
                                         ))}
                                     </div>
                                 )}
-                                {patientSearching && (
-                                    <div style={{ position: 'absolute', right: '10px', top: '9px' }}>
-                                        <Loader size={14} className="msg-panel__spinner" />
-                                    </div>
-                                )}
+                                {patientSearching && <div style={{ position: 'absolute', right: '10px', top: '9px' }}><Loader size={14} className="msg-panel__spinner" /></div>}
                             </div>
                             {selectedPatient && (
                                 <div className="msg-panel__selected-patient animate-fade-in">
@@ -378,13 +658,8 @@ export default function MessagingPanel({ addToast }) {
                                     </button>
                                 </div>
                             )}
-                            <button
-                                className="msg-panel__new-chat-submit"
-                                onClick={handleStartNewChat}
-                                disabled={!newChatPhone.trim()}
-                            >
-                                <MessageSquare size={14} />
-                                Iniciar Conversación
+                            <button className="msg-panel__new-chat-submit" onClick={handleStartNewChat} disabled={!newChatPhone.trim()}>
+                                <MessageSquare size={14} /> Iniciar Conversación
                             </button>
                         </div>
                     </div>
@@ -393,23 +668,18 @@ export default function MessagingPanel({ addToast }) {
                 {/* Conversation List */}
                 <div className="msg-panel__conv-list">
                     {loading ? (
-                        <div className="msg-panel__empty">
-                            <Loader size={24} className="msg-panel__spinner" />
-                            <span>Cargando...</span>
-                        </div>
+                        <div className="msg-panel__empty"><Loader size={24} className="msg-panel__spinner" /><span>Cargando...</span></div>
                     ) : filtered.length === 0 ? (
-                        <div className="msg-panel__empty">
-                            <MessageSquare size={32} strokeWidth={1.2} />
-                            <span>Sin conversaciones</span>
-                        </div>
+                        <div className="msg-panel__empty"><MessageSquare size={32} strokeWidth={1.2} /><span>Sin conversaciones</span></div>
                     ) : (
                         filtered.map(conv => {
                             const name = contactNames[conv.phone] || conv.senderName || conv.phone;
                             const isActive = selectedPhone === conv.phone;
+                            const hasUnread = conv.unreadCount > 0;
                             return (
                                 <button
                                     key={conv.phone}
-                                    className={`msg-panel__conv-item ${isActive ? 'msg-panel__conv-item--active' : ''}`}
+                                    className={`msg-panel__conv-item ${isActive ? 'msg-panel__conv-item--active' : ''} ${hasUnread ? 'msg-panel__conv-item--unread' : ''}`}
                                     onClick={() => setSelectedPhone(conv.phone)}
                                 >
                                     <div className="msg-panel__conv-avatar">
@@ -417,7 +687,7 @@ export default function MessagingPanel({ addToast }) {
                                     </div>
                                     <div className="msg-panel__conv-info">
                                         <div className="msg-panel__conv-top">
-                                            <span className="msg-panel__conv-name">{name}</span>
+                                            <span className={`msg-panel__conv-name ${hasUnread ? 'msg-panel__conv-name--bold' : ''}`}>{name}</span>
                                             <span className="msg-panel__conv-time">{formatDate(conv.lastDate)}</span>
                                         </div>
                                         <div className="msg-panel__conv-bottom">
@@ -425,9 +695,7 @@ export default function MessagingPanel({ addToast }) {
                                                 {conv.direction === 'outgoing' && '✓ '}
                                                 {conv.lastMessage.length > 45 ? conv.lastMessage.slice(0, 45) + '...' : conv.lastMessage}
                                             </span>
-                                            {conv.unreadCount > 0 && (
-                                                <span className="msg-panel__conv-badge">{conv.unreadCount}</span>
-                                            )}
+                                            {hasUnread && <span className="msg-panel__conv-badge">{conv.unreadCount}</span>}
                                         </div>
                                     </div>
                                 </button>
@@ -437,9 +705,7 @@ export default function MessagingPanel({ addToast }) {
                 </div>
 
                 <div className="msg-panel__sidebar-footer">
-                    <button className="msg-panel__btn-icon" onClick={loadConversations} title="Actualizar">
-                        <RefreshCw size={15} />
-                    </button>
+                    <button className="msg-panel__btn-icon" onClick={loadConversations} title="Actualizar"><RefreshCw size={15} /></button>
                     <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
                         {conversations.length} conversación{conversations.length !== 1 ? 'es' : ''}
                     </span>
@@ -449,11 +715,8 @@ export default function MessagingPanel({ addToast }) {
             {/* ========== RIGHT: Chat View ========== */}
             <div className="msg-panel__chat">
                 {!selectedPhone ? (
-                    /* Empty state */
                     <div className="msg-panel__chat-empty">
-                        <div className="msg-panel__chat-empty-icon">
-                            <MessageSquare size={56} strokeWidth={1} />
-                        </div>
+                        <div className="msg-panel__chat-empty-icon"><MessageSquare size={56} strokeWidth={1} /></div>
                         <h3>Centro de Mensajería</h3>
                         <p>Seleccione una conversación o inicie una nueva</p>
                     </div>
@@ -461,20 +724,13 @@ export default function MessagingPanel({ addToast }) {
                     <>
                         {/* Chat Header */}
                         <div className="msg-panel__chat-header">
-                            <button
-                                className="msg-panel__btn-icon msg-panel__back-btn"
-                                onClick={() => setSelectedPhone(null)}
-                            >
+                            <button className="msg-panel__btn-icon msg-panel__back-btn" onClick={() => setSelectedPhone(null)}>
                                 <ArrowLeft size={18} />
                             </button>
-                            <div className="msg-panel__chat-header-avatar">
-                                {selectedContactName.charAt(0).toUpperCase()}
-                            </div>
+                            <div className="msg-panel__chat-header-avatar">{selectedContactName.charAt(0).toUpperCase()}</div>
                             <div className="msg-panel__chat-header-info">
                                 <span className="msg-panel__chat-header-name">{selectedContactName}</span>
-                                <span className="msg-panel__chat-header-phone">
-                                    <Phone size={11} /> {selectedPhone}
-                                </span>
+                                <span className="msg-panel__chat-header-phone"><Phone size={11} /> {selectedPhone}</span>
                             </div>
                         </div>
 
@@ -482,13 +738,11 @@ export default function MessagingPanel({ addToast }) {
                         <div className="msg-panel__messages">
                             {messagesLoading ? (
                                 <div className="msg-panel__empty" style={{ padding: '40px 0' }}>
-                                    <Loader size={24} className="msg-panel__spinner" />
-                                    <span>Cargando mensajes...</span>
+                                    <Loader size={24} className="msg-panel__spinner" /><span>Cargando mensajes...</span>
                                 </div>
                             ) : messages.length === 0 ? (
                                 <div className="msg-panel__empty" style={{ padding: '40px 0' }}>
-                                    <MessageSquare size={32} strokeWidth={1.2} />
-                                    <span>Sin mensajes aún. ¡Envía el primero!</span>
+                                    <MessageSquare size={32} strokeWidth={1.2} /><span>Sin mensajes aún. ¡Envía el primero!</span>
                                 </div>
                             ) : (
                                 groupedMessages.map((item, idx) => {
@@ -501,31 +755,18 @@ export default function MessagingPanel({ addToast }) {
                                     }
                                     const isOutgoing = item.direction === 'outgoing';
                                     return (
-                                        <div
-                                            key={item.id || idx}
+                                        <div key={item.id || idx}
                                             className={`msg-panel__bubble ${isOutgoing ? 'msg-panel__bubble--out' : 'msg-panel__bubble--in'}`}
                                         >
                                             {!isOutgoing && item.sender_name && (
                                                 <span className="msg-panel__bubble-sender">{item.sender_name}</span>
                                             )}
-                                            {/* Media rendering */}
-                                            {item.media_url && item.media_type === 'image' && (
-                                                <img
-                                                    src={item.media_url}
-                                                    alt="Imagen"
-                                                    className="msg-panel__bubble-image"
-                                                    onClick={() => window.open(item.media_url, '_blank')}
-                                                />
-                                            )}
-                                            {item.media_url && item.media_type === 'audio' && (
-                                                <audio controls src={item.media_url} style={{ maxWidth: '240px' }} />
-                                            )}
-                                            {item.content && (
-                                                <p className="msg-panel__bubble-text">{item.content}</p>
-                                            )}
+                                            {renderMessageContent(item)}
                                             <span className="msg-panel__bubble-time">
                                                 {formatTime(item.created_at)}
-                                                {isOutgoing && ' ✓'}
+                                                {isOutgoing && (
+                                                    <CheckCheck size={12} style={{ marginLeft: '3px', opacity: 0.6 }} />
+                                                )}
                                             </span>
                                         </div>
                                     );
@@ -536,51 +777,106 @@ export default function MessagingPanel({ addToast }) {
 
                         {/* Composer */}
                         <div className="msg-panel__composer">
+                            {/* Shortcuts popup */}
+                            {showShortcuts && filteredShortcuts.length > 0 && (
+                                <div className="msg-panel__shortcuts-popup animate-fade-in">
+                                    <div style={{ padding: '6px 10px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: '6px', color: '#64748B', fontSize: '0.72rem' }}>
+                                        <Zap size={12} /> Plantillas — Escribe para filtrar
+                                    </div>
+                                    <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                                        {filteredShortcuts.map((s, i) => (
+                                            <button
+                                                key={s.id || i}
+                                                className={`msg-panel__shortcut-item ${i === shortcutIndex ? 'msg-panel__shortcut-item--active' : ''}`}
+                                                onClick={() => selectShortcut(s)}
+                                                onMouseEnter={() => setShortcutIndex(i)}
+                                            >
+                                                <span className="msg-panel__shortcut-name">/{s.shortcut}</span>
+                                                <span className="msg-panel__shortcut-label">{s.label}</span>
+                                                {s.category && <span className="msg-panel__shortcut-cat">{s.category}</span>}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Emoji picker */}
                             {showEmoji && (
                                 <div className="msg-panel__emoji-tray animate-fade-in">
-                                    {QUICK_EMOJIS.map(e => (
-                                        <button
-                                            key={e}
-                                            className="msg-panel__emoji-btn"
-                                            onClick={() => { setMessageText(prev => prev + e); setShowEmoji(false); inputRef.current?.focus(); }}
-                                        >
+                                    {EMOJI_LIST.map(e => (
+                                        <button key={e} className="msg-panel__emoji-btn"
+                                            onClick={() => { setMessageText(prev => prev + e); inputRef.current?.focus(); }}>
                                             {e}
                                         </button>
                                     ))}
                                 </div>
                             )}
-                            <div className="msg-panel__composer-row">
-                                <button
-                                    className="msg-panel__btn-icon"
-                                    onClick={() => setShowEmoji(prev => !prev)}
-                                    title="Emojis"
-                                >
-                                    <Smile size={18} />
-                                </button>
-                                <input
-                                    ref={inputRef}
-                                    type="text"
-                                    className="msg-panel__composer-input"
-                                    placeholder="Escribe un mensaje..."
-                                    value={messageText}
-                                    onChange={e => setMessageText(e.target.value)}
-                                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                                    disabled={sending}
-                                />
-                                <button
-                                    className="msg-panel__send-btn"
-                                    onClick={handleSend}
-                                    disabled={!messageText.trim() || sending}
-                                    title="Enviar"
-                                >
-                                    {sending ? <Loader size={16} className="msg-panel__spinner" /> : <Send size={16} />}
-                                </button>
-                            </div>
+
+                            {/* Recording UI */}
+                            {isRecording ? (
+                                <div className="msg-panel__recording-bar">
+                                    <button className="msg-panel__btn-icon" onClick={cancelRecording} title="Cancelar" style={{ color: '#EF4444' }}>
+                                        <X size={18} />
+                                    </button>
+                                    <div className="msg-panel__recording-indicator">
+                                        <span className="msg-panel__recording-dot" />
+                                        <span>{formatRecordingTime(recordingTime)}</span>
+                                    </div>
+                                    <button className="msg-panel__send-btn" onClick={stopRecording} title="Enviar audio">
+                                        <Send size={16} />
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="msg-panel__composer-row">
+                                    <button className="msg-panel__btn-icon" onClick={() => setShowEmoji(prev => !prev)} title="Emojis">
+                                        <Smile size={18} />
+                                    </button>
+                                    <button className="msg-panel__btn-icon" onClick={() => fileInputRef.current?.click()} title="Enviar imagen" disabled={uploadingMedia}>
+                                        {uploadingMedia ? <Loader size={18} className="msg-panel__spinner" /> : <Paperclip size={18} />}
+                                    </button>
+                                    <input type="file" ref={fileInputRef} accept="image/*" onChange={handleImageSelect} style={{ display: 'none' }} />
+                                    <input
+                                        ref={inputRef} type="text"
+                                        className="msg-panel__composer-input"
+                                        placeholder="Escribe un mensaje... ( / para plantillas)"
+                                        value={messageText}
+                                        onChange={handleInputChange}
+                                        onKeyDown={handleKeyDown}
+                                        disabled={sending || uploadingMedia}
+                                    />
+                                    {messageText.trim() ? (
+                                        <button className="msg-panel__send-btn" onClick={handleSend}
+                                            disabled={!messageText.trim() || sending} title="Enviar">
+                                            {sending ? <Loader size={16} className="msg-panel__spinner" /> : <Send size={16} />}
+                                        </button>
+                                    ) : (
+                                        <button className="msg-panel__btn-icon" onClick={startRecording} title="Grabar audio"
+                                            style={{ color: '#25D366' }}>
+                                            <Mic size={20} />
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </>
                 )}
             </div>
+
+            {/* ========== LIGHTBOX ========== */}
+            {lightboxUrl && (
+                <div className="msg-panel__lightbox" onClick={() => setLightboxUrl(null)}>
+                    <button className="msg-panel__lightbox-close"><X size={24} /></button>
+                    <img src={lightboxUrl} alt="Vista ampliada" className="msg-panel__lightbox-img" />
+                </div>
+            )}
+
+            {/* ========== SHORTCUT MANAGER ========== */}
+            {showShortcutManager && (
+                <ShortcutManager
+                    onClose={() => { setShowShortcutManager(false); fetchShortcuts(true).then(setShortcuts); }}
+                    addToast={addToast}
+                />
+            )}
         </div>
     );
 }

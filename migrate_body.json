@@ -1,3 +1,3 @@
 {
-    "query": "INSERT INTO crm_contacts (phone, nombre, id_paciente, dni)\nSELECT DISTINCT ON (s.telefono)\n    s.telefono,\n    s.nombre,\n    s.id_paciente::INTEGER,\n    p.dni\nFROM surgeries s\nLEFT JOIN pacientes p ON p.id_paciente = s.id_paciente::INTEGER\nWHERE s.telefono IS NOT NULL\n  AND s.telefono != ''\n  AND s.nombre IS NOT NULL\n  AND s.nombre != ''\n  AND NOT EXISTS (\n    SELECT 1 FROM crm_contacts c WHERE c.phone = s.telefono\n  )\nORDER BY s.telefono, s.created_at DESC;"
+    "query": "DELETE FROM whatsapp_messages WHERE content ILIKE '%Grow Labs%' OR content ILIKE '%recompensas acumulás%' OR content ILIKE '%Automatización creada%';"
 }
