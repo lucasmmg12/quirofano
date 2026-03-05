@@ -1,14 +1,14 @@
 ﻿/**
- * RecepcionView â€” Vista de solo lectura para RecepciÃ³n
+ * RecepcionView - Vista de solo lectura para Recepcion
  * Accesible sin login en /recepcion
- * Muestra cirugÃ­as del dÃ­a con observaciones del equipo de administraciÃ³n
- * Optimizada para velocidad de consulta
+ * Muestra cirugias del dia con observaciones del equipo de administracion
+ * Diseno: Opcion B - Card con Acento Lateral + Glassmorphism
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-    Search, RefreshCw, Calendar, Phone, User, Clock,
+    Search, RefreshCw, Calendar, User, Clock,
     MessageSquare, ChevronDown, ChevronUp, Stethoscope,
-    FileText, AlertCircle, Filter,
+    FileText,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -21,24 +21,24 @@ const WhatsAppIcon = ({ size = 16 }) => (
 
 const DATE_TABS = [
     { key: 'hoy', label: 'Hoy' },
-    { key: 'manana', label: 'MaÃ±ana' },
-    { key: 'proximos', label: 'PrÃ³ximos 3 dÃ­as' },
+    { key: 'manana', label: 'Ma\u00f1ana' },
+    { key: 'proximos', label: 'Pr\u00f3ximos 3 d\u00edas' },
     { key: 'todos', label: 'Todos' },
 ];
 
 const STATUS_LABELS = {
     lila: { label: 'Pendiente', color: '#8B5CF6', bg: '#F5F3FF' },
-    amarillo: { label: 'En revisiÃ³n', color: '#D97706', bg: '#FFFBEB' },
+    amarillo: { label: 'En revisi\u00f3n', color: '#D97706', bg: '#FFFBEB' },
     verde: { label: 'Autorizado', color: '#16A34A', bg: '#F0FDF4' },
     azul: { label: 'Confirmado', color: '#2563EB', bg: '#EFF6FF' },
     rojo: { label: 'Problema', color: '#DC2626', bg: '#FEF2F2' },
-    precaucion: { label: 'PrecauciÃ³n', color: '#EA580C', bg: '#FFF7ED' },
+    precaucion: { label: 'Precauci\u00f3n', color: '#EA580C', bg: '#FFF7ED' },
 };
 
 export default function RecepcionView() {
     const [surgeries, setSurgeries] = useState([]);
-    const [comments, setComments] = useState({}); // { surgeryId: [comments] }
-    const [patients, setPatients] = useState({}); // { id_paciente: { edad, sexo } }
+    const [comments, setComments] = useState({});
+    const [patients, setPatients] = useState({});
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [dateTab, setDateTab] = useState('hoy');
@@ -66,7 +66,6 @@ export default function RecepcionView() {
                 to.setHours(23, 59, 59, 999);
                 break;
             case 'todos':
-                // Show from 7 days ago to +14 days
                 from.setDate(from.getDate() - 7);
                 to.setDate(to.getDate() + 14);
                 to.setHours(23, 59, 59, 999);
@@ -86,20 +85,17 @@ export default function RecepcionView() {
         try {
             const { from, to } = getDateRange(dateTab);
 
-            // Fetch surgeries
             const { data: surgData, error: surgError } = await supabase
                 .from('surgeries')
                 .select('*')
                 .eq('excluido', false)
                 .gte('fecha_cirugia', from)
                 .lte('fecha_cirugia', to)
-                .not('ausente', 'eq', '0') // Exclude completed
                 .order('fecha_cirugia', { ascending: true });
 
             if (surgError) throw surgError;
             setSurgeries(surgData || []);
 
-            // Fetch all comments for these surgeries
             if (surgData?.length > 0) {
                 const ids = surgData.map(s => s.id);
                 const { data: commData } = await supabase
@@ -115,7 +111,6 @@ export default function RecepcionView() {
                 });
                 setComments(grouped);
 
-                // Fetch patient data (edad, sexo)
                 const patientIds = [...new Set(surgData.map(s => s.id_paciente).filter(Boolean))];
                 if (patientIds.length > 0) {
                     const { data: patData } = await supabase
@@ -151,9 +146,7 @@ export default function RecepcionView() {
 
     useEffect(() => {
         loadData();
-        // Auto-refresh every 30s
-        const interval = setInterval(() => loadData(), 30000);
-        return () => clearInterval(interval);
+        // NO auto-refresh - manual only
     }, [loadData]);
 
     // === Filtered list ===
@@ -172,7 +165,7 @@ export default function RecepcionView() {
 
     // === Helpers ===
     const formatDate = (dateStr) => {
-        if (!dateStr) return 'â€”';
+        if (!dateStr) return '\u2014';
         const d = new Date(dateStr + 'T12:00:00');
         return d.toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
     };
@@ -211,7 +204,6 @@ export default function RecepcionView() {
 
     const isSuspended = (s) => s.ausente === '1';
 
-    // === Today label for header ===
     const todayLabel = new Date().toLocaleDateString('es-AR', {
         weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
     });
@@ -227,7 +219,7 @@ export default function RecepcionView() {
             fontFamily: "'Inter', -apple-system, sans-serif",
             position: 'relative',
         }}>
-            {/* Background overlay for readability */}
+            {/* Background overlay */}
             <div style={{
                 position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                 background: 'rgba(241, 245, 249, 0.88)',
@@ -235,7 +227,7 @@ export default function RecepcionView() {
                 zIndex: 0,
             }} />
 
-            {/* === HEADER (Glassmorphism) === */}
+            {/* === HEADER === */}
             <header style={{
                 background: 'rgba(255, 255, 255, 0.85)',
                 backdropFilter: 'blur(16px)',
@@ -265,7 +257,7 @@ export default function RecepcionView() {
                             margin: 0, fontSize: '1.15rem', fontWeight: 700,
                             color: '#0F2B46', letterSpacing: '-0.3px',
                         }}>
-                            RecepciÃ³n <span style={{ color: '#1565C0', fontWeight: 800 }}>QuirÃ³fanos</span>
+                            Recepci{'\u00f3'}n <span style={{ color: '#1565C0', fontWeight: 800 }}>Quir{'\u00f3'}fanos</span>
                         </h1>
                         <span style={{ fontSize: '0.72rem', color: '#64748B', textTransform: 'capitalize' }}>
                             {todayLabel}
@@ -274,7 +266,6 @@ export default function RecepcionView() {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    {/* Auto-refresh indicator */}
                     <span style={{
                         fontSize: '0.7rem', color: '#64748B',
                         display: 'flex', alignItems: 'center', gap: '5px',
@@ -282,12 +273,6 @@ export default function RecepcionView() {
                         background: 'rgba(34, 197, 94, 0.08)',
                         border: '1px solid rgba(34, 197, 94, 0.2)',
                     }}>
-                        <span style={{
-                            width: '7px', height: '7px', borderRadius: '50%',
-                            background: '#22C55E', display: 'inline-block',
-                            animation: 'recepcion-pulse 2s infinite',
-                            boxShadow: '0 0 6px rgba(34, 197, 94, 0.4)',
-                        }} />
                         {lastRefresh.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </span>
                     <button
@@ -300,15 +285,15 @@ export default function RecepcionView() {
                             cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
                             color: '#1565C0', transition: 'all 0.2s',
                         }}
-                        onMouseOver={e => { e.currentTarget.style.background = 'rgba(21, 101, 192, 0.12)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                        onMouseOut={e => { e.currentTarget.style.background = 'rgba(21, 101, 192, 0.06)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                        onMouseOver={e => { e.currentTarget.style.background = 'rgba(21, 101, 192, 0.12)'; }}
+                        onMouseOut={e => { e.currentTarget.style.background = 'rgba(21, 101, 192, 0.06)'; }}
                     >
                         <RefreshCw size={13} /> Actualizar
                     </button>
                 </div>
             </header>
 
-            {/* === TOOLBAR (Glassmorphism) === */}
+            {/* === TOOLBAR === */}
             <div style={{
                 display: 'flex', alignItems: 'center', gap: '12px',
                 padding: '10px 24px',
@@ -346,27 +331,24 @@ export default function RecepcionView() {
                 </div>
 
                 {/* Search */}
-                <div style={{ position: 'relative', flex: 1, maxWidth: '380px' }}>
+                <div style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
                     <Search size={14} style={{
                         position: 'absolute', left: '12px', top: '50%',
                         transform: 'translateY(-50%)', color: '#94A3B8',
                     }} />
                     <input
                         type="text"
-                        placeholder="Buscar por nombre, DNI, telÃ©fono, obra social..."
+                        placeholder="Buscar por nombre, DNI, tel\u00e9fono, obra social..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         style={{
-                            width: '100%', padding: '9px 12px 9px 34px',
+                            width: '100%', padding: '8px 12px 8px 34px',
                             borderRadius: '10px',
-                            border: '1px solid rgba(226, 232, 240, 0.6)',
-                            background: 'rgba(255,255,255,0.8)',
-                            fontSize: '0.8rem', outline: 'none',
-                            transition: 'all 0.2s',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                            border: '1px solid rgba(226, 232, 240, 0.5)',
+                            background: 'rgba(248, 250, 252, 0.8)',
+                            fontSize: '0.8rem', color: '#1E293B',
+                            outline: 'none', transition: 'all 0.2s',
                         }}
-                        onFocus={e => { e.target.style.borderColor = '#93C5FD'; e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.1)'; }}
-                        onBlur={e => { e.target.style.borderColor = 'rgba(226, 232, 240, 0.6)'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.03)'; }}
                     />
                 </div>
 
@@ -378,7 +360,7 @@ export default function RecepcionView() {
                     borderRadius: '10px',
                     border: '1px solid rgba(21, 101, 192, 0.12)',
                 }}>
-                    {filtered.length} cirugÃ­a{filtered.length !== 1 ? 's' : ''}
+                    {filtered.length} cirug{'\u00ed'}a{filtered.length !== 1 ? 's' : ''}
                 </span>
             </div>
 
@@ -396,7 +378,7 @@ export default function RecepcionView() {
                         padding: '80px 0', color: '#94A3B8',
                     }}>
                         <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite', marginRight: '8px' }} />
-                        Cargando cirugÃ­as...
+                        Cargando cirug{'\u00ed'}as...
                     </div>
                 ) : filtered.length === 0 ? (
                     <div style={{
@@ -404,10 +386,10 @@ export default function RecepcionView() {
                     }}>
                         <Calendar size={48} strokeWidth={1.2} style={{ margin: '0 auto 16px' }} />
                         <h3 style={{ margin: '0 0 8px', color: '#64748B', fontWeight: 600 }}>
-                            No hay cirugÃ­as programadas
+                            No hay cirug{'\u00ed'}as programadas
                         </h3>
                         <p style={{ margin: 0, fontSize: '0.85rem' }}>
-                            {searchQuery ? 'No se encontraron resultados para tu bÃºsqueda.' : 'No hay cirugÃ­as para el perÃ­odo seleccionado.'}
+                            {searchQuery ? 'No se encontraron resultados para tu b\u00fasqueda.' : 'No hay cirug\u00edas para el per\u00edodo seleccionado.'}
                         </p>
                     </div>
                 ) : (
@@ -421,7 +403,7 @@ export default function RecepcionView() {
                             const statusCfg = STATUS_LABELS[surgery.status] || STATUS_LABELS.lila;
                             const waLink = getWhatsAppLink(surgery.telefono);
 
-                            // Left accent color
+                            // LEFT ACCENT COLOR: blue=normal, red=suspended, amber=has observations
                             const accentColor = suspended ? '#DC2626'
                                 : hasComments ? '#F59E0B'
                                     : '#1565C0';
@@ -457,7 +439,7 @@ export default function RecepcionView() {
                                     {/* === CARD BODY === */}
                                     <div style={{ flex: 1, minWidth: 0 }}>
 
-                                        {/* --- TOP SECTION: Name + Status + WhatsApp --- */}
+                                        {/* --- TOP: Name + Status + WhatsApp --- */}
                                         <div
                                             onClick={() => toggleCard(surgery.id)}
                                             style={{
@@ -472,7 +454,6 @@ export default function RecepcionView() {
                                             onMouseOver={e => { e.currentTarget.style.background = 'rgba(21, 101, 192, 0.03)'; }}
                                             onMouseOut={e => { e.currentTarget.style.background = 'transparent'; }}
                                         >
-                                            {/* Name + badges */}
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', flex: 1 }}>
                                                 <span style={{
                                                     fontWeight: 700, fontSize: '0.95rem',
@@ -482,13 +463,10 @@ export default function RecepcionView() {
                                                 }}>
                                                     {surgery.nombre}
                                                 </span>
-                                                {/* Status badge */}
                                                 <span style={{
                                                     padding: '3px 10px', borderRadius: '20px',
                                                     fontSize: '0.65rem', fontWeight: 700,
-                                                    background: suspended
-                                                        ? 'rgba(220, 38, 38, 0.1)'
-                                                        : `${statusCfg.color}14`,
+                                                    background: suspended ? 'rgba(220, 38, 38, 0.1)' : `${statusCfg.color}14`,
                                                     color: suspended ? '#DC2626' : statusCfg.color,
                                                     border: `1px solid ${suspended ? 'rgba(220,38,38,0.2)' : statusCfg.color + '25'}`,
                                                     textTransform: 'uppercase',
@@ -496,7 +474,6 @@ export default function RecepcionView() {
                                                 }}>
                                                     {suspended ? '\u26d4 SUSPENDIDA' : statusCfg.label}
                                                 </span>
-                                                {/* Comment count pill */}
                                                 {hasComments && (
                                                     <span style={{
                                                         display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -511,7 +488,7 @@ export default function RecepcionView() {
                                                 )}
                                             </div>
 
-                                            {/* Right: WhatsApp + expand chevron */}
+                                            {/* Right: WhatsApp + expand */}
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                                                 {waLink ? (
                                                     <a
@@ -571,7 +548,7 @@ export default function RecepcionView() {
                                             </div>
                                         </div>
 
-                                        {/* --- DETAILS GRID (always visible) --- */}
+                                        {/* --- DETAILS GRID (2 columns) --- */}
                                         <div
                                             onClick={() => toggleCard(surgery.id)}
                                             style={{
@@ -661,7 +638,7 @@ export default function RecepcionView() {
                                                     </div>
                                                 )}
 
-                                                {/* Observations section */}
+                                                {/* Observations - amber glass */}
                                                 <div style={{
                                                     padding: '12px 16px',
                                                     background: hasComments
@@ -680,7 +657,7 @@ export default function RecepcionView() {
                                                         <MessageSquare size={12} />
                                                         Observaciones {!hasComments && (
                                                             <span style={{ fontWeight: 400, textTransform: 'none', fontStyle: 'italic' }}>
-                                                                \u2014 Sin observaciones registradas
+                                                                {'\u2014'} Sin observaciones registradas
                                                             </span>
                                                         )}
                                                     </div>
@@ -760,14 +737,9 @@ export default function RecepcionView() {
                 )}
             </div>
 
-            {/* === Inline styles for animations === */}
+            {/* === CSS Animations === */}
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
-                @keyframes recepcion-pulse {
-                    0%, 100% { opacity: 1; transform: scale(1); }
-                    50% { opacity: 0.5; transform: scale(0.85); }
-                }
                 @keyframes spin {
                     from { transform: rotate(0deg); }
                     to { transform: rotate(360deg); }
