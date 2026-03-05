@@ -1,4 +1,4 @@
-﻿/**
+/**
  * RecepcionView - Vista de solo lectura para Recepcion
  * Accesible sin login en /recepcion
  * Muestra cirugias del dia con observaciones del equipo de administracion
@@ -21,18 +21,18 @@ const WhatsAppIcon = ({ size = 16 }) => (
 
 const DATE_TABS = [
     { key: 'hoy', label: 'Hoy' },
-    { key: 'manana', label: 'Ma\u00f1ana' },
-    { key: 'proximos', label: 'Pr\u00f3ximos 3 d\u00edas' },
+    { key: 'manana', label: 'Mañana' },
+    { key: 'proximos', label: 'Próximos 3 días' },
     { key: 'todos', label: 'Todos' },
 ];
 
 const STATUS_LABELS = {
     lila: { label: 'Pendiente', color: '#8B5CF6', bg: '#F5F3FF' },
-    amarillo: { label: 'En revisi\u00f3n', color: '#D97706', bg: '#FFFBEB' },
+    amarillo: { label: 'En revisión', color: '#D97706', bg: '#FFFBEB' },
     verde: { label: 'Autorizado', color: '#16A34A', bg: '#F0FDF4' },
     azul: { label: 'Confirmado', color: '#2563EB', bg: '#EFF6FF' },
     rojo: { label: 'Problema', color: '#DC2626', bg: '#FEF2F2' },
-    precaucion: { label: 'Precauci\u00f3n', color: '#EA580C', bg: '#FFF7ED' },
+    precaucion: { label: 'Precaución', color: '#EA580C', bg: '#FFF7ED' },
 };
 
 export default function RecepcionView() {
@@ -97,21 +97,61 @@ export default function RecepcionView() {
             setSurgeries(surgData || []);
 
             if (surgData?.length > 0) {
-                const ids = surgData.map(s => s.id);
-                const { data: commData } = await supabase
-                    .from('surgery_comments')
-                    .select('*')
-                    .in('surgery_id', ids)
-                    .order('created_at', { ascending: false });
+                // Get unique patient IDs from current surgeries
+                const patientIds = [...new Set(surgData.map(s => s.id_paciente).filter(Boolean))];
 
+                // Build a map: id_paciente -> surgery_id (for the current view)
+                const patientToSurgeryMap = {};
+                surgData.forEach(s => {
+                    if (s.id_paciente) patientToSurgeryMap[s.id_paciente] = s.id;
+                });
+
+                // Fetch ALL surgery IDs for these patients (not just current date range)
+                // so we can find comments attached to any surgery of the same patient
+                const { data: allPatientSurgeries } = await supabase
+                    .from('surgeries')
+                    .select('id, id_paciente')
+                    .in('id_paciente', patientIds);
+
+                const allSurgeryIds = (allPatientSurgeries || []).map(s => s.id);
+
+                // Build reverse map: surgery_id -> id_paciente
+                const surgeryToPatient = {};
+                (allPatientSurgeries || []).forEach(s => {
+                    surgeryToPatient[s.id] = s.id_paciente;
+                });
+
+                // Fetch comments for ALL surgeries of these patients
+                let allComments = [];
+                if (allSurgeryIds.length > 0) {
+                    // Supabase .in() has a limit, batch if needed
+                    const batchSize = 100;
+                    for (let i = 0; i < allSurgeryIds.length; i += batchSize) {
+                        const batch = allSurgeryIds.slice(i, i + batchSize);
+                        const { data: commBatch } = await supabase
+                            .from('surgery_comments')
+                            .select('*')
+                            .in('surgery_id', batch)
+                            .order('created_at', { ascending: false });
+                        if (commBatch) allComments = allComments.concat(commBatch);
+                    }
+                }
+
+                // Group comments by id_paciente (not surgery_id)
                 const grouped = {};
-                (commData || []).forEach(c => {
-                    if (!grouped[c.surgery_id]) grouped[c.surgery_id] = [];
-                    grouped[c.surgery_id].push(c);
+                allComments.forEach(c => {
+                    const patId = surgeryToPatient[c.surgery_id];
+                    if (patId) {
+                        if (!grouped[patId]) grouped[patId] = [];
+                        // Avoid duplicates
+                        if (!grouped[patId].find(x => x.id === c.id)) {
+                            grouped[patId].push(c);
+                        }
+                    }
                 });
                 setComments(grouped);
 
-                const patientIds = [...new Set(surgData.map(s => s.id_paciente).filter(Boolean))];
+                // Fetch patient data (edad, sexo)
                 if (patientIds.length > 0) {
                     const { data: patData } = await supabase
                         .from('pacientes')
@@ -125,10 +165,12 @@ export default function RecepcionView() {
                     setPatients(patMap);
                 }
 
-                // Auto-expand cards that have comments
+                // Auto-expand cards that have comments (keyed by id_paciente now)
                 const withComments = new Set();
-                Object.keys(grouped).forEach(id => {
-                    if (grouped[id].length > 0) withComments.add(id);
+                surgData.forEach(s => {
+                    if (s.id_paciente && grouped[s.id_paciente]?.length > 0) {
+                        withComments.add(s.id);
+                    }
                 });
                 setExpandedCards(withComments);
             } else {
@@ -165,7 +207,7 @@ export default function RecepcionView() {
 
     // === Helpers ===
     const formatDate = (dateStr) => {
-        if (!dateStr) return '\u2014';
+        if (!dateStr) return '—';
         const d = new Date(dateStr + 'T12:00:00');
         return d.toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
     };
@@ -257,7 +299,7 @@ export default function RecepcionView() {
                             margin: 0, fontSize: '1.15rem', fontWeight: 700,
                             color: '#0F2B46', letterSpacing: '-0.3px',
                         }}>
-                            Recepci{'\u00f3'}n <span style={{ color: '#1565C0', fontWeight: 800 }}>Quir{'\u00f3'}fanos</span>
+                            Recepción <span style={{ color: '#1565C0', fontWeight: 800 }}>Quirófanos</span>
                         </h1>
                         <span style={{ fontSize: '0.72rem', color: '#64748B', textTransform: 'capitalize' }}>
                             {todayLabel}
@@ -338,7 +380,7 @@ export default function RecepcionView() {
                     }} />
                     <input
                         type="text"
-                        placeholder="Buscar por nombre, DNI, tel\u00e9fono, obra social..."
+                        placeholder="Buscar por nombre, DNI, teléfono, obra social..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         style={{
@@ -360,7 +402,7 @@ export default function RecepcionView() {
                     borderRadius: '10px',
                     border: '1px solid rgba(21, 101, 192, 0.12)',
                 }}>
-                    {filtered.length} cirug{'\u00ed'}a{filtered.length !== 1 ? 's' : ''}
+                    {filtered.length} cirugía{filtered.length !== 1 ? 's' : ''}
                 </span>
             </div>
 
@@ -378,7 +420,7 @@ export default function RecepcionView() {
                         padding: '80px 0', color: '#94A3B8',
                     }}>
                         <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite', marginRight: '8px' }} />
-                        Cargando cirug{'\u00ed'}as...
+                        Cargando cirugías...
                     </div>
                 ) : filtered.length === 0 ? (
                     <div style={{
@@ -386,17 +428,17 @@ export default function RecepcionView() {
                     }}>
                         <Calendar size={48} strokeWidth={1.2} style={{ margin: '0 auto 16px' }} />
                         <h3 style={{ margin: '0 0 8px', color: '#64748B', fontWeight: 600 }}>
-                            No hay cirug{'\u00ed'}as programadas
+                            No hay cirugías programadas
                         </h3>
                         <p style={{ margin: 0, fontSize: '0.85rem' }}>
-                            {searchQuery ? 'No se encontraron resultados para tu b\u00fasqueda.' : 'No hay cirug\u00edas para el per\u00edodo seleccionado.'}
+                            {searchQuery ? 'No se encontraron resultados para tu búsqueda.' : 'No hay cirugías para el período seleccionado.'}
                         </p>
                     </div>
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         {filtered.map(surgery => {
                             const suspended = isSuspended(surgery);
-                            const surgComments = comments[surgery.id] || [];
+                            const surgComments = comments[surgery.id_paciente] || [];
                             const hasComments = surgComments.length > 0;
                             const isExpanded = expandedCards.has(surgery.id);
                             const patientData = patients[surgery.id_paciente] || {};
@@ -472,7 +514,7 @@ export default function RecepcionView() {
                                                     textTransform: 'uppercase',
                                                     letterSpacing: '0.04em',
                                                 }}>
-                                                    {suspended ? '\u26d4 SUSPENDIDA' : statusCfg.label}
+                                                    {suspended ? '⛔ SUSPENDIDA' : statusCfg.label}
                                                 </span>
                                                 {hasComments && (
                                                     <span style={{
@@ -560,12 +602,12 @@ export default function RecepcionView() {
                                             }}
                                         >
                                             {[
-                                                { icon: <User size={12} />, label: 'ID Paciente', value: surgery.id_paciente || '\u2014' },
-                                                { icon: <FileText size={12} />, label: 'DNI', value: surgery.dni || '\u2014' },
-                                                { icon: <Calendar size={12} />, label: 'Cirug\u00eda', value: formatDate(surgery.fecha_cirugia) },
-                                                { icon: <Stethoscope size={12} />, label: 'M\u00e9dico', value: surgery.medico || '\u2014' },
-                                                { icon: null, label: 'Obra Social', value: surgery.obra_social || '\u2014', isBadge: true },
-                                                { icon: null, label: 'Edad / Sexo', value: `${patientData.edad || '\u2014'} a\u00f1os \u00b7 ${patientData.sexo || '\u2014'}` },
+                                                { icon: <User size={12} />, label: 'ID Paciente', value: surgery.id_paciente || '—' },
+                                                { icon: <FileText size={12} />, label: 'DNI', value: surgery.dni || '—' },
+                                                { icon: <Calendar size={12} />, label: 'Cirugía', value: formatDate(surgery.fecha_cirugia) },
+                                                { icon: <Stethoscope size={12} />, label: 'Médico', value: surgery.medico || '—' },
+                                                { icon: null, label: 'Obra Social', value: surgery.obra_social || '—', isBadge: true },
+                                                { icon: null, label: 'Edad / Sexo', value: `${patientData.edad || '—'} años · ${patientData.sexo || '—'}` },
                                             ].map((item, idx) => (
                                                 <div key={idx} style={{
                                                     padding: '6px 8px',
@@ -657,7 +699,7 @@ export default function RecepcionView() {
                                                         <MessageSquare size={12} />
                                                         Observaciones {!hasComments && (
                                                             <span style={{ fontWeight: 400, textTransform: 'none', fontStyle: 'italic' }}>
-                                                                {'\u2014'} Sin observaciones registradas
+                                                                — Sin observaciones registradas
                                                             </span>
                                                         )}
                                                     </div>
