@@ -34,8 +34,10 @@ Deno.serve(async (req) => {
         // Log completo del payload para debug (ver estructura de media)
         console.log(`[webhook] Evento: ${eventName}`, JSON.stringify(payload, null, 2));
 
-        // Solo procesar mensajes incoming y outgoing
-        if (eventName !== 'message.incoming' && eventName !== 'message.outgoing') {
+        // Solo procesar mensajes incoming
+        // Los outgoing se guardan desde el frontend via saveOutgoingMessage()
+        // Procesar ambos causaba mensajes duplicados
+        if (eventName !== 'message.incoming') {
             return new Response(
                 JSON.stringify({ ok: true, skipped: true, event: eventName }),
                 { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

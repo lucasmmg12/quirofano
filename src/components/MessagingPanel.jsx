@@ -324,14 +324,8 @@ export default function MessagingPanel({ addToast }) {
         setShowEmoji(false);
         try {
             await sendWhatsAppMessage({ content: messageText, number: selectedPhone });
-            const saved = await saveOutgoingMessage({ phone: selectedPhone, content: messageText });
-            if (saved) {
-                setMessages(prev => {
-                    const exists = prev.find(m => m.id === saved.id);
-                    if (exists) return prev;
-                    return [...prev, saved];
-                });
-            }
+            await saveOutgoingMessage({ phone: selectedPhone, content: messageText });
+            // Realtime se encarga de agregar al state — evita duplicados
             setMessageText('');
             inputRef.current?.focus();
         } catch (e) {
@@ -360,19 +354,13 @@ export default function MessagingPanel({ addToast }) {
         try {
             const mediaUrl = await uploadMedia(file, 'images');
             await sendWhatsAppMessage({ content: messageText.trim() || '📷 Imagen', number: selectedPhone, mediaUrl });
-            const saved = await saveOutgoingMessage({
+            await saveOutgoingMessage({
                 phone: selectedPhone,
                 content: messageText.trim() || '📷 Imagen',
                 mediaType: 'image',
                 mediaUrl,
             });
-            if (saved) {
-                setMessages(prev => {
-                    const exists = prev.find(m => m.id === saved.id);
-                    if (exists) return prev;
-                    return [...prev, saved];
-                });
-            }
+            // Realtime se encarga de agregar al state
             setMessageText('');
             addToast?.('Imagen enviada', 'success');
         } catch (err) {
@@ -439,16 +427,10 @@ export default function MessagingPanel({ addToast }) {
             const file = new File([blob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
             const mediaUrl = await uploadMedia(file, 'audios');
             await sendWhatsAppMessage({ content: '🎤 Audio', number: selectedPhone, mediaUrl });
-            const saved = await saveOutgoingMessage({
+            await saveOutgoingMessage({
                 phone: selectedPhone, content: '🎤 Audio', mediaType: 'audio', mediaUrl,
             });
-            if (saved) {
-                setMessages(prev => {
-                    const exists = prev.find(m => m.id === saved.id);
-                    if (exists) return prev;
-                    return [...prev, saved];
-                });
-            }
+            // Realtime se encarga de agregar al state
             addToast?.('Audio enviado', 'success');
         } catch (err) {
             console.error('Error sending audio:', err);
@@ -645,7 +627,8 @@ export default function MessagingPanel({ addToast }) {
         const d = new Date(dateStr);
         const today = new Date();
         const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
-        if (d.toDateString() === today.toDateString()) return 'Hoy';
+        const time = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+        if (d.toDateString() === today.toDateString()) return time;
         if (d.toDateString() === yesterday.toDateString()) return 'Ayer';
         return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
     };

@@ -185,16 +185,13 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
 
         try {
             await sendWhatsAppMessage({ content: text, number: patientPhone });
-            const saved = await saveOutgoingMessage({
+            await saveOutgoingMessage({
                 phone: patientPhone,
                 content: text,
                 mediaType: 'text',
             });
-            setMessages(prev => {
-                const exists = prev.find(m => m.id === saved?.id);
-                if (exists) return prev;
-                return [...prev, saved];
-            });
+            // No agregamos al state manualmente — el realtime subscription se encarga
+            // Esto evita la race condition que causaba mensajes duplicados
         } catch (err) {
             console.error('Error sending message:', err);
             addToast?.('Error enviando mensaje', 'error');
@@ -232,17 +229,13 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                 number: patientPhone,
                 mediaUrl,
             });
-            const saved = await saveOutgoingMessage({
+            await saveOutgoingMessage({
                 phone: patientPhone,
                 content: inputText.trim() || '📷 Imagen',
                 mediaType: 'image',
                 mediaUrl,
             });
-            setMessages(prev => {
-                const exists = prev.find(m => m.id === saved?.id);
-                if (exists) return prev;
-                return [...prev, saved];
-            });
+            // Realtime se encarga de agregar al state
             setInputText('');
             addToast?.('Imagen enviada', 'success');
         } catch (err) {
@@ -330,17 +323,13 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                 number: patientPhone,
                 mediaUrl,
             });
-            const saved = await saveOutgoingMessage({
+            await saveOutgoingMessage({
                 phone: patientPhone,
                 content: '🎤 Audio',
                 mediaType: 'audio',
                 mediaUrl,
             });
-            setMessages(prev => {
-                const exists = prev.find(m => m.id === saved?.id);
-                if (exists) return prev;
-                return [...prev, saved];
-            });
+            // Realtime se encarga de agregar al state
             addToast?.('Audio enviado', 'success');
         } catch (err) {
             console.error('Error sending audio:', err);

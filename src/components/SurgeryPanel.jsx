@@ -214,7 +214,9 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const loadData = useCallback(async () => {
         if (!initialLoadDone) setLoading(true);
         try {
-            const ausenteFilter = viewMode === 'history' ? 'history' : 'pending';
+            // Vista activa: mostrar pendientes + suspendidas (las suspendidas siguen visibles con indicador)
+            // Vista historial: mostrar realizadas + suspendidas
+            const ausenteFilter = viewMode === 'history' ? 'history' : 'active';
             const dbStatusValues = ['lila', 'amarillo', 'verde', 'azul', 'rojo', 'precaucion'];
             const dbStatus = dbStatusValues.includes(filter) ? filter : undefined;
             const today = new Date().toISOString().split('T')[0];
@@ -862,6 +864,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
 
     // Render individual surgery rows (extracted for reuse)
     const renderSurgeryRows = (surgery, effectiveStatus, cfg, cd, isExpanded) => {
+        const isSuspended = surgery.ausente === '1';
         const rows = [
             <tr key={surgery.id} className="cart__row"
                 onClick={() => {
@@ -871,9 +874,15 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                     setCommentText('');
                     if (expanding) loadComments(surgery.id);
                 }}
-                style={{ cursor: 'pointer', transition: 'background 0.15s' }}
-                onMouseOver={e => { if (!isExpanded) e.currentTarget.style.background = 'var(--neutral-50)'; }}
-                onMouseOut={e => { if (!isExpanded) e.currentTarget.style.background = ''; }}
+                style={{
+                    cursor: 'pointer', transition: 'background 0.15s',
+                    ...(isSuspended && {
+                        background: '#FEF2F2',
+                        opacity: 0.75,
+                    }),
+                }}
+                onMouseOver={e => { if (!isExpanded) e.currentTarget.style.background = isSuspended ? '#FEE2E2' : 'var(--neutral-50)'; }}
+                onMouseOut={e => { if (!isExpanded) e.currentTarget.style.background = isSuspended ? '#FEF2F2' : ''; }}
             >
                 {/* Expand Chevron */}
                 <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }}>
@@ -887,10 +896,10 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 <td className="cart__td" style={{ textAlign: 'center', padding: '6px' }}>
                     <div style={{
                         width: '10px', height: '10px', borderRadius: '50%',
-                        background: cd.color, margin: '0 auto',
+                        background: isSuspended ? '#DC2626' : cd.color, margin: '0 auto',
                         boxShadow: cd.urgency === 'critical' ? `0 0 8px ${cd.color}80` : 'none',
                         animation: cd.urgency === 'critical' ? 'pulse 1.5s ease-in-out infinite' : 'none',
-                    }} title={cd.label} />
+                    }} title={isSuspended ? 'Suspendida' : cd.label} />
                 </td>
                 {/* Status */}
                 <td className="cart__td" style={{ position: 'relative' }}>
@@ -962,8 +971,26 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                     </div>
                 </td>
                 {/* Patient */}
-                <td className="cart__td" style={{ fontWeight: 600, fontSize: '0.82rem' }}>
-                    {surgery.nombre}
+                <td className="cart__td" style={{
+                    fontWeight: 600, fontSize: '0.82rem',
+                    ...(isSuspended && { color: '#DC2626', textDecoration: 'line-through' }),
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {surgery.nombre}
+                        {isSuspended && (
+                            <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '2px',
+                                padding: '1px 6px', borderRadius: '4px',
+                                background: '#FEE2E2', color: '#DC2626',
+                                fontSize: '0.6rem', fontWeight: 700,
+                                border: '1px solid #FECACA',
+                                textDecoration: 'none',
+                                whiteSpace: 'nowrap',
+                            }}>
+                                ⛔ SUSPENDIDA
+                            </span>
+                        )}
+                    </div>
                 </td>
                 {/* DNI (from pacientes table) */}
                 <td className="cart__td" style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: 'var(--neutral-600)' }}>

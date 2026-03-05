@@ -31,7 +31,7 @@ const EXCLUDED_NAME_PREFIXES = ['BLOQUE'];
  * @param {string} [options.fromDate] - Fecha mínima (YYYY-MM-DD)
  * @param {string} [options.toDate] - Fecha máxima (YYYY-MM-DD)
  * @param {number} [options.limit] - Límite de registros
- * @param {string} [options.ausenteFilter] - 'pending' (NULL), 'completed' (0), 'suspended' (1), 'all'
+ * @param {string} [options.ausenteFilter] - 'pending' (NULL), 'completed' (0), 'suspended' (1), 'active' (pending+suspended), 'all'
  */
 export async function fetchSurgeries({ status, fromDate, toDate, limit = 500, ausenteFilter = 'pending' } = {}) {
     let query = supabase
@@ -45,6 +45,9 @@ export async function fetchSurgeries({ status, fromDate, toDate, limit = 500, au
     if (ausenteFilter === 'pending') {
         // Pendientes = todo lo que NO sea '0' (realizada) ni '1' (suspendida)
         query = query.not('ausente', 'in', '("0","1")');
+    } else if (ausenteFilter === 'active') {
+        // Activas = pendientes + suspendidas (excluye solo las realizadas)
+        query = query.not('ausente', 'eq', '0');
     } else if (ausenteFilter === 'completed') {
         query = query.eq('ausente', '0'); // Ya realizadas
     } else if (ausenteFilter === 'suspended') {
