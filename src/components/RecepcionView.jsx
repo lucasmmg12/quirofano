@@ -155,7 +155,7 @@ export default function RecepcionView() {
                 if (patientIds.length > 0) {
                     const { data: patData } = await supabase
                         .from('pacientes')
-                        .select('id_paciente, edad, sexo')
+                        .select('id_paciente, dni, edad, sexo')
                         .in('id_paciente', patientIds.map(Number));
 
                     const patMap = {};
@@ -603,7 +603,7 @@ export default function RecepcionView() {
                                         >
                                             {[
                                                 { icon: <User size={12} />, label: 'ID Paciente', value: surgery.id_paciente || '—' },
-                                                { icon: <FileText size={12} />, label: 'DNI', value: surgery.dni || '—' },
+                                                { icon: <FileText size={12} />, label: 'DNI', value: surgery.dni || patientData.dni || '—' },
                                                 { icon: <Calendar size={12} />, label: 'Cirugía', value: formatDate(surgery.fecha_cirugia) },
                                                 { icon: <Stethoscope size={12} />, label: 'Médico', value: surgery.medico || '—' },
                                                 { icon: null, label: 'Obra Social', value: surgery.obra_social || '—', isBadge: true },
