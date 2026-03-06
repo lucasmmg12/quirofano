@@ -745,6 +745,43 @@ export default function RecepcionView() {
                                                         </div>
                                                     )}
                                                 </div>
+
+                                                {/* Instrucciones de Quirófano - teal/blue glass */}
+                                                {surgery.instrucciones && (
+                                                    <div style={{
+                                                        padding: '12px 16px',
+                                                        background: 'rgba(204, 251, 241, 0.45)',
+                                                        backdropFilter: 'blur(6px)',
+                                                        borderTop: '1px solid rgba(226,232,240,0.3)',
+                                                    }}>
+                                                        <div style={{
+                                                            display: 'flex', alignItems: 'center', gap: '6px',
+                                                            marginBottom: '10px',
+                                                            fontSize: '0.68rem', fontWeight: 700,
+                                                            color: '#0F766E',
+                                                            textTransform: 'uppercase',
+                                                            letterSpacing: '0.06em',
+                                                        }}>
+                                                            <FileText size={12} />
+                                                            Instrucciones de Quirófano
+                                                        </div>
+                                                        <div style={{
+                                                            padding: '10px 14px',
+                                                            background: 'rgba(255, 255, 255, 0.75)',
+                                                            backdropFilter: 'blur(8px)',
+                                                            borderRadius: '12px',
+                                                            border: '1px solid rgba(94, 234, 212, 0.5)',
+                                                            fontSize: '0.82rem',
+                                                            color: '#134E4A',
+                                                            lineHeight: 1.6,
+                                                            fontWeight: 500,
+                                                            boxShadow: '0 1px 4px rgba(20, 184, 166, 0.06)',
+                                                            whiteSpace: 'pre-wrap',
+                                                        }}>
+                                                            {surgery.instrucciones}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>

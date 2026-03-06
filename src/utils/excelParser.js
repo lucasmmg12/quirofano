@@ -107,6 +107,10 @@ const FIELD_MATCHERS = {
         keywords: ['dni', 'documento', 'doc', 'nro_doc', 'nrodoc'],
         required: false,
     },
+    instrucciones: {
+        keywords: ['instrucciones', 'instruccion', 'instruc', 'indicaciones', 'indicacion', 'instrucciones_quirofano', 'inst_quirofano'],
+        required: false,
+    },
 };
 
 /**
@@ -227,6 +231,7 @@ export function mapExcelToSurgeries(rows) {
         const doctor = getValue('doctor');
         const obraSocial = getValue('obraSocial');
         const dni = getValue('dni');
+        const instrucciones = getValue('instrucciones');
 
         return {
             _rowIndex: index + 2, // +2: fila 1 = header, index 0-based
@@ -240,6 +245,7 @@ export function mapExcelToSurgeries(rows) {
             grupo_agendas: grupoAgendas,
             obra_social: obraSocial,
             dni,
+            instrucciones,
             medico: doctor || grupoAgendas || '',
             modulo: descripcion || '',
         };

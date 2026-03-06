@@ -272,6 +272,7 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
             motivo: record.motivo || null,
             ausente: record.ausente && record.ausente.trim() !== '' ? record.ausente.trim() : null,
             grupo_agendas: record.grupo_agendas || null,
+            instrucciones: record.instrucciones || null,
             excluido,
             _rowIndex: record._rowIndex,
         };

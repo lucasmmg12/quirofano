@@ -1334,6 +1334,39 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                     </button>
                                 )}
 
+                                {/* Instrucciones de Quirófano */}
+                                {surgery.instrucciones && (
+                                    <div style={{
+                                        background: 'rgba(204, 251, 241, 0.35)',
+                                        borderRadius: 'var(--radius-md)',
+                                        border: '1px solid rgba(94, 234, 212, 0.4)',
+                                        padding: 'var(--space-3)',
+                                        marginTop: '10px',
+                                    }}>
+                                        <div style={{
+                                            fontSize: '0.72rem', color: '#0F766E',
+                                            marginBottom: '8px', display: 'flex',
+                                            alignItems: 'center', gap: '6px',
+                                            fontWeight: 700, textTransform: 'uppercase',
+                                            letterSpacing: '0.04em',
+                                        }}>
+                                            <FileText size={13} />
+                                            Instrucciones de Quirófano
+                                        </div>
+                                        <div style={{
+                                            fontSize: '0.82rem', color: '#134E4A',
+                                            lineHeight: 1.6, fontWeight: 500,
+                                            whiteSpace: 'pre-wrap',
+                                            padding: '8px 12px',
+                                            background: 'rgba(255, 255, 255, 0.7)',
+                                            borderRadius: '8px',
+                                            border: '1px solid rgba(94, 234, 212, 0.3)',
+                                        }}>
+                                            {surgery.instrucciones}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Comentarios Internos */}
                                 <div style={{
                                     background: '#fff', borderRadius: 'var(--radius-md)',
