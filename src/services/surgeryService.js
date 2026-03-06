@@ -20,6 +20,21 @@ const EXCLUDED_MODULES = ['Transferencia embrionaria', 'Fertilidad', 'Bloque Mé
 // Prefijos de nombre que NO son cirugías reales (se descartan completamente)
 const EXCLUDED_NAME_PREFIXES = ['BLOQUE'];
 
+/**
+ * Normaliza un nombre para matching robusto en upsert.
+ * Elimina acentos, comas, puntos, espacios extra, y pasa a mayúsculas.
+ * Esto evita que "GOMEZ JUAN" y "Gómez, Juan" generen registros distintos.
+ */
+function normalizeNameForUpsert(name) {
+    if (!name) return '';
+    return name
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // quitar acentos
+        .replace(/[,\.\-\_]/g, ' ')                       // comas/puntos → espacios
+        .replace(/\s+/g, ' ')                              // múltiples espacios → uno
+        .trim()
+        .toUpperCase();
+}
+
 // =============================================
 // CRUD DE CIRUGÍAS
 // =============================================
@@ -238,9 +253,14 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
             (record.modulo || '').toLowerCase().includes(mod.toLowerCase())
         );
 
+        // Normalizar nombre para matching robusto en upsert
+        // IMPORTANTE: guardamos el nombre normalizado para que el upsert
+        // siempre matchee aunque vengan variaciones del Excel
+        const nombreNormalizado = normalizeNameForUpsert(record.nombre);
+
         const row = {
             id_paciente: record.id_paciente || null,
-            nombre: record.nombre,
+            nombre: nombreNormalizado || record.nombre,
             dni: record.dni || null,
             fecha_cirugia: record.fecha_cirugia,
             telefono: phoneResult.normalized || record.telefono_raw,
@@ -450,10 +470,10 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
  * Cambia el estado de una cirugía y registra el evento
  */
 async function transitionStatus(surgeryId, toStatus, { details, performedBy = 'bot', extraFields = {} } = {}) {
-    // Get current status
+    // Get current status AND id_paciente for persistent event logging
     const { data: current, error: fetchError } = await supabase
         .from('surgeries')
-        .select('status')
+        .select('status, id_paciente')
         .eq('id', surgeryId)
         .single();
     if (fetchError) throw fetchError;
@@ -467,9 +487,10 @@ async function transitionStatus(surgeryId, toStatus, { details, performedBy = 'b
         .eq('id', surgeryId);
     if (updateError) throw updateError;
 
-    // Log event
+    // Log event — incluye id_paciente para que sobreviva a re-importaciones
     await supabase.from('surgery_events').insert({
         surgery_id: surgeryId,
+        id_paciente: current.id_paciente || null,
         event_type: `${fromStatus}_to_${toStatus}`,
         from_status: fromStatus,
         to_status: toStatus,
@@ -616,9 +637,10 @@ export async function sendInitialNotification(surgeryId) {
         ultimo_mensaje_at: new Date().toISOString(),
     }).eq('id', surgeryId);
 
-    // Log event
+    // Log event — incluye id_paciente para persistencia
     await supabase.from('surgery_events').insert({
         surgery_id: surgeryId,
+        id_paciente: surgery.id_paciente || null,
         event_type: 'notificacion',
         from_status: 'lila',
         to_status: 'amarillo',
@@ -892,18 +914,19 @@ export async function purgeAllData() {
     counts.presupuestos = presupData?.length || 0;
     counts.presupuestoItems = itemsData?.length || 0;
 
-    // 2) Borrar surgery_events (dependencia FK, pero debería ser CASCADE)
-    await supabase.from('surgery_events').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    // NOTA: NO se borran surgery_comments ni surgery_events
+    // porque ahora están vinculados por id_paciente (inmutable)
+    // y deben sobrevivir a la recarga de datos.
 
-    // 3) Borrar surgeries
+    // 2) Borrar surgeries (los comments/events ya NO tienen CASCADE)
     await supabase.from('surgeries').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
-    // 4) Borrar presupuesto_items
+    // 3) Borrar presupuesto_items
     await supabase.from('presupuesto_items').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
-    // 5) Borrar presupuestos
+    // 4) Borrar presupuestos
     await supabase.from('presupuestos').delete().neq('id_presupuesto', -999999);
 
-    console.log(`🗑️ Purge completado:`, counts);
+    console.log(`🗑️ Purge completado (comments y events preservados):`, counts);
     return counts;
 }

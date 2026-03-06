@@ -100,53 +100,29 @@ export default function RecepcionView() {
                 // Get unique patient IDs from current surgeries
                 const patientIds = [...new Set(surgData.map(s => s.id_paciente).filter(Boolean))];
 
-                // Build a map: id_paciente -> surgery_id (for the current view)
-                const patientToSurgeryMap = {};
-                surgData.forEach(s => {
-                    if (s.id_paciente) patientToSurgeryMap[s.id_paciente] = s.id;
-                });
-
-                // Fetch ALL surgery IDs for these patients (not just current date range)
-                // so we can find comments attached to any surgery of the same patient
-                const { data: allPatientSurgeries } = await supabase
-                    .from('surgeries')
-                    .select('id, id_paciente')
-                    .in('id_paciente', patientIds);
-
-                const allSurgeryIds = (allPatientSurgeries || []).map(s => s.id);
-
-                // Build reverse map: surgery_id -> id_paciente
-                const surgeryToPatient = {};
-                (allPatientSurgeries || []).forEach(s => {
-                    surgeryToPatient[s.id] = s.id_paciente;
-                });
-
-                // Fetch comments for ALL surgeries of these patients
+                // Fetch comments directly by id_paciente (nueva columna)
+                // Esto es mucho más simple y resistente a re-importaciones
                 let allComments = [];
-                if (allSurgeryIds.length > 0) {
-                    // Supabase .in() has a limit, batch if needed
+                if (patientIds.length > 0) {
                     const batchSize = 100;
-                    for (let i = 0; i < allSurgeryIds.length; i += batchSize) {
-                        const batch = allSurgeryIds.slice(i, i + batchSize);
+                    for (let i = 0; i < patientIds.length; i += batchSize) {
+                        const batch = patientIds.slice(i, i + batchSize);
                         const { data: commBatch } = await supabase
                             .from('surgery_comments')
                             .select('*')
-                            .in('surgery_id', batch)
+                            .in('id_paciente', batch)
                             .order('created_at', { ascending: false });
                         if (commBatch) allComments = allComments.concat(commBatch);
                     }
                 }
 
-                // Group comments by id_paciente (not surgery_id)
+                // Group comments by id_paciente
                 const grouped = {};
                 allComments.forEach(c => {
-                    const patId = surgeryToPatient[c.surgery_id];
+                    const patId = c.id_paciente;
                     if (patId) {
                         if (!grouped[patId]) grouped[patId] = [];
-                        // Avoid duplicates
-                        if (!grouped[patId].find(x => x.id === c.id)) {
-                            grouped[patId].push(c);
-                        }
+                        grouped[patId].push(c);
                     }
                 });
                 setComments(grouped);

@@ -417,10 +417,10 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     // HANDLERS — Internal Comments
     // ============================================================
 
-    const loadComments = async (surgeryId) => {
+    const loadComments = async (idPaciente, surgeryId) => {
         setLoadingComments(true);
         try {
-            const data = await fetchComments(surgeryId);
+            const data = await fetchComments(idPaciente, surgeryId);
             setComments(data);
         } catch (e) {
             console.warn('Error loading comments:', e);
@@ -429,13 +429,13 @@ export default function SurgeryPanel({ addToast, currentUser }) {
         }
     };
 
-    const handleSaveComment = async (surgeryId) => {
+    const handleSaveComment = async (surgeryId, idPaciente) => {
         if (!commentText.trim()) return;
         setSavingComment(true);
         try {
-            await addComment(surgeryId, currentUser?.nombre || 'Usuario', commentText.trim());
+            await addComment(surgeryId, idPaciente, currentUser?.nombre || 'Usuario', commentText.trim());
             setCommentText('');
-            await loadComments(surgeryId);
+            await loadComments(idPaciente, surgeryId);
             addToast?.('Comentario guardado', 'success');
         } catch (e) {
             addToast?.('Error al guardar comentario: ' + e.message, 'error');
@@ -444,23 +444,23 @@ export default function SurgeryPanel({ addToast, currentUser }) {
         }
     };
 
-    const handleDeleteComment = async (commentId, surgeryId) => {
+    const handleDeleteComment = async (commentId, idPaciente, surgeryId) => {
         try {
             await deleteComment(commentId);
-            await loadComments(surgeryId);
+            await loadComments(idPaciente, surgeryId);
             addToast?.('Comentario eliminado', 'success');
         } catch (e) {
             addToast?.('Error al eliminar: ' + e.message, 'error');
         }
     };
 
-    const handleUpdateComment = async (commentId, surgeryId) => {
+    const handleUpdateComment = async (commentId, idPaciente, surgeryId) => {
         if (!editingCommentText.trim()) return;
         try {
             await updateComment(commentId, editingCommentText.trim());
             setEditingCommentId(null);
             setEditingCommentText('');
-            await loadComments(surgeryId);
+            await loadComments(idPaciente, surgeryId);
             addToast?.('Comentario actualizado', 'success');
         } catch (e) {
             addToast?.('Error al actualizar: ' + e.message, 'error');
@@ -872,7 +872,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                     setExpandedRowId(expanding ? surgery.id : null);
                     setCustomMessage('');
                     setCommentText('');
-                    if (expanding) loadComments(surgery.id);
+                    if (expanding) loadComments(surgery.id_paciente, surgery.id);
                 }}
                 style={{
                     cursor: 'pointer', transition: 'background 0.15s',
@@ -1385,7 +1385,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                                                 <Pencil size={12} />
                                                             </button>
                                                             <button
-                                                                onClick={(e) => { e.stopPropagation(); handleDeleteComment(c.id, surgery.id); }}
+                                                                onClick={(e) => { e.stopPropagation(); handleDeleteComment(c.id, surgery.id_paciente, surgery.id); }}
                                                                 title="Eliminar"
                                                                 style={{
                                                                     background: 'none', border: 'none', cursor: 'pointer',
@@ -1402,7 +1402,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                                                 value={editingCommentText}
                                                                 onChange={e => setEditingCommentText(e.target.value)}
                                                                 onClick={e => e.stopPropagation()}
-                                                                onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); handleUpdateComment(c.id, surgery.id); } if (e.key === 'Escape') { setEditingCommentId(null); } }}
+                                                                onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); handleUpdateComment(c.id, surgery.id_paciente, surgery.id); } if (e.key === 'Escape') { setEditingCommentId(null); } }}
                                                                 autoFocus
                                                                 style={{
                                                                     flex: 1, padding: '6px 8px', fontSize: '0.78rem',
@@ -1411,7 +1411,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                                                 }}
                                                             />
                                                             <button
-                                                                onClick={(e) => { e.stopPropagation(); handleUpdateComment(c.id, surgery.id); }}
+                                                                onClick={(e) => { e.stopPropagation(); handleUpdateComment(c.id, surgery.id_paciente, surgery.id); }}
                                                                 style={{
                                                                     padding: '4px 10px', fontSize: '0.72rem', fontWeight: 700,
                                                                     borderRadius: '6px', border: 'none',
@@ -1460,7 +1460,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                     />
                                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
                                         <button
-                                            onClick={(e) => { e.stopPropagation(); handleSaveComment(surgery.id); }}
+                                            onClick={(e) => { e.stopPropagation(); handleSaveComment(surgery.id, surgery.id_paciente); }}
                                             disabled={!commentText.trim() || savingComment}
                                             style={{
                                                 display: 'flex', alignItems: 'center', gap: '6px',
