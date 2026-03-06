@@ -48,6 +48,7 @@ const STATUS_CONFIG = {
     azul: { label: 'Confirmado', color: '#3B82F6', bg: '#EFF6FF', icon: '🔵' },
     rojo: { label: 'Problema', color: '#EF4444', bg: '#FEF2F2', icon: '🔴' },
     precaucion: { label: 'Precaución', color: '#EAB308', bg: '#FEFCE8', icon: '🟡' },
+    fertilidad: { label: 'Fertilidad', color: '#A855F7', bg: '#FAF5FF', icon: '🟣' },
     realizada: { label: 'Realizada', color: '#059669', bg: '#ECFDF5', icon: '✅' },
     suspendida: { label: 'Suspendida', color: '#6B7280', bg: '#F3F4F6', icon: '⛔' },
 };

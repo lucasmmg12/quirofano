@@ -33,6 +33,7 @@ const STATUS_LABELS = {
     azul: { label: 'Confirmado', color: '#2563EB', bg: '#EFF6FF' },
     rojo: { label: 'Problema', color: '#DC2626', bg: '#FEF2F2' },
     precaucion: { label: 'Precaución', color: '#EA580C', bg: '#FFF7ED' },
+    fertilidad: { label: 'Fertilidad', color: '#A855F7', bg: '#FAF5FF' },
 };
 
 export default function RecepcionView() {
