@@ -325,7 +325,7 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
                     console.warn('⚠️ Error consultando registros existentes:', fetchErr.message);
                 } else if (existingRows) {
                     for (const row of existingRows) {
-                        const key = `${row.id_paciente}|${row.fecha_cirugia}|${row.nombre}`;
+                        const key = `${row.id_paciente}|${row.fecha_cirugia}|${normalizeNameForUpsert(row.nombre)}`;
                         const preserved = {};
                         for (const field of FIELDS_TO_PRESERVE) {
                             if (row[field] !== null && row[field] !== undefined) {
