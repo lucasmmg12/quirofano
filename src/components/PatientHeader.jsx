@@ -4,7 +4,7 @@ import { OBRAS_SOCIALES } from '../data/nomenclador';
 import { getTodayISO } from '../utils/searchUtils';
 import { searchPatients } from '../services/patientService';
 
-export default function PatientHeader({ patientData, setPatientData }) {
+export default function PatientHeader({ patientData, setPatientData, hiddenFields = [] }) {
     const [collapsed, setCollapsed] = useState(false);
     const [osSearch, setOsSearch] = useState('');
     const [osOpen, setOsOpen] = useState(false);
@@ -331,6 +331,7 @@ export default function PatientHeader({ patientData, setPatientData }) {
                         />
                     </div>
 
+                    {!hiddenFields.includes('diagnostico') && (
                     <div className="field-group">
                         <label className="field-label">
                             <Stethoscope size={14} />
@@ -345,7 +346,9 @@ export default function PatientHeader({ patientData, setPatientData }) {
                             onChange={e => handleChange('diagnostico', e.target.value.toUpperCase())}
                         />
                     </div>
+                    )}
 
+                    {!hiddenFields.includes('tratamiento') && (
                     <div className="field-group">
                         <label className="field-label">
                             <Pill size={14} />
@@ -360,7 +363,9 @@ export default function PatientHeader({ patientData, setPatientData }) {
                             onChange={e => handleChange('tratamiento', e.target.value.toUpperCase())}
                         />
                     </div>
+                    )}
 
+                    {!hiddenFields.includes('cirugia') && (
                     <div className="field-group">
                         <label className="field-label">
                             <Scissors size={14} />
@@ -375,6 +380,7 @@ export default function PatientHeader({ patientData, setPatientData }) {
                             onChange={e => handleChange('cirugia', e.target.value.toUpperCase())}
                         />
                     </div>
+                    )}
 
                     <div className="field-group">
                         <label className="field-label">

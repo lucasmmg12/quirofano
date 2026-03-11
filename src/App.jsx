@@ -22,6 +22,7 @@ import HomePanel from './components/HomePanel.jsx';
 import NomencladorView from './components/NomencladorView.jsx';
 import TemplateManager from './components/TemplateManager.jsx';
 import MessagingPanel from './components/MessagingPanel.jsx';
+import PedidosMarcela from './components/PedidosMarcela.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -96,11 +97,13 @@ function App({ currentUser, onLogout }) {
     const handleAddToCart = useCallback((practice) => {
         setCartItems(prev => {
             // For internación items, use encabezado as uniqueness key to allow same code with different headers
+            // For practices with customField (e.g. Interconsulta with specialty), always add as new line
+            const hasCustomField = !!practice.customField;
             const matchKey = practice.isInternacion
                 ? (item => item.code === practice.code && item.encabezado === practice.encabezado)
-                : (item => item.code === practice.code && !item.isInternacion);
+                : (item => item.code === practice.code && !item.isInternacion && !item.customField);
 
-            const existing = prev.find(matchKey);
+            const existing = !hasCustomField ? prev.find(matchKey) : null;
             if (existing) {
                 addToast(`"${practice.name}" ya está en el carrito — cantidad incrementada`, 'info');
                 return prev.map(item =>
@@ -530,6 +533,10 @@ function App({ currentUser, onLogout }) {
                             )}
                         </div>
                     </div>
+                )}
+
+                {activeView === 'pedidos_marcela' && (
+                    <PedidosMarcela addToast={addToast} />
                 )}
 
                 {activeView === 'cirugias' && (

@@ -471,7 +471,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const handleFlag = async (id) => {
         try {
             setProcessing(true);
-            await flagProblem(id, 'Marcado manualmente', 'operador');
+            await flagProblem(id, 'Marcado manualmente', currentUser?.nombre || 'operador');
             addToast?.('Marcado como problema', 'success');
             loadData();
         } catch (e) { addToast?.('Error: ' + e.message, 'error'); }
@@ -481,7 +481,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const handleManualChange = async (id, newStatus) => {
         try {
             setProcessing(true);
-            await manualOverride(id, newStatus, 'operador');
+            await manualOverride(id, newStatus, `Cambio manual a ${STATUS_CONFIG[newStatus]?.label}`, currentUser?.nombre || 'operador');
             addToast?.(`Estado → ${STATUS_CONFIG[newStatus]?.label}`, 'success');
             loadData();
         } catch (e) { addToast?.('Error: ' + e.message, 'error'); }
@@ -924,6 +924,51 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                         >
                             {cfg.icon} {cfg.label}
                         </button>
+                        {/* Hint: último cambio de estado */}
+                        {(() => {
+                            const events = surgery.surgery_events;
+                            if (!events || events.length === 0) return null;
+                            // Ordenar por created_at desc y tomar el último evento con from_status/to_status
+                            const sorted = [...events]
+                                .filter(ev => ev.from_status && ev.to_status)
+                                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                            const lastEvent = sorted[0];
+                            if (!lastEvent) return null;
+                            const fromCfg = STATUS_CONFIG[lastEvent.from_status];
+                            const toCfg = STATUS_CONFIG[lastEvent.to_status];
+                            const when = new Date(lastEvent.created_at);
+                            const timeAgo = (() => {
+                                const diffMs = Date.now() - when.getTime();
+                                const mins = Math.floor(diffMs / 60000);
+                                if (mins < 1) return 'ahora';
+                                if (mins < 60) return `hace ${mins}min`;
+                                const hrs = Math.floor(mins / 60);
+                                if (hrs < 24) return `hace ${hrs}h`;
+                                const days = Math.floor(hrs / 24);
+                                return `hace ${days}d`;
+                            })();
+                            return (
+                                <div style={{
+                                    marginTop: '3px',
+                                    fontSize: '0.6rem',
+                                    lineHeight: 1.3,
+                                    color: 'var(--neutral-400)',
+                                    fontWeight: 400,
+                                    maxWidth: '140px',
+                                    whiteSpace: 'normal',
+                                }}>
+                                    <span style={{ fontWeight: 600, color: 'var(--neutral-500)' }}>
+                                        {lastEvent.performed_by || 'sistema'}
+                                    </span>
+                                    {' '}
+                                    <span>{fromCfg?.icon || '?'}</span>
+                                    <span style={{ margin: '0 1px' }}>→</span>
+                                    <span>{toCfg?.icon || '?'}</span>
+                                    {' '}
+                                    <span style={{ fontStyle: 'italic' }}>{timeAgo}</span>
+                                </div>
+                            );
+                        })()}
                         {statusDropdownId === surgery.id && (
                             <>
                                 <div
