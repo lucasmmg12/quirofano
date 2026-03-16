@@ -356,13 +356,29 @@ function getExtensionFromMime(contentType: string, url: string, mediaType: strin
 
 /**
  * Normaliza número argentino para consistencia
- * Siempre retorna formato 549XXXXXXXXXX
+ * Siempre retorna formato 549XXXXXXXXXX (exactamente 13 dígitos)
  */
 function normalizePhone(phone) {
     if (!phone) return '';
     let clean = phone.replace(/\D/g, '');
 
-    if (clean.startsWith('549') && clean.length >= 12) return clean;
+    // Ya tiene formato internacional completo con 549 y exactamente 13 dígitos
+    if (clean.startsWith('549') && clean.length === 13) return clean;
+
+    // Si tiene 549 pero más de 13 dígitos, puede tener un 15 interno
+    // Ej: 549264154XXXXX (15 digs) → quitar el 15 después del código de área
+    if (clean.startsWith('549') && clean.length > 13) {
+        const inner = clean.slice(3); // quitar 549
+        // Buscar 15 en posición de cod. de área (posición 2-4)
+        const idx15 = inner.indexOf('15');
+        if (idx15 >= 2 && idx15 <= 4) {
+            const cleaned = inner.slice(0, idx15) + inner.slice(idx15 + 2);
+            if (cleaned.length === 10) return '549' + cleaned;
+        }
+        // Si aún es largo, truncar a 13 dígitos (tomar los primeros 10 después de 549)
+        return '549' + inner.slice(0, 10);
+    }
+
     if (clean.startsWith('54') && !clean.startsWith('549')) {
         clean = clean.slice(2);
     }
@@ -373,11 +389,17 @@ function normalizePhone(phone) {
         clean = '264' + clean.slice(2);
         return '549' + clean;
     }
+    // Quitar 15 interno (ej: 264-15-XXXXXX)
     if (clean.length > 10 && clean.includes('15')) {
         const idx = clean.indexOf('15');
         if (idx >= 2 && idx <= 4) {
             clean = clean.slice(0, idx) + clean.slice(idx + 2);
         }
+    }
+
+    // Asegurar que el resultado final tiene exactamente 10 dígitos locales
+    if (clean.length > 10) {
+        clean = clean.slice(0, 10);
     }
 
     return '549' + clean;

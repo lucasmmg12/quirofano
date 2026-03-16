@@ -90,23 +90,31 @@ export async function markAsRead(phone) {
 /**
  * Obtiene conteo de mensajes no leídos por teléfono
  * Retorna: { "5492645438114": 3, "5492641234567": 1 }
+ * 
+ * NOTA: Re-normaliza los phones con normalizeArgentinePhone para garantizar
+ * consistencia con el match que hace SurgeryPanel (que también usa esa función).
+ * Esto soluciona mismatch cuando el webhook guardó el phone en un formato
+ * ligeramente diferente (ej: con 15 interno incluido, más de 13 dígitos, etc.)
  */
 export async function fetchUnreadCounts() {
     const { data, error } = await supabase
         .from('whatsapp_messages')
         .select('phone')
         .eq('direction', 'incoming')
-        .eq('is_read', false);
+        .eq('is_read', false)
+        .limit(5000);
 
     if (error) {
         console.error('Error fetching unread counts:', error);
         return {};
     }
 
-    // Contar por teléfono
+    // Contar por teléfono — re-normalizar para consistencia con el frontend
     const counts = {};
     (data || []).forEach(msg => {
-        counts[msg.phone] = (counts[msg.phone] || 0) + 1;
+        const normalizedPhone = normalizeArgentinePhone(msg.phone);
+        const key = normalizedPhone || msg.phone;
+        counts[key] = (counts[key] || 0) + 1;
     });
     return counts;
 }

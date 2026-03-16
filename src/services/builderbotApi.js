@@ -19,8 +19,21 @@ export function normalizeArgentinePhone(phone) {
     // Solo dígitos
     let clean = phone.replace(/\D/g, '');
 
-    // Ya tiene formato internacional completo
-    if (clean.startsWith('549') && clean.length >= 12) return clean;
+    // Ya tiene formato internacional completo (exactamente 13 dígitos)
+    if (clean.startsWith('549') && clean.length === 13) return clean;
+
+    // Si tiene 549 pero más de 13 dígitos, puede tener un 15 interno
+    // Ej: 549264154XXXXX → quitar el 15 después del código de área
+    if (clean.startsWith('549') && clean.length > 13) {
+        const inner = clean.slice(3); // quitar 549
+        const idx15 = inner.indexOf('15');
+        if (idx15 >= 2 && idx15 <= 4) {
+            const cleaned = inner.slice(0, idx15) + inner.slice(idx15 + 2);
+            if (cleaned.length === 10) return '549' + cleaned;
+        }
+        // Truncar a 13 dígitos
+        return '549' + inner.slice(0, 10);
+    }
 
     // Tiene código de país sin 9 (54...)
     if (clean.startsWith('54') && !clean.startsWith('549')) {
@@ -44,6 +57,11 @@ export function normalizeArgentinePhone(phone) {
         if (idx >= 2 && idx <= 4) {
             clean = clean.slice(0, idx) + clean.slice(idx + 2);
         }
+    }
+
+    // Asegurar que el resultado final no supere 10 dígitos locales
+    if (clean.length > 10) {
+        clean = clean.slice(0, 10);
     }
 
     return '549' + clean;

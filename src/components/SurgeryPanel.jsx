@@ -265,11 +265,14 @@ export default function SurgeryPanel({ addToast, currentUser }) {
         loadUnreads();
 
         // Suscripción en tiempo real a mensajes entrantes
+        // IMPORTANTE: normalizar el phone para que coincida con las keys
+        // del mapa (fetchUnreadCounts ya normaliza, y el badge también)
         const unsub = subscribeToAllIncoming((newMsg) => {
             if (newMsg.direction === 'incoming') {
+                const normalizedPhone = normalizeArgentinePhone(newMsg.phone) || newMsg.phone;
                 setUnreadCounts(prev => ({
                     ...prev,
-                    [newMsg.phone]: (prev[newMsg.phone] || 0) + 1
+                    [normalizedPhone]: (prev[normalizedPhone] || 0) + 1
                 }));
             }
         });

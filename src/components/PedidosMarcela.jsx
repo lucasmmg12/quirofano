@@ -26,7 +26,7 @@ import { createOrder, markOrderPrinted } from '../services/dataService';
 const CERT_INITIAL = {
     nombrePaciente: '', dniPaciente: '', tipoTerapia: 'intensiva',
     nombreCuidador: '', dniCuidador: '', diagnostico: '',
-    horasValidez: '72', fecha: getTodayISO(),
+    vigencia: '72', unidadVigencia: 'hs', fecha: getTodayISO(),
 };
 
 const OXI_INITIAL = {
@@ -167,7 +167,8 @@ export default function PedidosMarcela({ addToast }) {
     // --- Certificate ---
     const generateCertText = () => {
         const c = certData;
-        return `Certifico que ${c.nombrePaciente || '________'}, DNI ${c.dniPaciente || '________'} se encuentra internado/a en terapia ${c.tipoTerapia} de Sanatorio Argentino (terapia abierta) a cuidado de ${c.nombreCuidador || '________'} DNI ${c.dniCuidador || '________'} con diagnóstico ${c.diagnostico || '________'} por ${c.horasValidez || '72'} hs para ser presentado a quien corresponda.`;
+        const unidad = c.unidadVigencia === 'dias' ? 'días' : 'hs';
+        return `Certifico que ${c.nombrePaciente || '________'}, DNI ${c.dniPaciente || '________'} se encuentra internado/a en terapia ${c.tipoTerapia} de Sanatorio Argentino (terapia abierta) a cuidado de ${c.nombreCuidador || '________'} DNI ${c.dniCuidador || '________'} con diagnóstico ${c.diagnostico || '________'} por ${c.vigencia || '72'} ${unidad} para ser presentado a quien corresponda.`;
     };
 
     const handlePrintCert = () => {
@@ -219,7 +220,7 @@ export default function PedidosMarcela({ addToast }) {
     return (
         <>
             <div className="content no-print">
-                <PatientHeader patientData={patientData} setPatientData={setPatientData} hiddenFields={['diagnostico', 'tratamiento', 'cirugia']} />
+                <PatientHeader patientData={patientData} setPatientData={setPatientData} hiddenFields={['tratamiento', 'cirugia']} />
 
                 {/* ── Category Search Panel ── */}
                 <div className="practice-search animate-fade-in">
@@ -493,10 +494,18 @@ export default function PedidosMarcela({ addToast }) {
                                         style={inputStyle} {...focusBorder('#F59E0B')} />
                                 </div>
                                 <div style={fieldGroupStyle}>
-                                    <label style={labelStyle}>Vigencia (horas)</label>
-                                    <input type="number" value={certData.horasValidez}
-                                        onChange={e => setCertData(p => ({ ...p, horasValidez: e.target.value }))}
-                                        style={{ ...inputStyle, maxWidth: '120px' }} {...focusBorder('#F59E0B')} />
+                                    <label style={labelStyle}>Vigencia</label>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                        <input type="number" value={certData.vigencia}
+                                            onChange={e => setCertData(p => ({ ...p, vigencia: e.target.value }))}
+                                            style={{ ...inputStyle, maxWidth: '100px' }} {...focusBorder('#F59E0B')} />
+                                        <select value={certData.unidadVigencia}
+                                            onChange={e => setCertData(p => ({ ...p, unidadVigencia: e.target.value }))}
+                                            style={{ ...selectStyle, maxWidth: '100px' }}>
+                                            <option value="hs">Horas</option>
+                                            <option value="dias">Días</option>
+                                        </select>
+                                    </div>
                                 </div>
                                 <div style={fieldGroupStyle}>
                                     <label style={labelStyle}>Fecha</label>
@@ -612,7 +621,6 @@ export default function PedidosMarcela({ addToast }) {
                 <div className="print-area">
                     <div className="print-page">
                         <div className="print-patient-name">{certData.nombrePaciente}</div>
-                        <div className="print-solicito-label">Certificado de Internación</div>
                         <div className="print-fields" style={{ marginTop: '6mm' }}>
                             <p style={{ fontSize: '10pt', lineHeight: '2', textAlign: 'justify' }}>
                                 {specialPrint.data.text}
