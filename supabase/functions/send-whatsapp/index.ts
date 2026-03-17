@@ -1,23 +1,49 @@
 // Supabase Edge Function: send-whatsapp
 // Proxy server-side para BuilderBot API (evita CORS)
-// Lee credenciales desde app_config en la DB
+// Soporta múltiples líneas WhatsApp: lee credenciales desde whatsapp_lines
+// Fallback a app_config para retrocompatibilidad
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const SUPABASE_URL = 'https://hakysnqiryimxbwdslwe.supabase.co';
-const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhha3lzbnFpcnlpbXhid2RzbHdlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDA0MjI3NCwiZXhwIjoyMDg1NjE4Mjc0fQ.v0Zw7yFjGKJX8xsMCZJPwRyhr2eNd1gjASsI7qSK0YM';
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
-// Cache para no leer la DB en cada request
-let cachedConfig: { apiKey: string; projectId: string; cachedAt: number } | null = null;
+// Cache para no leer la DB en cada request (por línea)
+const cachedConfigs: Record<string, { apiKey: string; projectId: string; cachedAt: number }> = {};
 const CACHE_TTL = 60 * 1000; // 1 minuto
 
-async function getBuilderBotConfig() {
+async function getBuilderBotConfig(lineId?: string) {
+    const cacheKey = lineId || '__legacy__';
+
     // Si tenemos cache válido, usarlo
-    if (cachedConfig && Date.now() - cachedConfig.cachedAt < CACHE_TTL) {
-        return cachedConfig;
+    if (cachedConfigs[cacheKey] && Date.now() - cachedConfigs[cacheKey].cachedAt < CACHE_TTL) {
+        return cachedConfigs[cacheKey];
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+    // Intentar leer de whatsapp_lines si hay lineId
+    if (lineId) {
+        const { data: line, error: lineError } = await supabase
+            .from('whatsapp_lines')
+            .select('api_key, project_id')
+            .eq('id', lineId)
+            .eq('is_active', true)
+            .single();
+
+        if (!lineError && line?.api_key && line?.project_id
+            && line.api_key !== 'configurar-desde-panel'
+            && line.project_id !== 'configurar-desde-panel') {
+            cachedConfigs[cacheKey] = {
+                apiKey: line.api_key,
+                projectId: line.project_id,
+                cachedAt: Date.now(),
+            };
+            return cachedConfigs[cacheKey];
+        }
+    }
+
+    // Fallback: leer de app_config (retrocompatibilidad)
     const { data, error } = await supabase
         .from('app_config')
         .select('key, value')
@@ -34,11 +60,11 @@ async function getBuilderBotConfig() {
     const projectId = configMap['builderbot_project_id'];
 
     if (!apiKey || !projectId) {
-        throw new Error('Faltan credenciales de BuilderBot en app_config');
+        throw new Error('Faltan credenciales de BuilderBot');
     }
 
-    cachedConfig = { apiKey, projectId, cachedAt: Date.now() };
-    return cachedConfig;
+    cachedConfigs[cacheKey] = { apiKey, projectId, cachedAt: Date.now() };
+    return cachedConfigs[cacheKey];
 }
 
 Deno.serve(async (req) => {
@@ -55,7 +81,7 @@ Deno.serve(async (req) => {
     }
 
     try {
-        const { content, number, mediaUrl } = await req.json();
+        const { content, number, mediaUrl, lineId } = await req.json();
 
         if (!content || !number) {
             return new Response(
@@ -64,8 +90,8 @@ Deno.serve(async (req) => {
             );
         }
 
-        // Leer credenciales desde DB
-        const config = await getBuilderBotConfig();
+        // Leer credenciales según la línea
+        const config = await getBuilderBotConfig(lineId);
         const BUILDERBOT_URL = `https://app.builderbot.cloud/api/v2/${config.projectId}/messages`;
 
         const body = {
@@ -77,7 +103,7 @@ Deno.serve(async (req) => {
             checkIfExists: false,
         };
 
-        console.log(`[send-whatsapp] Enviando a ${number}:`, content.substring(0, 50));
+        console.log(`[send-whatsapp] Línea: ${lineId || 'legacy'} | Enviando a ${number}:`, content.substring(0, 50));
 
         const response = await fetch(BUILDERBOT_URL, {
             method: 'POST',
@@ -91,7 +117,7 @@ Deno.serve(async (req) => {
         const data = await response.json();
 
         return new Response(
-            JSON.stringify({ success: true, data }),
+            JSON.stringify({ success: true, data, lineId: lineId || 'legacy' }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
     } catch (error) {

@@ -92,3 +92,55 @@ export async function testBuilderBotConnection() {
     if (error) throw error;
     return data;
 }
+
+// ================================================
+// WHATSAPP LINES — Gestión de líneas dual
+// ================================================
+
+/**
+ * Obtiene todas las líneas WhatsApp con credenciales completas (para ConfigPanel)
+ */
+export async function getAllWhatsAppLines() {
+    const { data, error } = await supabase
+        .from('whatsapp_lines')
+        .select('*')
+        .order('id', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+}
+
+/**
+ * Actualiza una línea WhatsApp
+ * @param {string} lineId - 'line_a' o 'line_b'
+ * @param {Object} updates - { api_key?, project_id?, label?, phone?, is_active?, color? }
+ */
+export async function updateWhatsAppLine(lineId, updates) {
+    const { error } = await supabase
+        .from('whatsapp_lines')
+        .update({
+            ...updates,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('id', lineId);
+
+    if (error) throw error;
+}
+
+/**
+ * Prueba la conexión de una línea WhatsApp específica
+ * @param {string} lineId - 'line_a' o 'line_b'
+ */
+export async function testWhatsAppLineConnection(lineId) {
+    const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+        body: {
+            content: 'Test conexión línea ' + lineId,
+            number: '0000000000',
+            lineId,
+        },
+    });
+
+    if (error) throw error;
+    return data;
+}
+

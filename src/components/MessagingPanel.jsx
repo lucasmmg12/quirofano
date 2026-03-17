@@ -16,7 +16,7 @@ import {
 import {
     fetchConversations, fetchMessages, saveOutgoingMessage,
     markAsRead, subscribeToMessages, subscribeToAllIncoming,
-    fetchCrmContacts, upsertCrmContact,
+    fetchCrmContacts, upsertCrmContact, fetchWhatsAppLines, getAssignedLine, assignLine,
 } from '../services/chatService';
 import { sendWhatsAppMessage, normalizeArgentinePhone } from '../services/builderbotApi';
 import { searchPatients } from '../services/patientService';
@@ -66,6 +66,11 @@ export default function MessagingPanel({ addToast }) {
     // Patient context (surgery + budget)
     const [patientContext, setPatientContext] = useState(null);
     const [showBudgetDetail, setShowBudgetDetail] = useState(false);
+    // Dual WhatsApp line state
+    const [whatsappLines, setWhatsappLines] = useState([]);
+    const [assignedLineId, setAssignedLineId] = useState(null);
+    const [showLineSelector, setShowLineSelector] = useState(false);
+    const [showChangeLineModal, setShowChangeLineModal] = useState(false);
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
@@ -294,6 +299,38 @@ export default function MessagingPanel({ addToast }) {
         });
     }, []);
 
+    // === Load WhatsApp lines ===
+    useEffect(() => {
+        fetchWhatsAppLines().then(setWhatsappLines).catch(console.error);
+    }, []);
+
+    // === Load assigned line for selected conversation ===
+    useEffect(() => {
+        if (!selectedPhone) { setAssignedLineId(null); return; }
+        getAssignedLine(selectedPhone).then(lineId => {
+            setAssignedLineId(lineId);
+            if (!lineId) setShowLineSelector(true);
+            else setShowLineSelector(false);
+        }).catch(console.error);
+    }, [selectedPhone]);
+
+    // Get current line info
+    const currentLine = whatsappLines.find(l => l.id === assignedLineId) || null;
+
+    // Handle line selection
+    const handleSelectLine = async (lineId) => {
+        setAssignedLineId(lineId);
+        setShowLineSelector(false);
+        setShowChangeLineModal(false);
+        try {
+            await assignLine(selectedPhone, lineId);
+            addToast?.(`Línea asignada: ${whatsappLines.find(l => l.id === lineId)?.label}`, 'success');
+        } catch (err) {
+            console.error('Error assigning line:', err);
+            addToast?.('Error asignando línea', 'error');
+        }
+    };
+
     // === Auto scroll to bottom on new messages ===
     useEffect(() => {
         if (messages.length > 0) {
@@ -323,8 +360,8 @@ export default function MessagingPanel({ addToast }) {
         setSending(true);
         setShowEmoji(false);
         try {
-            await sendWhatsAppMessage({ content: messageText, number: selectedPhone });
-            await saveOutgoingMessage({ phone: selectedPhone, content: messageText });
+            await sendWhatsAppMessage({ content: messageText, number: selectedPhone, lineId: assignedLineId });
+            await saveOutgoingMessage({ phone: selectedPhone, content: messageText, lineId: assignedLineId });
             // Realtime se encarga de agregar al state — evita duplicados
             setMessageText('');
             inputRef.current?.focus();
@@ -333,7 +370,7 @@ export default function MessagingPanel({ addToast }) {
         } finally {
             setSending(false);
         }
-    }, [messageText, selectedPhone, sending, addToast]);
+    }, [messageText, selectedPhone, sending, addToast, assignedLineId]);
 
     // ==========================================
     // SEND IMAGE
@@ -353,12 +390,13 @@ export default function MessagingPanel({ addToast }) {
         setUploadingMedia(true);
         try {
             const mediaUrl = await uploadMedia(file, 'images');
-            await sendWhatsAppMessage({ content: messageText.trim() || '📷 Imagen', number: selectedPhone, mediaUrl });
+            await sendWhatsAppMessage({ content: messageText.trim() || '📷 Imagen', number: selectedPhone, mediaUrl, lineId: assignedLineId });
             await saveOutgoingMessage({
                 phone: selectedPhone,
                 content: messageText.trim() || '📷 Imagen',
                 mediaType: 'image',
                 mediaUrl,
+                lineId: assignedLineId,
             });
             // Realtime se encarga de agregar al state
             setMessageText('');
@@ -426,9 +464,9 @@ export default function MessagingPanel({ addToast }) {
         try {
             const file = new File([blob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
             const mediaUrl = await uploadMedia(file, 'audios');
-            await sendWhatsAppMessage({ content: '🎤 Audio', number: selectedPhone, mediaUrl });
+            await sendWhatsAppMessage({ content: '🎤 Audio', number: selectedPhone, mediaUrl, lineId: assignedLineId });
             await saveOutgoingMessage({
-                phone: selectedPhone, content: '🎤 Audio', mediaType: 'audio', mediaUrl,
+                phone: selectedPhone, content: '🎤 Audio', mediaType: 'audio', mediaUrl, lineId: assignedLineId,
             });
             // Realtime se encarga de agregar al state
             addToast?.('Audio enviado', 'success');
@@ -857,7 +895,37 @@ export default function MessagingPanel({ addToast }) {
                                 <div className="msg-panel__chat-header-avatar">{selectedContactName.charAt(0).toUpperCase()}</div>
                                 <div className="msg-panel__chat-header-info" style={{ flex: 1 }}>
                                     <span className="msg-panel__chat-header-name">{selectedContactName}</span>
-                                    <span className="msg-panel__chat-header-phone"><Phone size={11} /> {selectedPhone}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span className="msg-panel__chat-header-phone"><Phone size={11} /> {selectedPhone}</span>
+                                        {currentLine ? (
+                                            <span
+                                                onClick={() => setShowChangeLineModal(true)}
+                                                style={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                    padding: '1px 8px', borderRadius: '10px',
+                                                    background: `${currentLine.color}30`, fontSize: '0.65rem',
+                                                    cursor: 'pointer', transition: 'all 0.15s', fontWeight: 600,
+                                                    color: currentLine.color === '#0088CC' ? '#0077B6' : '#128C7E',
+                                                }}
+                                                title="Cambiar línea"
+                                            >
+                                                <span style={{
+                                                    width: '5px', height: '5px', borderRadius: '50%',
+                                                    background: currentLine.color, display: 'inline-block',
+                                                }} />
+                                                {currentLine.label} ···{currentLine.phone.slice(-4)}
+                                            </span>
+                                        ) : (
+                                            <span style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                padding: '1px 8px', borderRadius: '10px',
+                                                background: 'rgba(234,179,8,0.2)', fontSize: '0.65rem',
+                                                color: '#B45309',
+                                            }}>
+                                                ⚠️ Sin línea
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                                 {/* Quick info badges */}
                                 {patientContext?.surgery && (
@@ -1076,6 +1144,166 @@ export default function MessagingPanel({ addToast }) {
                     addToast={addToast}
                 />
             )}
+
+            {/* ===== LINE SELECTOR MODAL ===== */}
+            {showLineSelector && selectedPhone && whatsappLines.length > 0 && (
+                <div style={{
+                    position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10020,
+                    background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(6px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                    <div style={{
+                        background: '#fff', borderRadius: '16px', padding: '28px 32px',
+                        width: 'min(400px, 90vw)', boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+                        animation: 'scaleIn 0.2s ease-out',
+                    }}>
+                        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                            <div style={{
+                                width: '48px', height: '48px', borderRadius: '12px',
+                                background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                margin: '0 auto 12px',
+                            }}>
+                                <Phone size={22} color="#fff" />
+                            </div>
+                            <h3 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 700, color: '#1E293B' }}>
+                                Seleccioná la línea
+                            </h3>
+                            <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>
+                                Esta línea se usará siempre para este paciente
+                            </p>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {whatsappLines.map(line => (
+                                <button
+                                    key={line.id}
+                                    onClick={() => handleSelectLine(line.id)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '12px',
+                                        padding: '14px 16px', borderRadius: '12px',
+                                        border: `2px solid ${line.color}30`,
+                                        background: `${line.color}08`, cursor: 'pointer',
+                                        transition: 'all 0.15s', textAlign: 'left',
+                                    }}
+                                    onMouseOver={e => {
+                                        e.currentTarget.style.background = `${line.color}15`;
+                                        e.currentTarget.style.borderColor = line.color;
+                                        e.currentTarget.style.transform = 'scale(1.02)';
+                                    }}
+                                    onMouseOut={e => {
+                                        e.currentTarget.style.background = `${line.color}08`;
+                                        e.currentTarget.style.borderColor = `${line.color}30`;
+                                        e.currentTarget.style.transform = 'scale(1)';
+                                    }}
+                                >
+                                    <div style={{
+                                        width: '40px', height: '40px', borderRadius: '10px',
+                                        background: `${line.color}20`, display: 'flex',
+                                        alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                                    }}>
+                                        <Phone size={18} color={line.color} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1E293B' }}>{line.label}</div>
+                                        <div style={{ fontSize: '0.75rem', color: '#64748B', fontFamily: 'monospace' }}>+{line.phone}</div>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            onClick={() => setShowLineSelector(false)}
+                            style={{
+                                marginTop: '16px', width: '100%', padding: '8px',
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                fontSize: '0.78rem', color: '#94A3B8', fontWeight: 600,
+                            }}
+                        >
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* ===== CHANGE LINE MODAL ===== */}
+            {showChangeLineModal && whatsappLines.length > 0 && (
+                <div style={{
+                    position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10020,
+                    background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(6px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                    <div style={{
+                        background: '#fff', borderRadius: '16px', padding: '28px 32px',
+                        width: 'min(400px, 90vw)', boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+                        animation: 'scaleIn 0.2s ease-out',
+                    }}>
+                        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                            <div style={{
+                                width: '48px', height: '48px', borderRadius: '12px',
+                                background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                margin: '0 auto 12px',
+                            }}>
+                                <Phone size={22} color="#fff" />
+                            </div>
+                            <h3 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 700, color: '#1E293B' }}>
+                                ¿Cambiar línea?
+                            </h3>
+                            <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>
+                                El paciente pasará a recibir mensajes desde otro número
+                            </p>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {whatsappLines.map(line => (
+                                <button
+                                    key={line.id}
+                                    onClick={() => handleSelectLine(line.id)}
+                                    disabled={line.id === assignedLineId}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '12px',
+                                        padding: '14px 16px', borderRadius: '12px',
+                                        border: line.id === assignedLineId ? `2px solid ${line.color}` : `2px solid ${line.color}30`,
+                                        background: line.id === assignedLineId ? `${line.color}15` : `${line.color}08`,
+                                        cursor: line.id === assignedLineId ? 'default' : 'pointer',
+                                        transition: 'all 0.15s', textAlign: 'left',
+                                        opacity: line.id === assignedLineId ? 0.7 : 1,
+                                    }}
+                                >
+                                    <div style={{
+                                        width: '40px', height: '40px', borderRadius: '10px',
+                                        background: `${line.color}20`, display: 'flex',
+                                        alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                                    }}>
+                                        <Phone size={18} color={line.color} />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1E293B' }}>{line.label}</div>
+                                        <div style={{ fontSize: '0.75rem', color: '#64748B', fontFamily: 'monospace' }}>+{line.phone}</div>
+                                    </div>
+                                    {line.id === assignedLineId && (
+                                        <span style={{
+                                            padding: '2px 10px', borderRadius: '10px',
+                                            background: `${line.color}20`, fontSize: '0.68rem',
+                                            fontWeight: 700, color: line.color,
+                                        }}>Actual</span>
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            onClick={() => setShowChangeLineModal(false)}
+                            style={{
+                                marginTop: '16px', width: '100%', padding: '10px',
+                                background: 'var(--neutral-100, #F1F5F9)', border: '1px solid #E2E8F0',
+                                borderRadius: '10px', cursor: 'pointer',
+                                fontSize: '0.82rem', color: '#64748B', fontWeight: 600,
+                            }}
+                        >
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
+

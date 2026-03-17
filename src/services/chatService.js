@@ -122,7 +122,7 @@ export async function fetchUnreadCounts() {
 /**
  * Guarda un mensaje saliente en la tabla (cuando enviamos desde el panel)
  */
-export async function saveOutgoingMessage({ phone, content, mediaUrl, mediaType }) {
+export async function saveOutgoingMessage({ phone, content, mediaUrl, mediaType, lineId }) {
     const normalized = normalizeArgentinePhone(phone);
     if (!normalized) return null;
 
@@ -136,6 +136,7 @@ export async function saveOutgoingMessage({ phone, content, mediaUrl, mediaType 
             media_type: mediaType || 'text',
             sender_name: 'Sistema ADM-QUI',
             is_read: true,
+            line_id: lineId || null,
         })
         .select()
         .single();
@@ -209,7 +210,7 @@ export function subscribeToAllIncoming(callback) {
 
 /**
  * Obtiene todos los contactos CRM (mapeo phone → nombre/id_paciente)
- * @returns {Promise<Object>} — Mapa { phone: { nombre, id_paciente, dni, notas } }
+ * @returns {Promise<Object>} — Mapa { phone: { nombre, id_paciente, dni, notas, assigned_line_id } }
  */
 export async function fetchCrmContacts() {
     const { data, error } = await supabase
@@ -275,3 +276,66 @@ export async function getCrmContactByPhone(phone) {
     }
     return data;
 }
+
+// ================================================
+// WHATSAPP LINES — Sistema dual de líneas
+// ================================================
+
+/**
+ * Obtiene todas las líneas WhatsApp disponibles
+ * @returns {Promise<Array>} — [{ id, label, phone, is_active, color, icon }]
+ */
+export async function fetchWhatsAppLines() {
+    const { data, error } = await supabase
+        .from('whatsapp_lines')
+        .select('id, label, phone, is_active, color, icon')
+        .eq('is_active', true)
+        .order('id', { ascending: true });
+
+    if (error) {
+        console.error('Error fetching WhatsApp lines:', error);
+        return [];
+    }
+    return data || [];
+}
+
+/**
+ * Obtiene la línea asignada a un paciente por su teléfono
+ * @param {string} phone - Teléfono del paciente
+ * @returns {Promise<string|null>} — line_id o null
+ */
+export async function getAssignedLine(phone) {
+    const normalized = normalizeArgentinePhone(phone);
+    if (!normalized) return null;
+
+    const { data, error } = await supabase
+        .from('crm_contacts')
+        .select('assigned_line_id')
+        .eq('phone', normalized)
+        .maybeSingle();
+
+    if (error || !data) return null;
+    return data.assigned_line_id;
+}
+
+/**
+ * Asigna una línea WhatsApp a un paciente
+ * @param {string} phone - Teléfono del paciente
+ * @param {string} lineId - ID de la línea ('line_a' o 'line_b')
+ * @returns {Promise<void>}
+ */
+export async function assignLine(phone, lineId) {
+    const normalized = normalizeArgentinePhone(phone);
+    if (!normalized || !lineId) return;
+
+    const { error } = await supabase
+        .from('crm_contacts')
+        .update({ assigned_line_id: lineId })
+        .eq('phone', normalized);
+
+    if (error) {
+        console.error('Error assigning line:', error);
+        throw error;
+    }
+}
+

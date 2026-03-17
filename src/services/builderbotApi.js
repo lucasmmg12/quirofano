@@ -69,19 +69,22 @@ export function normalizeArgentinePhone(phone) {
 
 /**
  * Envía un mensaje de WhatsApp via Supabase RPC (server-side, sin CORS)
+ * Soporta múltiples líneas WhatsApp (dual-line system)
  * @param {Object} params
  * @param {string} params.content - Contenido del mensaje
  * @param {string} params.number - Número de teléfono destino
  * @param {string} [params.mediaUrl] - URL opcional de media adjunta
+ * @param {string} [params.lineId] - ID de la línea WhatsApp ('line_a' o 'line_b')
  * @returns {Promise<Object>} Respuesta
  */
-export async function sendWhatsAppMessage({ content, number, mediaUrl }) {
+export async function sendWhatsAppMessage({ content, number, mediaUrl, lineId }) {
     try {
         const normalizedNumber = normalizeArgentinePhone(number);
         const { data, error } = await supabase.rpc('send_whatsapp', {
             p_content: content,
             p_number: normalizedNumber,
             p_media_url: mediaUrl || null,
+            p_line_id: lineId || null,
         });
 
         if (error) throw error;

@@ -2,20 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import {
     Settings, Eye, EyeOff, Save, RotateCw, CheckCircle, AlertTriangle,
     Smartphone, Key, Building2, Globe, Copy, ExternalLink, Zap, Shield,
+    Phone, Briefcase, ToggleLeft, ToggleRight,
 } from 'lucide-react';
-import { getAllConfig, updateMultipleConfigs } from '../services/configService';
+import { getAllConfig, updateMultipleConfigs, getAllWhatsAppLines, updateWhatsAppLine, testWhatsAppLineConnection } from '../services/configService';
 
 // Configuración de los campos con metadata para UI
 const FIELD_META = {
-    builderbot_api_key: {
-        icon: Key, placeholder: 'bb-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
-        description: 'Clave de autenticación de tu proyecto en BuilderBot Cloud.',
-        link: 'https://app.builderbot.cloud',
-    },
-    builderbot_project_id: {
-        icon: Globe, placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
-        description: 'ID del proyecto en BuilderBot. Se encuentra en la URL del dashboard.',
-    },
     whatsapp_phone: {
         icon: Smartphone, placeholder: '5492641234567',
         description: 'Número de WhatsApp vinculado al bot (formato internacional sin +).',
@@ -31,13 +23,23 @@ const FIELD_META = {
     },
     webhook_url: {
         icon: ExternalLink, placeholder: '',
-        description: 'Pegá esta URL en BuilderBot → Settings → Webhook para recibir mensajes.',
-        readOnly: true, copyable: true,
+        description: 'Consultar las URLs de webhook en la sección de Líneas WhatsApp.',
+        readOnly: true, copyable: false,
+    },
+    // Legacy keys (still shown for reference)
+    builderbot_api_key: {
+        icon: Key, placeholder: 'bb-xxxxxxxx-...',
+        description: 'API Key legada (ahora se gestiona por línea). Se usa como fallback.',
+        link: 'https://app.builderbot.cloud',
+    },
+    builderbot_project_id: {
+        icon: Globe, placeholder: 'xxxxxxxx-xxxx-...',
+        description: 'Project ID legado (ahora se gestiona por línea). Se usa como fallback.',
     },
 };
 
 const CATEGORY_LABELS = {
-    whatsapp: { label: 'WhatsApp & BuilderBot', icon: Smartphone, color: '#25D366' },
+    whatsapp: { label: 'WhatsApp General', icon: Smartphone, color: '#25D366' },
     general: { label: 'General', icon: Building2, color: '#6366F1' },
 };
 
@@ -48,18 +50,45 @@ export default function ConfigPanel({ addToast }) {
     const [saving, setSaving] = useState(false);
     const [showSecrets, setShowSecrets] = useState({});
     const [hasChanges, setHasChanges] = useState(false);
-    const [testResult, setTestResult] = useState(null); // 'success' | 'error' | null
+    const [testResult, setTestResult] = useState(null);
     const [testing, setTesting] = useState(false);
+
+    // WhatsApp Lines state
+    const [lines, setLines] = useState([]);
+    const [lineEdits, setLineEdits] = useState({});
+    const [lineShowSecrets, setLineShowSecrets] = useState({});
+    const [lineSaving, setLineSaving] = useState({});
+    const [lineTesting, setLineTesting] = useState({});
+    const [lineTestResults, setLineTestResults] = useState({});
+    const [lineHasChanges, setLineHasChanges] = useState({});
 
     const loadConfig = useCallback(async () => {
         try {
             setLoading(true);
-            const data = await getAllConfig();
+            const [data, linesData] = await Promise.all([
+                getAllConfig(),
+                getAllWhatsAppLines(),
+            ]);
             setConfigs(data);
             const vals = {};
             data.forEach(c => { vals[c.key] = c.value; });
             setEditValues(vals);
             setHasChanges(false);
+
+            // Lines
+            setLines(linesData);
+            const edits = {};
+            linesData.forEach(l => {
+                edits[l.id] = {
+                    api_key: l.api_key || '',
+                    project_id: l.project_id || '',
+                    label: l.label || '',
+                    phone: l.phone || '',
+                    is_active: l.is_active ?? true,
+                };
+            });
+            setLineEdits(edits);
+            setLineHasChanges({});
         } catch (e) {
             console.error(e);
             addToast?.('Error al cargar configuración', 'error');
@@ -79,7 +108,6 @@ export default function ConfigPanel({ addToast }) {
     const handleSave = async () => {
         try {
             setSaving(true);
-            // Solo guardar los que cambiaron y no son readOnly
             const changed = {};
             configs.forEach(c => {
                 const meta = FIELD_META[c.key];
@@ -104,50 +132,66 @@ export default function ConfigPanel({ addToast }) {
         }
     };
 
-    const handleTestConnection = async () => {
-        setTesting(true);
-        setTestResult(null);
+    // === LINE HANDLERS ===
+    const handleLineChange = (lineId, field, value) => {
+        setLineEdits(prev => ({
+            ...prev,
+            [lineId]: { ...prev[lineId], [field]: value },
+        }));
+        setLineHasChanges(prev => ({ ...prev, [lineId]: true }));
+        setLineTestResults(prev => ({ ...prev, [lineId]: null }));
+    };
+
+    const handleLineSave = async (lineId) => {
         try {
-            // Verificar que las credenciales no están vacías
-            const apiKey = editValues.builderbot_api_key;
-            const projectId = editValues.builderbot_project_id;
-            if (!apiKey || !projectId) {
-                setTestResult('error');
-                addToast?.('Completá API Key y Project ID primero', 'error');
+            setLineSaving(prev => ({ ...prev, [lineId]: true }));
+            const edits = lineEdits[lineId];
+            if (!edits) return;
+
+            await updateWhatsAppLine(lineId, {
+                api_key: edits.api_key,
+                project_id: edits.project_id,
+                label: edits.label,
+                phone: edits.phone,
+                is_active: edits.is_active,
+            });
+            addToast?.(`✅ Línea ${edits.label} guardada`, 'success');
+            setLineHasChanges(prev => ({ ...prev, [lineId]: false }));
+            await loadConfig();
+        } catch (e) {
+            console.error(e);
+            addToast?.('Error al guardar línea: ' + e.message, 'error');
+        } finally {
+            setLineSaving(prev => ({ ...prev, [lineId]: false }));
+        }
+    };
+
+    const handleLineTest = async (lineId) => {
+        setLineTesting(prev => ({ ...prev, [lineId]: true }));
+        setLineTestResults(prev => ({ ...prev, [lineId]: null }));
+        try {
+            const edits = lineEdits[lineId];
+            if (!edits?.api_key || !edits?.project_id || edits.api_key === 'configurar-desde-panel') {
+                setLineTestResults(prev => ({ ...prev, [lineId]: 'error' }));
+                addToast?.('Completá las credenciales primero', 'error');
                 return;
             }
-            // Intentar una llamada simple
-            const url = `https://app.builderbot.cloud/api/v2/${projectId}/messages`;
-            // No podemos llamar directamente por CORS, usamos la Edge Function
-            const response = await fetch(`https://hakysnqiryimxbwdslwe.supabase.co/functions/v1/send-whatsapp`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: 'ping', number: '0000000000' }),
-            });
-            if (response.ok) {
-                setTestResult('success');
-                addToast?.('✅ Conexión exitosa con BuilderBot', 'success');
-            } else {
-                setTestResult('error');
-                const errData = await response.json().catch(() => ({}));
-                addToast?.('❌ Error de conexión: ' + (errData.error || response.statusText), 'error');
-            }
+            await testWhatsAppLineConnection(lineId);
+            setLineTestResults(prev => ({ ...prev, [lineId]: 'success' }));
+            addToast?.('✅ Conexión exitosa', 'success');
         } catch (e) {
-            setTestResult('error');
-            addToast?.('❌ Sin conexión: ' + e.message, 'error');
+            setLineTestResults(prev => ({ ...prev, [lineId]: 'error' }));
+            addToast?.('❌ Error: ' + e.message, 'error');
         } finally {
-            setTesting(false);
+            setLineTesting(prev => ({ ...prev, [lineId]: false }));
         }
     };
 
     const handleCopy = (value) => {
-        // Fallback for browsers without Clipboard API (pre-2021 or non-HTTPS)
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(value).then(() => {
                 addToast?.('📋 Copiado al portapapeles', 'success');
-            }).catch(() => {
-                fallbackCopy(value);
-            });
+            }).catch(() => fallbackCopy(value));
         } else {
             fallbackCopy(value);
         }
@@ -172,6 +216,10 @@ export default function ConfigPanel({ addToast }) {
         setShowSecrets(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
+    const toggleLineSecret = (key) => {
+        setLineShowSecrets(prev => ({ ...prev, [key]: !prev[key] }));
+    };
+
     // Agrupar configs por categoría
     const grouped = {};
     configs.forEach(c => {
@@ -190,6 +238,8 @@ export default function ConfigPanel({ addToast }) {
         );
     }
 
+    const WEBHOOK_BASE = 'https://hakysnqiryimxbwdslwe.supabase.co/functions/v1/whatsapp-webhook';
+
     return (
         <div className="content no-print">
             <div className="cart animate-fade-in">
@@ -202,7 +252,7 @@ export default function ConfigPanel({ addToast }) {
                         <div>
                             <h3 className="cart__title" style={{ margin: 0 }}>Configuración del Sistema</h3>
                             <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--neutral-400)' }}>
-                                Credenciales, parámetros y preferencias
+                                Credenciales, líneas WhatsApp y preferencias
                             </p>
                         </div>
                     </div>
@@ -239,14 +289,237 @@ export default function ConfigPanel({ addToast }) {
                     </div>
                 </div>
 
-                {/* Secciones por categoría */}
+                {/* ========== LÍNEAS WHATSAPP ========== */}
+                <div style={{ marginTop: '24px' }}>
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: '10px',
+                        marginBottom: '16px', paddingBottom: '8px',
+                        borderBottom: '2px solid #25D36620',
+                    }}>
+                        <div style={{
+                            width: '32px', height: '32px', borderRadius: '8px',
+                            background: '#25D36615', display: 'flex',
+                            alignItems: 'center', justifyContent: 'center',
+                        }}>
+                            <Phone size={16} color="#25D366" />
+                        </div>
+                        <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: 'var(--neutral-700)' }}>
+                            Líneas WhatsApp (Dual)
+                        </h4>
+                        <span style={{
+                            background: '#25D36615', color: '#128C7E', fontSize: '0.65rem',
+                            fontWeight: 700, padding: '2px 8px', borderRadius: '8px',
+                        }}>
+                            {lines.filter(l => l.is_active).length} activa{lines.filter(l => l.is_active).length !== 1 ? 's' : ''}
+                        </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {lines.map(line => {
+                            const edits = lineEdits[line.id] || {};
+                            const isChanged = lineHasChanges[line.id];
+                            const isSaving = lineSaving[line.id];
+                            const isTesting = lineTesting[line.id];
+                            const testRes = lineTestResults[line.id];
+                            const showApiKey = lineShowSecrets[`${line.id}_api`];
+                            const webhookUrl = `${WEBHOOK_BASE}?line=${line.id}`;
+                            const lineColor = line.color || '#25D366';
+
+                            return (
+                                <div key={line.id} style={{
+                                    borderRadius: '12px',
+                                    border: `2px solid ${isChanged ? '#F59E0B40' : lineColor + '30'}`,
+                                    background: isChanged ? '#FFFBEB' : '#fff',
+                                    overflow: 'hidden', transition: 'all 0.2s',
+                                }}>
+                                    {/* Line Header */}
+                                    <div style={{
+                                        display: 'flex', alignItems: 'center', gap: '12px',
+                                        padding: '14px 16px',
+                                        background: `linear-gradient(135deg, ${lineColor}08 0%, ${lineColor}03 100%)`,
+                                        borderBottom: `1px solid ${lineColor}15`,
+                                    }}>
+                                        <div style={{
+                                            width: '36px', height: '36px', borderRadius: '10px',
+                                            background: `${lineColor}20`, display: 'flex',
+                                            alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                                        }}>
+                                            {line.id === 'line_a'
+                                                ? <Briefcase size={18} color={lineColor} />
+                                                : <Smartphone size={18} color={lineColor} />
+                                            }
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1E293B' }}>
+                                                {line.label}
+                                            </div>
+                                            <div style={{ fontSize: '0.73rem', color: '#64748B', fontFamily: 'monospace' }}>
+                                                +{line.phone} · {line.id}
+                                            </div>
+                                        </div>
+
+                                        {/* Active toggle */}
+                                        <button
+                                            onClick={() => handleLineChange(line.id, 'is_active', !edits.is_active)}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '4px',
+                                                padding: '4px 10px', borderRadius: '8px',
+                                                border: 'none', cursor: 'pointer',
+                                                background: edits.is_active ? '#DCFCE7' : '#FEF2F2',
+                                                color: edits.is_active ? '#16A34A' : '#EF4444',
+                                                fontSize: '0.7rem', fontWeight: 700, transition: 'all 0.15s',
+                                            }}
+                                        >
+                                            {edits.is_active ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
+                                            {edits.is_active ? 'Activa' : 'Inactiva'}
+                                        </button>
+
+                                        {/* Test button */}
+                                        <button
+                                            onClick={() => handleLineTest(line.id)}
+                                            disabled={isTesting}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '4px',
+                                                padding: '4px 10px', borderRadius: '8px',
+                                                background: testRes === 'success' ? '#DCFCE7'
+                                                    : testRes === 'error' ? '#FEF2F2' : '#F0F9FF',
+                                                color: testRes === 'success' ? '#16A34A'
+                                                    : testRes === 'error' ? '#EF4444' : '#0284C7',
+                                                border: 'none', cursor: isTesting ? 'wait' : 'pointer',
+                                                fontSize: '0.7rem', fontWeight: 700, transition: 'all 0.15s',
+                                            }}
+                                        >
+                                            {isTesting ? (
+                                                <><RotateCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Probando...</>
+                                            ) : testRes === 'success' ? (
+                                                <><CheckCircle size={12} /> OK</>
+                                            ) : testRes === 'error' ? (
+                                                <><AlertTriangle size={12} /> Error</>
+                                            ) : (
+                                                <><Zap size={12} /> Test</>
+                                            )}
+                                        </button>
+
+                                        {/* Save button */}
+                                        <button
+                                            onClick={() => handleLineSave(line.id)}
+                                            disabled={!isChanged || isSaving}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '4px',
+                                                padding: '4px 12px', borderRadius: '8px',
+                                                background: isChanged ? 'linear-gradient(135deg, #22C55E 0%, #16A34A 100%)' : 'var(--neutral-100)',
+                                                color: isChanged ? '#fff' : 'var(--neutral-400)',
+                                                border: 'none', cursor: isChanged ? 'pointer' : 'not-allowed',
+                                                fontSize: '0.7rem', fontWeight: 700, transition: 'all 0.15s',
+                                            }}
+                                        >
+                                            {isSaving ? <RotateCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={12} />}
+                                            {isSaving ? '...' : 'Guardar'}
+                                        </button>
+                                    </div>
+
+                                    {/* Line Fields */}
+                                    <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        {/* API Key */}
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                                <Key size={12} color="var(--neutral-400)" />
+                                                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-600)' }}>
+                                                    API Key de BuilderBot
+                                                </label>
+                                                <Shield size={10} color="#EAB308" title="Dato sensible" />
+                                                <button
+                                                    onClick={() => toggleLineSecret(`${line.id}_api`)}
+                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--neutral-400)', padding: '1px' }}
+                                                >
+                                                    {showApiKey ? <EyeOff size={12} /> : <Eye size={12} />}
+                                                </button>
+                                            </div>
+                                            <input
+                                                type={showApiKey ? 'text' : 'password'}
+                                                value={edits.api_key || ''}
+                                                onChange={e => handleLineChange(line.id, 'api_key', e.target.value)}
+                                                placeholder="bb-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                                style={{
+                                                    width: '100%', padding: '8px 12px', borderRadius: '8px',
+                                                    border: '1px solid var(--neutral-200)', fontSize: '0.8rem',
+                                                    fontFamily: 'monospace', background: '#FAFAFA',
+                                                    boxSizing: 'border-box',
+                                                }}
+                                            />
+                                        </div>
+
+                                        {/* Project ID */}
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                                <Globe size={12} color="var(--neutral-400)" />
+                                                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-600)' }}>
+                                                    Project ID de BuilderBot
+                                                </label>
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={edits.project_id || ''}
+                                                onChange={e => handleLineChange(line.id, 'project_id', e.target.value)}
+                                                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                                style={{
+                                                    width: '100%', padding: '8px 12px', borderRadius: '8px',
+                                                    border: '1px solid var(--neutral-200)', fontSize: '0.8rem',
+                                                    fontFamily: 'monospace', background: '#FAFAFA',
+                                                    boxSizing: 'border-box',
+                                                }}
+                                            />
+                                        </div>
+
+                                        {/* Webhook URL (readonly) */}
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                                <ExternalLink size={12} color="var(--neutral-400)" />
+                                                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-600)' }}>
+                                                    URL del Webhook
+                                                </label>
+                                                <span style={{ fontSize: '0.6rem', color: '#94A3B8', fontWeight: 500 }}>(copiar en BuilderBot)</span>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '6px' }}>
+                                                <input
+                                                    type="text"
+                                                    value={webhookUrl}
+                                                    readOnly
+                                                    style={{
+                                                        flex: 1, padding: '8px 12px', borderRadius: '8px',
+                                                        border: '1px solid var(--neutral-200)', fontSize: '0.72rem',
+                                                        fontFamily: 'monospace', background: 'var(--neutral-50)',
+                                                        color: 'var(--neutral-500)', cursor: 'default',
+                                                    }}
+                                                />
+                                                <button
+                                                    onClick={() => handleCopy(webhookUrl)}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: '4px',
+                                                        padding: '8px 12px', borderRadius: '8px',
+                                                        background: 'var(--neutral-100)', border: '1px solid var(--neutral-200)',
+                                                        cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600,
+                                                        color: 'var(--neutral-600)', transition: 'all 0.15s',
+                                                    }}
+                                                >
+                                                    <Copy size={12} /> Copiar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* ========== SECCIONES POR CATEGORÍA (app_config) ========== */}
                 {Object.entries(grouped).map(([category, items]) => {
                     const catMeta = CATEGORY_LABELS[category] || { label: category, icon: Settings, color: '#64748B' };
                     const CatIcon = catMeta.icon;
 
                     return (
                         <div key={category} style={{ marginTop: '24px' }}>
-                            {/* Category Header */}
                             <div style={{
                                 display: 'flex', alignItems: 'center', gap: '10px',
                                 marginBottom: '16px', paddingBottom: '8px',
@@ -259,45 +532,11 @@ export default function ConfigPanel({ addToast }) {
                                 }}>
                                     <CatIcon size={16} color={catMeta.color} />
                                 </div>
-                                <h4 style={{
-                                    margin: 0, fontSize: '0.9rem', fontWeight: 700,
-                                    color: 'var(--neutral-700)',
-                                }}>
+                                <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: 'var(--neutral-700)' }}>
                                     {catMeta.label}
                                 </h4>
-
-                                {/* Test Connection button (solo en whatsapp) */}
-                                {category === 'whatsapp' && (
-                                    <button
-                                        onClick={handleTestConnection}
-                                        disabled={testing}
-                                        style={{
-                                            marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px',
-                                            padding: '6px 14px', borderRadius: 'var(--radius-md)',
-                                            background: testResult === 'success' ? '#DCFCE7' :
-                                                testResult === 'error' ? '#FEF2F2' : '#F0F9FF',
-                                            color: testResult === 'success' ? '#16A34A' :
-                                                testResult === 'error' ? '#EF4444' : '#0284C7',
-                                            border: `1px solid ${testResult === 'success' ? '#22C55E30' :
-                                                testResult === 'error' ? '#EF444430' : '#0284C730'}`,
-                                            cursor: testing ? 'wait' : 'pointer',
-                                            fontSize: '0.75rem', fontWeight: 700, transition: 'all 0.15s',
-                                        }}
-                                    >
-                                        {testing ? (
-                                            <><RotateCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> Probando...</>
-                                        ) : testResult === 'success' ? (
-                                            <><CheckCircle size={13} /> Conexión OK</>
-                                        ) : testResult === 'error' ? (
-                                            <><AlertTriangle size={13} /> Error de conexión</>
-                                        ) : (
-                                            <><Zap size={13} /> Probar Conexión</>
-                                        )}
-                                    </button>
-                                )}
                             </div>
 
-                            {/* Fields */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                 {items.map(config => {
                                     const meta = FIELD_META[config.key] || {};
@@ -306,68 +545,49 @@ export default function ConfigPanel({ addToast }) {
                                     const isReadOnly = meta.readOnly;
                                     const isVisible = !isSecret || showSecrets[config.key];
                                     const currentValue = editValues[config.key] || '';
-                                    const isChanged = currentValue !== config.value;
+                                    const isConfigChanged = currentValue !== config.value;
 
                                     return (
                                         <div key={config.key} style={{
-                                            background: isChanged ? '#FFFBEB' : '#fff',
+                                            background: isConfigChanged ? '#FFFBEB' : '#fff',
                                             borderRadius: 'var(--radius-md)',
-                                            border: `1px solid ${isChanged ? '#F59E0B40' : 'var(--neutral-200)'}`,
-                                            padding: '14px 16px',
-                                            transition: 'all 0.2s',
+                                            border: `1px solid ${isConfigChanged ? '#F59E0B40' : 'var(--neutral-200)'}`,
+                                            padding: '14px 16px', transition: 'all 0.2s',
                                         }}>
-                                            {/* Label row */}
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                                                 <FieldIcon size={14} color="var(--neutral-400)" />
-                                                <label style={{
-                                                    fontSize: '0.8rem', fontWeight: 700,
-                                                    color: 'var(--neutral-700)', flex: 1,
-                                                }}>
+                                                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--neutral-700)', flex: 1 }}>
                                                     {config.label || config.key}
                                                 </label>
                                                 {isSecret && (
                                                     <button
                                                         onClick={() => toggleSecret(config.key)}
-                                                        style={{
-                                                            background: 'none', border: 'none', cursor: 'pointer',
-                                                            color: 'var(--neutral-400)', padding: '2px',
-                                                        }}
+                                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--neutral-400)', padding: '2px' }}
                                                         title={isVisible ? 'Ocultar' : 'Mostrar'}
                                                     >
                                                         {isVisible ? <EyeOff size={14} /> : <Eye size={14} />}
                                                     </button>
                                                 )}
-                                                {isChanged && (
+                                                {isConfigChanged && (
                                                     <span style={{
-                                                        fontSize: '0.65rem', fontWeight: 700,
-                                                        color: '#F59E0B', background: '#FEF3C7',
-                                                        padding: '1px 6px', borderRadius: '8px',
-                                                    }}>
-                                                        Modificado
-                                                    </span>
+                                                        fontSize: '0.65rem', fontWeight: 700, color: '#F59E0B',
+                                                        background: '#FEF3C7', padding: '1px 6px', borderRadius: '8px',
+                                                    }}>Modificado</span>
                                                 )}
-                                                {isSecret && (
-                                                    <Shield size={12} color="#EAB308" title="Dato sensible" />
-                                                )}
+                                                {isSecret && <Shield size={12} color="#EAB308" title="Dato sensible" />}
                                             </div>
-
-                                            {/* Input */}
                                             <div style={{ display: 'flex', gap: '8px' }}>
                                                 {meta.options ? (
                                                     <select
                                                         value={currentValue}
                                                         onChange={e => handleChange(config.key, e.target.value)}
                                                         style={{
-                                                            flex: 1, padding: '8px 12px',
-                                                            borderRadius: 'var(--radius-sm)',
-                                                            border: '1px solid var(--neutral-200)',
-                                                            fontSize: '0.82rem', fontFamily: 'monospace',
-                                                            background: '#FAFAFA',
+                                                            flex: 1, padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+                                                            border: '1px solid var(--neutral-200)', fontSize: '0.82rem',
+                                                            fontFamily: 'monospace', background: '#FAFAFA',
                                                         }}
                                                     >
-                                                        {meta.options.map(opt => (
-                                                            <option key={opt} value={opt}>{opt}</option>
-                                                        ))}
+                                                        {meta.options.map(opt => (<option key={opt} value={opt}>{opt}</option>))}
                                                     </select>
                                                 ) : (
                                                     <input
@@ -377,10 +597,9 @@ export default function ConfigPanel({ addToast }) {
                                                         readOnly={isReadOnly}
                                                         placeholder={meta.placeholder}
                                                         style={{
-                                                            flex: 1, padding: '8px 12px',
-                                                            borderRadius: 'var(--radius-sm)',
-                                                            border: '1px solid var(--neutral-200)',
-                                                            fontSize: '0.82rem', fontFamily: 'monospace',
+                                                            flex: 1, padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+                                                            border: '1px solid var(--neutral-200)', fontSize: '0.82rem',
+                                                            fontFamily: 'monospace',
                                                             background: isReadOnly ? 'var(--neutral-50)' : '#FAFAFA',
                                                             color: isReadOnly ? 'var(--neutral-500)' : 'var(--neutral-800)',
                                                             cursor: isReadOnly ? 'default' : 'text',
@@ -403,31 +622,24 @@ export default function ConfigPanel({ addToast }) {
                                                 )}
                                                 {meta.link && (
                                                     <a
-                                                        href={meta.link}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
+                                                        href={meta.link} target="_blank" rel="noopener noreferrer"
                                                         style={{
                                                             display: 'flex', alignItems: 'center', gap: '4px',
                                                             padding: '8px 14px', borderRadius: 'var(--radius-sm)',
                                                             background: 'var(--neutral-100)', border: '1px solid var(--neutral-200)',
                                                             cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
                                                             color: 'var(--neutral-600)', textDecoration: 'none',
-                                                            transition: 'all 0.15s',
                                                         }}
                                                     >
                                                         <ExternalLink size={13} /> Abrir
                                                     </a>
                                                 )}
                                             </div>
-
-                                            {/* Description */}
                                             {meta.description && (
                                                 <p style={{
                                                     margin: '6px 0 0', fontSize: '0.72rem',
                                                     color: 'var(--neutral-400)', lineHeight: 1.4,
-                                                }}>
-                                                    {meta.description}
-                                                </p>
+                                                }}>{meta.description}</p>
                                             )}
                                         </div>
                                     );
@@ -448,7 +660,7 @@ export default function ConfigPanel({ addToast }) {
                 }}>
                     <Shield size={14} />
                     <span>
-                        Los datos sensibles se almacenan encriptados en Supabase.
+                        Las credenciales de cada línea se almacenan en la tabla <strong>whatsapp_lines</strong>.
                         Los cambios en API Key y Project ID requieren <strong>re-deploy</strong> de las Edge Functions para tomar efecto.
                     </span>
                 </div>

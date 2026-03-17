@@ -1,7 +1,10 @@
 // Supabase Edge Function: whatsapp-webhook
 // Recibe eventos de BuilderBot y guarda mensajes en whatsapp_messages
 // PERSISTENCIA DE MEDIA: Descarga archivos de URLs temporales y los sube a Supabase Storage
-// URL para colocar en BuilderBot: https://hakysnqiryimxbwdslwe.supabase.co/functions/v1/whatsapp-webhook
+// DUAL LINE: Soporta múltiples líneas WhatsApp via query param ?line=line_a|line_b
+// URLs para BuilderBot:
+//   Línea A (Business):  https://hakysnqiryimxbwdslwe.supabase.co/functions/v1/whatsapp-webhook?line=line_a
+//   Línea B (Messenger): https://hakysnqiryimxbwdslwe.supabase.co/functions/v1/whatsapp-webhook?line=line_b
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -32,6 +35,10 @@ Deno.serve(async (req) => {
     }
 
     try {
+        // Detectar línea desde query param ?line=line_a|line_b
+        const url = new URL(req.url);
+        const lineId = url.searchParams.get('line') || null;
+
         const payload = await req.json();
         const { eventName, data } = payload;
 
@@ -165,7 +172,7 @@ Deno.serve(async (req) => {
         }
 
         // Log de lo encontrado
-        console.log(`[webhook] Parsed — direction: ${direction}, phone: ${phone}, mediaUrl: ${mediaUrl}, mediaType: ${mediaType}, content: ${content?.substring(0, 100)}`);
+        console.log(`[webhook] Parsed — line: ${lineId || 'unknown'}, direction: ${direction}, phone: ${phone}, mediaUrl: ${mediaUrl}, mediaType: ${mediaType}, content: ${content?.substring(0, 100)}`);
 
         // Insertar en la tabla
         const { error: insertError } = await supabase
@@ -181,6 +188,8 @@ Deno.serve(async (req) => {
                 raw_payload: payload,
                 // Guardar la URL temporal original como referencia
                 original_media_url: originalMediaUrl || null,
+                // Línea WhatsApp que recibió el mensaje
+                line_id: lineId,
             });
 
         if (insertError) {
@@ -191,10 +200,10 @@ Deno.serve(async (req) => {
             );
         }
 
-        console.log(`[webhook] Mensaje ${direction} guardado — phone: ${phone}, media: ${mediaType}, persisted: ${mediaUrl !== originalMediaUrl}`);
+        console.log(`[webhook] Mensaje ${direction} guardado — line: ${lineId}, phone: ${phone}, media: ${mediaType}, persisted: ${mediaUrl !== originalMediaUrl}`);
 
         return new Response(
-            JSON.stringify({ ok: true, direction, phone, mediaType, hasMedia: !!mediaUrl, persisted: mediaUrl !== originalMediaUrl }),
+            JSON.stringify({ ok: true, direction, phone, mediaType, hasMedia: !!mediaUrl, persisted: mediaUrl !== originalMediaUrl, lineId }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
 
