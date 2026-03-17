@@ -23,6 +23,7 @@ import NomencladorView from './components/NomencladorView.jsx';
 import TemplateManager from './components/TemplateManager.jsx';
 import MessagingPanel from './components/MessagingPanel.jsx';
 import PedidosMarcela from './components/PedidosMarcela.jsx';
+import WhatsAppLineStatus from './components/WhatsAppLineStatus.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -290,11 +291,15 @@ function App({ currentUser, onLogout }) {
 
             <main className={`main ${sidebarCollapsed ? 'main--expanded' : ''}`}>
                 {/* Top Bar */}
-                <header className="topbar no-print">
+                <header className="topbar no-print" style={{ flexShrink: 0 }}>
                     <div className="topbar__left">
                         <h1 className="topbar__title"><span className="topbar__title-accent">Administración</span> Sanatorio Argentino</h1>
                         <span className="topbar__subtitle">Sistema de gestión integral</span>
                     </div>
+                    {/* WhatsApp Line Status — centered in topbar */}
+                    {(activeView === 'mensajeria' || activeView === 'cirugias') && (
+                        <WhatsAppLineStatus />
+                    )}
                     <div className="topbar__right" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <span className="topbar__date">
                             {new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
