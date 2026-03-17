@@ -39,7 +39,7 @@ export default function WhatsAppLineStatus() {
 
             const { data: msgData } = await supabase
                 .from('whatsapp_messages')
-                .select('line_id, sender_phone')
+                .select('line_id, phone')
                 .eq('direction', 'outgoing')
                 .gte('created_at', todayStart.toISOString());
 
@@ -50,7 +50,7 @@ export default function WhatsAppLineStatus() {
             (msgData || []).forEach(msg => {
                 const lineId = msg.line_id || 'line_a'; // fallback for old messages
                 if (lineCounts[lineId]) {
-                    lineCounts[lineId].add(msg.sender_phone);
+                    lineCounts[lineId].add(msg.phone);
                 }
             });
 
