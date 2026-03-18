@@ -288,7 +288,7 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
     // PostgreSQL ON CONFLICT DO UPDATE no permite la misma fila 2 veces en un mismo comando
     const deduped = new Map();
     for (const row of withId) {
-        const key = `${row.id_paciente}|${row.fecha_cirugia}|${row.nombre}`;
+        const key = `${row.id_paciente}|${row.nombre}`;
         deduped.set(key, row); // Último gana (datos más completos)
     }
     const dedupedCount = withId.length - deduped.size;
@@ -325,7 +325,7 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
                     console.warn('⚠️ Error consultando registros existentes:', fetchErr.message);
                 } else if (existingRows) {
                     for (const row of existingRows) {
-                        const key = `${row.id_paciente}|${row.fecha_cirugia}|${normalizeNameForUpsert(row.nombre)}`;
+                        const key = `${row.id_paciente}|${normalizeNameForUpsert(row.nombre)}`;
                         const preserved = {};
                         for (const field of FIELDS_TO_PRESERVE) {
                             if (row[field] !== null && row[field] !== undefined) {
@@ -353,7 +353,7 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
     for (let i = 0; i < uniqueWithId.length; i += BATCH) {
         const batch = uniqueWithId.slice(i, i + BATCH);
         const cleanBatch = batch.map(({ _rowIndex, ...rest }) => {
-            const key = `${rest.id_paciente}|${rest.fecha_cirugia}|${rest.nombre}`;
+            const key = `${rest.id_paciente}|${rest.nombre}`;
             const preserved = existingMap.get(key);
             if (preserved) {
                 // Fusionar: datos del Excel + campos de estado existentes
@@ -366,7 +366,7 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
             const { data, error } = await supabase
                 .from('surgeries')
                 .upsert(cleanBatch, {
-                    onConflict: 'id_paciente,fecha_cirugia,nombre',
+                    onConflict: 'id_paciente,nombre',
                     ignoreDuplicates: false,
                 })
                 .select('id, created_at, updated_at');
@@ -376,14 +376,14 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
                 // Si el batch falla, intentar uno por uno
                 for (const row of batch) {
                     const { _rowIndex, ...cleanRow } = row;
-                    const key = `${cleanRow.id_paciente}|${cleanRow.fecha_cirugia}|${cleanRow.nombre}`;
+                    const key = `${cleanRow.id_paciente}|${cleanRow.nombre}`;
                     const preserved = existingMap.get(key);
                     const mergedRow = preserved ? { ...cleanRow, ...preserved } : cleanRow;
 
                     const { data: d, error: e } = await supabase
                         .from('surgeries')
                         .upsert(mergedRow, {
-                            onConflict: 'id_paciente,fecha_cirugia,nombre',
+                            onConflict: 'id_paciente,nombre',
                             ignoreDuplicates: false,
                         })
                         .select('id, created_at, updated_at')

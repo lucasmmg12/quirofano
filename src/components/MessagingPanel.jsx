@@ -536,7 +536,10 @@ export default function MessagingPanel({ addToast }) {
         let result = message;
 
         // Legacy: "Estimado/a" → nombre
-        if (name) result = result.replace(/Estimado\/a[,:.]?\s*/gi, `Estimada ${name} `);
+        // SOLO si no hay variable {nombre} (evita duplicación de nombre)
+        if (name && !message.includes('{nombre}') && !message.includes('{paciente}')) {
+            result = result.replace(/Estimado\/a[,:.]?\s*/gi, `Estimada ${name} `);
+        }
 
         // Variables de Paciente
         result = result.replace(/\{nombre\}/gi, name || '');

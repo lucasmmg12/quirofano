@@ -433,7 +433,8 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
         let result = message;
 
         // Legacy: Reemplazar "Estimado/a" por nombre del paciente
-        if (name) {
+        // SOLO si no hay variable {nombre} (evita duplicación de nombre)
+        if (name && !message.includes('{nombre}') && !message.includes('{paciente}')) {
             result = result.replace(/Estimado\/a[,:.]?\s*/gi, `Estimada ${name} `);
         }
 

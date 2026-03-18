@@ -45,6 +45,39 @@ Deno.serve(async (req) => {
         // Log completo del payload para debug (ver estructura de media)
         console.log(`[webhook] Evento: ${eventName}`, JSON.stringify(payload, null, 2));
 
+        // =============================================
+        // MANEJO DE EVENTOS DE STATUS (conexión/desconexión del bot)
+        // Actualiza whatsapp_lines.is_active para reflejar estado en tiempo real
+        // =============================================
+        if (eventName === 'status.ready' || eventName === 'status.disconnect') {
+            const isOnline = eventName === 'status.ready';
+            const reason = data?.reason || null;
+
+            console.log(`[webhook] Status event: ${eventName} | line: ${lineId} | online: ${isOnline} | reason: ${reason}`);
+
+            if (lineId) {
+                const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+                const { error: statusError } = await supabase
+                    .from('whatsapp_lines')
+                    .update({
+                        is_active: isOnline,
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', lineId);
+
+                if (statusError) {
+                    console.error(`[webhook] Error actualizando status de línea ${lineId}:`, statusError);
+                } else {
+                    console.log(`[webhook] ✅ Línea ${lineId} marcada como ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+                }
+            }
+
+            return new Response(
+                JSON.stringify({ ok: true, event: eventName, lineId, isOnline, reason }),
+                { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
+
         // Solo procesar mensajes incoming
         // Los outgoing se guardan desde el frontend via saveOutgoingMessage()
         // Procesar ambos causaba mensajes duplicados

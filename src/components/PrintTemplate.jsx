@@ -149,7 +149,7 @@ function GroupedPage({ items, patientData }) {
     const refDate = items[0]?.date || patientData.fecha;
 
     // Construir el título combinado y los códigos
-    const studyNames = items.map(it => it.displayName || it.name);
+    const studyNames = [...new Set(items.map(it => it.displayName || it.name))];
     const codesList = items.map(it =>
         `${it.code}${it.quantity > 1 ? ` x ${it.quantity}` : ''}`
     );
