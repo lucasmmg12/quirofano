@@ -3,8 +3,8 @@
  * Shows in the topbar when viewing 'mensajeria' or 'cirugias'
  * Displays:
  *   - Connection status dot (green=online, red=offline) from whatsapp_lines.is_active
- *   - Today's initiated conversations counter per line
- *   - Visual alert if any line exceeds 30 initiated conversations today
+ *   - Conversations initiated by us (outgoing) in the last 96h per line
+ *   - Visual alert if any line exceeds 30 initiated conversations in 96h
  */
 import { useState, useEffect } from 'react';
 import { AlertTriangle, Wifi, WifiOff } from 'lucide-react';
@@ -58,15 +58,14 @@ export default function WhatsAppLineStatus() {
             if (!linesData) return;
             setLines(linesData);
 
-            // Count today's outgoing messages per line (conversations initiated = first outgoing msg per phone per day)
-            const todayStart = new Date();
-            todayStart.setHours(0, 0, 0, 0);
+            // Count outgoing conversations per line in last 96h (conversations initiated by us)
+            const since96h = new Date(Date.now() - 96 * 60 * 60 * 1000);
 
             const { data: msgData } = await supabase
                 .from('whatsapp_messages')
                 .select('line_id, phone')
                 .eq('direction', 'outgoing')
-                .gte('created_at', todayStart.toISOString());
+                .gte('created_at', since96h.toISOString());
 
             // Count unique conversations initiated per line
             const lineCounts = {};
@@ -127,7 +126,7 @@ export default function WhatsAppLineStatus() {
                 return (
                     <div
                         key={line.id}
-                        title={`${line.label}: ${isOnline ? '🟢 Conectado' : '🔴 Desconectado'}${line.updated_at ? ` (${formatLastSeen(line.updated_at)})` : ''} — ${count} conversaciones iniciadas hoy`}
+                        title={`${line.label}: ${isOnline ? '🟢 Conectado' : '🔴 Desconectado'}${line.updated_at ? ` (${formatLastSeen(line.updated_at)})` : ''} — ${count} conv. iniciadas (96h)`}
                         style={{
                             display: 'flex', alignItems: 'center', gap: '5px',
                             padding: '3px 10px', borderRadius: '8px',
