@@ -54,8 +54,14 @@ export async function login(usuario, password) {
     }
 
     try {
+        // Si el usuario ingresa un email, extraer solo la parte antes del @
+        let normalizedUser = usuario.trim().toLowerCase();
+        if (normalizedUser.includes('@')) {
+            normalizedUser = normalizedUser.split('@')[0];
+        }
+
         const { data, error } = await supabase.rpc('verify_login', {
-            p_usuario: usuario.trim().toLowerCase(),
+            p_usuario: normalizedUser,
             p_password: password,
         });
 
