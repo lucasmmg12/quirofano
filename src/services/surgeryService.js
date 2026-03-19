@@ -13,6 +13,7 @@
 
 import { supabase } from '../lib/supabase';
 import { sendWhatsAppMessage } from './builderbotApi';
+import { normalizePhone } from '../utils/phoneUtils.js';
 
 // Módulos excluidos del envío automático
 const EXCLUDED_MODULES = ['Transferencia embrionaria', 'Fertilidad', 'Bloque Médico'];
@@ -223,9 +224,6 @@ export async function bulkCreateSurgeries(list) {
 export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', onProgress = null) {
     const results = { inserted: 0, updated: 0, skipped: 0, errors: [], phoneStats: { valid: 0, invalid: 0 } };
     const total = mappedRecords.length;
-
-    // Importar normalizePhone dinámicamente para evitar dependencia circular
-    const { normalizePhone } = await import('../utils/phoneUtils.js');
 
     // Preparar todos los registros
     const withId = [];   // Tienen id_paciente → pueden usar upsert

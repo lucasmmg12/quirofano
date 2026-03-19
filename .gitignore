@@ -29,6 +29,11 @@ antigravity-awesome-skills/
 # Data files (patient data — NEVER commit)
 *.xlsx
 *.xls
+*.csv
+
+# Import scripts and migration payloads (may contain sensitive data)
+import_pacientes.mjs
+migrate_body.json
 
 # Temp patch scripts
 patch_surgery.*
