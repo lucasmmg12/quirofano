@@ -124,7 +124,7 @@ export async function createUser(usuario, nombre, password, iniciales = null) {
  */
 export async function listUsers() {
     const { data, error } = await supabase
-        .from('usuarios')
+        .from('admqui_usuarios')
         .select('id, usuario, nombre, iniciales, activo, ultimo_login, created_at')
         .order('nombre');
 
@@ -137,7 +137,7 @@ export async function listUsers() {
  */
 export async function toggleUserActive(userId, activo) {
     const { error } = await supabase
-        .from('usuarios')
+        .from('admqui_usuarios')
         .update({ activo })
         .eq('id', userId);
 
