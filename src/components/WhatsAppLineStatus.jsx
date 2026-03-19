@@ -3,8 +3,8 @@
  * Shows in the topbar when viewing 'mensajeria' or 'cirugias'
  * Displays:
  *   - Connection status dot (green=online, red=offline) from whatsapp_lines.is_active
- *   - Conversations initiated by us (outgoing) in the last 96h per line
- *   - Visual alert if any line exceeds 30 initiated conversations in 96h
+ *   - Conversations initiated by us (first msg outgoing) in the last 24h per line
+ *   - Visual alert if any line exceeds 30 initiated conversations in 24h
  */
 import { useState, useEffect } from 'react';
 import { AlertTriangle, Wifi, WifiOff } from 'lucide-react';
@@ -58,30 +58,39 @@ export default function WhatsAppLineStatus() {
             if (!linesData) return;
             setLines(linesData);
 
-            // Count outgoing conversations per line in last 96h (conversations initiated by us)
-            const since96h = new Date(Date.now() - 96 * 60 * 60 * 1000);
+            // Count conversations INITIATED by us in last 24h
+            // A conversation is "initiated by us" when the first message to that phone was outgoing
+            const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
             const { data: msgData } = await supabase
                 .from('whatsapp_messages')
-                .select('line_id, phone')
-                .eq('direction', 'outgoing')
-                .gte('created_at', since96h.toISOString());
+                .select('line_id, phone, direction, created_at')
+                .gte('created_at', since24h.toISOString())
+                .order('created_at', { ascending: true });
 
-            // Count unique conversations initiated per line
-            const lineCounts = {};
-            linesData.forEach(l => { lineCounts[l.id] = new Set(); });
-
+            // For each phone, find the first message in the 24h window.
+            // If it's outgoing → conversation initiated by us. Count it.
+            const firstMsgByPhone = {}; // phone → { line_id, direction }
             (msgData || []).forEach(msg => {
-                const lineId = msg.line_id || 'line_a'; // fallback for old messages
-                if (lineCounts[lineId]) {
-                    lineCounts[lineId].add(msg.phone);
+                if (!firstMsgByPhone[msg.phone]) {
+                    firstMsgByPhone[msg.phone] = {
+                        line_id: msg.line_id || 'line_a',
+                        direction: msg.direction,
+                    };
                 }
             });
 
-            const result = {};
-            Object.entries(lineCounts).forEach(([lineId, phoneSet]) => {
-                result[lineId] = phoneSet.size;
+            // Count only phones where the first message was outgoing (chat initiated by us)
+            const lineCounts = {};
+            linesData.forEach(l => { lineCounts[l.id] = 0; });
+
+            Object.values(firstMsgByPhone).forEach(({ line_id, direction }) => {
+                if (direction === 'outgoing' && lineCounts[line_id] !== undefined) {
+                    lineCounts[line_id]++;
+                }
             });
+
+            const result = { ...lineCounts };
 
             setCounts(result);
         } catch (err) {
@@ -126,7 +135,7 @@ export default function WhatsAppLineStatus() {
                 return (
                     <div
                         key={line.id}
-                        title={`${line.label}: ${isOnline ? '🟢 Conectado' : '🔴 Desconectado'}${line.updated_at ? ` (${formatLastSeen(line.updated_at)})` : ''} — ${count} conv. iniciadas (96h)`}
+                        title={`${line.label}: ${isOnline ? '🟢 Conectado' : '🔴 Desconectado'}${line.updated_at ? ` (${formatLastSeen(line.updated_at)})` : ''} — ${count} conv. iniciadas (24h)`}
                         style={{
                             display: 'flex', alignItems: 'center', gap: '5px',
                             padding: '3px 10px', borderRadius: '8px',
