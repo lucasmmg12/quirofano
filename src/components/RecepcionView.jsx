@@ -131,7 +131,7 @@ export default function RecepcionView() {
                 // Fetch patient data (edad, sexo)
                 if (patientIds.length > 0) {
                     const { data: patData } = await supabase
-                        .from('pacientes')
+                        .from('hospital_pacientes')
                         .select('id_paciente, dni, edad, sexo')
                         .in('id_paciente', patientIds.map(Number));
 
