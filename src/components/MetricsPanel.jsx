@@ -94,21 +94,25 @@ export default function MetricsPanel({ addToast }) {
         setLoading(true);
         try {
             const [surgeriesRes, eventsRes, messagesRes, linesRes, prevMsgRes, prevSurgRes] = await Promise.all([
-                supabase.from('surgeries').select('id, status, medico, obra_social, ausente, created_at, fecha_cirugia'),
+                supabase.from('surgeries').select('id, status, medico, obra_social, ausente, created_at, fecha_cirugia').limit(10000),
                 supabase.from('surgery_events').select('id, event_type, performed_by, created_at')
                     .gte('created_at', range.from.toISOString())
-                    .lte('created_at', range.to.toISOString()),
+                    .lte('created_at', range.to.toISOString())
+                    .limit(10000),
                 supabase.from('whatsapp_messages').select('id, phone, direction, line_id, created_at, media_type, is_read')
                     .gte('created_at', range.from.toISOString())
-                    .lte('created_at', range.to.toISOString()),
+                    .lte('created_at', range.to.toISOString())
+                    .limit(10000),
                 supabase.from('whatsapp_lines').select('id, label, phone, color, is_active'),
                 // Previous period for comparison
                 supabase.from('whatsapp_messages').select('id, phone, direction, line_id, created_at')
                     .gte('created_at', prevRange.from.toISOString())
-                    .lt('created_at', prevRange.to.toISOString()),
+                    .lt('created_at', prevRange.to.toISOString())
+                    .limit(10000),
                 supabase.from('surgeries').select('id, status, ausente, created_at')
                     .gte('created_at', prevRange.from.toISOString())
-                    .lt('created_at', prevRange.to.toISOString()),
+                    .lt('created_at', prevRange.to.toISOString())
+                    .limit(10000),
             ]);
 
             setSurgeries(surgeriesRes.data || []);

@@ -890,7 +890,8 @@ export async function getSurgeryStats() {
     const { data } = await supabase
         .from('surgeries')
         .select('status, excluido, ausente')
-        .eq('excluido', false);
+        .eq('excluido', false)
+        .limit(10000);
 
     if (!data) return {};
 
@@ -929,13 +930,13 @@ export async function purgeAllData() {
     const counts = { surgeries: 0, presupuestos: 0, presupuestoItems: 0 };
 
     // 1) Contar antes de borrar (para el log)
-    const { data: surgeriesData } = await supabase.from('surgeries').select('id', { count: 'exact', head: false });
-    const { data: presupData } = await supabase.from('presupuestos').select('id_presupuesto', { count: 'exact', head: false });
-    const { data: itemsData } = await supabase.from('presupuesto_items').select('id', { count: 'exact', head: false });
+    const { count: surgCount } = await supabase.from('surgeries').select('*', { count: 'exact', head: true });
+    const { count: presCount } = await supabase.from('presupuestos').select('*', { count: 'exact', head: true });
+    const { count: itemCount } = await supabase.from('presupuesto_items').select('*', { count: 'exact', head: true });
 
-    counts.surgeries = surgeriesData?.length || 0;
-    counts.presupuestos = presupData?.length || 0;
-    counts.presupuestoItems = itemsData?.length || 0;
+    counts.surgeries = surgCount || 0;
+    counts.presupuestos = presCount || 0;
+    counts.presupuestoItems = itemCount || 0;
 
     // NOTA: NO se borran surgery_comments ni surgery_events
     // porque ahora están vinculados por id_paciente (inmutable)

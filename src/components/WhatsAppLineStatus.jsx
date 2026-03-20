@@ -66,7 +66,8 @@ export default function WhatsAppLineStatus() {
                 .from('whatsapp_messages')
                 .select('line_id, phone, direction, created_at')
                 .gte('created_at', since24h.toISOString())
-                .order('created_at', { ascending: true });
+                .order('created_at', { ascending: true })
+                .limit(10000);
 
             // For each phone, find the first message in the 24h window.
             // If it's outgoing → conversation initiated by us. Count it.

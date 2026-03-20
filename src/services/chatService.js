@@ -15,7 +15,8 @@ export async function fetchConversations() {
     const { data, error } = await supabase
         .from('whatsapp_messages')
         .select('phone, content, direction, sender_name, is_read, created_at, media_type, line_id')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(10000);
 
     if (error) {
         console.error('Error fetching conversations:', error);
@@ -242,7 +243,8 @@ export async function fetchCrmContacts() {
     const { data, error } = await supabase
         .from('crm_contacts')
         .select('*')
-        .order('updated_at', { ascending: false });
+        .order('updated_at', { ascending: false })
+        .limit(10000);
 
     if (error) {
         console.error('Error fetching CRM contacts:', error);
