@@ -1,10 +1,11 @@
 // Supabase Edge Function: whatsapp-webhook
 // Recibe eventos de BuilderBot y guarda mensajes en whatsapp_messages
 // PERSISTENCIA DE MEDIA: Descarga archivos de URLs temporales y los sube a Supabase Storage
-// DUAL LINE: Soporta múltiples líneas WhatsApp via query param ?line=line_a|line_b
+// DUAL LINE: Soporta múltiples líneas WhatsApp via query param ?line=line_a|line_b|line_c
 // URLs para BuilderBot:
 //   Línea A (Business):  https://hakysnqiryimxbwdslwe.supabase.co/functions/v1/whatsapp-webhook?line=line_a
 //   Línea B (Messenger): https://hakysnqiryimxbwdslwe.supabase.co/functions/v1/whatsapp-webhook?line=line_b
+//   Línea C:             https://hakysnqiryimxbwdslwe.supabase.co/functions/v1/whatsapp-webhook?line=line_c
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -231,6 +232,32 @@ Deno.serve(async (req) => {
                 JSON.stringify({ ok: false, error: insertError.message }),
                 { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
+        }
+
+        // =============================================
+        // AUTO-ASIGNAR LÍNEA AL CONTACTO (CRM)
+        // Cuando un paciente escribe por una línea, guardar esa línea
+        // en crm_contacts.assigned_line_id para no perder la referencia
+        // =============================================
+        if (direction === 'incoming' && lineId && phone) {
+            try {
+                const { error: upsertError } = await supabase
+                    .from('crm_contacts')
+                    .upsert({
+                        phone,
+                        assigned_line_id: lineId,
+                        nombre: senderName || phone,
+                    }, { onConflict: 'phone' });
+
+                if (upsertError) {
+                    console.warn(`[webhook] Error auto-asignando línea al contacto ${phone}:`, upsertError.message);
+                } else {
+                    console.log(`[webhook] ✅ Línea ${lineId} auto-asignada al contacto ${phone}`);
+                }
+            } catch (crmError: any) {
+                // Non-fatal: no queremos que falle el webhook por esto
+                console.warn(`[webhook] Error en auto-asignación de línea:`, crmError?.message || crmError);
+            }
         }
 
         console.log(`[webhook] Mensaje ${direction} guardado — line: ${lineId}, phone: ${phone}, media: ${mediaType}, persisted: ${mediaUrl !== originalMediaUrl}`);

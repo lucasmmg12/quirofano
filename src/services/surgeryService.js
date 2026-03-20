@@ -14,6 +14,21 @@
 import { supabase } from '../lib/supabase';
 import { sendWhatsAppMessage } from './builderbotApi';
 import { normalizePhone } from '../utils/phoneUtils.js';
+import { getAssignedLine } from './chatService';
+
+/**
+ * Obtiene la línea WhatsApp asignada a un teléfono de paciente.
+ * Retorna el lineId o null (el sistema usará el fallback).
+ */
+async function getPatientLineId(phone) {
+    if (!phone) return null;
+    try {
+        return await getAssignedLine(phone);
+    } catch (e) {
+        console.warn('[surgeryService] Error obteniendo línea asignada:', e.message);
+        return null;
+    }
+}
 
 // Módulos excluidos del envío automático
 const EXCLUDED_MODULES = ['Transferencia embrionaria', 'Fertilidad', 'Bloque Médico'];
@@ -598,10 +613,12 @@ export async function sendInitialNotification(surgeryId) {
         const notifTemplate = await getTemplate(surgery.obra_social, 'notificacion');
         const notifMessage = fillTemplate(notifTemplate, surgery);
 
-        // Send notification
+        // Send notification — usar línea asignada si existe
+        const lineId = await getPatientLineId(surgery.telefono);
         await sendWhatsAppMessage({
             content: notifMessage,
             number: surgery.telefono,
+            lineId,
         });
 
         // Determine document request based on obra social
@@ -622,6 +639,7 @@ export async function sendInitialNotification(surgeryId) {
         await sendWhatsAppMessage({
             content: docMessage,
             number: surgery.telefono,
+            lineId,
         });
     } catch (waError) {
         console.warn('⚠️ WhatsApp falló, pero se transiciona igualmente:', waError.message);
@@ -693,9 +711,12 @@ export async function authorizeSurgery(surgeryId, operador = 'admin') {
     const template = await getTemplate(surgery.obra_social, 'autorizacion');
     const message = fillTemplate(template, surgery);
 
+    // Send authorization message — usar línea asignada si existe
+    const lineId = await getPatientLineId(surgery.telefono);
     await sendWhatsAppMessage({
         content: message,
         number: surgery.telefono,
+        lineId,
     });
 
     await transitionStatus(surgeryId, 'verde', {
@@ -725,9 +746,12 @@ export async function confirmAttendance(surgeryId) {
     const template = await getTemplate(surgery.obra_social, 'indicaciones');
     const message = fillTemplate(template, surgery);
 
+    // Send admission instructions — usar línea asignada si existe
+    const lineId = await getPatientLineId(surgery.telefono);
     await sendWhatsAppMessage({
         content: message,
         number: surgery.telefono,
+        lineId,
     });
 
     await transitionStatus(surgeryId, 'azul', {

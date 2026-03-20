@@ -304,7 +304,7 @@ export default function ConfigPanel({ addToast }) {
                             <Phone size={16} color="#25D366" />
                         </div>
                         <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: 'var(--neutral-700)' }}>
-                            Líneas WhatsApp (Dual)
+                            Líneas WhatsApp ({lines.length})
                         </h4>
                         <span style={{
                             background: '#25D36615', color: '#128C7E', fontSize: '0.65rem',
@@ -346,7 +346,9 @@ export default function ConfigPanel({ addToast }) {
                                         }}>
                                             {line.id === 'line_a'
                                                 ? <Briefcase size={18} color={lineColor} />
-                                                : <Smartphone size={18} color={lineColor} />
+                                                : line.id === 'line_b'
+                                                    ? <Smartphone size={18} color={lineColor} />
+                                                    : <Phone size={18} color={lineColor} />
                                             }
                                         </div>
                                         <div style={{ flex: 1 }}>
