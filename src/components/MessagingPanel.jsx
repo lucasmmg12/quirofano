@@ -902,6 +902,31 @@ export default function MessagingPanel({ addToast }) {
                                                 </>
                                             )}
                                         </div>
+                                        {/* Líneas usadas con este paciente */}
+                                        {conv.usedLines && conv.usedLines.length > 0 && (
+                                            <div className="msg-panel__conv-lines">
+                                                {conv.usedLines.map(lid => {
+                                                    const line = whatsappLines.find(l => l.id === lid);
+                                                    return (
+                                                        <span
+                                                            key={lid}
+                                                            className="msg-panel__conv-line-tag"
+                                                            style={{
+                                                                background: `${line?.color || '#94A3B8'}18`,
+                                                                color: line?.color || '#94A3B8',
+                                                                borderColor: `${line?.color || '#94A3B8'}30`,
+                                                            }}
+                                                        >
+                                                            <span
+                                                                className="msg-panel__conv-line-dot"
+                                                                style={{ background: line?.color || '#94A3B8' }}
+                                                            />
+                                                            {line?.label?.replace('WhatsApp ', '') || lid}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                     </div>
                                 </button>
                             );

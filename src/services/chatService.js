@@ -14,7 +14,7 @@ export async function fetchConversations() {
     // Get all messages ordered by created_at DESC
     const { data, error } = await supabase
         .from('whatsapp_messages')
-        .select('phone, content, direction, sender_name, is_read, created_at, media_type')
+        .select('phone, content, direction, sender_name, is_read, created_at, media_type, line_id')
         .order('created_at', { ascending: false });
 
     if (error) {
@@ -33,7 +33,12 @@ export async function fetchConversations() {
                 direction: msg.direction,
                 senderName: '',
                 unreadCount: 0,
+                usedLines: new Set(),
             };
+        }
+        // Track all lines used for this phone
+        if (msg.line_id) {
+            map[msg.phone].usedLines.add(msg.line_id);
         }
         // Prefer sender_name from incoming messages (outgoing says "Sistema ADM-QUI")
         if (msg.direction === 'incoming' && msg.sender_name && !map[msg.phone].senderName) {
@@ -42,6 +47,11 @@ export async function fetchConversations() {
         if (msg.direction === 'incoming' && !msg.is_read) {
             map[msg.phone].unreadCount += 1;
         }
+    });
+
+    // Convert Sets to Arrays for serialization
+    Object.values(map).forEach(conv => {
+        conv.usedLines = [...conv.usedLines];
     });
 
     // Sort by lastDate DESC

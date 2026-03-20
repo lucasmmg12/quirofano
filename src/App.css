@@ -2079,6 +2079,35 @@
     border-color: #86EFAC;
 }
 
+/* Per-conversation used lines indicator */
+.msg-panel__conv-lines {
+    display: flex;
+    gap: 4px;
+    margin-top: 3px;
+    flex-wrap: wrap;
+}
+
+.msg-panel__conv-line-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 0.58rem;
+    font-weight: 600;
+    border: 1px solid;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+.msg-panel__conv-line-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
 .msg-panel__sidebar-footer {
     display: flex;
     align-items: center;
