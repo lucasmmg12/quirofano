@@ -24,6 +24,7 @@ import TemplateManager from './components/TemplateManager.jsx';
 import MessagingPanel from './components/MessagingPanel.jsx';
 import PedidosMarcela from './components/PedidosMarcela.jsx';
 import WhatsAppLineStatus from './components/WhatsAppLineStatus.jsx';
+import MetricsPanel from './components/MetricsPanel.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -556,6 +557,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'config' && (
                     <ConfigPanel addToast={addToast} />
+                )}
+
+                {activeView === 'metricas' && (
+                    <MetricsPanel addToast={addToast} />
                 )}
 
                 {activeView === 'plantillas' && (

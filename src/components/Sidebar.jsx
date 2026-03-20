@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
     ClipboardList, History, BookOpen, Settings, PanelLeftClose, PanelLeft,
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
-    ClipboardPlus,
+    ClipboardPlus, BarChart3,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange }) {
@@ -152,6 +152,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange 
                 {[
                     { id: 'pedidos_marcela', label: 'Pedidos Marcela', icon: ClipboardPlus },
                     { id: 'cirugias', label: 'Control de Cirugías', icon: Stethoscope },
+                    { id: 'metricas', label: 'Métricas', icon: BarChart3 },
                     { id: 'config', label: 'Configuración', icon: Settings },
                     { id: 'plantillas', label: 'Plantillas WhatsApp', icon: MessageSquareText },
                 ].map(item => {
