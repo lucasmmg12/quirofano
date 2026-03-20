@@ -2051,6 +2051,34 @@
     flex-shrink: 0;
 }
 
+/* Per-conversation mark-as-read button */
+.msg-panel__btn-read {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: 1px solid transparent;
+    color: #94A3B8;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    opacity: 0;
+    padding: 0;
+}
+
+.msg-panel__conv-item:hover .msg-panel__btn-read {
+    opacity: 1;
+}
+
+.msg-panel__btn-read:hover {
+    background: #DCFCE7;
+    color: #16A34A;
+    border-color: #86EFAC;
+}
+
 .msg-panel__sidebar-footer {
     display: flex;
     align-items: center;

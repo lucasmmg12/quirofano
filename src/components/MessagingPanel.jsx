@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import {
     fetchConversations, fetchMessages, saveOutgoingMessage,
-    markAsRead, subscribeToMessages, subscribeToAllIncoming,
+    markAsRead, markAllAsRead, subscribeToMessages, subscribeToAllIncoming,
     fetchCrmContacts, upsertCrmContact, fetchWhatsAppLines, getAssignedLine, assignLine,
 } from '../services/chatService';
 import { sendWhatsAppMessage, normalizeArgentinePhone } from '../services/builderbotApi';
@@ -765,9 +765,30 @@ export default function MessagingPanel({ addToast }) {
                             <span className="msg-panel__total-badge">{totalUnread}</span>
                         )}
                     </h3>
-                    <button className="msg-panel__btn-icon" onClick={() => setShowNewChat(true)} title="Nueva conversación">
-                        <Plus size={18} />
-                    </button>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                        {totalUnread > 0 && (
+                            <button
+                                className="msg-panel__btn-icon"
+                                onClick={async (e) => {
+                                    e.stopPropagation();
+                                    try {
+                                        await markAllAsRead();
+                                        setConversations(prev => prev.map(c => ({ ...c, unreadCount: 0 })));
+                                        addToast?.('✅ Todos los mensajes marcados como leídos', 'success');
+                                    } catch (err) {
+                                        addToast?.('Error al marcar como leídos', 'error');
+                                    }
+                                }}
+                                title="Marcar todos como leídos"
+                                style={{ color: '#16A34A' }}
+                            >
+                                <CheckCheck size={18} />
+                            </button>
+                        )}
+                        <button className="msg-panel__btn-icon" onClick={() => setShowNewChat(true)} title="Nueva conversación">
+                            <Plus size={18} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Search */}
@@ -862,7 +883,24 @@ export default function MessagingPanel({ addToast }) {
                                                 {conv.direction === 'outgoing' && '✓ '}
                                                 {conv.lastMessage.length > 45 ? conv.lastMessage.slice(0, 45) + '...' : conv.lastMessage}
                                             </span>
-                                            {hasUnread && <span className="msg-panel__conv-badge">{conv.unreadCount}</span>}
+                                            {hasUnread && (
+                                                <>
+                                                    <button
+                                                        className="msg-panel__btn-read"
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            await markAsRead(conv.phone);
+                                                            setConversations(prev => prev.map(c =>
+                                                                c.phone === conv.phone ? { ...c, unreadCount: 0 } : c
+                                                            ));
+                                                        }}
+                                                        title="Marcar como leído"
+                                                    >
+                                                        <CheckCheck size={12} />
+                                                    </button>
+                                                    <span className="msg-panel__conv-badge">{conv.unreadCount}</span>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 </button>

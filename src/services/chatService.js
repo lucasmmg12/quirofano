@@ -88,6 +88,22 @@ export async function markAsRead(phone) {
 }
 
 /**
+ * Marca TODOS los mensajes incoming no leídos como leídos (bulk)
+ */
+export async function markAllAsRead() {
+    const { error } = await supabase
+        .from('whatsapp_messages')
+        .update({ is_read: true })
+        .eq('direction', 'incoming')
+        .eq('is_read', false);
+
+    if (error) {
+        console.error('Error marking all messages as read:', error);
+        throw error;
+    }
+}
+
+/**
  * Obtiene conteo de mensajes no leídos por teléfono
  * Retorna: { "5492645438114": 3, "5492641234567": 1 }
  * 
