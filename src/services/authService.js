@@ -6,6 +6,7 @@
  * Máximo ~10 usuarios, todos con mismo rol.
  */
 import { supabase } from '../lib/supabase';
+import { trackLogin, trackLogout } from '../lib/hubTracker';
 
 const SESSION_KEY = 'admqui_session';
 
@@ -85,6 +86,9 @@ export async function login(usuario, password) {
 
         localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 
+        // Track in Hub Monitor (non-blocking)
+        trackLogin(supabase, user.usuario);
+
         return { success: true, user: session };
     } catch (err) {
         console.error('[AuthService] Login error:', err);
@@ -96,6 +100,8 @@ export async function login(usuario, password) {
  * Cierra la sesión del usuario
  */
 export function logout() {
+    const user = getCurrentUser();
+    if (user) trackLogout(supabase, user.usuario);
     localStorage.removeItem(SESSION_KEY);
 }
 
