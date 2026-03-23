@@ -94,7 +94,7 @@ export default function MetricsPanel({ addToast }) {
         setLoading(true);
         try {
             const [surgeriesRes, eventsRes, messagesRes, linesRes, prevMsgRes, prevSurgRes] = await Promise.all([
-                supabase.from('surgeries').select('id, status, medico, obra_social, ausente, created_at, fecha_cirugia').limit(10000),
+                supabase.from('surgeries').select('id, status, medico, obra_social, ausente, created_at, fecha_cirugia, modulo').limit(10000),
                 supabase.from('surgery_events').select('id, event_type, performed_by, created_at')
                     .gte('created_at', range.from.toISOString())
                     .lte('created_at', range.to.toISOString())
@@ -259,16 +259,23 @@ export default function MetricsPanel({ addToast }) {
         });
     }, [messages, lines]);
 
-    // Top médicos
+    // Prefijos que NO son médicos reales (se excluyen del ranking)
+    const EXCLUDED_MEDICO_PREFIXES = ['QUIRÓFANOS', 'QUIROFANOS', 'MEDICO GUARDIA', 'BLOQUE'];
+
+    // Top médicos (filtrados: sin quirófanos ni guardia)
     const topMedicos = useMemo(() => {
         const map = {};
         surgeries.forEach(s => {
-            if (s.medico) map[s.medico] = (map[s.medico] || 0) + 1;
+            if (!s.medico) return;
+            const upper = s.medico.trim().toUpperCase();
+            // Excluir entradas que no son médicos
+            if (EXCLUDED_MEDICO_PREFIXES.some(p => upper.startsWith(p))) return;
+            map[s.medico] = (map[s.medico] || 0) + 1;
         });
         return Object.entries(map)
             .sort((a, b) => b[1] - a[1])
             .slice(0, 8)
-            .map(([name, count]) => ({ name: name.length > 25 ? name.slice(0, 25) + '…' : name, count }));
+            .map(([name, count]) => ({ name: name.length > 25 ? name.slice(0, 25) + '…' : name, fullName: name, count }));
     }, [surgeries]);
 
     // Top obras sociales
@@ -292,6 +299,124 @@ export default function MetricsPanel({ addToast }) {
             .slice(0, 6)
             .map(([type, count]) => ({ name: type.replace(/_/g, ' → ').replace('to', ''), count }));
     }, [events]);
+
+    // ═══ NEW: Top Módulos (tipos de cirugía más realizados) ═══
+    const topModulos = useMemo(() => {
+        const map = {};
+        surgeries.forEach(s => {
+            const mod = (s.modulo || '').trim();
+            if (mod && mod.length > 1) map[mod] = (map[mod] || 0) + 1;
+        });
+        return Object.entries(map)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10)
+            .map(([name, count]) => ({ name: name.length > 30 ? name.slice(0, 30) + '…' : name, fullName: name, count }));
+    }, [surgeries]);
+
+    // ═══ NEW: Tasa de realización por módulo ═══
+    const moduloCompletionRate = useMemo(() => {
+        const map = {};
+        surgeries.forEach(s => {
+            const mod = (s.modulo || '').trim();
+            if (!mod || mod.length <= 1) return;
+            if (!map[mod]) map[mod] = { realizadas: 0, suspendidas: 0, pendientes: 0, total: 0 };
+            map[mod].total++;
+            if (s.ausente === '0') map[mod].realizadas++;
+            else if (s.ausente === '1') map[mod].suspendidas++;
+            else map[mod].pendientes++;
+        });
+        return Object.entries(map)
+            .filter(([, v]) => v.total >= 3) // solo módulos con al menos 3 cirugías
+            .sort((a, b) => b[1].total - a[1].total)
+            .slice(0, 8)
+            .map(([name, data]) => ({
+                name: name.length > 22 ? name.slice(0, 22) + '…' : name,
+                fullName: name,
+                realizadas: data.realizadas,
+                suspendidas: data.suspendidas,
+                pendientes: data.pendientes,
+                total: data.total,
+                rate: data.total > 0 ? ((data.realizadas / data.total) * 100).toFixed(0) : 0,
+            }));
+    }, [surgeries]);
+
+    // ═══ NEW: Evolución mensual de cirugías (por módulo top 5) ═══
+    const monthlyModuloTrend = useMemo(() => {
+        const top5Names = topModulos.slice(0, 5).map(m => m.fullName);
+        const monthMap = {};
+
+        surgeries.forEach(s => {
+            const mod = (s.modulo || '').trim();
+            if (!mod || !top5Names.includes(mod)) return;
+            const dateStr = s.fecha_cirugia || s.created_at;
+            if (!dateStr) return;
+            const d = new Date(dateStr);
+            const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            if (!monthMap[monthKey]) {
+                monthMap[monthKey] = {};
+                top5Names.forEach(n => monthMap[monthKey][n] = 0);
+            }
+            monthMap[monthKey][mod]++;
+        });
+
+        return Object.entries(monthMap)
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .slice(-12) // últimos 12 meses
+            .map(([month, data]) => {
+                const d = new Date(month + '-15');
+                const label = d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' });
+                return { month: label, ...data };
+            });
+    }, [surgeries, topModulos]);
+
+    const top5ModuloNames = useMemo(() => topModulos.slice(0, 5).map(m => m.fullName), [topModulos]);
+    const MODULO_COLORS = ['#6366F1', '#22C55E', '#F59E0B', '#EF4444', '#EC4899'];
+
+    // ═══ NEW: Médico × Módulo (cross-tabulation) ═══
+    const medicoModuloCross = useMemo(() => {
+        const top6Medicos = topMedicos.slice(0, 6).map(m => m.fullName);
+        const top6Modulos = topModulos.slice(0, 6).map(m => m.fullName);
+        if (top6Medicos.length === 0 || top6Modulos.length === 0) return { medicos: [], modulos: [], matrix: [] };
+
+        const matrix = top6Medicos.map(med => {
+            const row = { medico: med.length > 20 ? med.slice(0, 20) + '…' : med };
+            top6Modulos.forEach(mod => {
+                row[mod] = surgeries.filter(s => {
+                    const sMed = (s.medico || '').trim();
+                    const sMod = (s.modulo || '').trim();
+                    return sMed === med && sMod === mod;
+                }).length;
+            });
+            return row;
+        });
+
+        return { medicos: top6Medicos, modulos: top6Modulos, matrix };
+    }, [surgeries, topMedicos, topModulos]);
+
+    // ═══ NEW: Volumen mensual total de cirugías ═══
+    const monthlyVolume = useMemo(() => {
+        const map = {};
+        surgeries.forEach(s => {
+            const dateStr = s.fecha_cirugia || s.created_at;
+            if (!dateStr) return;
+            const d = new Date(dateStr);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            if (!map[key]) map[key] = { total: 0, realizadas: 0, suspendidas: 0 };
+            map[key].total++;
+            if (s.ausente === '0') map[key].realizadas++;
+            else if (s.ausente === '1') map[key].suspendidas++;
+        });
+        return Object.entries(map)
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .slice(-12)
+            .map(([month, data]) => {
+                const d = new Date(month + '-15');
+                return {
+                    month: d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }),
+                    ...data,
+                };
+            });
+    }, [surgeries]);
 
     // ── Export Functions ──
     const exportToExcel = useCallback(async () => {
@@ -327,13 +452,21 @@ export default function MetricsPanel({ addToast }) {
             topOS.forEach(o => osData.push([o.name, o.count]));
             XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(osData), 'Top Obras Sociales');
 
+            // Top Módulos
+            const modData = [['Módulo / Tipo de Cirugía', 'Cantidad', 'Realizadas', 'Suspendidas', 'Tasa Realización']];
+            topModulos.forEach(m => {
+                const comp = moduloCompletionRate.find(c => c.fullName === m.fullName);
+                modData.push([m.fullName, m.count, comp?.realizadas || 0, comp?.suspendidas || 0, (comp?.rate || 0) + '%']);
+            });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(modData), 'Top Módulos');
+
             XLSX.writeFile(wb, `metricas_admqui_${new Date().toISOString().split('T')[0]}.xlsx`);
             addToast?.('✅ Excel exportado correctamente', 'success');
         } catch (err) {
             console.error('Export error:', err);
             addToast?.('Error al exportar', 'error');
         }
-    }, [confirmacionRate, prevConfRate, confDelta, totalMessages, prevTotalMsg, msgDelta, uniquePhones, prevUniquePhones, phonesDelta, chatsInitiated, prevChatsInitiated, initDelta, responseRate, realizadas, suspendidas, dailyMessagesData, topMedicos, topOS, addToast]);
+    }, [confirmacionRate, prevConfRate, confDelta, totalMessages, prevTotalMsg, msgDelta, uniquePhones, prevUniquePhones, phonesDelta, chatsInitiated, prevChatsInitiated, initDelta, responseRate, realizadas, suspendidas, dailyMessagesData, topMedicos, topOS, topModulos, moduloCompletionRate, addToast]);
 
     const exportToPDF = useCallback(async () => {
         try {
@@ -645,6 +778,198 @@ export default function MetricsPanel({ addToast }) {
                                     </div>
                                 ))}
                             </div>
+                        </div>
+                    </div>
+
+                    {/* ═══ Row 4: Top Módulos (Cirugías más realizadas) ═══ */}
+                    <div className="metrics-panel__row">
+                        <div className="metrics-panel__card">
+                            <h3 className="metrics-panel__card-title">
+                                <Stethoscope size={16} /> Top Cirugías / Módulos
+                            </h3>
+                            {topModulos.length === 0 ? (
+                                <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
+                                    Sin datos de módulos disponibles
+                                </div>
+                            ) : (
+                                <div className="metrics-panel__ranking">
+                                    {topModulos.map((m, i) => (
+                                        <div key={i} className="metrics-panel__ranking-item">
+                                            <span className="metrics-panel__ranking-pos"
+                                                style={{ background: i < 3 ? ['#FFD700', '#C0C0C0', '#CD7F32'][i] + '20' : undefined,
+                                                         color: i < 3 ? ['#B8860B', '#808080', '#8B4513'][i] : undefined }}>
+                                                #{i + 1}
+                                            </span>
+                                            <span className="metrics-panel__ranking-name" title={m.fullName}>{m.name}</span>
+                                            <div className="metrics-panel__ranking-bar-wrap">
+                                                <div className="metrics-panel__ranking-bar"
+                                                    style={{ width: `${(m.count / topModulos[0].count) * 100}%`, background: COLORS[i % COLORS.length] }} />
+                                            </div>
+                                            <span className="metrics-panel__ranking-value" style={{ fontWeight: 800, fontSize: '0.85rem' }}>{m.count}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="metrics-panel__card">
+                            <h3 className="metrics-panel__card-title">
+                                <CheckCircle size={16} /> Tasa Realización por Módulo
+                            </h3>
+                            {moduloCompletionRate.length === 0 ? (
+                                <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
+                                    Datos insuficientes (mín. 3 cirugías por módulo)
+                                </div>
+                            ) : (
+                                <div style={{ width: '100%', height: 300 }}>
+                                    <ResponsiveContainer>
+                                        <BarChart data={moduloCompletionRate} layout="vertical" barGap={1}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+                                            <XAxis type="number" tick={{ fontSize: 11 }} stroke="#94A3B8" />
+                                            <YAxis dataKey="name" type="category" width={130} tick={{ fontSize: 10 }} stroke="#94A3B8" />
+                                            <Tooltip content={<CustomTooltip />} />
+                                            <Legend wrapperStyle={{ fontSize: '0.72rem' }} />
+                                            <Bar dataKey="realizadas" name="Realizadas" stackId="a" fill="#22C55E" radius={[0, 0, 0, 0]} barSize={18} />
+                                            <Bar dataKey="suspendidas" name="Suspendidas" stackId="a" fill="#EF4444" radius={[0, 0, 0, 0]} barSize={18} />
+                                            <Bar dataKey="pendientes" name="Pendientes" stackId="a" fill="#94A3B8" radius={[0, 4, 4, 0]} barSize={18} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* ═══ Row 5: Evolución mensual por módulo ═══ */}
+                    {monthlyModuloTrend.length > 1 && (
+                        <div className="metrics-panel__row">
+                            <div className="metrics-panel__card metrics-panel__card--wide" style={{ flex: '1 1 100%' }}>
+                                <h3 className="metrics-panel__card-title">
+                                    <TrendingUp size={16} /> Evolución Mensual — Top 5 Cirugías
+                                </h3>
+                                <div style={{ width: '100%', height: 320 }}>
+                                    <ResponsiveContainer>
+                                        <AreaChart data={monthlyModuloTrend}>
+                                            <defs>
+                                                {top5ModuloNames.map((name, i) => (
+                                                    <linearGradient key={name} id={`modGrad${i}`} x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor={MODULO_COLORS[i]} stopOpacity={0.2} />
+                                                        <stop offset="95%" stopColor={MODULO_COLORS[i]} stopOpacity={0} />
+                                                    </linearGradient>
+                                                ))}
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+                                            <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="#94A3B8" />
+                                            <YAxis tick={{ fontSize: 11 }} stroke="#94A3B8" />
+                                            <Tooltip content={<CustomTooltip />} />
+                                            <Legend wrapperStyle={{ fontSize: '0.72rem' }} />
+                                            {top5ModuloNames.map((name, i) => (
+                                                <Area
+                                                    key={name}
+                                                    type="monotone"
+                                                    dataKey={name}
+                                                    name={name.length > 25 ? name.slice(0, 25) + '…' : name}
+                                                    stroke={MODULO_COLORS[i]}
+                                                    fill={`url(#modGrad${i})`}
+                                                    strokeWidth={2.5}
+                                                    dot={{ fill: MODULO_COLORS[i], r: 3 }}
+                                                />
+                                            ))}
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ═══ Row 6: Médico × Módulo + Volumen Mensual ═══ */}
+                    <div className="metrics-panel__row">
+                        <div className="metrics-panel__card">
+                            <h3 className="metrics-panel__card-title">
+                                <Users size={16} /> Médico × Tipo de Cirugía
+                            </h3>
+                            {medicoModuloCross.matrix.length === 0 ? (
+                                <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
+                                    Sin datos cruzados disponibles
+                                </div>
+                            ) : (
+                                <div style={{ overflowX: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                                        <thead>
+                                            <tr>
+                                                <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: '#374151',
+                                                    borderBottom: '2px solid #E2E8F0', fontSize: '0.72rem' }}>Médico</th>
+                                                {medicoModuloCross.modulos.map((mod, i) => (
+                                                    <th key={i} style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 600,
+                                                        color: '#6B7280', borderBottom: '2px solid #E2E8F0', fontSize: '0.65rem',
+                                                        maxWidth: '90px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                                                        title={mod}>
+                                                        {mod.length > 12 ? mod.slice(0, 12) + '…' : mod}
+                                                    </th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {medicoModuloCross.matrix.map((row, ri) => (
+                                                <tr key={ri} style={{ borderBottom: '1px solid #F1F5F9' }}
+                                                    onMouseOver={e => e.currentTarget.style.background = '#F8FAFC'}
+                                                    onMouseOut={e => e.currentTarget.style.background = ''}>
+                                                    <td style={{ padding: '7px 10px', fontWeight: 600, color: '#374151', fontSize: '0.73rem' }}>
+                                                        {row.medico}
+                                                    </td>
+                                                    {medicoModuloCross.modulos.map((mod, ci) => {
+                                                        const val = row[mod] || 0;
+                                                        const maxVal = Math.max(...medicoModuloCross.matrix.map(r => r[mod] || 0));
+                                                        const intensity = maxVal > 0 ? val / maxVal : 0;
+                                                        return (
+                                                            <td key={ci} style={{
+                                                                padding: '7px 6px', textAlign: 'center', fontWeight: val > 0 ? 700 : 400,
+                                                                color: val > 0 ? '#1E293B' : '#CBD5E1',
+                                                                background: val > 0 ? `rgba(99, 102, 241, ${0.08 + intensity * 0.25})` : 'transparent',
+                                                                borderRadius: '4px',
+                                                                transition: 'all 0.15s',
+                                                            }}>
+                                                                {val || '·'}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="metrics-panel__card">
+                            <h3 className="metrics-panel__card-title">
+                                <Calendar size={16} /> Volumen Mensual de Cirugías
+                            </h3>
+                            {monthlyVolume.length === 0 ? (
+                                <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
+                                    Sin datos mensuales
+                                </div>
+                            ) : (
+                                <div style={{ width: '100%', height: 300 }}>
+                                    <ResponsiveContainer>
+                                        <BarChart data={monthlyVolume}>
+                                            <defs>
+                                                <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor="#6366F1" stopOpacity={0.9} />
+                                                    <stop offset="100%" stopColor="#6366F1" stopOpacity={0.4} />
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+                                            <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="#94A3B8" />
+                                            <YAxis tick={{ fontSize: 11 }} stroke="#94A3B8" />
+                                            <Tooltip content={<CustomTooltip />} />
+                                            <Legend wrapperStyle={{ fontSize: '0.72rem' }} />
+                                            <Bar dataKey="realizadas" name="Realizadas" stackId="vol" fill="#22C55E" radius={[0, 0, 0, 0]} barSize={24} />
+                                            <Bar dataKey="suspendidas" name="Suspendidas" stackId="vol" fill="#EF4444" radius={[0, 0, 0, 0]} barSize={24} />
+                                            <Bar dataKey="total" name="Cargadas" fill="url(#volGrad)" radius={[6, 6, 0, 0]} barSize={24} opacity={0.3} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </>
