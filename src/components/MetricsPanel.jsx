@@ -90,44 +90,74 @@ export default function MetricsPanel({ addToast }) {
         return { from: new Date(range.from.getTime() - dur), to: range.from };
     }, [range]);
 
+    // ── Pagination helper: fetches ALL rows bypassing Supabase 1000-row limit ──
+    const fetchAll = useCallback(async (table, columns, filters = {}) => {
+        const PAGE_SIZE = 1000;
+        let allData = [];
+        let from = 0;
+        let keepGoing = true;
+
+        while (keepGoing) {
+            let query = supabase.from(table).select(columns);
+            if (filters.gte) query = query.gte(filters.gte[0], filters.gte[1]);
+            if (filters.lte) query = query.lte(filters.lte[0], filters.lte[1]);
+            if (filters.lt)  query = query.lt(filters.lt[0], filters.lt[1]);
+            query = query.range(from, from + PAGE_SIZE - 1);
+
+            const { data, error } = await query;
+            if (error) throw error;
+            const rows = data || [];
+            allData = allData.concat(rows);
+            keepGoing = rows.length === PAGE_SIZE;
+            from += PAGE_SIZE;
+        }
+        return allData;
+    }, []);
+
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
-            const [surgeriesRes, eventsRes, messagesRes, linesRes, prevMsgRes, prevSurgRes] = await Promise.all([
-                supabase.from('surgeries').select('id, status, medico, obra_social, ausente, created_at, fecha_cirugia, modulo').limit(10000),
-                supabase.from('surgery_events').select('id, event_type, performed_by, created_at')
-                    .gte('created_at', range.from.toISOString())
-                    .lte('created_at', range.to.toISOString())
-                    .limit(10000),
-                supabase.from('whatsapp_messages').select('id, phone, direction, line_id, created_at, media_type, is_read')
-                    .gte('created_at', range.from.toISOString())
-                    .lte('created_at', range.to.toISOString())
-                    .limit(10000),
+            const fromISO = range.from.toISOString();
+            const toISO = range.to.toISOString();
+            const prevFromISO = prevRange.from.toISOString();
+            const prevToISO = prevRange.to.toISOString();
+
+            const [surgeriesData, eventsData, messagesData, linesRes, prevMsgData, prevSurgData] = await Promise.all([
+                // Surgeries — ALL (no date filter, includes full history)
+                fetchAll('surgeries', 'id, status, medico, obra_social, ausente, created_at, fecha_cirugia, modulo'),
+                // Events — current period
+                fetchAll('surgery_events', 'id, event_type, performed_by, created_at', {
+                    gte: ['created_at', fromISO], lte: ['created_at', toISO],
+                }),
+                // Messages — current period
+                fetchAll('whatsapp_messages', 'id, phone, direction, line_id, created_at, media_type, is_read', {
+                    gte: ['created_at', fromISO], lte: ['created_at', toISO],
+                }),
+                // Lines (small table, no pagination needed)
                 supabase.from('whatsapp_lines').select('id, label, phone, color, is_active'),
-                // Previous period for comparison
-                supabase.from('whatsapp_messages').select('id, phone, direction, line_id, created_at')
-                    .gte('created_at', prevRange.from.toISOString())
-                    .lt('created_at', prevRange.to.toISOString())
-                    .limit(10000),
-                supabase.from('surgeries').select('id, status, ausente, created_at')
-                    .gte('created_at', prevRange.from.toISOString())
-                    .lt('created_at', prevRange.to.toISOString())
-                    .limit(10000),
+                // Messages — previous period
+                fetchAll('whatsapp_messages', 'id, phone, direction, line_id, created_at', {
+                    gte: ['created_at', prevFromISO], lt: ['created_at', prevToISO],
+                }),
+                // Surgeries — previous period
+                fetchAll('surgeries', 'id, status, ausente, created_at', {
+                    gte: ['created_at', prevFromISO], lt: ['created_at', prevToISO],
+                }),
             ]);
 
-            setSurgeries(surgeriesRes.data || []);
-            setEvents(eventsRes.data || []);
-            setMessages(messagesRes.data || []);
+            setSurgeries(surgeriesData);
+            setEvents(eventsData);
+            setMessages(messagesData);
             setLines(linesRes.data || []);
-            setPrevMessages(prevMsgRes.data || []);
-            setPrevSurgeries(prevSurgRes.data || []);
+            setPrevMessages(prevMsgData);
+            setPrevSurgeries(prevSurgData);
         } catch (err) {
             console.error('MetricsPanel load error:', err);
             addToast?.('Error al cargar métricas', 'error');
         } finally {
             setLoading(false);
         }
-    }, [range, prevRange, addToast]);
+    }, [range, prevRange, addToast, fetchAll]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
