@@ -503,57 +503,256 @@ export default function MetricsPanel({ addToast }) {
             const { default: jsPDF } = await import('jspdf');
             const { default: autoTable } = await import('jspdf-autotable');
             const doc = new jsPDF();
+            const pageW = doc.internal.pageSize.getWidth();
+            const margin = 14;
+            const colW = (pageW - margin * 2);
+            let y = 0;
 
-            doc.setFontSize(16);
-            doc.text('Métricas ADM-QUI — Sanatorio Argentino', 14, 20);
-            doc.setFontSize(10);
-            doc.text(`Período: ${range.label} (${formatDateShort(range.from)} - ${formatDateShort(range.to)})`, 14, 28);
-            doc.text(`Generado: ${new Date().toLocaleString('es-AR')}`, 14, 34);
+            // ── Helper: Section title with colored bar ──
+            const sectionTitle = (title, color = [99, 102, 241]) => {
+                if (y > 250) { doc.addPage(); y = 20; }
+                y += 6;
+                doc.setFillColor(...color);
+                doc.rect(margin, y, colW, 7, 'F');
+                doc.setFontSize(10);
+                doc.setTextColor(255, 255, 255);
+                doc.text(title, margin + 4, y + 5.2);
+                doc.setTextColor(0, 0, 0);
+                y += 12;
+            };
 
-            // KPIs table
+            // ══════════════════════════════════════════════
+            //  PAGE 1: HEADER + KPIs
+            // ══════════════════════════════════════════════
+            // Header bar
+            doc.setFillColor(99, 102, 241);
+            doc.rect(0, 0, pageW, 32, 'F');
+            doc.setFontSize(18);
+            doc.setTextColor(255, 255, 255);
+            doc.text('Reporte de Métricas — ADM-QUI', margin, 14);
+            doc.setFontSize(9);
+            doc.text('Sanatorio Argentino · Innovación y Transformación Digital', margin, 22);
+            doc.text(`Generado: ${new Date().toLocaleString('es-AR')}`, margin, 28);
+            doc.setTextColor(0, 0, 0);
+
+            // Period info
+            y = 38;
+            doc.setFontSize(9);
+            doc.setTextColor(100, 100, 100);
+            doc.text(`Período analizado: ${range.label} — ${formatDateShort(range.from)} al ${formatDateShort(range.to)}`, margin, y);
+            doc.text(`Período comparativo: ${formatDateShort(prevRange.from)} al ${formatDateShort(prevRange.to)}`, margin, y + 5);
+            doc.setTextColor(0, 0, 0);
+            y += 14;
+
+            // ── 1. KPIs Principales ──
+            sectionTitle('1. INDICADORES CLAVE DE RENDIMIENTO (KPIs)');
             autoTable(doc, {
-                startY: 42,
-                head: [['Métrica', 'Valor', 'Variación vs período anterior']],
+                startY: y,
+                head: [['Indicador', 'Valor actual', 'Período anterior', 'Variación %']],
                 body: [
-                    ['Tasa de Confirmación', confirmacionRate + '%', confDelta + '%'],
-                    ['Total Mensajes', String(totalMessages), msgDelta + '%'],
-                    ['Pacientes Contactados', String(uniquePhones), phonesDelta + '%'],
-                    ['Chats Iniciados por SA', String(chatsInitiated), initDelta + '%'],
-                    ['Tasa de Respuesta', responseRate + '%', '—'],
-                    ['Cirugías Realizadas', String(realizadas), '—'],
-                    ['Cirugías Suspendidas', String(suspendidas), '—'],
+                    ['Tasa de Confirmación de Cirugías', confirmacionRate + '%', prevConfRate.toFixed(1) + '%', confDelta + '%'],
+                    ['Total de Mensajes WhatsApp', String(totalMessages), String(prevTotalMsg), msgDelta + '%'],
+                    ['Pacientes Contactados (únicos)', String(uniquePhones), String(prevUniquePhones), phonesDelta + '%'],
+                    ['Chats Iniciados por SA', String(chatsInitiated), String(prevChatsInitiated), initDelta + '%'],
+                    ['Tasa de Respuesta', responseRate + '%', '—', '—'],
+                    ['Cirugías Realizadas', String(realizadas), String(prevRealizadas), '—'],
+                    ['Cirugías Suspendidas', String(suspendidas), String(prevSuspendidas), '—'],
+                    ['Total Cirugías en Sistema', String(totalSurgeries), '', '—'],
+                    ['Eventos del Pipeline', String(events.length), '', '—'],
                 ],
                 theme: 'grid',
-                headStyles: { fillColor: [99, 102, 241] },
+                headStyles: { fillColor: [99, 102, 241], fontSize: 8, fontStyle: 'bold' },
+                bodyStyles: { fontSize: 8 },
+                alternateRowStyles: { fillColor: [248, 250, 252] },
+                columnStyles: { 0: { fontStyle: 'bold', cellWidth: 65 } },
+                margin: { left: margin, right: margin },
             });
+            y = doc.lastAutoTable.finalY + 4;
 
-            // Top médicos
-            const medBody = topMedicos.map(m => [m.name, String(m.count)]);
+            // ── 2. Mensajes Diarios ──
+            sectionTitle('2. DESGLOSE DE MENSAJES DIARIOS', [34, 197, 94]);
+            const dailyBody = dailyMessagesData.map(d => [d.day, String(d.outgoing), String(d.incoming), String(d.outgoing + d.incoming), String(d.initiated)]);
             autoTable(doc, {
-                startY: doc.lastAutoTable.finalY + 12,
-                head: [['Médico', 'Cirugías']],
-                body: medBody,
+                startY: y,
+                head: [['Día', 'Enviados', 'Recibidos', 'Total', 'Chats iniciados']],
+                body: dailyBody,
                 theme: 'striped',
-                headStyles: { fillColor: [34, 197, 94] },
+                headStyles: { fillColor: [34, 197, 94], fontSize: 7.5 },
+                bodyStyles: { fontSize: 7.5 },
+                margin: { left: margin, right: margin },
             });
+            y = doc.lastAutoTable.finalY + 4;
 
-            // Top OS
-            const osBody = topOS.map(o => [o.name, String(o.count)]);
+            // ── 3. Pipeline de Cirugías ──
+            sectionTitle('3. PIPELINE DE CIRUGÍAS (distribución por estado)', [168, 85, 247]);
+            const pipeBody = pipelineData.map(p => [p.name, String(p.value), totalSurgeries > 0 ? ((p.value / totalSurgeries) * 100).toFixed(1) + '%' : '0%']);
             autoTable(doc, {
-                startY: doc.lastAutoTable.finalY + 12,
-                head: [['Obra Social', 'Cirugías']],
-                body: osBody,
+                startY: y,
+                head: [['Estado', 'Cantidad', '% del total']],
+                body: pipeBody,
                 theme: 'striped',
-                headStyles: { fillColor: [59, 130, 246] },
+                headStyles: { fillColor: [168, 85, 247], fontSize: 8 },
+                bodyStyles: { fontSize: 8 },
+                margin: { left: margin, right: margin },
             });
+            y = doc.lastAutoTable.finalY + 4;
 
-            doc.save(`metricas_admqui_${new Date().toISOString().split('T')[0]}.pdf`);
+            // ── 4. Mensajes por Línea WhatsApp ──
+            sectionTitle('4. DISTRIBUCIÓN DE MENSAJES POR LÍNEA WHATSAPP', [59, 130, 246]);
+            const lineBody = messagesByLine.map(l => [l.name, String(l.outgoing), String(l.incoming), String(l.outgoing + l.incoming)]);
+            autoTable(doc, {
+                startY: y,
+                head: [['Línea', 'Enviados', 'Recibidos', 'Total']],
+                body: lineBody,
+                theme: 'striped',
+                headStyles: { fillColor: [59, 130, 246], fontSize: 8 },
+                bodyStyles: { fontSize: 8 },
+                margin: { left: margin, right: margin },
+            });
+            y = doc.lastAutoTable.finalY + 4;
+
+            // ── 5. Top Transiciones del Pipeline ──
+            if (topTransitions.length > 0) {
+                sectionTitle('5. TRANSICIONES MÁS FRECUENTES DEL PIPELINE', [20, 184, 166]);
+                autoTable(doc, {
+                    startY: y,
+                    head: [['Transición', 'Cantidad']],
+                    body: topTransitions.map(t => [t.name, String(t.count)]),
+                    theme: 'striped',
+                    headStyles: { fillColor: [20, 184, 166], fontSize: 8 },
+                    bodyStyles: { fontSize: 8 },
+                    margin: { left: margin, right: margin },
+                });
+                y = doc.lastAutoTable.finalY + 4;
+            }
+
+            // ── 6. Top Médicos ──
+            sectionTitle('6. TOP MÉDICOS POR CANTIDAD DE CIRUGÍAS', [34, 197, 94]);
+            autoTable(doc, {
+                startY: y,
+                head: [['#', 'Médico', 'Cirugías']],
+                body: topMedicos.map((m, i) => [String(i + 1), m.fullName || m.name, String(m.count)]),
+                theme: 'striped',
+                headStyles: { fillColor: [34, 197, 94], fontSize: 8 },
+                bodyStyles: { fontSize: 8 },
+                columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 2: { cellWidth: 20, halign: 'center', fontStyle: 'bold' } },
+                margin: { left: margin, right: margin },
+            });
+            y = doc.lastAutoTable.finalY + 4;
+
+            // ── 7. Top Obras Sociales ──
+            sectionTitle('7. TOP OBRAS SOCIALES', [59, 130, 246]);
+            autoTable(doc, {
+                startY: y,
+                head: [['#', 'Obra Social', 'Cirugías']],
+                body: topOS.map((o, i) => [String(i + 1), o.name, String(o.count)]),
+                theme: 'striped',
+                headStyles: { fillColor: [59, 130, 246], fontSize: 8 },
+                bodyStyles: { fontSize: 8 },
+                columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 2: { cellWidth: 20, halign: 'center', fontStyle: 'bold' } },
+                margin: { left: margin, right: margin },
+            });
+            y = doc.lastAutoTable.finalY + 4;
+
+            // ── 8. Top Módulos / Tipos de Cirugía ──
+            if (topModulos.length > 0) {
+                sectionTitle('8. TOP MÓDULOS / TIPOS DE CIRUGÍA MÁS FRECUENTES', [239, 68, 68]);
+                autoTable(doc, {
+                    startY: y,
+                    head: [['#', 'Módulo', 'Total', 'Realizadas', 'Suspendidas', 'Pend.', 'Tasa Realiz.']],
+                    body: topModulos.map((m, i) => {
+                        const comp = moduloCompletionRate.find(c => c.fullName === m.fullName);
+                        return [
+                            String(i + 1), m.fullName, String(m.count),
+                            String(comp?.realizadas || '—'), String(comp?.suspendidas || '—'),
+                            String(comp?.pendientes || '—'), (comp?.rate || '—') + (comp?.rate ? '%' : ''),
+                        ];
+                    }),
+                    theme: 'grid',
+                    headStyles: { fillColor: [239, 68, 68], fontSize: 7.5, fontStyle: 'bold' },
+                    bodyStyles: { fontSize: 7.5 },
+                    alternateRowStyles: { fillColor: [254, 242, 242] },
+                    columnStyles: {
+                        0: { cellWidth: 8, halign: 'center' },
+                        2: { halign: 'center', fontStyle: 'bold' },
+                        3: { halign: 'center' }, 4: { halign: 'center' },
+                        5: { halign: 'center' }, 6: { halign: 'center', fontStyle: 'bold' },
+                    },
+                    margin: { left: margin, right: margin },
+                });
+                y = doc.lastAutoTable.finalY + 4;
+            }
+
+            // ── 9. Médico × Módulo (cross-tabulation) ──
+            if (medicoModuloCross.matrix.length > 0) {
+                sectionTitle('9. CRUCE MÉDICO × TIPO DE CIRUGÍA', [236, 72, 153]);
+                const crossHead = ['Médico', ...medicoModuloCross.modulos.map(m => m.length > 15 ? m.slice(0, 15) + '…' : m)];
+                const crossBody = medicoModuloCross.matrix.map(row => {
+                    const cells = [row.medico];
+                    medicoModuloCross.modulos.forEach(mod => {
+                        cells.push(row[mod] > 0 ? String(row[mod]) : '·');
+                    });
+                    return cells;
+                });
+                autoTable(doc, {
+                    startY: y,
+                    head: [crossHead],
+                    body: crossBody,
+                    theme: 'grid',
+                    headStyles: { fillColor: [236, 72, 153], fontSize: 6.5, fontStyle: 'bold' },
+                    bodyStyles: { fontSize: 7, halign: 'center' },
+                    columnStyles: { 0: { halign: 'left', fontStyle: 'bold', cellWidth: 40 } },
+                    alternateRowStyles: { fillColor: [253, 242, 248] },
+                    margin: { left: margin, right: margin },
+                });
+                y = doc.lastAutoTable.finalY + 4;
+            }
+
+            // ── 10. Volumen Mensual de Cirugías ──
+            if (monthlyVolume.length > 0) {
+                sectionTitle('10. VOLUMEN MENSUAL DE CIRUGÍAS (últimos 12 meses)', [99, 102, 241]);
+                autoTable(doc, {
+                    startY: y,
+                    head: [['Mes', 'Total cargadas', 'Realizadas', 'Suspendidas', '% Realización']],
+                    body: monthlyVolume.map(m => [
+                        m.month, String(m.total), String(m.realizadas), String(m.suspendidas),
+                        m.total > 0 ? ((m.realizadas / m.total) * 100).toFixed(0) + '%' : '—',
+                    ]),
+                    theme: 'grid',
+                    headStyles: { fillColor: [99, 102, 241], fontSize: 8 },
+                    bodyStyles: { fontSize: 8 },
+                    alternateRowStyles: { fillColor: [238, 242, 255] },
+                    columnStyles: {
+                        1: { halign: 'center', fontStyle: 'bold' },
+                        2: { halign: 'center' }, 3: { halign: 'center' },
+                        4: { halign: 'center', fontStyle: 'bold' },
+                    },
+                    margin: { left: margin, right: margin },
+                });
+                y = doc.lastAutoTable.finalY + 4;
+            }
+
+            // ── Footer on every page ──
+            const totalPages = doc.internal.getNumberOfPages();
+            for (let p = 1; p <= totalPages; p++) {
+                doc.setPage(p);
+                doc.setFontSize(7);
+                doc.setTextColor(150, 150, 150);
+                doc.text(`Sanatorio Argentino — ADM-QUI · Página ${p} de ${totalPages}`, margin, doc.internal.pageSize.getHeight() - 8);
+                doc.text('Documento generado automáticamente — Confidencial', pageW - margin - 75, doc.internal.pageSize.getHeight() - 8);
+            }
+
+            doc.save(`reporte_metricas_admqui_${new Date().toISOString().split('T')[0]}.pdf`);
             addToast?.('✅ PDF exportado correctamente', 'success');
         } catch (err) {
             console.error('PDF export error:', err);
             addToast?.('Error al exportar PDF', 'error');
         }
-    }, [range, confirmacionRate, confDelta, totalMessages, msgDelta, uniquePhones, phonesDelta, chatsInitiated, initDelta, responseRate, realizadas, suspendidas, topMedicos, topOS, addToast]);
+    }, [range, prevRange, confirmacionRate, prevConfRate, confDelta, totalMessages, prevTotalMsg, msgDelta,
+        uniquePhones, prevUniquePhones, phonesDelta, chatsInitiated, prevChatsInitiated, initDelta,
+        responseRate, realizadas, prevRealizadas, suspendidas, prevSuspendidas, totalSurgeries, events,
+        dailyMessagesData, pipelineData, messagesByLine, topTransitions, topMedicos, topOS,
+        topModulos, moduloCompletionRate, medicoModuloCross, monthlyVolume, addToast]);
 
     // Custom tooltip
     const CustomTooltip = ({ active, payload, label }) => {
