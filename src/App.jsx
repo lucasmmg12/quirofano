@@ -15,6 +15,7 @@ import { sendWhatsAppMessage, formatOrderForWhatsApp } from './services/builderb
 import { createOrder, markOrderPrinted, markOrderSent, fetchOrderHistory } from './services/dataService';
 import { getCurrentUser, logout as authLogout } from './services/authService';
 import { logAction } from './services/auditService';
+import { subscribeToAllIncoming, fetchUnreadCounts } from './services/chatService';
 import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
 import SurgeryPanel from './components/SurgeryPanel.jsx';
 import ConfigPanel from './components/ConfigPanel.jsx';
@@ -87,6 +88,9 @@ function App({ currentUser, onLogout }) {
     // Toast notifications
     const [toasts, setToasts] = useState([]);
 
+    // === GLOBAL UNREAD MESSAGE COUNT (persists across all views) ===
+    const [globalUnreadCount, setGlobalUnreadCount] = useState(0);
+
     const addToast = useCallback((message, type = 'info') => {
         const id = uuidv4();
         setToasts(prev => [...prev, { id, message, type }]);
@@ -94,6 +98,78 @@ function App({ currentUser, onLogout }) {
             setToasts(prev => prev.filter(t => t.id !== id));
         }, 3500);
     }, []);
+
+    // === GLOBAL NOTIFICATION SOUND (WhatsApp style) ===
+    const playNotificationSound = useCallback(() => {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc1 = ctx.createOscillator();
+            const gain1 = ctx.createGain();
+            osc1.type = 'sine';
+            osc1.frequency.value = 880;
+            gain1.gain.setValueAtTime(0.15, ctx.currentTime);
+            gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+            osc1.connect(gain1);
+            gain1.connect(ctx.destination);
+            osc1.start(ctx.currentTime);
+            osc1.stop(ctx.currentTime + 0.15);
+            const osc2 = ctx.createOscillator();
+            const gain2 = ctx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.value = 1175;
+            gain2.gain.setValueAtTime(0.12, ctx.currentTime + 0.12);
+            gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+            osc2.connect(gain2);
+            gain2.connect(ctx.destination);
+            osc2.start(ctx.currentTime + 0.12);
+            osc2.stop(ctx.currentTime + 0.3);
+            setTimeout(() => ctx.close(), 500);
+        } catch (e) { /* Audio not available */ }
+    }, []);
+
+    // Ref to track activeView inside realtime callback without re-subscribing
+    const activeViewRef = useRef(activeView);
+    useEffect(() => { activeViewRef.current = activeView; }, [activeView]);
+
+    // === GLOBAL REALTIME SUBSCRIPTION — works from ANY view ===
+    // Dependencies: only stable refs, so the channel stays open permanently
+    useEffect(() => {
+        // Load initial unread count
+        fetchUnreadCounts().then(counts => {
+            const total = Object.values(counts).reduce((sum, c) => sum + c, 0);
+            setGlobalUnreadCount(total);
+        }).catch(console.error);
+
+        // Subscribe to ALL incoming messages globally
+        const unsub = subscribeToAllIncoming((newMsg) => {
+            if (newMsg.direction === 'incoming') {
+                playNotificationSound();
+                setGlobalUnreadCount(prev => prev + 1);
+                // Show toast notification when NOT on messaging view
+                if (activeViewRef.current !== 'mensajeria') {
+                    const senderName = newMsg.sender_name || newMsg.phone;
+                    const preview = (newMsg.content || '📎 Media').substring(0, 40);
+                    addToast(`💬 ${senderName}: ${preview}`, 'info');
+                }
+            }
+        });
+
+        return () => unsub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [playNotificationSound, addToast]);
+
+    // Reset unread count when entering messaging view
+    useEffect(() => {
+        if (activeView === 'mensajeria') {
+            // Refresh unread count when leaving messaging (it may have been marked as read)
+            return () => {
+                fetchUnreadCounts().then(counts => {
+                    const total = Object.values(counts).reduce((sum, c) => sum + c, 0);
+                    setGlobalUnreadCount(total);
+                }).catch(console.error);
+            };
+        }
+    }, [activeView]);
 
     // === CART OPERATIONS (unified: prácticas + internación) ===
     const handleAddToCart = useCallback((practice) => {
@@ -288,6 +364,7 @@ function App({ currentUser, onLogout }) {
                 onToggle={() => setSidebarCollapsed(prev => { const next = !prev; localStorage.setItem('sidebar_collapsed', next); return next; })}
                 activeView={activeView}
                 onViewChange={setActiveView}
+                unreadMessageCount={globalUnreadCount}
             />
 
             <main className={`main ${sidebarCollapsed ? 'main--expanded' : ''}`}>

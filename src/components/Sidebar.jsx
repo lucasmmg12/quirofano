@@ -5,7 +5,7 @@ import {
     ClipboardPlus, BarChart3,
 } from 'lucide-react';
 
-export default function Sidebar({ collapsed, onToggle, activeView, onViewChange }) {
+export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0 }) {
     const [pedidosOpen, setPedidosOpen] = useState(true);
 
     // Sub-items dentro de "Emisión de Pedidos" — UNIFICADO (sin Internación separada)
@@ -63,9 +63,34 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange 
                             className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
                             onClick={() => onViewChange('mensajeria')}
                             title={collapsed ? 'Mensajería' : undefined}
+                            style={{ position: 'relative' }}
                         >
                             <MessageCircle size={20} className="sidebar__item-icon" />
                             {!collapsed && <span className="sidebar__item-label">Mensajería</span>}
+                            {unreadMessageCount > 0 && (
+                                <span style={{
+                                    position: collapsed ? 'absolute' : 'relative',
+                                    top: collapsed ? '4px' : 'auto',
+                                    right: collapsed ? '8px' : 'auto',
+                                    marginLeft: collapsed ? 0 : 'auto',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    minWidth: '20px',
+                                    height: '20px',
+                                    padding: '0 5px',
+                                    borderRadius: '10px',
+                                    background: '#EF4444',
+                                    color: '#fff',
+                                    fontSize: '0.65rem',
+                                    fontWeight: 800,
+                                    lineHeight: 1,
+                                    animation: 'pulse 2s ease-in-out infinite',
+                                    boxShadow: '0 0 8px rgba(239, 68, 68, 0.4)',
+                                }}>
+                                    {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                                </span>
+                            )}
                             {isActive && <div className="sidebar__item-indicator" />}
                         </button>
                     );
