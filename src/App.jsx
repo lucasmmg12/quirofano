@@ -26,6 +26,7 @@ import MessagingPanel from './components/MessagingPanel.jsx';
 import PedidosMarcela from './components/PedidosMarcela.jsx';
 import WhatsAppLineStatus from './components/WhatsAppLineStatus.jsx';
 import MetricsPanel from './components/MetricsPanel.jsx';
+import TurnoAdminPanel from './components/TurnoAdminPanel.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -631,6 +632,10 @@ function App({ currentUser, onLogout }) {
                 )}
 
 
+
+                {activeView === 'turnos' && (
+                    <TurnoAdminPanel addToast={addToast} currentUser={currentUser} />
+                )}
 
                 {activeView === 'config' && (
                     <ConfigPanel addToast={addToast} />
