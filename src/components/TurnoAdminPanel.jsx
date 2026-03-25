@@ -39,6 +39,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
     const [activeTimers, setActiveTimers] = useState({}); // turnoId → elapsed seconds
     const timerInterval = useRef(null);
     const [derivarModal, setDerivarModal] = useState(null); // turnoId
+    const [cancelarModal, setCancelarModal] = useState(null); // turno object
 
     const empleadoNombre = currentUser?.nombre || 'Administrador';
     const empleadoBox = boxFilter || 1;
@@ -140,16 +141,16 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
         }
     }, [activeTimers, addToast, loadData]);
 
-    const handleCancelar = useCallback(async (turno) => {
-        if (!window.confirm(`¿Cancelar el turno ${turno.numero_turno}?`)) return;
+    const handleCancelar = useCallback(async (turnoId, motivo) => {
         try {
-            await cancelarTurno(turno.id);
-            addToast?.(`Turno ${turno.numero_turno} cancelado`, 'info');
+            await cancelarTurno(turnoId, motivo, empleadoNombre);
+            setCancelarModal(null);
+            addToast?.(`Turno cancelado: ${motivo}`, 'info');
             loadData();
         } catch (err) {
             addToast?.('Error al cancelar turno', 'error');
         }
-    }, [addToast, loadData]);
+    }, [empleadoNombre, addToast, loadData]);
 
     const handleDerivar = useCallback(async (turnoId, nuevoBox) => {
         try {
@@ -345,7 +346,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     onLlamar={handleLlamar}
                                     onIniciar={handleIniciar}
                                     onFinalizar={handleFinalizar}
-                                    onCancelar={handleCancelar}
+                                    onCancelar={() => setCancelarModal(turno)}
                                     onDerivar={() => setDerivarModal(turno.id)}
                                     formatTime={formatTime}
                                     getTimeSince={getTimeSince}
@@ -379,7 +380,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     onLlamar={handleLlamar}
                                     onIniciar={handleIniciar}
                                     onFinalizar={handleFinalizar}
-                                    onCancelar={handleCancelar}
+                                    onCancelar={() => setCancelarModal(turno)}
                                     onDerivar={() => setDerivarModal(turno.id)}
                                     formatTime={formatTime}
                                     getTimeSince={getTimeSince}
@@ -467,10 +468,19 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                             border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#64748B',
                             cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem',
                         }}>
-                            Cancelar
+                            Volver
                         </button>
                     </div>
                 </div>
+            )}
+
+            {/* ═══ MODAL: CANCELAR TURNO ═══ */}
+            {cancelarModal && (
+                <CancelarModal
+                    turno={cancelarModal}
+                    onConfirm={(motivo) => handleCancelar(cancelarModal.id, motivo)}
+                    onClose={() => setCancelarModal(null)}
+                />
             )}
 
             <style>{`
@@ -604,7 +614,7 @@ function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, o
                         <button onClick={onDerivar} style={{ ...s.turnoActionBtn, background: '#F0F4F8', color: '#475569', border: '1px solid #E2E8F0' }}>
                             <ArrowRightLeft size={14} /> Derivar
                         </button>
-                        <button onClick={() => onCancelar(turno)} style={{ ...s.turnoActionBtn, background: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA' }}>
+                        <button onClick={() => onCancelar()} style={{ ...s.turnoActionBtn, background: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA' }} title="Cancelar turno">
                             <XCircle size={14} />
                         </button>
                     </>
@@ -617,7 +627,7 @@ function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, o
                         <button onClick={() => onLlamar(turno)} style={{ ...s.turnoActionBtn, background: '#DBEAFE', color: '#3B82F6', border: '1px solid #93C5FD' }}>
                             <PhoneCall size={14} /> Re-llamar
                         </button>
-                        <button onClick={() => onCancelar(turno)} style={{ ...s.turnoActionBtn, background: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA' }}>
+                        <button onClick={() => onCancelar()} style={{ ...s.turnoActionBtn, background: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA' }} title="Cancelar turno">
                             <XCircle size={14} />
                         </button>
                     </>
@@ -632,6 +642,147 @@ function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, o
                         <Square size={14} /> Finalizar Atención
                     </button>
                 )}
+            </div>
+        </div>
+    );
+}
+
+// ─── Componente: Modal de Cancelación ───
+const MOTIVOS_CANCELACION = [
+    { id: 'retiro', label: 'Paciente se retiró', icon: '🚶', color: '#F59E0B', desc: 'El paciente abandonó la espera' },
+    { id: 'atendido', label: 'Ya fue atendido', icon: '✅', color: '#16A34A', desc: 'El paciente fue atendido por otra vía' },
+    { id: 'duplicado', label: 'Turno duplicado', icon: '📋', color: '#6366F1', desc: 'Se generó un turno de más' },
+    { id: 'error', label: 'Error de carga', icon: '⚠️', color: '#EF4444', desc: 'Se cargó el turno por error' },
+];
+
+function CancelarModal({ turno, onConfirm, onClose }) {
+    const [motivoCustom, setMotivoCustom] = useState('');
+    const [showCustom, setShowCustom] = useState(false);
+
+    return (
+        <div style={s.modalOverlay} onClick={onClose}>
+            <div style={{ ...s.modal, maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+                {/* Header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                    <div style={{
+                        width: '36px', height: '36px', borderRadius: '10px',
+                        background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                        <XCircle size={18} style={{ color: '#DC2626' }} />
+                    </div>
+                    <div>
+                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0D3B66' }}>
+                            Cancelar Turno
+                        </h3>
+                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                            {turno.numero_turno} {turno.nombre_paciente ? `· ${turno.nombre_paciente}` : turno.dni ? `· DNI ${turno.dni}` : ''}
+                        </span>
+                    </div>
+                </div>
+
+                <p style={{ margin: '12px 0 16px', fontSize: '0.82rem', color: '#64748B', lineHeight: 1.4 }}>
+                    Seleccioná el motivo de la cancelación. Esto queda registrado para auditoría.
+                </p>
+
+                {/* Motivos predefinidos */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {MOTIVOS_CANCELACION.map(m => (
+                        <button
+                            key={m.id}
+                            onClick={() => onConfirm(m.label)}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '12px',
+                                padding: '14px 16px', borderRadius: '12px',
+                                border: `1.5px solid ${m.color}25`,
+                                background: `${m.color}06`,
+                                cursor: 'pointer', transition: 'all 0.15s',
+                                textAlign: 'left',
+                            }}
+                            onMouseEnter={e => {
+                                e.currentTarget.style.background = `${m.color}12`;
+                                e.currentTarget.style.borderColor = `${m.color}40`;
+                                e.currentTarget.style.transform = 'translateX(4px)';
+                            }}
+                            onMouseLeave={e => {
+                                e.currentTarget.style.background = `${m.color}06`;
+                                e.currentTarget.style.borderColor = `${m.color}25`;
+                                e.currentTarget.style.transform = 'translateX(0)';
+                            }}
+                        >
+                            <span style={{ fontSize: '1.3rem' }}>{m.icon}</span>
+                            <div style={{ flex: 1 }}>
+                                <span style={{ display: 'block', fontSize: '0.88rem', fontWeight: 700, color: '#0D3B66' }}>
+                                    {m.label}
+                                </span>
+                                <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>{m.desc}</span>
+                            </div>
+                        </button>
+                    ))}
+
+                    {/* Otro motivo */}
+                    {!showCustom ? (
+                        <button
+                            onClick={() => setShowCustom(true)}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '12px',
+                                padding: '14px 16px', borderRadius: '12px',
+                                border: '1.5px solid #E2E8F0',
+                                background: '#FAFBFC',
+                                cursor: 'pointer', transition: 'all 0.15s',
+                                textAlign: 'left',
+                            }}
+                        >
+                            <span style={{ fontSize: '1.3rem' }}>💬</span>
+                            <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#64748B' }}>
+                                Otro motivo...
+                            </span>
+                        </button>
+                    ) : (
+                        <div style={{
+                            padding: '14px', borderRadius: '12px',
+                            border: '1.5px solid #3B82F630',
+                            background: '#3B82F606',
+                        }}>
+                            <input
+                                type="text"
+                                autoFocus
+                                placeholder="Describí el motivo..."
+                                value={motivoCustom}
+                                onChange={e => setMotivoCustom(e.target.value)}
+                                style={{
+                                    width: '100%', padding: '10px 12px', borderRadius: '8px',
+                                    border: '1.5px solid #E2E8F0', fontSize: '0.88rem',
+                                    color: '#0D3B66', outline: 'none', boxSizing: 'border-box',
+                                    marginBottom: '8px',
+                                }}
+                            />
+                            <button
+                                onClick={() => motivoCustom.trim() && onConfirm(motivoCustom.trim())}
+                                disabled={!motivoCustom.trim()}
+                                style={{
+                                    width: '100%', padding: '10px', borderRadius: '8px',
+                                    border: 'none',
+                                    background: motivoCustom.trim() ? '#DC2626' : '#E2E8F0',
+                                    color: motivoCustom.trim() ? '#fff' : '#94A3B8',
+                                    fontSize: '0.85rem', fontWeight: 700,
+                                    cursor: motivoCustom.trim() ? 'pointer' : 'not-allowed',
+                                    transition: 'all 0.15s',
+                                }}
+                            >
+                                Confirmar cancelación
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Botón volver */}
+                <button onClick={onClose} style={{
+                    width: '100%', marginTop: '12px', padding: '12px', borderRadius: '10px',
+                    border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#64748B',
+                    cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem',
+                }}>
+                    Volver
+                </button>
             </div>
         </div>
     );

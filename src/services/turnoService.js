@@ -167,10 +167,15 @@ export async function finalizarAtencion(turnoId, notas = null) {
 }
 
 // ─── Cancelar Turno ───
-export async function cancelarTurno(turnoId) {
+export async function cancelarTurno(turnoId, motivo = null, canceladoPor = null) {
     const { error } = await supabase
         .from('turnos_cola')
-        .update({ estado: 'cancelado', finalizado_at: new Date().toISOString() })
+        .update({
+            estado: 'cancelado',
+            finalizado_at: new Date().toISOString(),
+            motivo_cancelacion: motivo,
+            cancelado_por: canceladoPor,
+        })
         .eq('id', turnoId);
     if (error) throw error;
 }

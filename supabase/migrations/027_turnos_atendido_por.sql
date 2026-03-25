@@ -5,6 +5,8 @@
 
 ALTER TABLE turnos_cola ADD COLUMN IF NOT EXISTS atendido_por TEXT;
 ALTER TABLE turnos_cola ADD COLUMN IF NOT EXISTS nombre_paciente TEXT;
+ALTER TABLE turnos_cola ADD COLUMN IF NOT EXISTS motivo_cancelacion TEXT;
+ALTER TABLE turnos_cola ADD COLUMN IF NOT EXISTS cancelado_por TEXT;
 
 -- Políticas SELECT (DROP IF EXISTS + CREATE)
 DO $$ BEGIN
