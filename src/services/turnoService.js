@@ -99,17 +99,14 @@ export async function fetchAtendidosHoy() {
 // ─── Llamar Turno ───
 export async function llamarTurno(turnoId) {
     const ahora = new Date().toISOString();
-    const { data, error } = await supabase
+    const { error } = await supabase
         .from('turnos_cola')
         .update({
             estado: 'llamando',
             llamado_at: ahora,
         })
-        .eq('id', turnoId)
-        .select()
-        .single();
+        .eq('id', turnoId);
     if (error) throw error;
-    return data;
 }
 
 // ─── Iniciar Atención ───
@@ -178,14 +175,11 @@ export async function cancelarTurno(turnoId) {
 
 // ─── Derivar a otro Box ───
 export async function derivarTurno(turnoId, nuevoBox) {
-    const { data, error } = await supabase
+    const { error } = await supabase
         .from('turnos_cola')
         .update({ box_asignado: nuevoBox, estado: 'esperando', llamado_at: null })
-        .eq('id', turnoId)
-        .select()
-        .single();
+        .eq('id', turnoId);
     if (error) throw error;
-    return data;
 }
 
 // ─── Suscripción Realtime ───

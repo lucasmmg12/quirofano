@@ -69,13 +69,28 @@ export default function TurnoKiosco() {
             const cfgItem = config.find(c => c.tipo_tramite === tipo);
             const boxAsignado = cfgItem?.box_default || 1;
 
-            // 3. Insertar turno
+            // 3. Buscar nombre del paciente por DNI (solo se muestra en admin, no en kiosco)
+            let nombrePaciente = null;
+            if (dni.trim()) {
+                const { data: paciente } = await supabase
+                    .from('hospital_pacientes')
+                    .select('nombre')
+                    .eq('dni', dni.trim())
+                    .limit(1)
+                    .maybeSingle();
+                if (paciente?.nombre) {
+                    nombrePaciente = paciente.nombre;
+                }
+            }
+
+            // 4. Insertar turno
             const { data: turnoData, error: insertErr } = await supabase
                 .from('turnos_cola')
                 .insert({
                     numero_turno: numData,
                     tipo_tramite: tipo,
                     dni: dni.trim() || null,
+                    nombre_paciente: nombrePaciente,
                     box_asignado: boxAsignado,
                     estado: 'esperando',
                 })

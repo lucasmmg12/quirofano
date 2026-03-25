@@ -401,9 +401,10 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                         <div style={s.atendidosTable}>
                             <div style={s.atTableHead}>
                                 <span style={{ flex: '0 0 70px' }}>Turno</span>
-                                <span style={{ flex: 1 }}>Trámite</span>
-                                <span style={{ flex: '0 0 60px' }}>Box</span>
-                                <span style={{ flex: '0 0 60px' }}>DNI</span>
+                                <span style={{ flex: 1 }}>Paciente</span>
+                                <span style={{ flex: '0 0 120px' }}>Trámite</span>
+                                <span style={{ flex: '0 0 50px' }}>Box</span>
+                                <span style={{ flex: '0 0 80px' }}>DNI</span>
                                 <span style={{ flex: '0 0 70px' }}>Hora</span>
                             </div>
                             {atendidos.slice(0, 30).map(t => {
@@ -411,9 +412,10 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                 return (
                                     <div key={t.id} style={s.atTableRow}>
                                         <span style={{ flex: '0 0 70px', fontWeight: 700, color: cfg.color }}>{t.numero_turno}</span>
-                                        <span style={{ flex: 1, color: '#475569' }}>{cfg.label}</span>
-                                        <span style={{ flex: '0 0 60px', color: '#64748B' }}>Box {t.box_asignado}</span>
-                                        <span style={{ flex: '0 0 60px', color: '#64748B', fontSize: '0.78rem' }}>{t.dni || '—'}</span>
+                                        <span style={{ flex: 1, color: '#0D3B66', fontWeight: t.nombre_paciente ? 600 : 400 }}>{t.nombre_paciente || '—'}</span>
+                                        <span style={{ flex: '0 0 120px', color: '#475569' }}>{cfg.label}</span>
+                                        <span style={{ flex: '0 0 50px', color: '#64748B' }}>Box {t.box_asignado}</span>
+                                        <span style={{ flex: '0 0 80px', color: '#64748B', fontSize: '0.78rem' }}>{t.dni || '—'}</span>
                                         <span style={{ flex: '0 0 70px', color: '#94A3B8', fontSize: '0.78rem' }}>{formatTime(t.finalizado_at)}</span>
                                     </div>
                                 );
@@ -527,6 +529,15 @@ function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, o
 
             {/* Info grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '12px' }}>
+                {turno.nombre_paciente && (
+                    <div style={{ ...s.infoCell, gridColumn: '1 / -1', background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.1)' }}>
+                        <span style={s.infoCellLabel}>Paciente</span>
+                        <span style={{ ...s.infoCellValue, fontSize: '0.88rem' }}>
+                            <User size={13} style={{ marginRight: '4px', verticalAlign: 'middle', color: '#3B82F6' }} />
+                            {turno.nombre_paciente}
+                        </span>
+                    </div>
+                )}
                 <div style={s.infoCell}>
                     <span style={s.infoCellLabel}>Trámite</span>
                     <span style={{ ...s.infoCellValue, color: config.color }}>{config.label || turno.tipo_tramite}</span>
