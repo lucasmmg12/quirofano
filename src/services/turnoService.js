@@ -97,14 +97,16 @@ export async function fetchAtendidosHoy() {
 }
 
 // ─── Llamar Turno ───
-export async function llamarTurno(turnoId) {
+export async function llamarTurno(turnoId, empleadoNombre = null) {
     const ahora = new Date().toISOString();
+    const updateData = {
+        estado: 'llamando',
+        llamado_at: ahora,
+    };
+    if (empleadoNombre) updateData.atendido_por = empleadoNombre;
     const { error } = await supabase
         .from('turnos_cola')
-        .update({
-            estado: 'llamando',
-            llamado_at: ahora,
-        })
+        .update(updateData)
         .eq('id', turnoId);
     if (error) throw error;
 }
@@ -113,10 +115,10 @@ export async function llamarTurno(turnoId) {
 export async function iniciarAtencion(turnoId, empleadoNombre, boxNumero) {
     const ahora = new Date().toISOString();
 
-    // Actualizar estado del turno
+    // Actualizar estado del turno + quién atiende
     const { error: updateErr } = await supabase
         .from('turnos_cola')
-        .update({ estado: 'en_atencion' })
+        .update({ estado: 'en_atencion', atendido_por: empleadoNombre })
         .eq('id', turnoId);
     if (updateErr) throw updateErr;
 

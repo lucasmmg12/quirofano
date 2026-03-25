@@ -110,13 +110,13 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
     // ─── Acciones ───
     const handleLlamar = useCallback(async (turno) => {
         try {
-            await llamarTurno(turno.id);
+            await llamarTurno(turno.id, empleadoNombre);
             addToast?.(`Llamando turno ${turno.numero_turno}`, 'info');
             loadData();
         } catch (err) {
             addToast?.('Error al llamar turno', 'error');
         }
-    }, [addToast, loadData]);
+    }, [empleadoNombre, addToast, loadData]);
 
     const handleIniciar = useCallback(async (turno) => {
         try {
@@ -403,18 +403,16 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                 <span style={{ flex: '0 0 70px' }}>Turno</span>
                                 <span style={{ flex: 1 }}>Paciente</span>
                                 <span style={{ flex: '0 0 110px' }}>Trámite</span>
-                                <span style={{ flex: '0 0 50px' }}>Box</span>
+                                <span style={{ flex: '0 0 110px' }}>Atendido por</span>
                                 <span style={{ flex: '0 0 75px' }}>Espera</span>
                                 <span style={{ flex: '0 0 75px' }}>Atención</span>
                                 <span style={{ flex: '0 0 60px' }}>Hora</span>
                             </div>
                             {atendidos.slice(0, 30).map(t => {
                                 const cfg = getCfgForType(t.tipo_tramite);
-                                // Tiempo de espera: created_at → llamado_at
                                 const esperaMins = t.llamado_at && t.created_at
                                     ? Math.floor((new Date(t.llamado_at) - new Date(t.created_at)) / 60000)
                                     : null;
-                                // Tiempo de atención: llamado_at → finalizado_at
                                 const atencionMins = t.finalizado_at && t.llamado_at
                                     ? Math.floor((new Date(t.finalizado_at) - new Date(t.llamado_at)) / 60000)
                                     : null;
@@ -425,7 +423,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                         <span style={{ flex: '0 0 70px', fontWeight: 700, color: cfg.color }}>{t.numero_turno}</span>
                                         <span style={{ flex: 1, color: '#0D3B66', fontWeight: t.nombre_paciente ? 600 : 400 }}>{t.nombre_paciente || '—'}</span>
                                         <span style={{ flex: '0 0 110px', color: '#475569' }}>{cfg.label}</span>
-                                        <span style={{ flex: '0 0 50px', color: '#64748B' }}>Box {t.box_asignado}</span>
+                                        <span style={{ flex: '0 0 110px', color: '#6366F1', fontWeight: 600, fontSize: '0.78rem' }}>{t.atendido_por || '—'}</span>
                                         <span style={{ flex: '0 0 75px', fontWeight: 700, color: esperaColor, fontSize: '0.8rem' }}>
                                             {esperaMins != null ? `${esperaMins}m` : '—'}
                                         </span>
