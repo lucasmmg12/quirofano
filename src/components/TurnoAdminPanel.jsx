@@ -402,21 +402,37 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                             <div style={s.atTableHead}>
                                 <span style={{ flex: '0 0 70px' }}>Turno</span>
                                 <span style={{ flex: 1 }}>Paciente</span>
-                                <span style={{ flex: '0 0 120px' }}>Trámite</span>
+                                <span style={{ flex: '0 0 110px' }}>Trámite</span>
                                 <span style={{ flex: '0 0 50px' }}>Box</span>
-                                <span style={{ flex: '0 0 80px' }}>DNI</span>
-                                <span style={{ flex: '0 0 70px' }}>Hora</span>
+                                <span style={{ flex: '0 0 75px' }}>Espera</span>
+                                <span style={{ flex: '0 0 75px' }}>Atención</span>
+                                <span style={{ flex: '0 0 60px' }}>Hora</span>
                             </div>
                             {atendidos.slice(0, 30).map(t => {
                                 const cfg = getCfgForType(t.tipo_tramite);
+                                // Tiempo de espera: created_at → llamado_at
+                                const esperaMins = t.llamado_at && t.created_at
+                                    ? Math.floor((new Date(t.llamado_at) - new Date(t.created_at)) / 60000)
+                                    : null;
+                                // Tiempo de atención: llamado_at → finalizado_at
+                                const atencionMins = t.finalizado_at && t.llamado_at
+                                    ? Math.floor((new Date(t.finalizado_at) - new Date(t.llamado_at)) / 60000)
+                                    : null;
+                                const esperaColor = esperaMins > 10 ? '#EF4444' : esperaMins > 5 ? '#F59E0B' : '#16A34A';
+                                const atencionColor = atencionMins > 15 ? '#EF4444' : atencionMins > 8 ? '#F59E0B' : '#3B82F6';
                                 return (
                                     <div key={t.id} style={s.atTableRow}>
                                         <span style={{ flex: '0 0 70px', fontWeight: 700, color: cfg.color }}>{t.numero_turno}</span>
                                         <span style={{ flex: 1, color: '#0D3B66', fontWeight: t.nombre_paciente ? 600 : 400 }}>{t.nombre_paciente || '—'}</span>
-                                        <span style={{ flex: '0 0 120px', color: '#475569' }}>{cfg.label}</span>
+                                        <span style={{ flex: '0 0 110px', color: '#475569' }}>{cfg.label}</span>
                                         <span style={{ flex: '0 0 50px', color: '#64748B' }}>Box {t.box_asignado}</span>
-                                        <span style={{ flex: '0 0 80px', color: '#64748B', fontSize: '0.78rem' }}>{t.dni || '—'}</span>
-                                        <span style={{ flex: '0 0 70px', color: '#94A3B8', fontSize: '0.78rem' }}>{formatTime(t.finalizado_at)}</span>
+                                        <span style={{ flex: '0 0 75px', fontWeight: 700, color: esperaColor, fontSize: '0.8rem' }}>
+                                            {esperaMins != null ? `${esperaMins}m` : '—'}
+                                        </span>
+                                        <span style={{ flex: '0 0 75px', fontWeight: 700, color: atencionColor, fontSize: '0.8rem' }}>
+                                            {atencionMins != null ? `${atencionMins}m` : '—'}
+                                        </span>
+                                        <span style={{ flex: '0 0 60px', color: '#94A3B8', fontSize: '0.75rem' }}>{formatTime(t.finalizado_at)}</span>
                                     </div>
                                 );
                             })}
@@ -479,6 +495,16 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
 function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, onCancelar, onDerivar, formatTime, getTimeSince, formatSeconds }) {
     const estadoCfg = ESTADO_BADGES[turno.estado] || ESTADO_BADGES.esperando;
     const isActive = turno.estado === 'llamando' || turno.estado === 'en_atencion';
+
+    // Calcular tiempo de espera individual
+    const getWaitTime = () => {
+        if (!turno.created_at) return null;
+        const end = turno.llamado_at ? new Date(turno.llamado_at) : new Date();
+        const mins = Math.floor((end - new Date(turno.created_at)) / 60000);
+        return mins;
+    };
+    const waitMins = getWaitTime();
+    const waitColor = waitMins > 10 ? '#EF4444' : waitMins > 5 ? '#F59E0B' : '#16A34A';
 
     return (
         <div style={{
@@ -554,7 +580,19 @@ function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, o
                 )}
                 <div style={s.infoCell}>
                     <span style={s.infoCellLabel}>Llegó</span>
-                    <span style={s.infoCellValue}>{formatTime(turno.created_at)} ({getTimeSince(turno.created_at)})</span>
+                    <span style={s.infoCellValue}>{formatTime(turno.created_at)}</span>
+                </div>
+                <div style={{
+                    ...s.infoCell,
+                    background: waitColor + '08',
+                    border: `1px solid ${waitColor}20`,
+                }}>
+                    <span style={s.infoCellLabel}>
+                        {turno.estado === 'esperando' ? '⏱ Esperando' : '⏱ Esperó'}
+                    </span>
+                    <span style={{ ...s.infoCellValue, color: waitColor, fontWeight: 800 }}>
+                        {waitMins != null ? `${waitMins} min` : '—'}
+                    </span>
                 </div>
             </div>
 
