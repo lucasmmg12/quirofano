@@ -1,48 +1,36 @@
 -- ============================================================
--- Migración 027: Agregar campo atendido_por a turnos_cola
--- Registra qué usuario atendió cada turno
+-- Migración 027: Campos extras + Políticas RLS para anon
+-- El sistema ADM-QUI NO usa Supabase Auth (usa RPC custom),
+-- por lo que el rol siempre es "anon". Todas las políticas
+-- deben incluir anon para que funcionen.
 -- ============================================================
 
+-- Agregar columnas faltantes
 ALTER TABLE turnos_cola ADD COLUMN IF NOT EXISTS atendido_por TEXT;
 ALTER TABLE turnos_cola ADD COLUMN IF NOT EXISTS nombre_paciente TEXT;
 ALTER TABLE turnos_cola ADD COLUMN IF NOT EXISTS motivo_cancelacion TEXT;
 ALTER TABLE turnos_cola ADD COLUMN IF NOT EXISTS cancelado_por TEXT;
 
--- Políticas SELECT (DROP IF EXISTS + CREATE)
+-- ═══ ARREGLAR POLÍTICAS: anon necesita UPDATE e INSERT en todo ═══
+
+-- turnos_cola: anon necesita UPDATE (el admin opera como anon)
 DO $$ BEGIN
-  -- turnos_cola: anon
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'turnos_cola_select_anon' AND tablename = 'turnos_cola') THEN
-    DROP POLICY "turnos_cola_select_anon" ON turnos_cola;
-  END IF;
-  -- turnos_cola: auth
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'turnos_cola_select_auth' AND tablename = 'turnos_cola') THEN
-    DROP POLICY "turnos_cola_select_auth" ON turnos_cola;
-  END IF;
-  -- turnos_atencion
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'turnos_atencion_select' AND tablename = 'turnos_atencion') THEN
-    DROP POLICY "turnos_atencion_select" ON turnos_atencion;
-  END IF;
-  -- turnos_config
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'turnos_config_select' AND tablename = 'turnos_config') THEN
-    DROP POLICY "turnos_config_select" ON turnos_config;
-  END IF;
-  -- turnos_contador
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'turnos_contador_select' AND tablename = 'turnos_contador') THEN
-    DROP POLICY "turnos_contador_select" ON turnos_contador;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'turnos_cola_update_anon' AND tablename = 'turnos_cola') THEN
+    CREATE POLICY "turnos_cola_update_anon" ON turnos_cola
+        FOR UPDATE TO anon USING (true) WITH CHECK (true);
   END IF;
 END $$;
 
-CREATE POLICY "turnos_cola_select_anon" ON turnos_cola
-    FOR SELECT TO anon USING (true);
+-- turnos_atencion: anon necesita INSERT, SELECT y UPDATE
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'turnos_atencion_all_anon' AND tablename = 'turnos_atencion') THEN
+    CREATE POLICY "turnos_atencion_all_anon" ON turnos_atencion
+        FOR ALL TO anon USING (true) WITH CHECK (true);
+  END IF;
+END $$;
 
-CREATE POLICY "turnos_cola_select_auth" ON turnos_cola
-    FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "turnos_atencion_select" ON turnos_atencion
-    FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "turnos_config_select" ON turnos_config
-    FOR SELECT TO anon, authenticated USING (true);
-
-CREATE POLICY "turnos_contador_select" ON turnos_contador
-    FOR SELECT TO anon, authenticated USING (true);
+-- GRANT permisos de tabla
+GRANT SELECT, INSERT, UPDATE ON turnos_cola TO anon;
+GRANT SELECT, INSERT, UPDATE ON turnos_atencion TO anon;
+GRANT SELECT ON turnos_config TO anon;
+GRANT SELECT, INSERT, UPDATE ON turnos_contador TO anon;
