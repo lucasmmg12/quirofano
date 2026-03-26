@@ -769,7 +769,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                                         padding: '10px 14px', background: '#F1F5F9',
                                                         borderBottom: '1px solid #E2E8F0',
                                                     }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                                             <FileText size={14} style={{ color: '#3B82F6' }} />
                                                             <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0D3B66' }}>
                                                                 {folio}
@@ -781,6 +781,18 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                                             }}>
                                                                 {items.length} ítem{items.length !== 1 ? 's' : ''}
                                                             </span>
+                                                            {items[0]?.fecha_hospitalizacion && (
+                                                                <span style={{
+                                                                    padding: '2px 8px', borderRadius: '10px',
+                                                                    background: '#F0FDF4', color: '#16A34A',
+                                                                    fontSize: '0.65rem', fontWeight: 600,
+                                                                }}>
+                                                                    📅 {(() => {
+                                                                        const d = new Date(items[0].fecha_hospitalizacion);
+                                                                        return isNaN(d.getTime()) ? items[0].fecha_hospitalizacion : d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                                                                    })()}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                         <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#D97706' }}>
                                                             {formatMoney(totalFolio)}
