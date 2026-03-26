@@ -161,6 +161,8 @@ export default function DeudasPanel({ addToast, currentUser }) {
     }, [loadDeudores]);
 
     // ─── Import Excel ───
+    const [importProgress, setImportProgress] = useState(null); // { current, total, nombre }
+
     const handleFileSelect = useCallback(async (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -168,12 +170,15 @@ export default function DeudasPanel({ addToast, currentUser }) {
 
         setImporting(true);
         setImportResult(null);
+        setImportProgress(null);
         try {
             addToast?.('Procesando archivo Excel...', 'info');
             const { registros, totalFilas, filasConDeuda, filasDescartadas } = await parseDeudaExcel(file);
             addToast?.(`${filasConDeuda} registros con deuda detectados. Importando...`, 'info');
 
-            const result = await importarDeudas(registros, empleadoNombre);
+            const result = await importarDeudas(registros, empleadoNombre, (progress) => {
+                setImportProgress(progress);
+            });
             setImportResult({
                 ...result,
                 totalFilas,
@@ -187,6 +192,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
             addToast?.('Error al importar: ' + err.message, 'error');
         } finally {
             setImporting(false);
+            setImportProgress(null);
         }
     }, [empleadoNombre, addToast, loadDeudores]);
 
@@ -309,6 +315,35 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFileSelect} style={{ display: 'none' }} />
                     </div>
                 </div>
+
+                {/* PROGRESS BAR */}
+                {importing && importProgress && (
+                    <div style={{
+                        background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: '12px',
+                        padding: '14px 18px', marginBottom: '12px',
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0369A1' }}>
+                                <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite', marginRight: '6px', verticalAlign: 'middle' }} />
+                                Importando pacientes...
+                            </span>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0369A1' }}>
+                                {importProgress.current} / {importProgress.total} ({Math.round((importProgress.current / importProgress.total) * 100)}%)
+                            </span>
+                        </div>
+                        <div style={{ background: '#E0F2FE', borderRadius: '6px', height: '8px', overflow: 'hidden' }}>
+                            <div style={{
+                                width: `${(importProgress.current / importProgress.total) * 100}%`,
+                                height: '100%', borderRadius: '6px',
+                                background: 'linear-gradient(90deg, #3B82F6, #0EA5E9)',
+                                transition: 'width 0.3s ease',
+                            }} />
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            Procesando: {importProgress.nombre}
+                        </div>
+                    </div>
+                )}
 
                 {/* IMPORT RESULT */}
                 {importResult && (

@@ -169,7 +169,7 @@ export async function fetchWhatsAppTracking(telefono) {
 
 // ─── Importación de Excel ───
 
-export async function importarDeudas(registros, usuario) {
+export async function importarDeudas(registros, usuario, onProgress) {
     let pacientesNuevos = 0;
     let pacientesActualizados = 0;
     let filasImportadas = 0;
@@ -199,7 +199,13 @@ export async function importarDeudas(registros, usuario) {
     }
 
     // Procesar cada paciente
-    for (const [nhc, grupo] of Object.entries(porNhc)) {
+    const nhcEntries = Object.entries(porNhc);
+    const totalPacientes = nhcEntries.length;
+    let pacienteIdx = 0;
+
+    for (const [nhc, grupo] of nhcEntries) {
+        pacienteIdx++;
+        if (onProgress) onProgress({ current: pacienteIdx, total: totalPacientes, nombre: grupo.nombre });
         const deudaTotal = grupo.facturas.reduce((s, f) => s + (Number(f.pendiente) || 0), 0);
 
         // Calcular fecha más reciente de las facturas
