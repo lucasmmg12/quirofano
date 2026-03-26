@@ -27,6 +27,7 @@ import PedidosMarcela from './components/PedidosMarcela.jsx';
 import WhatsAppLineStatus from './components/WhatsAppLineStatus.jsx';
 import MetricsPanel from './components/MetricsPanel.jsx';
 import TurnoAdminPanel from './components/TurnoAdminPanel.jsx';
+import DeudasPanel from './components/DeudasPanel.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -376,7 +377,7 @@ function App({ currentUser, onLogout }) {
                         <span className="topbar__subtitle">Sistema de gestión integral</span>
                     </div>
                     {/* WhatsApp Line Status — centered in topbar */}
-                    {(activeView === 'mensajeria' || activeView === 'cirugias') && (
+                    {(activeView === 'mensajeria' || activeView === 'cirugias' || activeView === 'deudas') && (
                         <WhatsAppLineStatus />
                     )}
                     <div className="topbar__right" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -635,6 +636,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'turnos' && (
                     <TurnoAdminPanel addToast={addToast} currentUser={currentUser} />
+                )}
+
+                {activeView === 'deudas' && (
+                    <DeudasPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'config' && (

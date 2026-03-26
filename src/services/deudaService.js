@@ -1,0 +1,354 @@
+/**
+ * deudaService.js — Servicio de gestión de deudas
+ * CRUD para pacientes deudores, facturas, seguimiento e importaciones
+ */
+import { supabase } from '../lib/supabase';
+
+// ─── Categorías de deudor ───
+export const CATEGORIAS_DEUDOR = {
+    sin_gestionar: { label: 'Sin gestionar', color: '#F59E0B', bg: '#FEF3C7', icon: '🟡' },
+    en_gestion: { label: 'En gestión', color: '#3B82F6', bg: '#DBEAFE', icon: '🔵' },
+    comprometido: { label: 'Comprometido', color: '#16A34A', bg: '#DCFCE7', icon: '🟢' },
+    incobrable: { label: 'Incobrable', color: '#EF4444', bg: '#FEE2E2', icon: '🔴' },
+};
+
+// ─── Pacientes Deudores ───
+
+export async function fetchDeudores(filters = {}) {
+    let query = supabase
+        .from('deudas_pacientes')
+        .select('*')
+        .gt('deuda_total', 0)
+        .order('deuda_total', { ascending: false });
+
+    if (filters.categoria) {
+        query = query.eq('categoria', filters.categoria);
+    }
+    if (filters.search) {
+        query = query.or(`nombre.ilike.%${filters.search}%,nhc.ilike.%${filters.search}%,telefono.ilike.%${filters.search}%`);
+    }
+    if (filters.conTelefono === true) {
+        query = query.not('telefono', 'is', null);
+    }
+    if (filters.conTelefono === false) {
+        query = query.is('telefono', null);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+}
+
+export async function fetchDeudorByNhc(nhc) {
+    const { data, error } = await supabase
+        .from('deudas_pacientes')
+        .select('*')
+        .eq('nhc', nhc)
+        .maybeSingle();
+    if (error) throw error;
+    return data;
+}
+
+export async function fetchDeudorById(id) {
+    const { data, error } = await supabase
+        .from('deudas_pacientes')
+        .select('*')
+        .eq('id', id)
+        .single();
+    if (error) throw error;
+    return data;
+}
+
+export async function updateDeudor(id, updates) {
+    const { error } = await supabase
+        .from('deudas_pacientes')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id);
+    if (error) throw error;
+}
+
+export async function updateDeudorTelefono(id, telefono) {
+    return updateDeudor(id, { telefono });
+}
+
+export async function updateDeudorCategoria(id, categoria, usuario) {
+    await updateDeudor(id, { categoria });
+    // Registrar en seguimiento
+    await addSeguimiento(id, {
+        tipo: 'cambio_categoria',
+        descripcion: `Categoría cambiada a: ${CATEGORIAS_DEUDOR[categoria]?.label || categoria}`,
+        usuario,
+    });
+}
+
+// ─── Facturas ───
+
+export async function fetchFacturas(pacienteId) {
+    const { data, error } = await supabase
+        .from('deudas_facturas')
+        .select('*')
+        .eq('paciente_id', pacienteId)
+        .order('pendiente', { ascending: false });
+    if (error) throw error;
+    return data || [];
+}
+
+// ─── Seguimiento / Timeline ───
+
+export async function fetchSeguimiento(pacienteId) {
+    const { data, error } = await supabase
+        .from('deudas_seguimiento')
+        .select('*')
+        .eq('paciente_id', pacienteId)
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+}
+
+export async function addSeguimiento(pacienteId, { tipo, descripcion, monto, usuario }) {
+    const { data, error } = await supabase
+        .from('deudas_seguimiento')
+        .insert({
+            paciente_id: pacienteId,
+            tipo,
+            descripcion,
+            monto: monto || null,
+            usuario,
+        })
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+}
+
+// ─── Tracking de WhatsApp (cruce con whatsapp_messages) ───
+
+export async function fetchWhatsAppTracking(telefono) {
+    if (!telefono) return { ultimoEnviado: null, ultimaRespuesta: null, totalEnviados: 0, totalRecibidos: 0 };
+
+    // Último mensaje enviado al paciente
+    const { data: outgoing } = await supabase
+        .from('whatsapp_messages')
+        .select('created_at, content, sender_name')
+        .eq('phone', telefono)
+        .eq('direction', 'outgoing')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+    // Última respuesta del paciente
+    const { data: incoming } = await supabase
+        .from('whatsapp_messages')
+        .select('created_at, content')
+        .eq('phone', telefono)
+        .eq('direction', 'incoming')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+    // Totales
+    const { count: totalEnviados } = await supabase
+        .from('whatsapp_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('phone', telefono)
+        .eq('direction', 'outgoing');
+
+    const { count: totalRecibidos } = await supabase
+        .from('whatsapp_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('phone', telefono)
+        .eq('direction', 'incoming');
+
+    return {
+        ultimoEnviado: outgoing?.[0] || null,
+        ultimaRespuesta: incoming?.[0] || null,
+        totalEnviados: totalEnviados || 0,
+        totalRecibidos: totalRecibidos || 0,
+    };
+}
+
+// ─── Importación de Excel ───
+
+export async function importarDeudas(registros, usuario) {
+    let pacientesNuevos = 0;
+    let pacientesActualizados = 0;
+    let filasImportadas = 0;
+    let filasIgnoradas = 0;
+
+    // Agrupar facturas por NHC
+    const porNhc = {};
+    for (const r of registros) {
+        const pendiente = Number(r.pendiente) || 0;
+        if (pendiente <= 1) {
+            filasIgnoradas++;
+            continue;
+        }
+        if (!r.nhc || !r.nhc.trim()) {
+            filasIgnoradas++;
+            continue;
+        }
+        const nhc = r.nhc.trim();
+        if (!porNhc[nhc]) {
+            porNhc[nhc] = { nombre: r.nombre, facturas: [], telefono: r.telefono, telefono_invalido: r.telefono_invalido };
+        } else if (!porNhc[nhc].telefono && r.telefono) {
+            // Si otra factura tiene el teléfono, lo tomamos
+            porNhc[nhc].telefono = r.telefono;
+            porNhc[nhc].telefono_invalido = r.telefono_invalido;
+        }
+        porNhc[nhc].facturas.push(r);
+    }
+
+    // Procesar cada paciente
+    for (const [nhc, grupo] of Object.entries(porNhc)) {
+        const deudaTotal = grupo.facturas.reduce((s, f) => s + (Number(f.pendiente) || 0), 0);
+
+        // Upsert paciente
+        const { data: existente } = await supabase
+            .from('deudas_pacientes')
+            .select('id, telefono, categoria, notas')
+            .eq('nhc', nhc)
+            .maybeSingle();
+
+        let pacienteId;
+        if (existente) {
+            // Actualizar montos
+            const updateData = {
+                nombre: grupo.nombre,
+                deuda_total: deudaTotal,
+                cantidad_facturas: grupo.facturas.length,
+                updated_at: new Date().toISOString(),
+            };
+            
+            // Solo insertamos el tel del Excel si el paciente NO tenía uno válido antes
+            // o si el excel trae uno pero en la BD no había ninguno.
+            // Asi respetamos lo que el usuario edite manualmente.
+            if (!existente.telefono && grupo.telefono) {
+                updateData.telefono = grupo.telefono;
+                updateData.telefono_invalido = grupo.telefono_invalido;
+            }
+
+            await supabase
+                .from('deudas_pacientes')
+                .update(updateData)
+                .eq('id', existente.id);
+            pacienteId = existente.id;
+            pacientesActualizados++;
+        } else {
+            const { data: nuevo } = await supabase
+                .from('deudas_pacientes')
+                .insert({
+                    nhc,
+                    nombre: grupo.nombre,
+                    deuda_total: deudaTotal,
+                    cantidad_facturas: grupo.facturas.length,
+                    telefono: grupo.telefono || null,
+                    telefono_invalido: grupo.telefono_invalido || false,
+                })
+                .select('id')
+                .single();
+            pacienteId = nuevo.id;
+            pacientesNuevos++;
+        }
+
+        // Upsert facturas
+        for (const f of grupo.facturas) {
+            const { error } = await supabase
+                .from('deudas_facturas')
+                .upsert({
+                    paciente_id: pacienteId,
+                    codigo: String(f.codigo),
+                    documento: f.documento || null,
+                    folio: f.folio || null,
+                    total: Number(f.total) || 0,
+                    cobrado: Number(f.cobrado) || 0,
+                    pendiente: Number(f.pendiente) || 0,
+                    responsable: f.responsable || null,
+                    servicio: f.servicio || null,
+                    tipo_hospitalizacion: f.tipoHospitalizacion || null,
+                    n_admision: f.nAdmision || null,
+                    fecha_hospitalizacion: f.fechaHospitalizacion || null,
+                    usuario_creacion: f.usuarioCreacion || null,
+                    forma_pago: f.formaPago || null,
+                    updated_at: new Date().toISOString(),
+                }, { onConflict: 'codigo' });
+
+            if (!error) filasImportadas++;
+            else filasIgnoradas++;
+        }
+    }
+
+    // Registrar importación
+    const { data: importacion } = await supabase
+        .from('deudas_importaciones')
+        .insert({
+            archivo_nombre: 'Excel de deudas',
+            total_filas: registros.length,
+            filas_importadas: filasImportadas,
+            filas_ignoradas: filasIgnoradas,
+            pacientes_nuevos: pacientesNuevos,
+            pacientes_actualizados: pacientesActualizados,
+            usuario,
+        })
+        .select()
+        .single();
+
+    return {
+        importacion,
+        pacientesNuevos,
+        pacientesActualizados,
+        filasImportadas,
+        filasIgnoradas,
+    };
+}
+
+// ─── Métricas / Dashboard ───
+
+export async function fetchMetricasDeudas() {
+    const { data: pacientes } = await supabase
+        .from('deudas_pacientes')
+        .select('id, nombre, nhc, deuda_total, categoria, telefono, telefono_invalido, ultimo_contacto_at, ultima_respuesta_at, cantidad_facturas')
+        .gt('deuda_total', 0)
+        .order('deuda_total', { ascending: false });
+
+    const all = pacientes || [];
+    const total = all.length;
+    const deudaTotal = all.reduce((s, p) => s + Number(p.deuda_total), 0);
+    const conTelefono = all.filter(p => p.telefono).length;
+    const sinTelefono = total - conTelefono;
+
+    const porCategoria = {};
+    Object.keys(CATEGORIAS_DEUDOR).forEach(k => { porCategoria[k] = { count: 0, monto: 0 }; });
+    all.forEach(p => {
+        if (porCategoria[p.categoria]) {
+            porCategoria[p.categoria].count++;
+            porCategoria[p.categoria].monto += Number(p.deuda_total);
+        }
+    });
+
+    const top10 = all.slice(0, 10);
+
+    // Contactados vs sin contactar
+    const contactados = all.filter(p => p.ultimo_contacto_at).length;
+    const sinContactar = total - contactados;
+
+    // Respondieron
+    const respondieron = all.filter(p => p.ultima_respuesta_at).length;
+
+    // Derivados
+    const promedioPorPaciente = total > 0 ? deudaTotal / total : 0;
+    const tasaContactabilidad = conTelefono > 0 ? Math.round((contactados / conTelefono) * 100) : 0;
+    const tasaRespuesta = contactados > 0 ? Math.round((respondieron / contactados) * 100) : 0;
+
+    return {
+        total,
+        deudaTotal,
+        conTelefono,
+        sinTelefono,
+        porCategoria,
+        top10,
+        contactados,
+        sinContactar,
+        respondieron,
+        promedioPorPaciente,
+        tasaContactabilidad,
+        tasaRespuesta,
+    };
+}
