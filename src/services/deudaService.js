@@ -248,30 +248,34 @@ export async function importarDeudas(registros, usuario) {
             pacientesNuevos++;
         }
 
-        // Upsert facturas
+        // Upsert líneas individuales de cada factura
         for (const f of grupo.facturas) {
-            const { error } = await supabase
-                .from('deudas_facturas')
-                .upsert({
-                    paciente_id: pacienteId,
-                    codigo: String(f.codigo),
-                    documento: f.documento || null,
-                    folio: f.folio || null,
-                    total: Number(f.total) || 0,
-                    cobrado: Number(f.cobrado) || 0,
-                    pendiente: Number(f.pendiente) || 0,
-                    responsable: f.responsable || null,
-                    servicio: f.servicio || null,
-                    tipo_hospitalizacion: f.tipoHospitalizacion || null,
-                    n_admision: f.nAdmision || null,
-                    fecha_hospitalizacion: f.fechaHospitalizacion || null,
-                    usuario_creacion: f.usuarioCreacion || null,
-                    forma_pago: f.formaPago || null,
-                    updated_at: new Date().toISOString(),
-                }, { onConflict: 'codigo' });
+            const lineas = f.lineas || [{ tarifa: f.tarifa || '', deuda: Number(f.pendiente) || 0, cobrado: Number(f.cobrado) || 0, fecha_albaran: f.fecha_albaran || '', habitacion: f.habitacion || '', nAdmision: f.nAdmision || '' }];
+            
+            for (let i = 0; i < lineas.length; i++) {
+                const linea = lineas[i];
+                const codigoUnico = lineas.length > 1 ? `${String(f.codigo)}::${i}` : String(f.codigo);
+                
+                const { error } = await supabase
+                    .from('deudas_facturas')
+                    .upsert({
+                        paciente_id: pacienteId,
+                        codigo: codigoUnico,
+                        documento: String(f.folio || f.codigo || ''),
+                        folio: String(f.folio || f.codigo || ''),
+                        total: (linea.deuda || 0) + (linea.cobrado || 0),
+                        cobrado: linea.cobrado || 0,
+                        pendiente: linea.deuda || 0,
+                        servicio: linea.tarifa || null,
+                        n_admision: String(linea.nAdmision || f.nAdmision || '').trim() || null,
+                        fecha_hospitalizacion: linea.fecha_albaran || null,
+                        tipo_hospitalizacion: String(linea.habitacion || '').trim() || null,
+                        updated_at: new Date().toISOString(),
+                    }, { onConflict: 'codigo' });
 
-            if (!error) filasImportadas++;
-            else filasIgnoradas++;
+                if (!error) filasImportadas++;
+                else filasIgnoradas++;
+            }
         }
     }
 

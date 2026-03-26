@@ -38,7 +38,7 @@ export async function parseDeudaExcel(file) {
                 const dataRows = rawData.slice(1);
                 let filasDescartadas = 0;
 
-                // Agrupar filas por "Numero folio" (Factura)
+                // Agrupar filas por "Numero folio" (Factura), conservando líneas individuales
                 const facturasMap = new Map();
 
                 for (const row of dataRows) {
@@ -64,20 +64,31 @@ export async function parseDeudaExcel(file) {
                     const deudaLinea = parseFloat(r.deuda_linea) || 0;
                     const cobradoLinea = parseFloat(r.cobrado_linea) || 0;
 
+                    // Cada línea individual se preserva
+                    const lineItem = {
+                        tarifa: String(r.tarifa || '').trim(),
+                        deuda: deudaLinea,
+                        cobrado: cobradoLinea,
+                        fecha_albaran: r.fecha_albaran || '',
+                        habitacion: String(r.habitacion || '').trim(),
+                        nAdmision: String(r.nAdmision || '').trim(),
+                    };
+
                     if (!facturasMap.has(folio)) {
                         facturasMap.set(folio, {
                             ...r,
-                            codigo: folio, // Usamos folio como código único de factura
+                            codigo: folio,
                             pendiente: deudaLinea,
                             cobrado: cobradoLinea,
                             total: deudaLinea + cobradoLinea,
+                            lineas: [lineItem],
                         });
                     } else {
-                        // Sumar montos si la factura ya existe (varias líneas del mismo folio)
                         const existing = facturasMap.get(folio);
                         existing.pendiente += deudaLinea;
                         existing.cobrado += cobradoLinea;
                         existing.total += (deudaLinea + cobradoLinea);
+                        existing.lineas.push(lineItem);
                     }
                 }
 
@@ -86,8 +97,6 @@ export async function parseDeudaExcel(file) {
                     // Limpiar y validar teléfono
                     let tel = String(factura.telefono_raw || '').replace(/\D/g, '');
                     
-                    // Marcar teléfono inválido (formato correcto: 549 + 10 dígitos = 13 dígitos ej: 5492645438114)
-                    // O si empieza con 264 tiene 10 digitos, etc. Pedido de usuario estricto: 549XXXXXXXXXX (13 digitos)
                     let telefono_es_valido = true;
                     if (tel && tel.length !== 13) {
                         telefono_es_valido = false;
@@ -98,11 +107,10 @@ export async function parseDeudaExcel(file) {
                     factura.telefono = tel;
                     factura.telefono_invalido = !telefono_es_valido && tel !== '';
 
-                    // Filtro final: solo pendiente > $1 (ahora agrupado)
                     if (factura.pendiente > 1) {
                         registros.push(factura);
                     } else {
-                        filasDescartadas++; // Toda la factura se descarta si sumó <= 1
+                        filasDescartadas++;
                     }
                 }
 

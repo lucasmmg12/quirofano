@@ -741,35 +741,86 @@ export default function DeudasPanel({ addToast, currentUser }) {
 
                         {/* Facturas */}
                         <div style={st.card}>
-                            <h4 style={st.cardTitle}><FileText size={14} /> Facturas Pendientes ({facturas.length})</h4>
+                            <h4 style={st.cardTitle}><FileText size={14} /> Facturas Pendientes ({facturas.length} ítems)</h4>
                             {detailLoading ? (
                                 <span style={{ color: '#94A3B8' }}>Cargando...</span>
                             ) : facturas.length === 0 ? (
                                 <span style={{ color: '#CBD5E1' }}>Sin facturas registradas</span>
-                            ) : (
-                                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                                    {facturas.map(f => (
-                                        <div key={f.id} style={st.facturaRow}>
-                                            <div style={{ flex: 1 }}>
-                                                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0D3B66' }}>
-                                                    Doc: {f.documento || f.codigo}
+                            ) : (() => {
+                                // Agrupar líneas por folio para visualización
+                                const byFolio = {};
+                                facturas.forEach(f => {
+                                    const folio = f.folio || f.documento || f.codigo;
+                                    if (!byFolio[folio]) byFolio[folio] = [];
+                                    byFolio[folio].push(f);
+                                });
+                                return (
+                                    <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                                        {Object.entries(byFolio).map(([folio, items]) => {
+                                            const totalFolio = items.reduce((s, i) => s + (Number(i.pendiente) || 0), 0);
+                                            return (
+                                                <div key={folio} style={{
+                                                    marginBottom: '12px', borderRadius: '12px',
+                                                    border: '1px solid #E2E8F0', overflow: 'hidden',
+                                                }}>
+                                                    {/* Header de factura */}
+                                                    <div style={{
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                        padding: '10px 14px', background: '#F1F5F9',
+                                                        borderBottom: '1px solid #E2E8F0',
+                                                    }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <FileText size={14} style={{ color: '#3B82F6' }} />
+                                                            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0D3B66' }}>
+                                                                {folio}
+                                                            </span>
+                                                            <span style={{
+                                                                padding: '2px 8px', borderRadius: '10px',
+                                                                background: '#DBEAFE', color: '#2563EB',
+                                                                fontSize: '0.65rem', fontWeight: 700,
+                                                            }}>
+                                                                {items.length} ítem{items.length !== 1 ? 's' : ''}
+                                                            </span>
+                                                        </div>
+                                                        <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#D97706' }}>
+                                                            {formatMoney(totalFolio)}
+                                                        </span>
+                                                    </div>
+                                                    {/* Líneas individuales */}
+                                                    {items.map((item, idx) => (
+                                                        <div key={item.id || idx} style={{
+                                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                            padding: '8px 14px 8px 28px',
+                                                            borderBottom: idx < items.length - 1 ? '1px solid #F1F5F9' : 'none',
+                                                            background: '#fff',
+                                                        }}>
+                                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                                <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                    {item.servicio || 'Sin descripción'}
+                                                                </div>
+                                                                <div style={{ fontSize: '0.68rem', color: '#94A3B8', display: 'flex', gap: '8px' }}>
+                                                                    {item.tipo_hospitalizacion && <span>🏥 {item.tipo_hospitalizacion}</span>}
+                                                                    {item.n_admision && <span>📋 {item.n_admision}</span>}
+                                                                </div>
+                                                            </div>
+                                                            <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '12px' }}>
+                                                                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#D97706' }}>
+                                                                    {formatMoney(item.pendiente)}
+                                                                </div>
+                                                                {Number(item.cobrado) > 0 && (
+                                                                    <div style={{ fontSize: '0.65rem', color: '#16A34A' }}>
+                                                                        Cobrado: {formatMoney(item.cobrado)}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                                <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                                    {f.servicio || 'Sin servicio'} · {f.forma_pago || ''}
-                                                </div>
-                                            </div>
-                                            <div style={{ textAlign: 'right' }}>
-                                                <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#D97706' }}>
-                                                    {formatMoney(f.pendiente)}
-                                                </div>
-                                                <div style={{ fontSize: '0.68rem', color: '#94A3B8' }}>
-                                                    Total: {formatMoney(f.total)}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
 
