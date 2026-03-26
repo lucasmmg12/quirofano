@@ -9,6 +9,7 @@ import {
     Clock, CheckCircle, XCircle, BarChart3, RefreshCw,
     User, FileText, Receipt, Microscope, HelpCircle,
     ChevronDown, Timer, TrendingUp, Hash,
+    Building2, Baby, ShieldCheck,
 } from 'lucide-react';
 import {
     fetchColaActiva, fetchAtendidosHoy, fetchMetricasHoy,
@@ -16,7 +17,7 @@ import {
     cancelarTurno, derivarTurno, subscribeToCola, fetchTurnoConfig,
 } from '../services/turnoService';
 
-const ICON_MAP = { FileText, Receipt, Microscope, HelpCircle };
+const ICON_MAP = { FileText, Receipt, Microscope, HelpCircle, Building2, Users, Baby, ShieldCheck };
 
 const ESTADO_BADGES = {
     esperando: { label: 'Esperando', color: '#F59E0B', bg: '#FEF3C7', icon: Clock },

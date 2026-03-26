@@ -1,26 +1,32 @@
 /**
  * TurnoKiosco.jsx — Pantalla pública para tablet/kiosco
  * Ruta: /turno (sin login)
- * Flujo: [DNI opcional] → [Elegir trámite] → [Número de turno]
+ * Flujo: [DNI opcional] → [Elegir trámite] → [Sub-opción si aplica] → [Número de turno]
+ * 
+ * Soporta estructura jerárquica:
+ *   - Items sin grupo → botón directo
+ *   - Items con grupo → primero muestra grupo, luego sub-opciones
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-    FileText, Receipt, Microscope, HelpCircle,
-    ArrowLeft, CheckCircle, Printer, RefreshCw,
+    Receipt, ShieldCheck, Building2, Users, Baby,
+    HelpCircle, ArrowLeft, CheckCircle, Printer, RefreshCw,
+    ChevronRight,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 const ICON_MAP = {
-    FileText, Receipt, Microscope, HelpCircle,
+    Receipt, ShieldCheck, Building2, Users, Baby, HelpCircle,
 };
 
-const STEPS = { DNI: 'dni', SELECT: 'select', TICKET: 'ticket' };
+const STEPS = { DNI: 'dni', SELECT: 'select', SUB_SELECT: 'sub_select', TICKET: 'ticket' };
 
 export default function TurnoKiosco() {
     const [config, setConfig] = useState([]);
     const [step, setStep] = useState(STEPS.SELECT);
     const [dni, setDni] = useState('');
     const [selectedType, setSelectedType] = useState(null);
+    const [selectedGrupo, setSelectedGrupo] = useState(null);
     const [turno, setTurno] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -28,9 +34,48 @@ export default function TurnoKiosco() {
 
     // Cargar configuración
     useEffect(() => {
-        supabase.from('turnos_config').select('*').eq('activo', true).order('id')
+        supabase.from('turnos_config').select('*').eq('activo', true).order('orden')
             .then(({ data }) => setConfig(data || []));
     }, []);
+
+    // Construir estructura jerárquica
+    const menuItems = useMemo(() => {
+        const items = [];
+        const gruposProcessed = new Set();
+
+        config.forEach(cfg => {
+            if (cfg.grupo) {
+                // Tiene grupo → agregar grupo padre (una sola vez)
+                if (!gruposProcessed.has(cfg.grupo)) {
+                    gruposProcessed.add(cfg.grupo);
+                    items.push({
+                        type: 'group',
+                        key: cfg.grupo,
+                        label: cfg.grupo_label || cfg.grupo,
+                        icono: cfg.grupo_icono || 'ShieldCheck',
+                        color: cfg.grupo_color || '#8B5CF6',
+                        children: config.filter(c => c.grupo === cfg.grupo),
+                    });
+                }
+            } else {
+                // Sin grupo → botón directo
+                items.push({
+                    type: 'direct',
+                    key: cfg.tipo_tramite,
+                    ...cfg,
+                });
+            }
+        });
+
+        return items;
+    }, [config]);
+
+    // Sub-opciones del grupo seleccionado
+    const subItems = useMemo(() => {
+        if (!selectedGrupo) return [];
+        const group = menuItems.find(m => m.type === 'group' && m.key === selectedGrupo);
+        return group?.children || [];
+    }, [selectedGrupo, menuItems]);
 
     // Cargar cantidad en espera por tipo
     const loadColaCount = useCallback(async () => {
@@ -55,6 +100,11 @@ export default function TurnoKiosco() {
         return () => clearInterval(interval);
     }, [loadColaCount]);
 
+    // Contar espera total de un grupo
+    const getGroupWaitCount = useCallback((children) => {
+        return children.reduce((sum, c) => sum + (colaCount[c.tipo_tramite] || 0), 0);
+    }, [colaCount]);
+
     // Crear turno
     const handleCreateTurno = useCallback(async (tipo) => {
         setLoading(true);
@@ -69,7 +119,7 @@ export default function TurnoKiosco() {
             const cfgItem = config.find(c => c.tipo_tramite === tipo);
             const boxAsignado = cfgItem?.box_default || 1;
 
-            // 3. Buscar nombre del paciente por DNI (solo se muestra en admin, no en kiosco)
+            // 3. Buscar nombre del paciente por DNI
             let nombrePaciente = null;
             if (dni.trim()) {
                 const { data: paciente } = await supabase
@@ -111,12 +161,29 @@ export default function TurnoKiosco() {
         }
     }, [config, dni, loadColaCount]);
 
-    // Reset
+    // Seleccionar item del menú
+    const handleMenuClick = useCallback((item) => {
+        if (item.type === 'group') {
+            setSelectedGrupo(item.key);
+            setStep(STEPS.SUB_SELECT);
+        } else {
+            handleCreateTurno(item.tipo_tramite);
+        }
+    }, [handleCreateTurno]);
+
+    // Volver de sub-selección al menú principal
+    const handleBackToMenu = useCallback(() => {
+        setStep(STEPS.SELECT);
+        setSelectedGrupo(null);
+    }, []);
+
+    // Reset completo
     const handleReset = useCallback(() => {
         setStep(STEPS.SELECT);
         setDni('');
         setTurno(null);
         setSelectedType(null);
+        setSelectedGrupo(null);
         setError(null);
     }, []);
 
@@ -136,6 +203,15 @@ export default function TurnoKiosco() {
     const now = new Date();
     const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
     const dateStr = now.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+    // Helper: descripción largo para el ticket (incluye grupo si aplica)
+    const getTicketTramiteLabel = () => {
+        if (!selectedType) return '';
+        if (selectedType.grupo_label) {
+            return `${selectedType.grupo_label} — ${selectedType.label}`;
+        }
+        return selectedType.label;
+    };
 
     return (
         <div style={styles.container}>
@@ -163,7 +239,7 @@ export default function TurnoKiosco() {
 
             {/* Content */}
             <main style={styles.main}>
-                {/* ═══ PASO 1: SELECCIONAR TRÁMITE ═══ */}
+                {/* ═══ PASO 1: SELECCIONAR TRÁMITE (Menú principal) ═══ */}
                 {step === STEPS.SELECT && (
                     <div style={styles.selectContainer} className="no-print">
                         {/* DNI input (optional) */}
@@ -186,16 +262,153 @@ export default function TurnoKiosco() {
                         <h2 style={styles.selectTitle}>¿Qué trámite necesitás realizar?</h2>
 
                         <div style={styles.grid}>
-                            {config.map(cfg => {
+                            {menuItems.map((item, idx) => {
+                                const Icon = ICON_MAP[item.icono || item.type === 'group' ? item.icono : item.icono] || HelpCircle;
+                                const isGroup = item.type === 'group';
+                                const waitCount = isGroup
+                                    ? getGroupWaitCount(item.children)
+                                    : (colaCount[item.tipo_tramite] || 0);
+                                const itemColor = isGroup ? item.color : item.color;
+                                const num = idx + 1;
+
+                                return (
+                                    <button
+                                        key={item.key}
+                                        onClick={() => handleMenuClick(item)}
+                                        disabled={loading}
+                                        style={{
+                                            ...styles.tramiteBtn,
+                                            borderColor: itemColor + '40',
+                                            opacity: loading ? 0.6 : 1,
+                                        }}
+                                        onTouchStart={e => {
+                                            e.currentTarget.style.transform = 'scale(0.97)';
+                                            e.currentTarget.style.boxShadow = `0 4px 24px ${itemColor}30`;
+                                        }}
+                                        onTouchEnd={e => {
+                                            e.currentTarget.style.transform = 'scale(1)';
+                                            e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.06)';
+                                        }}
+                                        onMouseDown={e => {
+                                            e.currentTarget.style.transform = 'scale(0.97)';
+                                            e.currentTarget.style.boxShadow = `0 4px 24px ${itemColor}30`;
+                                        }}
+                                        onMouseUp={e => {
+                                            e.currentTarget.style.transform = 'scale(1)';
+                                            e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.06)';
+                                        }}
+                                    >
+                                        {/* Number badge */}
+                                        <div style={{
+                                            ...styles.numberBadge,
+                                            background: itemColor,
+                                        }}>
+                                            {num}
+                                        </div>
+
+                                        <div style={{
+                                            ...styles.tramiteIconWrap,
+                                            background: itemColor + '14',
+                                            border: `2px solid ${itemColor}30`,
+                                        }}>
+                                            <Icon size={40} style={{ color: itemColor }} />
+                                        </div>
+
+                                        <span style={styles.tramiteLabel}>{item.label}</span>
+
+                                        {isGroup && (
+                                            <span style={{
+                                                ...styles.subBadge,
+                                                color: itemColor,
+                                                background: itemColor + '10',
+                                                border: `1px solid ${itemColor}25`,
+                                            }}>
+                                                <ChevronRight size={14} />
+                                                {item.children.length} opciones
+                                            </span>
+                                        )}
+
+                                        {waitCount > 0 && (
+                                            <span style={{
+                                                ...styles.waitBadge,
+                                                background: itemColor + '14',
+                                                color: itemColor,
+                                                border: `1px solid ${itemColor}30`,
+                                            }}>
+                                                {waitCount} en espera
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {error && (
+                            <div style={styles.errorBanner}>
+                                {error}
+                            </div>
+                        )}
+
+                        {loading && (
+                            <div style={styles.loadingOverlay}>
+                                <RefreshCw size={40} style={{ animation: 'spin 1s linear infinite', color: '#1565C0' }} />
+                                <span style={{ fontSize: '1.1rem', color: '#475569', marginTop: '12px' }}>
+                                    Generando turno...
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* ═══ PASO 1.5: SUB-OPCIONES (ej: Autorizaciones) ═══ */}
+                {step === STEPS.SUB_SELECT && (
+                    <div style={styles.selectContainer} className="no-print">
+                        <button
+                            onClick={handleBackToMenu}
+                            style={styles.backBtn}
+                        >
+                            <ArrowLeft size={20} />
+                            Volver al menú
+                        </button>
+
+                        {/* Grupo header */}
+                        {(() => {
+                            const group = menuItems.find(m => m.key === selectedGrupo);
+                            if (!group) return null;
+                            const GrpIcon = ICON_MAP[group.icono] || ShieldCheck;
+                            return (
+                                <div style={{
+                                    ...styles.groupHeader,
+                                    borderColor: group.color + '30',
+                                    background: group.color + '08',
+                                }}>
+                                    <div style={{
+                                        ...styles.groupHeaderIcon,
+                                        background: group.color + '18',
+                                        border: `2px solid ${group.color}30`,
+                                    }}>
+                                        <GrpIcon size={32} style={{ color: group.color }} />
+                                    </div>
+                                    <h2 style={{ ...styles.groupHeaderTitle, color: group.color }}>
+                                        {group.label}
+                                    </h2>
+                                    <p style={styles.groupHeaderSub}>Seleccioná el tipo de autorización</p>
+                                </div>
+                            );
+                        })()}
+
+                        <div style={styles.subGrid}>
+                            {subItems.map((cfg, idx) => {
                                 const Icon = ICON_MAP[cfg.icono] || HelpCircle;
                                 const waitCount = colaCount[cfg.tipo_tramite] || 0;
+                                const subNum = `2.${idx + 1}`;
                                 return (
                                     <button
                                         key={cfg.tipo_tramite}
                                         onClick={() => handleCreateTurno(cfg.tipo_tramite)}
                                         disabled={loading}
                                         style={{
-                                            ...styles.tramiteBtn,
+                                            ...styles.subBtn,
                                             borderColor: cfg.color + '40',
                                             opacity: loading ? 0.6 : 1,
                                         }}
@@ -217,13 +430,25 @@ export default function TurnoKiosco() {
                                         }}
                                     >
                                         <div style={{
-                                            ...styles.tramiteIconWrap,
+                                            ...styles.numberBadge,
+                                            background: cfg.color,
+                                            fontSize: '0.7rem',
+                                            width: '30px',
+                                            height: '30px',
+                                        }}>
+                                            {subNum}
+                                        </div>
+
+                                        <div style={{
+                                            ...styles.subIconWrap,
                                             background: cfg.color + '14',
                                             border: `2px solid ${cfg.color}30`,
                                         }}>
-                                            <Icon size={40} style={{ color: cfg.color }} />
+                                            <Icon size={36} style={{ color: cfg.color }} />
                                         </div>
-                                        <span style={styles.tramiteLabel}>{cfg.label}</span>
+
+                                        <span style={styles.subLabel}>{cfg.label}</span>
+
                                         {waitCount > 0 && (
                                             <span style={{
                                                 ...styles.waitBadge,
@@ -278,7 +503,14 @@ export default function TurnoKiosco() {
                             <div style={styles.ticketInfo}>
                                 <div style={styles.ticketInfoRow}>
                                     <span style={styles.ticketInfoLabel}>Trámite</span>
-                                    <span style={styles.ticketInfoValue}>{selectedType?.label}</span>
+                                    <span style={{
+                                        ...styles.ticketInfoValue,
+                                        fontSize: selectedType?.grupo_label ? '0.82rem' : '0.95rem',
+                                        textAlign: 'right',
+                                        maxWidth: '220px',
+                                    }}>
+                                        {getTicketTramiteLabel()}
+                                    </span>
                                 </div>
                                 <div style={styles.ticketInfoRow}>
                                     <span style={styles.ticketInfoLabel}>Box</span>
@@ -334,7 +566,7 @@ export default function TurnoKiosco() {
                             </div>
                         </div>
                         <div style={{ fontSize: '12px', borderTop: '1px dashed #000', paddingTop: '8px' }}>
-                            <div><strong>Trámite:</strong> {selectedType?.label}</div>
+                            <div><strong>Trámite:</strong> {getTicketTramiteLabel()}</div>
                             <div><strong>Box:</strong> {turno.box_asignado}</div>
                             {turno.dni && <div><strong>DNI:</strong> {turno.dni}</div>}
                             <div><strong>Hora:</strong> {new Date(turno.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</div>
@@ -468,12 +700,12 @@ const styles = {
     },
     grid: {
         display: 'grid',
-        gridTemplateColumns: 'repeat(2, 1fr)',
+        gridTemplateColumns: 'repeat(3, 1fr)',
         gap: '16px',
     },
     tramiteBtn: {
         display: 'flex', flexDirection: 'column', alignItems: 'center',
-        justifyContent: 'center', gap: '14px',
+        justifyContent: 'center', gap: '12px',
         padding: '28px 16px',
         background: 'rgba(255,255,255,0.88)',
         backdropFilter: 'blur(12px)',
@@ -483,6 +715,18 @@ const styles = {
         transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
         boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
         WebkitTapHighlightColor: 'transparent',
+        position: 'relative',
+    },
+    numberBadge: {
+        position: 'absolute',
+        top: '12px', left: '12px',
+        width: '32px', height: '32px',
+        borderRadius: '50%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: '#fff',
+        fontWeight: 800,
+        fontSize: '0.85rem',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
     },
     tramiteIconWrap: {
         width: '80px', height: '80px', borderRadius: '24px',
@@ -491,6 +735,11 @@ const styles = {
     tramiteLabel: {
         fontSize: '1rem', fontWeight: 700, color: '#0D3B66',
         textAlign: 'center', lineHeight: 1.3,
+    },
+    subBadge: {
+        display: 'flex', alignItems: 'center', gap: '4px',
+        fontSize: '0.75rem', fontWeight: 700,
+        padding: '4px 12px', borderRadius: '20px',
     },
     waitBadge: {
         fontSize: '0.75rem', fontWeight: 700,
@@ -510,6 +759,62 @@ const styles = {
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
         zIndex: 1000,
+    },
+    // ── Sub-select step ──
+    backBtn: {
+        display: 'flex', alignItems: 'center', gap: '8px',
+        padding: '12px 20px', marginBottom: '20px',
+        background: 'rgba(255,255,255,0.8)',
+        backdropFilter: 'blur(12px)',
+        border: '2px solid #E2E8F0',
+        borderRadius: '16px',
+        cursor: 'pointer',
+        fontSize: '0.95rem', fontWeight: 700, color: '#475569',
+        transition: 'all 0.2s',
+    },
+    groupHeader: {
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        gap: '12px', padding: '28px 24px',
+        borderRadius: '24px', border: '2px solid',
+        marginBottom: '24px',
+    },
+    groupHeaderIcon: {
+        width: '64px', height: '64px', borderRadius: '20px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+    },
+    groupHeaderTitle: {
+        margin: 0, fontSize: '1.2rem', fontWeight: 800,
+        textAlign: 'center', letterSpacing: '-0.3px',
+    },
+    groupHeaderSub: {
+        margin: 0, fontSize: '0.85rem', color: '#64748B', fontWeight: 500,
+    },
+    subGrid: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: '16px',
+    },
+    subBtn: {
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', gap: '12px',
+        padding: '24px 14px',
+        background: 'rgba(255,255,255,0.88)',
+        backdropFilter: 'blur(12px)',
+        borderRadius: '22px',
+        border: '2px solid',
+        cursor: 'pointer',
+        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
+        WebkitTapHighlightColor: 'transparent',
+        position: 'relative',
+    },
+    subIconWrap: {
+        width: '68px', height: '68px', borderRadius: '20px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+    },
+    subLabel: {
+        fontSize: '0.95rem', fontWeight: 700, color: '#0D3B66',
+        textAlign: 'center', lineHeight: 1.3,
     },
     // ── Ticket step ──
     ticketContainer: {
