@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS deudas_pacientes (
     ultimo_contacto_at timestamptz,                    -- Cuándo se envió el último mensaje
     ultimo_contacto_por text,                          -- Quién envió el último mensaje
     ultima_respuesta_at timestamptz,                   -- Cuándo respondió por última vez el paciente
+    fecha_ultima_factura timestamptz,                  -- Fecha de la factura más reciente (para ordenar)
     created_at timestamptz DEFAULT now(),
     updated_at timestamptz DEFAULT now()
 );

@@ -31,6 +31,8 @@ export default function DeudasPanel({ addToast, currentUser }) {
     const [search, setSearch] = useState('');
     const [catFilter, setCatFilter] = useState(null);
     const [telFilter, setTelFilter] = useState(null); // null=todos, true=con, false=sin
+    const [sortBy, setSortBy] = useState('fecha_ultima_factura');
+    const [sortDir, setSortDir] = useState('desc');
     const [metricas, setMetricas] = useState(null);
     const [showMetricas, setShowMetricas] = useState(false);
 
@@ -69,6 +71,8 @@ export default function DeudasPanel({ addToast, currentUser }) {
             if (catFilter) filters.categoria = catFilter;
             if (search) filters.search = search;
             if (telFilter !== null) filters.conTelefono = telFilter;
+            filters.sortBy = sortBy;
+            filters.sortDir = sortDir;
             const data = await fetchDeudores(filters);
             setDeudores(data);
             const m = await fetchMetricasDeudas();
@@ -79,7 +83,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
         } finally {
             setLoading(false);
         }
-    }, [catFilter, search, telFilter, addToast]);
+    }, [catFilter, search, telFilter, sortBy, sortDir, addToast]);
 
     useEffect(() => { loadDeudores(); }, [loadDeudores]);
 
@@ -495,7 +499,22 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                 <tr>
                                     <th style={st.th}>Paciente</th>
                                     <th style={{ ...st.th, width: '90px' }}>NHC</th>
-                                    <th style={{ ...st.th, width: '140px', textAlign: 'right' }}>Deuda</th>
+                                    <th style={{ ...st.th, width: '110px', cursor: 'pointer', userSelect: 'none' }}
+                                        onClick={() => {
+                                            if (sortBy === 'fecha_ultima_factura') setSortDir(p => p === 'desc' ? 'asc' : 'desc');
+                                            else { setSortBy('fecha_ultima_factura'); setSortDir('desc'); }
+                                        }}
+                                    >
+                                        Fecha {sortBy === 'fecha_ultima_factura' ? (sortDir === 'desc' ? '▼' : '▲') : ''}
+                                    </th>
+                                    <th style={{ ...st.th, width: '130px', textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}
+                                        onClick={() => {
+                                            if (sortBy === 'deuda_total') setSortDir(p => p === 'desc' ? 'asc' : 'desc');
+                                            else { setSortBy('deuda_total'); setSortDir('desc'); }
+                                        }}
+                                    >
+                                        Deuda {sortBy === 'deuda_total' ? (sortDir === 'desc' ? '▼' : '▲') : ''}
+                                    </th>
                                     <th style={{ ...st.th, width: '50px', textAlign: 'center' }}>Fact.</th>
                                     <th style={{ ...st.th, width: '155px' }}>Categoría</th>
                                     <th style={{ ...st.th, width: '120px' }}>Teléfono</th>
@@ -515,6 +534,9 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                                 <span style={{ fontWeight: 700, color: '#0D3B66', fontSize: '0.85rem' }}>{d.nombre}</span>
                                             </td>
                                             <td style={{ ...st.td, fontFamily: 'monospace', fontSize: '0.78rem', color: '#64748B' }}>{d.nhc}</td>
+                                            <td style={{ ...st.td, fontSize: '0.75rem', color: '#475569' }}>
+                                                {d.fecha_ultima_factura ? new Date(d.fecha_ultima_factura).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
+                                            </td>
                                             <td style={{ ...st.td, textAlign: 'right', fontWeight: 800, color: '#D97706', fontSize: '0.88rem' }}>
                                                 {formatMoney(d.deuda_total)}
                                             </td>

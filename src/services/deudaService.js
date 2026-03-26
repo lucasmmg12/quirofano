@@ -15,11 +15,13 @@ export const CATEGORIAS_DEUDOR = {
 // ─── Pacientes Deudores ───
 
 export async function fetchDeudores(filters = {}) {
+    const sortBy = filters.sortBy || 'deuda_total';
+    const ascending = filters.sortDir === 'asc';
     let query = supabase
         .from('deudas_pacientes')
         .select('*')
         .gt('deuda_total', 0)
-        .order('deuda_total', { ascending: false });
+        .order(sortBy, { ascending });
 
     if (filters.categoria) {
         query = query.eq('categoria', filters.categoria);
@@ -200,6 +202,25 @@ export async function importarDeudas(registros, usuario) {
     for (const [nhc, grupo] of Object.entries(porNhc)) {
         const deudaTotal = grupo.facturas.reduce((s, f) => s + (Number(f.pendiente) || 0), 0);
 
+        // Calcular fecha más reciente de las facturas
+        let fechaMasReciente = null;
+        for (const f of grupo.facturas) {
+            const lineas = f.lineas || [];
+            for (const l of lineas) {
+                if (l.fecha_albaran) {
+                    const d = new Date(l.fecha_albaran);
+                    if (!isNaN(d.getTime()) && (!fechaMasReciente || d > fechaMasReciente)) {
+                        fechaMasReciente = d;
+                    }
+                }
+            }
+            // Fallback al campo directo
+            if (f.fecha_albaran && !fechaMasReciente) {
+                const d = new Date(f.fecha_albaran);
+                if (!isNaN(d.getTime())) fechaMasReciente = d;
+            }
+        }
+
         // Upsert paciente
         const { data: existente } = await supabase
             .from('deudas_pacientes')
@@ -214,6 +235,7 @@ export async function importarDeudas(registros, usuario) {
                 nombre: grupo.nombre,
                 deuda_total: deudaTotal,
                 cantidad_facturas: grupo.facturas.length,
+                fecha_ultima_factura: fechaMasReciente ? fechaMasReciente.toISOString() : null,
                 updated_at: new Date().toISOString(),
             };
             
@@ -241,6 +263,7 @@ export async function importarDeudas(registros, usuario) {
                     cantidad_facturas: grupo.facturas.length,
                     telefono: grupo.telefono || null,
                     telefono_invalido: grupo.telefono_invalido || false,
+                    fecha_ultima_factura: fechaMasReciente ? fechaMasReciente.toISOString() : null,
                 })
                 .select('id')
                 .single();
