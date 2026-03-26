@@ -280,7 +280,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                 <div style={st.header}>
                     <div style={st.headerLeft}>
                         <div style={{ ...st.iconBadge, background: 'linear-gradient(135deg, #F59E0B, #D97706)' }}>
-                            <DollarSign size={22} color="#fff" />
+                            <img src="/logosanatorio.png" alt="SA" style={{ width: 22, height: 22, objectFit: 'contain' }} />
                         </div>
                         <div>
                             <h2 style={st.headerTitle}>Gestión de Deudas</h2>
@@ -484,7 +484,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                     </div>
                 ) : deudores.length === 0 ? (
                     <div style={st.emptyState}>
-                        <DollarSign size={48} strokeWidth={1.2} style={{ color: '#CBD5E1' }} />
+                        <img src="/logosanatorio.png" alt="Sanatorio Argentino" style={{ width: 56, height: 56, objectFit: 'contain', opacity: 0.35 }} />
                         <h3 style={{ margin: '12px 0 4px', color: '#475569' }}>Sin deudores registrados</h3>
                         <p style={{ color: '#94A3B8', fontSize: '0.9rem' }}>Importá el Excel de deudas desde SALUS para comenzar.</p>
                     </div>
@@ -583,7 +583,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                             ...st.iconBadge, width: '56px', height: '56px',
                             background: `linear-gradient(135deg, ${cat.color}, ${cat.color}CC)`,
                         }}>
-                            <DollarSign size={26} color="#fff" />
+                            <img src="/logosanatorio.png" alt="SA" style={{ width: 28, height: 28, objectFit: 'contain' }} />
                         </div>
                         <div style={{ flex: 1 }}>
                             <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: '#0D3B66' }}>
