@@ -163,6 +163,7 @@ const GUIDE_SECTIONS = [
                     { icon: Info, text: 'Cada línea del Excel conserva su "Concepto" (motivo del cargo) y "Tarifa", visibles al abrir la ficha del deudor.' },
                 ],
                 tips: [
+                    'El Excel se genera ejecutando la query SQL en Microsoft SQL Server Management Studio y exportando el resultado como .xlsx (ver archivo sql/query_deudas_salus.sql).',
                     'El Excel debe tener las columnas: Fecha albarán, Paciente, NHC, NIF, Tarifa, Concepto, Número folio, Cobrado línea, Deuda línea, Núm.Admisión, HOSP_Habitación, teléfono1_formateado, email.',
                     'Si un paciente ya existe (mismo NHC), sus datos se actualizan sin duplicar.',
                     'Los teléfonos editados manualmente no se pisan al re-importar.',
