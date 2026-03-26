@@ -181,11 +181,11 @@ export async function importarDeudas(registros, usuario) {
             filasIgnoradas++;
             continue;
         }
-        if (!r.nhc || !r.nhc.trim()) {
+        if (!r.nhc || !String(r.nhc).trim()) {
             filasIgnoradas++;
             continue;
         }
-        const nhc = r.nhc.trim();
+        const nhc = String(r.nhc).trim();
         if (!porNhc[nhc]) {
             porNhc[nhc] = { nombre: r.nombre, facturas: [], telefono: r.telefono, telefono_invalido: r.telefono_invalido };
         } else if (!porNhc[nhc].telefono && r.telefono) {
