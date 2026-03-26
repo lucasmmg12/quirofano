@@ -4,7 +4,7 @@ import {
     FileText, Upload, MessageSquare, Search, Printer, Send,
     ChevronDown, ChevronRight, CheckCircle2, AlertTriangle,
     Phone, Calendar, Shield, Zap, Users, ArrowRight, Info,
-    MousePointerClick, Eye, RefreshCw,
+    MousePointerClick, Eye, RefreshCw, Banknote, BarChart3, PhoneOff,
 } from 'lucide-react';
 
 const GUIDE_SECTIONS = [
@@ -141,6 +141,88 @@ const GUIDE_SECTIONS = [
                 tips: [
                     'Los campos sensibles (API Key) se muestran ocultos por seguridad. Usá el ícono 👁️ para revelarlos.',
                     'Después de cambiar credenciales, es recomendable probar la conexión antes de usar el sistema.',
+                ],
+            },
+        ],
+    },
+    {
+        id: 'deudas',
+        title: 'Gestión de Deudas',
+        icon: Banknote,
+        color: '#D97706',
+        bg: '#FFFBEB',
+        description: 'Seguimiento de cobros pendientes, comunicación con deudores y métricas de recupero.',
+        subsections: [
+            {
+                title: '📤 Importar Excel de Deudas',
+                icon: Upload,
+                steps: [
+                    { icon: Upload, text: 'Hacé clic en "Importar Excel" y seleccioná el archivo exportado desde SALUS con las deudas.' },
+                    { icon: Eye, text: 'El sistema agrupa automáticamente los items por Número de Folio (factura), sumando los montos de "Deuda línea".' },
+                    { icon: CheckCircle2, text: 'Se muestra un resumen con pacientes nuevos, actualizados y filas descartadas. Los teléfonos inválidos se marcan con ⚠️.' },
+                    { icon: Info, text: 'Cada línea del Excel conserva su "Concepto" (motivo del cargo) y "Tarifa", visibles al abrir la ficha del deudor.' },
+                ],
+                tips: [
+                    'El Excel debe tener las columnas: Fecha albarán, Paciente, NHC, NIF, Tarifa, Concepto, Número folio, Cobrado línea, Deuda línea, Núm.Admisión, HOSP_Habitación, teléfono1_formateado, email.',
+                    'Si un paciente ya existe (mismo NHC), sus datos se actualizan sin duplicar.',
+                    'Los teléfonos editados manualmente no se pisan al re-importar.',
+                    'Solo se importan facturas con deuda mayor a $1.',
+                ],
+            },
+            {
+                title: '📋 Ficha del Deudor',
+                icon: FileText,
+                steps: [
+                    { icon: MousePointerClick, text: 'Seleccioná un deudor de la tabla para ver su ficha completa.' },
+                    { icon: Eye, text: 'Cada factura muestra sus ítems individuales: Concepto (motivo del cargo), Tarifa, Habitación y Nº Admisión.' },
+                    { icon: Phone, text: 'El teléfono se valida automáticamente al formato 549XXXXXXXXXX (13 dígitos). Los inválidos se marcan en rojo.' },
+                    { icon: RefreshCw, text: 'Podés editar el teléfono manualmente y el sistema lo re-valida al guardar.' },
+                ],
+                tips: [
+                    'Las facturas se agrupan por número de folio. Dentro de cada factura se ven las líneas individuales.',
+                    'Los montos cobrados parcialmente se muestran en verde debajo de cada ítem.',
+                    'SALUS es la fuente financiera de verdad. ADM-QUI es la capa de seguimiento y contacto.',
+                ],
+            },
+            {
+                title: '🏷️ Categorización',
+                icon: ClipboardList,
+                steps: [
+                    { icon: MousePointerClick, text: 'Desde la tabla o la ficha, cambiá la categoría del deudor haciendo clic en el dropdown.' },
+                    { icon: CheckCircle2, text: 'Las categorías disponibles son: Sin gestionar, En gestión, Comprometido e Incobrable.' },
+                    { icon: Info, text: 'El sistema registra cada cambio de categoría en la línea de tiempo del paciente.' },
+                ],
+                tips: [
+                    'Usá los filtros en la tabla (Todos, Sin gestionar, En gestión, Comprometido, Incobrable) para enfocarte en un grupo.',
+                    'También podés filtrar por "Con teléfono" o "Sin teléfono" para priorizar contactabilidad.',
+                ],
+            },
+            {
+                title: '💬 Chat WhatsApp',
+                icon: MessageSquare,
+                steps: [
+                    { icon: Phone, text: 'Cada paciente con teléfono válido tiene un botón de WhatsApp (💬) para abrir el chat.' },
+                    { icon: MessageSquare, text: 'Desde la ficha del deudor podés ver el historial completo de mensajes enviados y recibidos.' },
+                    { icon: Send, text: 'Escribí un mensaje personalizado y envialo directo al WhatsApp del paciente.' },
+                    { icon: AlertTriangle, text: 'Si el paciente responde, aparece una notificación en tiempo real en la tabla.' },
+                ],
+                tips: [
+                    'El tracking de WhatsApp muestra: último mensaje enviado, última respuesta, total de mensajes enviados y recibidos.',
+                    'Los teléfonos inválidos no permiten abrir chat. Corregí el número primero.',
+                ],
+            },
+            {
+                title: '📊 Métricas y KPIs',
+                icon: BarChart3,
+                steps: [
+                    { icon: BarChart3, text: 'Hacé clic en "Métricas" para ver el dashboard completo con Top 10 deudores y KPIs de gestión.' },
+                    { icon: Eye, text: 'Los KPIs incluyen: Tasa de Contactabilidad, Tasa de Respuesta y Ticket Promedio.' },
+                    { icon: Info, text: 'Las tarjetas superiores muestran totales rápidos: Deudores, Deuda Total, Con/Sin teléfono y Contactados.' },
+                ],
+                tips: [
+                    'Las métricas se calculan en tiempo real a partir de los datos importados.',
+                    'La Tasa de Contactabilidad mide cuántos pacientes tienen teléfono válido registrado.',
+                    'La Tasa de Respuesta mide cuántos pacientes contactados han respondido al menos un mensaje.',
                 ],
             },
         ],
@@ -341,6 +423,7 @@ export default function HomePanel() {
                         {[
                             { icon: FileText, label: 'Pedidos', count: '3 módulos' },
                             { icon: Stethoscope, label: 'Cirugías', count: 'Control total' },
+                            { icon: Banknote, label: 'Deudas', count: 'Seguimiento' },
                             { icon: MessageSquare, label: 'WhatsApp', count: 'Integrado' },
                         ].map((item, i) => {
                             const Icon = item.icon;
