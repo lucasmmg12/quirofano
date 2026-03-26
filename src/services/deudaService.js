@@ -250,7 +250,7 @@ export async function importarDeudas(registros, usuario) {
 
         // Upsert líneas individuales de cada factura
         for (const f of grupo.facturas) {
-            const lineas = f.lineas || [{ tarifa: f.tarifa || '', deuda: Number(f.pendiente) || 0, cobrado: Number(f.cobrado) || 0, fecha_albaran: f.fecha_albaran || '', habitacion: f.habitacion || '', nAdmision: f.nAdmision || '' }];
+            const lineas = f.lineas || [{ tarifa: f.tarifa || '', concepto: f.concepto || '', deuda: Number(f.pendiente) || 0, cobrado: Number(f.cobrado) || 0, fecha_albaran: f.fecha_albaran || '', habitacion: f.habitacion || '', nAdmision: f.nAdmision || '' }];
             
             for (let i = 0; i < lineas.length; i++) {
                 const linea = lineas[i];
@@ -267,6 +267,7 @@ export async function importarDeudas(registros, usuario) {
                         cobrado: linea.cobrado || 0,
                         pendiente: linea.deuda || 0,
                         servicio: linea.tarifa || null,
+                        responsable: linea.concepto || null,
                         n_admision: String(linea.nAdmision || f.nAdmision || '').trim() || null,
                         fecha_hospitalizacion: linea.fecha_albaran || null,
                         tipo_hospitalizacion: String(linea.habitacion || '').trim() || null,

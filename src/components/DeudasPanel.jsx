@@ -796,11 +796,12 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                                         }}>
                                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                                 <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                                    {item.servicio || 'Sin descripción'}
+                                                                    {item.responsable || item.servicio || 'Sin descripción'}
                                                                 </div>
-                                                                <div style={{ fontSize: '0.68rem', color: '#94A3B8', display: 'flex', gap: '8px' }}>
+                                                                <div style={{ fontSize: '0.68rem', color: '#94A3B8', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                                    {item.servicio && item.responsable && <span>📋 {item.servicio}</span>}
                                                                     {item.tipo_hospitalizacion && <span>🏥 {item.tipo_hospitalizacion}</span>}
-                                                                    {item.n_admision && <span>📋 {item.n_admision}</span>}
+                                                                    {item.n_admision && <span>🔖 {item.n_admision}</span>}
                                                                 </div>
                                                             </div>
                                                             <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '12px' }}>

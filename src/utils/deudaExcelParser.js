@@ -5,20 +5,21 @@
  */
 import { read, utils } from 'xlsx';
 
-// Mapeo de columnas por índice (nuevo formato)
+// Mapeo de columnas por índice (formato con Concepto)
 const COL_MAP = {
     0: 'fecha_albaran',      // Fecha albaran
     1: 'nombre',             // Paciente
     2: 'nhc',                // Paciente_NHC
     3: 'nif',                // Paciente_NIF
     4: 'tarifa',             // Tarifa
-    5: 'folio',              // Numero folio (nuestra clave de factura)
-    6: 'cobrado_linea',      // Cobrado linea
-    7: 'deuda_linea',        // Deuda linea (monto pendiente a sumar)
-    8: 'nAdmision',          // Núm.Admisión
-    9: 'habitacion',         // HOSP_Habitacion
-    10: 'telefono_raw',      // telefono1_formateado
-    11: 'email',             // email
+    5: 'concepto',           // Concepto (motivo del cargo)
+    6: 'folio',              // Numero folio (clave de factura)
+    7: 'cobrado_linea',      // Cobrado linea
+    8: 'deuda_linea',        // Deuda linea (monto pendiente a sumar)
+    9: 'nAdmision',          // Núm.Admisión
+    10: 'habitacion',        // HOSP_Habitacion
+    11: 'telefono_raw',      // telefono1_formateado
+    12: 'email',             // email
 };
 
 export async function parseDeudaExcel(file) {
@@ -67,6 +68,7 @@ export async function parseDeudaExcel(file) {
                     // Cada línea individual se preserva
                     const lineItem = {
                         tarifa: String(r.tarifa || '').trim(),
+                        concepto: String(r.concepto || '').trim(),
                         deuda: deudaLinea,
                         cobrado: cobradoLinea,
                         fecha_albaran: r.fecha_albaran || '',
