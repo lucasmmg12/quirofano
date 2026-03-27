@@ -584,6 +584,28 @@ app.get('/api/salus/sync-all', async (req, res) => {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`\n✅ ═══ SINCRONIZACIÓN COMPLETADA en ${elapsed}s ═══\n`);
 
+        console.log(`
+         ___  _____
+       .'/,-Y"     "~-.
+       l.Y             ^.
+       /\\               _\\_
+      i            ___/"   "\\
+      |          /"   "\\   o !
+      l         ]     o !__./
+       \\ _  _    \\.___./    "~\\
+        X \\/ \\            ___./
+       ( \\ ___.   _..--~~"   ~\\\`-.
+        \\\` Z,--   /               \\
+          \\__.  (   /       ______)
+            \\   l  /-----~~" /
+             Y   \\          /
+             |    "x______.^
+             |           \\
+             j            Y
+
+    ✨ "¡Mmm... Deudas y Presupuestos frescos!" ✨
+        `);
+
         res.json({
             success: true,
             elapsed: `${elapsed}s`,
@@ -629,26 +651,6 @@ app.get('/api/salus/health', async (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔════════════════════════════════════════════════════╗
-║         ___  _____                                 ║
-║       .'/,-Y"     "~-.                             ║
-║       l.Y             ^.                           ║
-║       /\\               _\\_                         ║
-║      i            ___/"   "\\                       ║
-║      |          /"   "\\   o !                      ║
-║      l         ]     o !__./                       ║
-║       \\ _  _    \\.___./    "~\\                     ║
-║        X \\/ \\            ___./                     ║
-║       ( \\ ___.   _..--~~"   ~\\\`-.                ║
-║        \\\` Z,--   /               \\                ║
-║          \\__.  (   /       ______)                 ║
-║            \\   l  /-----~~" /                      ║
-║             Y   \\          /                       ║
-║             |    "x______.^                        ║
-║             |           \\                          ║
-║             j            Y                         ║
-║                                                    ║
-║   "¡Mmm... Sincronización de base de datos..."     ║
-║                                                    ║
 ║  🏥 SALUS Sync Server — ADM-QUI                    ║
 ║  Puerto: ${PORT}                                      ║
 ║  SQL Server: 128.223.16.29:2450 (SALUS)            ║
