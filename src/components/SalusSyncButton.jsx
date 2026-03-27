@@ -36,7 +36,7 @@ export default function SalusSyncButton({ onComplete, addToast }) {
         setResults(null);
 
         try {
-            const SYNC_URL = import.meta.env.VITE_SALUS_SYNC_URL || 'http://localhost:3456/api/salus';
+            const SYNC_URL = import.meta.env.VITE_SALUS_SYNC_URL || 'http://127.0.0.1:3456/api/salus';
             const res = await fetch(`${SYNC_URL}/sync-all`, { signal: AbortSignal.timeout(300000) });
             const json = await res.json();
 

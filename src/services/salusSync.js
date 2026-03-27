@@ -5,7 +5,7 @@
  * Este servicio solo verifica disponibilidad y dispara la sincronización.
  */
 
-const SYNC_BASE_URL = import.meta.env.VITE_SALUS_SYNC_URL || 'http://localhost:3456/api/salus';
+const SYNC_BASE_URL = import.meta.env.VITE_SALUS_SYNC_URL || 'http://127.0.0.1:3456/api/salus';
 
 /**
  * Verifica si el sync-server está corriendo y conectado a SALUS

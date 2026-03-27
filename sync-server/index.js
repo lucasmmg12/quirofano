@@ -629,7 +629,14 @@ app.get('/api/salus/health', async (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔════════════════════════════════════════════════════╗
-║  🏥 SALUS Sync Server — ADM-QUI                   ║
+║     ___  _____                                     ║
+║   ./   \\/     \\                                    ║
+║  |   O | O     |  "¡Mmm... Sincronización!"        ║
+║  |  _,-._     /                                    ║
+║   \`.     ---<|                                     ║
+║     \\__     |                                      ║
+║     🏥 SALUS Sync Server — ADM-QUI                ║
+║                                                    ║
 ║  Puerto: ${PORT}                                      ║
 ║  SQL Server: 128.223.16.29:2450 (SALUS)            ║
 ║  Supabase: ${supabaseUrl ? '✅ Configurado' : '❌ FALTA'}                       ║
