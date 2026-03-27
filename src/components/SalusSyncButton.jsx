@@ -92,44 +92,84 @@ export default function SalusSyncButton({ onComplete, addToast }) {
 
                 {showDownloadHelp && (
                     <div style={{
-                        position: 'absolute', top: '100%', right: 0,
-                        marginTop: '8px', zIndex: 1000,
-                        background: '#fff', borderRadius: '12px',
-                        boxShadow: '0 8px 32px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
-                        padding: '16px', width: '320px',
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 999999,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
-                        <button 
-                            onClick={() => setShowDownloadHelp(false)}
-                            style={{
-                                position: 'absolute', top: '8px', right: '8px',
-                                background: 'none', border: 'none', cursor: 'pointer',
-                                color: '#9CA3AF', fontSize: '1.1rem', lineHeight: 1,
-                            }}
-                        >✕</button>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1F2937', marginBottom: '10px' }}>
-                            📋 Pasos para activar:
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: '#4B5563', lineHeight: 1.6 }}>
-                            <div style={{ display: 'flex', gap: '8px', marginBottom: '6px' }}>
-                                <span style={{ background: '#6366F1', color: '#fff', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, flexShrink: 0 }}>1</span>
-                                <span>Ejecute el archivo <strong>.bat</strong> que se descargó</span>
-                            </div>
-                            <div style={{ display: 'flex', gap: '8px', marginBottom: '6px' }}>
-                                <span style={{ background: '#6366F1', color: '#fff', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, flexShrink: 0 }}>2</span>
-                                <span>Espere a que diga <strong>"Servidor INICIADO"</strong></span>
-                            </div>
-                            <div style={{ display: 'flex', gap: '8px', marginBottom: '6px' }}>
-                                <span style={{ background: '#6366F1', color: '#fff', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, flexShrink: 0 }}>3</span>
-                                <span>Vuelva aquí — el botón se activará <strong>automáticamente</strong></span>
-                            </div>
-                        </div>
                         <div style={{
-                            marginTop: '10px', padding: '8px 10px',
-                            background: '#FEF3C7', borderRadius: '8px',
-                            fontSize: '0.7rem', color: '#92400E',
+                            background: '#fff', borderRadius: '16px',
+                            boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+                            padding: '24px', width: '90%', maxWidth: '400px',
+                            position: 'relative'
                         }}>
-                            ⚠️ No cierre la ventana negra mientras use el sistema.
-                            Solo necesita hacer esto una vez por sesión.
+                            <button 
+                                onClick={() => setShowDownloadHelp(false)}
+                                style={{
+                                    position: 'absolute', top: '16px', right: '16px',
+                                    background: '#F3F4F6', border: 'none', cursor: 'pointer',
+                                    width: '32px', height: '32px', borderRadius: '50%',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: '#6B7280', fontSize: '1.2rem', fontWeight: 600,
+                                    transition: 'background 0.2s'
+                                }}
+                                onMouseOver={e => e.currentTarget.style.background = '#E5E7EB'}
+                                onMouseOut={e => e.currentTarget.style.background = '#F3F4F6'}
+                            >✕</button>
+                            
+                            <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#1F2937', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Download size={22} color="#F59E0B" /> Pasos para activar SALUS
+                            </div>
+                            <p style={{ fontSize: '0.85rem', color: '#6B7280', marginBottom: '20px', lineHeight: 1.5 }}>
+                                Se ha descargado un archivo para conectar su computadora con los servidores de SALUS. Siga estos sencillos pasos:
+                            </p>
+
+                            <div style={{ fontSize: '0.9rem', color: '#4B5563', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                    <span style={{ background: '#6366F1', color: '#fff', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, flexShrink: 0 }}>1</span>
+                                    <div>
+                                        <div style={{ fontWeight: 600, color: '#374151' }}>Abra el archivo descargado</div>
+                                        <div style={{ fontSize: '0.8rem', color: '#9CA3AF' }}>Haga doble clic en <strong style={{ color: '#4B5563' }}>SALUS Sync - Sanatorio Argentino.bat</strong></div>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                    <span style={{ background: '#6366F1', color: '#fff', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, flexShrink: 0 }}>2</span>
+                                    <div>
+                                        <div style={{ fontWeight: 600, color: '#374151' }}>Espere que inicie el servidor</div>
+                                        <div style={{ fontSize: '0.8rem', color: '#9CA3AF' }}>Se abrirá una ventana negra. Espere hasta ver <strong>"Servidor INICIADO en puerto 3456"</strong>.</div>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                    <span style={{ background: '#6366F1', color: '#fff', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, flexShrink: 0 }}>3</span>
+                                    <div>
+                                        <div style={{ fontWeight: 600, color: '#374151' }}>¡Listo! Vuelva aquí</div>
+                                        <div style={{ fontSize: '0.8rem', color: '#9CA3AF' }}>Este botón se volverá color morado automáticamente.</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{
+                                marginTop: '24px', padding: '12px',
+                                background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '12px',
+                                fontSize: '0.8rem', color: '#92400E', display: 'flex', alignItems: 'flex-start', gap: '8px'
+                            }}>
+                                <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+                                <div>
+                                    <strong style={{ display: 'block', marginBottom: '2px' }}>Importante</strong>
+                                    No cierre la ventana negra mientras use el sistema. Solo necesita hacer esto una vez por día.
+                                </div>
+                            </div>
+                            
+                            <button 
+                                onClick={() => setShowDownloadHelp(false)}
+                                style={{
+                                    marginTop: '20px', width: '100%', padding: '10px',
+                                    background: '#F3F4F6', color: '#374151', border: 'none', borderRadius: '8px',
+                                    fontWeight: 700, cursor: 'pointer', transition: 'background 0.2s'
+                                }}
+                                onMouseOver={e => e.currentTarget.style.background = '#E5E7EB'}
+                                onMouseOut={e => e.currentTarget.style.background = '#F3F4F6'}
+                            >
+                                Entendido
+                            </button>
                         </div>
                     </div>
                 )}
