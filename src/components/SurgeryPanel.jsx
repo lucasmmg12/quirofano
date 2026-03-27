@@ -1681,11 +1681,6 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                         {showExcelZone ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                     </button>
 
-                    <button className="btn btn--whatsapp" onClick={handleBatchNotify} disabled={processing}
-                        style={{ fontSize: '0.78rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <Send size={14} /> Notificar
-                    </button>
-
                     <SalusSyncButton
                         onComplete={loadData}
                         addToast={addToast}
