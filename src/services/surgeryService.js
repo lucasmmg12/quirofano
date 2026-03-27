@@ -227,7 +227,9 @@ export async function bulkCreateSurgeries(list) {
  * - Solo se actualizan campos provenientes del Excel (datos demográficos/clínicos)
  * - NUNCA se tocan: status, notificado_at, autorizado_at, confirmado_at, archivos, notas, operador
  * 
- * - Si el registro tiene id_paciente y ya existe (id_paciente + fecha_cirugia + nombre) → ACTUALIZA solo datos del Excel
+ * - Si el registro tiene id_paciente y ya existe (id_paciente + nombre + fecha_cirugia) → ACTUALIZA solo datos del Excel
+ * - Un paciente puede tener MÚLTIPLES registros si tiene cirugías en DISTINTAS fechas
+ *   (ej: una suspendida con Ausente=1 en 27/03 y una nueva en 30/03)
  * - Si es nuevo o no tiene id_paciente → INSERTA
  * - Normaliza teléfonos al formato 549XXXXXXXXXX para WhatsApp
  * 
@@ -299,9 +301,11 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
 
     // Deduplicar registros con id_paciente (el Excel puede traer duplicados)
     // PostgreSQL ON CONFLICT DO UPDATE no permite la misma fila 2 veces en un mismo comando
+    // CLAVE: id_paciente + nombre + fecha_cirugia para permitir múltiples fechas por paciente
+    // (ej: cirugía suspendida el 27/03 + reprogramada al 30/03 = 2 registros)
     const deduped = new Map();
     for (const row of withId) {
-        const key = `${row.id_paciente}|${row.nombre}`;
+        const key = `${row.id_paciente}|${row.nombre}|${row.fecha_cirugia}`;
         deduped.set(key, row); // Último gana (datos más completos)
     }
     const dedupedCount = withId.length - deduped.size;
@@ -338,7 +342,7 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
                     console.warn('⚠️ Error consultando registros existentes:', fetchErr.message);
                 } else if (existingRows) {
                     for (const row of existingRows) {
-                        const key = `${row.id_paciente}|${normalizeNameForUpsert(row.nombre)}`;
+                        const key = `${row.id_paciente}|${normalizeNameForUpsert(row.nombre)}|${row.fecha_cirugia}`;
                         const preserved = {};
                         for (const field of FIELDS_TO_PRESERVE) {
                             if (row[field] !== null && row[field] !== undefined) {
@@ -366,7 +370,7 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
     for (let i = 0; i < uniqueWithId.length; i += BATCH) {
         const batch = uniqueWithId.slice(i, i + BATCH);
         const cleanBatch = batch.map(({ _rowIndex, ...rest }) => {
-            const key = `${rest.id_paciente}|${rest.nombre}`;
+            const key = `${rest.id_paciente}|${rest.nombre}|${rest.fecha_cirugia}`;
             const preserved = existingMap.get(key);
             if (preserved) {
                 // Fusionar: datos del Excel + campos de estado existentes
@@ -379,7 +383,7 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
             const { data, error } = await supabase
                 .from('surgeries')
                 .upsert(cleanBatch, {
-                    onConflict: 'id_paciente,nombre',
+                    onConflict: 'id_paciente,nombre,fecha_cirugia',
                     ignoreDuplicates: false,
                 })
                 .select('id, created_at, updated_at');
@@ -389,14 +393,14 @@ export async function bulkUpsertSurgeries(mappedRecords, defaultAreaCode = '', o
                 // Si el batch falla, intentar uno por uno
                 for (const row of batch) {
                     const { _rowIndex, ...cleanRow } = row;
-                    const key = `${cleanRow.id_paciente}|${cleanRow.nombre}`;
+                    const key = `${cleanRow.id_paciente}|${cleanRow.nombre}|${cleanRow.fecha_cirugia}`;
                     const preserved = existingMap.get(key);
                     const mergedRow = preserved ? { ...cleanRow, ...preserved } : cleanRow;
 
                     const { data: d, error: e } = await supabase
                         .from('surgeries')
                         .upsert(mergedRow, {
-                            onConflict: 'id_paciente,nombre',
+                            onConflict: 'id_paciente,nombre,fecha_cirugia',
                             ignoreDuplicates: false,
                         })
                         .select('id, created_at, updated_at')
