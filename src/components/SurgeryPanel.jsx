@@ -179,6 +179,11 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const [editSurgery, setEditSurgery] = useState(null);
     const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
+    // Quick edit phone modal
+    const [quickEditPhoneOpen, setQuickEditPhoneOpen] = useState(false);
+    const [quickEditPhoneSurgery, setQuickEditPhoneSurgery] = useState(null);
+    const [quickEditPhoneValue, setQuickEditPhoneValue] = useState('');
+
     // Expandable row
     const [expandedRowId, setExpandedRowId] = useState(null);
     const [statusDropdownId, setStatusDropdownId] = useState(null);
@@ -578,20 +583,32 @@ export default function SurgeryPanel({ addToast, currentUser }) {
         finally { setProcessing(false); }
     };
 
-    const handleQuickEditPhone = async (e, surgery) => {
+    const handleQuickEditPhone = (e, surgery) => {
         e.stopPropagation();
-        const newPhone = window.prompt(`Corregir teléfono para ${surgery.nombre}:`, surgery.telefono || '');
-        if (newPhone !== null && newPhone.trim() !== (surgery.telefono || '')) {
-            try {
-                setProcessing(true);
-                await updateSurgery(surgery.id, { telefono: newPhone.trim() });
-                addToast?.('Teléfono actualizado correctamente', 'success');
-                loadData();
-            } catch (err) {
-                addToast?.('Error al actualizar teléfono: ' + err.message, 'error');
-            } finally {
-                setProcessing(false);
-            }
+        setQuickEditPhoneSurgery(surgery);
+        setQuickEditPhoneValue(surgery.telefono || '');
+        setQuickEditPhoneOpen(true);
+    };
+
+    const handleSaveQuickEditPhone = async () => {
+        if (!quickEditPhoneSurgery) return;
+        const newPhone = quickEditPhoneValue.trim();
+        if (newPhone === (quickEditPhoneSurgery.telefono || '')) {
+            setQuickEditPhoneOpen(false);
+            setQuickEditPhoneSurgery(null);
+            return;
+        }
+        try {
+            setProcessing(true);
+            await updateSurgery(quickEditPhoneSurgery.id, { telefono: newPhone });
+            addToast?.('Teléfono actualizado correctamente', 'success');
+            setQuickEditPhoneOpen(false);
+            setQuickEditPhoneSurgery(null);
+            loadData();
+        } catch (err) {
+            addToast?.('Error al actualizar teléfono: ' + err.message, 'error');
+        } finally {
+            setProcessing(false);
         }
     };
 
@@ -2574,6 +2591,68 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                         >
                             <Trash2 size={14} /> Borrar Todo
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* ==================== QUICK EDIT PHONE MODAL ==================== */}
+            {quickEditPhoneOpen && quickEditPhoneSurgery && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 999999,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    animation: 'fadeIn 0.2s',
+                }}>
+                    <div style={{
+                        background: '#fff', padding: 'var(--space-6)',
+                        borderRadius: 'var(--radius-lg)', width: '90%', maxWidth: '400px',
+                        boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+                        animation: 'slideUp 0.3s',
+                    }}>
+                        <h3 style={{ margin: '0 0 var(--space-4)', fontSize: '1.2rem', color: 'var(--neutral-800)' }}>
+                            📱 Corregir teléfono
+                        </h3>
+                        <p style={{ margin: '0 0 var(--space-4)', fontSize: '0.85rem', color: 'var(--neutral-600)' }}>
+                            Actualizá el número para <strong>{quickEditPhoneSurgery.nombre}</strong>.
+                        </p>
+
+                        <div style={{ marginBottom: 'var(--space-6)' }}>
+                            <input
+                                autoFocus
+                                type="text"
+                                value={quickEditPhoneValue}
+                                onChange={(e) => setQuickEditPhoneValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !processing) handleSaveQuickEditPhone();
+                                    if (e.key === 'Escape') setQuickEditPhoneOpen(false);
+                                }}
+                                className="form-input"
+                                placeholder="Ej: 549264..."
+                                style={{ width: '100%', fontSize: '1.1rem', padding: '12px', letterSpacing: '1px', textAlign: 'center' }}
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+                            <button
+                                onClick={() => setQuickEditPhoneOpen(false)}
+                                disabled={processing}
+                                style={{
+                                    padding: '8px 16px', borderRadius: 'var(--radius-md)',
+                                    background: 'var(--neutral-100)', color: 'var(--neutral-700)',
+                                    border: 'none', fontWeight: 600, cursor: 'pointer',
+                                }}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleSaveQuickEditPhone}
+                                disabled={processing}
+                                className="btn btn--primary"
+                                style={{ minWidth: '100px', display: 'flex', justifyContent: 'center' }}
+                            >
+                                {processing ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : 'Aceptar'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
