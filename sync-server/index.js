@@ -157,7 +157,7 @@ async function syncCirugias(db) {
     const FIELDS_TO_PRESERVE = [
         'status', 'notificado_at', 'documentacion_recibida_at', 'autorizado_at',
         'confirmado_at', 'archivos', 'whatsapp_message_id', 'ultimo_mensaje_at',
-        'notas', 'operador',
+        'notas', 'operador', 'telefono'
     ];
 
     for (const r of result.recordset) {
