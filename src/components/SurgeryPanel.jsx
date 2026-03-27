@@ -578,6 +578,23 @@ export default function SurgeryPanel({ addToast, currentUser }) {
         finally { setProcessing(false); }
     };
 
+    const handleQuickEditPhone = async (e, surgery) => {
+        e.stopPropagation();
+        const newPhone = window.prompt(`Corregir teléfono para ${surgery.nombre}:`, surgery.telefono || '');
+        if (newPhone !== null && newPhone.trim() !== (surgery.telefono || '')) {
+            try {
+                setProcessing(true);
+                await updateSurgery(surgery.id, { telefono: newPhone.trim() });
+                addToast?.('Teléfono actualizado correctamente', 'success');
+                loadData();
+            } catch (err) {
+                addToast?.('Error al actualizar teléfono: ' + err.message, 'error');
+            } finally {
+                setProcessing(false);
+            }
+        }
+    };
+
     // ============================================================
     // HANDLERS — Custom WhatsApp Message
     // ============================================================
@@ -1083,25 +1100,31 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                     <span style={{ fontFamily: 'monospace', color: '#DC2626' }}>
                                         {surgery.telefono}
                                     </span>
-                                    <span style={{
+                                    <span 
+                                        onClick={(e) => handleQuickEditPhone(e, surgery)}
+                                        title="Clic para corregir teléfono"
+                                        style={{
                                         display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                        padding: '1px 6px', borderRadius: '4px',
+                                        padding: '2px 8px', borderRadius: '4px',
                                         background: '#FEE2E2', color: '#DC2626',
                                         fontSize: '0.6rem', fontWeight: 700,
-                                        border: '1px solid #FECACA',
+                                        border: '1px solid #FECACA', cursor: 'pointer',
                                     }}>
-                                        ⚠️ TEL INVÁLIDO
+                                        ⚠️ TEL INVÁLIDO (Editar)
                                     </span>
                                 </div>
                             )
                         ) : (
-                            <span style={{
+                            <span 
+                                onClick={(e) => handleQuickEditPhone(e, surgery)}
+                                title="Clic para corregir teléfono"
+                                style={{
                                 display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                padding: '1px 6px', borderRadius: '4px',
+                                padding: '2px 8px', borderRadius: '4px',
                                 background: '#FEF3C7', color: '#92400E',
-                                fontSize: '0.65rem', fontWeight: 600,
+                                fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer',
                             }}>
-                                📵 SIN TELÉFONO
+                                📵 SIN TELÉFONO (Editar)
                             </span>
                         )}
                         {/* Badge de mensajes no leídos */}
