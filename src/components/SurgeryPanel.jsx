@@ -36,6 +36,7 @@ import { fetchUnreadCounts, saveOutgoingMessage, subscribeToAllIncoming } from '
 import ChatWindow from './ChatWindow';
 import BudgetCollapsible from './BudgetCollapsible';
 import { fetchPatientsByIds } from '../services/patientService';
+import SalusSyncButton from './SalusSyncButton';
 
 // ============================================================
 // CONSTANTS & CONFIG
@@ -1684,6 +1685,13 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                         style={{ fontSize: '0.78rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '5px' }}>
                         <Send size={14} /> Notificar
                     </button>
+
+                    <SalusSyncButton
+                        onComplete={loadData}
+                        addToast={addToast}
+                        currentUser={currentUser}
+                        areaCode={areaCode}
+                    />
 
                     <button className="btn btn--ghost" onClick={loadData} title="Refrescar"
                         style={{ padding: '8px', borderRadius: 'var(--radius-md)' }}>

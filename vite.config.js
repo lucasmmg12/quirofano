@@ -17,5 +17,18 @@ export default defineConfig({
     hmr: {
       port: 5173,
     },
+    proxy: {
+      // Proxy al sync-server local para consultas SALUS
+      '/api/salus': {
+        target: 'http://localhost:3456',
+        changeOrigin: true,
+        // Si el sync-server no está corriendo, no crashear Vite
+        configure: (proxy) => {
+          proxy.on('error', (err) => {
+            console.warn('[Vite Proxy] Sync server no disponible:', err.message);
+          });
+        },
+      },
+    },
   },
 })
