@@ -197,8 +197,58 @@ async function syncCirugias(db) {
         deduped.set(key, row);
     }
 
-    // Obtener estados existentes para preservarlos
+    // ── PRE-SYNC: Detectar reprogramaciones ──
+    // Si SALUS cambió la fecha de una cirugía (ej: 30/03 → 31/03),
+    // actualizamos la fecha del registro existente en Supabase ANTES del upsert.
+    // Esto evita registros huérfanos con la fecha vieja.
     const patientIds = [...new Set([...deduped.values()].map(r => r.id_paciente))];
+
+    if (patientIds.length > 0) {
+        // Crear mapa de SALUS: id_paciente+nombre → fecha más reciente
+        const salusDateMap = new Map(); // id_paciente|nombre → fecha_cirugia
+        for (const row of deduped.values()) {
+            // Solo considerar cirugías pendientes (ausente != '0' y != '1')
+            if (row.ausente === '0' || row.ausente === '1') continue;
+            const pKey = `${row.id_paciente}|${row.nombre}`;
+            const existing = salusDateMap.get(pKey);
+            // Quedarse con la fecha más reciente si hay varias
+            if (!existing || row.fecha_cirugia > existing) {
+                salusDateMap.set(pKey, row.fecha_cirugia);
+            }
+        }
+
+        // Buscar registros en Supabase con fechas DISTINTAS a SALUS (= reprogramados)
+        const FETCH_BATCH = 200;
+        let rescheduled = 0;
+        for (let i = 0; i < patientIds.length; i += FETCH_BATCH) {
+            const batch = patientIds.slice(i, i + FETCH_BATCH);
+            const { data: existing } = await supabase
+                .from('surgeries')
+                .select('id, id_paciente, nombre, fecha_cirugia, ausente')
+                .in('id_paciente', batch)
+                .is('ausente', null); // Solo pendientes (no realizadas/suspendidas)
+
+            if (existing) {
+                for (const row of existing) {
+                    const pKey = `${row.id_paciente}|${normalizeNameForUpsert(row.nombre)}`;
+                    const salusDate = salusDateMap.get(pKey);
+                    if (salusDate && row.fecha_cirugia !== salusDate) {
+                        // ¡Reprogramación detectada! Actualizar la fecha
+                        console.log(`   🔄 Reprogramación: ${row.nombre} ${row.fecha_cirugia} → ${salusDate}`);
+                        const { error: updErr } = await supabase
+                            .from('surgeries')
+                            .update({ fecha_cirugia: salusDate })
+                            .eq('id', row.id);
+                        if (!updErr) rescheduled++;
+                        else console.error(`   ❌ Error reprogramando ${row.nombre}:`, updErr.message);
+                    }
+                }
+            }
+        }
+        if (rescheduled > 0) console.log(`   🔄 ${rescheduled} cirugías reprogramadas actualizadas`);
+    }
+
+    // Obtener estados existentes para preservarlos
     const existingMap = new Map();
 
     if (patientIds.length > 0) {

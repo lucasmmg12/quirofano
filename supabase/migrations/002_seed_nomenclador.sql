@@ -94,6 +94,7 @@ INSERT INTO nomenclador (code, name, category, custom_field, custom_label) VALUE
 
 -- ECO DOPPLER
 ('180130', 'Eco Doppler pulsado color cardiopatías', 'eco_doppler', NULL, NULL),
+('180132', 'Ecodoppler Portal', 'eco_doppler', NULL, NULL),
 ('180134', 'Eco Doppler color de miembros', 'eco_doppler', NULL, NULL),
 ('180135', 'Eco Doppler color otras regiones', 'eco_doppler', NULL, NULL),
 ('180136D', 'Eco Doppler color obstétrico', 'eco_doppler', NULL, NULL),

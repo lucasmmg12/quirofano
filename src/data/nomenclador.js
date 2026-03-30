@@ -129,6 +129,7 @@ export const PRACTICES = [
 
     // === ECO DOPPLER ===
     { code: '180130', name: 'Eco Doppler pulsado color cardiopatías', category: 'eco_doppler' },
+    { code: '180132', name: 'Ecodoppler Portal', category: 'eco_doppler' },
     { code: '180134', name: 'Eco Doppler color de miembros', category: 'eco_doppler' },
     { code: '180135', name: 'Eco Doppler color otras regiones', category: 'eco_doppler' },
     { code: '180136', name: 'Eco Doppler color obstétrico', category: 'eco_doppler' },
