@@ -73,12 +73,14 @@ export async function fetchSurgeries({ status, fromDate, toDate, limit = 500, au
 
     // Filtro por columna ausente
     // NULL/vacío = pendiente, '0' = realizada, '1' = suspendida
+    // IMPORTANTE: .not() en PostgREST excluye NULLs (SQL: NOT(NULL=x) → UNKNOWN)
+    // Por eso usamos .or() con is.null para incluir registros pendientes.
     if (ausenteFilter === 'pending') {
-        // Pendientes = todo lo que NO sea '0' (realizada) ni '1' (suspendida)
-        query = query.not('ausente', 'in', '("0","1")');
+        // Pendientes = NULL o cualquier valor que NO sea '0' ni '1'
+        query = query.or('ausente.is.null,and(ausente.neq.0,ausente.neq.1)');
     } else if (ausenteFilter === 'active') {
-        // Activas = pendientes + suspendidas (excluye solo las realizadas)
-        query = query.not('ausente', 'eq', '0');
+        // Activas = pendientes (NULL) + suspendidas ('1') — excluye solo realizadas ('0')
+        query = query.or('ausente.is.null,ausente.neq.0');
     } else if (ausenteFilter === 'completed') {
         query = query.eq('ausente', '0'); // Ya realizadas
     } else if (ausenteFilter === 'suspended') {
