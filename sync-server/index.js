@@ -71,12 +71,20 @@ app.use(express.json());
 function formatDate(val) {
     if (!val) return null;
     if (val instanceof Date) {
-        const y = val.getFullYear();
-        const m = String(val.getMonth() + 1).padStart(2, '0');
-        const d = String(val.getDate()).padStart(2, '0');
+        // CRÍTICO: Usar métodos UTC para evitar desplazamiento por timezone.
+        // SQL Server DATE llega como midnight UTC (ej: 2026-03-31T00:00:00.000Z).
+        // En Argentina (UTC-3), getDate() devuelve el día ANTERIOR (30 en vez de 31).
+        // getUTCDate() siempre devuelve el día correcto del valor original.
+        const y = val.getUTCFullYear();
+        const m = String(val.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(val.getUTCDate()).padStart(2, '0');
         return `${y}-${m}-${d}`;
     }
-    return String(val);
+    // Si no es Date, puede ser un string ISO — extraer solo la parte de fecha
+    const str = String(val);
+    const isoMatch = str.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (isoMatch) return isoMatch[1];
+    return str;
 }
 
 function stripRtf(rtf) {

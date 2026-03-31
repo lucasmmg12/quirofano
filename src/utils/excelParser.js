@@ -200,10 +200,10 @@ export function mapExcelToSurgeries(rows) {
         const rawDate = mapping.fecha ? row[mapping.fecha] : '';
 
         if (rawDate instanceof Date) {
-            // Evitar problemas de timezone con toISOString
-            const y = rawDate.getFullYear();
-            const m = String(rawDate.getMonth() + 1).padStart(2, '0');
-            const d = String(rawDate.getDate()).padStart(2, '0');
+            // CRÍTICO: Usar UTC para evitar desplazamiento por timezone
+            const y = rawDate.getUTCFullYear();
+            const m = String(rawDate.getUTCMonth() + 1).padStart(2, '0');
+            const d = String(rawDate.getUTCDate()).padStart(2, '0');
             fechaCirugia = `${y}-${m}-${d}`;
         } else if (typeof rawDate === 'number') {
             // Excel serial number → convertir con la utilidad de XLSX
@@ -288,7 +288,11 @@ function parseDate(dateStr) {
     // Formatos con texto: "19 feb 2026", "Feb 19, 2026", etc.
     const textDate = new Date(dateStr);
     if (!isNaN(textDate.getTime()) && textDate.getFullYear() > 2000) {
-        return textDate.toISOString().split('T')[0];
+        // Usar UTC para evitar desplazamiento por timezone
+        const y = textDate.getUTCFullYear();
+        const m = String(textDate.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(textDate.getUTCDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
     }
 
     // Último intento: quitar hora si viene con timestamp "19/02/2026 08:00:00"
