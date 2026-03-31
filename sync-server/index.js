@@ -205,74 +205,11 @@ async function syncCirugias(db) {
         deduped.set(key, row);
     }
 
-    // ── PRE-SYNC: Detectar reprogramaciones ──
-    // Si SALUS cambió la fecha de una cirugía (ej: 30/03 → 31/03),
-    // actualizamos la fecha del registro existente en Supabase ANTES del upsert.
-    // Esto evita registros huérfanos con la fecha vieja.
     const patientIds = [...new Set([...deduped.values()].map(r => r.id_paciente))];
 
-    if (patientIds.length > 0) {
-        // Crear mapa de SALUS: id_paciente+nombre → fecha más reciente
-        const salusDateMap = new Map(); // id_paciente|nombre → fecha_cirugia
-        for (const row of deduped.values()) {
-            // Solo considerar cirugías pendientes (ausente != '0' y != '1')
-            if (row.ausente === '0' || row.ausente === '1') continue;
-            const pKey = `${row.id_paciente}|${row.nombre}`;
-            const existing = salusDateMap.get(pKey);
-            // Quedarse con la fecha más reciente si hay varias
-            if (!existing || row.fecha_cirugia > existing) {
-                salusDateMap.set(pKey, row.fecha_cirugia);
-            }
-        }
-
-        // Buscar registros en Supabase con fechas DISTINTAS a SALUS (= reprogramados)
-        const FETCH_BATCH = 200;
-        let rescheduled = 0;
-        for (let i = 0; i < patientIds.length; i += FETCH_BATCH) {
-            const batch = patientIds.slice(i, i + FETCH_BATCH);
-            const { data: existing } = await supabase
-                .from('surgeries')
-                .select('id, id_paciente, nombre, fecha_cirugia, ausente')
-                .in('id_paciente', batch)
-                .is('ausente', null); // Solo pendientes (no realizadas/suspendidas)
-
-            if (existing) {
-                for (const row of existing) {
-                    const pKey = `${row.id_paciente}|${normalizeNameForUpsert(row.nombre)}`;
-                    const salusDate = salusDateMap.get(pKey);
-                    if (salusDate && row.fecha_cirugia !== salusDate) {
-                        // ¡Reprogramación detectada! Actualizar la fecha
-                        console.log(`   🔄 Reprogramación: ${row.nombre} ${row.fecha_cirugia} → ${salusDate}`);
-                        const { error: updErr } = await supabase
-                            .from('surgeries')
-                            .update({ fecha_cirugia: salusDate })
-                            .eq('id', row.id);
-                        if (!updErr) {
-                            rescheduled++;
-                        } else if (updErr.message?.includes('duplicate key') || updErr.message?.includes('unique constraint')) {
-                            // El registro con la fecha correcta ya existe (ej: migración de fix timezone).
-                            // Eliminar el registro huérfano con la fecha vieja/incorrecta.
-                            const { error: delErr } = await supabase
-                                .from('surgeries')
-                                .delete()
-                                .eq('id', row.id);
-                            if (!delErr) {
-                                rescheduled++;
-                                console.log(`   🗑️ Registro obsoleto eliminado: ${row.nombre} (${row.fecha_cirugia})`);
-                            } else {
-                                console.error(`   ❌ Error eliminando registro obsoleto ${row.nombre}:`, delErr.message);
-                            }
-                        } else {
-                            console.error(`   ❌ Error reprogramando ${row.nombre}:`, updErr.message);
-                        }
-                    }
-                }
-            }
-        }
-        if (rescheduled > 0) console.log(`   🔄 ${rescheduled} cirugías reprogramadas actualizadas`);
-    }
-
-    // Obtener estados existentes para preservarlos
+    // ── PASO 1: Obtener estados existentes para preservarlos ──
+    // IMPORTANTE: Capturar estados ANTES de cualquier eliminación
+    const FIELDS_TO_PRESERVE_QUERY = FIELDS_TO_PRESERVE.join(', ');
     const existingMap = new Map();
 
     if (patientIds.length > 0) {
@@ -281,12 +218,14 @@ async function syncCirugias(db) {
             const batch = patientIds.slice(i, i + FETCH_BATCH);
             const { data: existing } = await supabase
                 .from('surgeries')
-                .select(`id_paciente, fecha_cirugia, nombre, ${FIELDS_TO_PRESERVE.join(', ')}`)
+                .select(`id_paciente, fecha_cirugia, nombre, ${FIELDS_TO_PRESERVE_QUERY}`)
                 .in('id_paciente', batch);
 
             if (existing) {
                 for (const row of existing) {
-                    const key = `${row.id_paciente}|${normalizeNameForUpsert(row.nombre)}|${row.fecha_cirugia}`;
+                    // Guardar con la clave de la fecha CORRECTA (SALUS) para que el upsert la encuentre
+                    const normalizedName = normalizeNameForUpsert(row.nombre);
+                    const key = `${row.id_paciente}|${normalizedName}|${row.fecha_cirugia}`;
                     const preserved = {};
                     for (const f of FIELDS_TO_PRESERVE) {
                         if (row[f] != null) preserved[f] = row[f];
@@ -297,6 +236,65 @@ async function syncCirugias(db) {
         }
     }
     console.log(`   🔒 ${existingMap.size} registros con estados a preservar`);
+
+    // ── PASO 2: Limpiar registros huérfanos con fechas incorrectas ──
+    // Detectar registros en Supabase cuya fecha NO coincide con SALUS.
+    // Estos son restos del bug de timezone (fecha -1 día) o reprogramaciones.
+    // Se ELIMINAN directamente. El upsert posterior los recreará con la fecha correcta
+    // y los estados se preservan via existingMap.
+    if (patientIds.length > 0) {
+        // Crear mapa de SALUS: id_paciente+nombre → fecha más reciente
+        const salusDateMap = new Map();
+        for (const row of deduped.values()) {
+            if (row.ausente === '0' || row.ausente === '1') continue;
+            const pKey = `${row.id_paciente}|${row.nombre}`;
+            const existing = salusDateMap.get(pKey);
+            if (!existing || row.fecha_cirugia > existing) {
+                salusDateMap.set(pKey, row.fecha_cirugia);
+            }
+        }
+
+        const FETCH_BATCH = 200;
+        let cleaned = 0;
+        for (let i = 0; i < patientIds.length; i += FETCH_BATCH) {
+            const batch = patientIds.slice(i, i + FETCH_BATCH);
+            const { data: existing } = await supabase
+                .from('surgeries')
+                .select('id, id_paciente, nombre, fecha_cirugia, ausente')
+                .in('id_paciente', batch)
+                .is('ausente', null);
+
+            if (existing) {
+                for (const row of existing) {
+                    const pKey = `${row.id_paciente}|${normalizeNameForUpsert(row.nombre)}`;
+                    const salusDate = salusDateMap.get(pKey);
+                    if (salusDate && row.fecha_cirugia !== salusDate) {
+                        // La fecha en Supabase no coincide con SALUS → eliminar el registro obsoleto
+                        // El upsert posterior creará el registro con la fecha correcta
+                        console.log(`   🗑️ Eliminando obsoleto: ${row.nombre} ${row.fecha_cirugia} (correcto: ${salusDate})`);
+                        const { error: delErr } = await supabase
+                            .from('surgeries')
+                            .delete()
+                            .eq('id', row.id);
+                        if (!delErr) {
+                            cleaned++;
+                            // Mover los estados preservados a la key con fecha correcta
+                            const oldKey = `${row.id_paciente}|${normalizeNameForUpsert(row.nombre)}|${row.fecha_cirugia}`;
+                            const newKey = `${row.id_paciente}|${normalizeNameForUpsert(row.nombre)}|${salusDate}`;
+                            const preserved = existingMap.get(oldKey);
+                            if (preserved && !existingMap.has(newKey)) {
+                                existingMap.set(newKey, preserved);
+                            }
+                        } else {
+                            console.error(`   ❌ Error eliminando ${row.nombre}:`, delErr.message);
+                        }
+                    }
+                }
+            }
+        }
+        if (cleaned > 0) console.log(`   🧹 ${cleaned} registros obsoletos eliminados`);
+    }
+
 
     // Upsert en lotes
     let inserted = 0, updated = 0, skipped = 0;
