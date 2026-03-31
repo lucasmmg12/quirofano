@@ -156,6 +156,7 @@ async function syncCirugias(db) {
         WHERE A.Descrip LIKE '(CX)%'
           AND A.nombre NOT LIKE '%Bloque%'
           AND A.GrupoAgendas IN (N'QUIRÓFANOS CENTRALES', N'QUIRÓFANOS HdD')
+          AND CAST(A.Data AS DATE) >= DATEADD(DAY, -7, CAST(GETDATE() AS DATE))
         ORDER BY A.Data DESC
     `);
     console.log(`   📥 ${result.recordset.length} registros extraídos`);
