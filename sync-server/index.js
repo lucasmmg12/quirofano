@@ -247,8 +247,24 @@ async function syncCirugias(db) {
                             .from('surgeries')
                             .update({ fecha_cirugia: salusDate })
                             .eq('id', row.id);
-                        if (!updErr) rescheduled++;
-                        else console.error(`   ❌ Error reprogramando ${row.nombre}:`, updErr.message);
+                        if (!updErr) {
+                            rescheduled++;
+                        } else if (updErr.message?.includes('duplicate key') || updErr.message?.includes('unique constraint')) {
+                            // El registro con la fecha correcta ya existe (ej: migración de fix timezone).
+                            // Eliminar el registro huérfano con la fecha vieja/incorrecta.
+                            const { error: delErr } = await supabase
+                                .from('surgeries')
+                                .delete()
+                                .eq('id', row.id);
+                            if (!delErr) {
+                                rescheduled++;
+                                console.log(`   🗑️ Registro obsoleto eliminado: ${row.nombre} (${row.fecha_cirugia})`);
+                            } else {
+                                console.error(`   ❌ Error eliminando registro obsoleto ${row.nombre}:`, delErr.message);
+                            }
+                        } else {
+                            console.error(`   ❌ Error reprogramando ${row.nombre}:`, updErr.message);
+                        }
                     }
                 }
             }
