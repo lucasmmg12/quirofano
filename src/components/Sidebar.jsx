@@ -2,12 +2,19 @@ import { useState } from 'react';
 import {
     ClipboardList, History, BookOpen, Settings, PanelLeftClose, PanelLeft,
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
-    ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain,
+    ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain, Users,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0 }) {
     const [pedidosOpen, setPedidosOpen] = useState(true);
     const [mensajeriaOpen, setMensajeriaOpen] = useState(true);
+    const [altasOpen, setAltasOpen] = useState(true);
+
+    // Sub-items dentro de "Altas Adm"
+    const altasSubItems = [
+        { id: 'altas', label: 'Control de Altas', icon: ClipboardCheck },
+        { id: 'asignaciones', label: 'Asignaciones', icon: Users },
+    ];
 
     // Sub-items dentro de "Emisión de Pedidos"
     const pedidosSubItems = [
@@ -25,6 +32,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
 
     const isPedidosActive = pedidosSubItems.some(i => activeView === i.id);
     const isMensajeriaActive = mensajeriaSubItems.some(i => activeView === i.id);
+    const isAltasActive = altasSubItems.some(i => activeView === i.id);
 
     // Helper to render a collapsible group
     function renderGroup({ label, icon: GroupIcon, isOpen, setOpen, isGroupActive, subItems, badge }) {
@@ -172,11 +180,20 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     }} />
                 )}
 
+                {/* ─── Altas Adm (grupo colapsable) ─── */}
+                {renderGroup({
+                    label: 'Altas Adm',
+                    icon: ClipboardCheck,
+                    isOpen: altasOpen,
+                    setOpen: setAltasOpen,
+                    isGroupActive: isAltasActive,
+                    subItems: altasSubItems,
+                })}
+
                 {/* ─── Items individuales ─── */}
                 {[
                     { id: 'turnos', label: 'Cola de Turnos', icon: Ticket },
                     { id: 'deudas', label: 'Deudas', icon: DollarSign },
-                    { id: 'altas', label: 'Altas Adm', icon: ClipboardCheck },
                     { id: 'simon', label: 'Simon IA', icon: Brain },
                     { id: 'cirugias', label: 'Control de Cirugías', icon: Stethoscope },
                     { id: 'metricas', label: 'Métricas', icon: BarChart3 },

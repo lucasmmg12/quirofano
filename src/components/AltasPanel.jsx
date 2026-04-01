@@ -11,6 +11,7 @@ import {
     Stethoscope, ChevronDown, ChevronUp, StickyNote, Save,
 } from 'lucide-react';
 import { fetchAltas, updateAltaEstado, updateAltaNotas, getAltasStats, ALTA_ESTADOS } from '../services/altasService';
+import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
 import SalusSyncButton from './SalusSyncButton';
 
 // ── Helpers ──
@@ -47,17 +48,20 @@ export default function AltasPanel({ addToast, currentUser }) {
     // Notas internas
     const [editingNotas, setEditingNotas] = useState(null);
     const [notasText, setNotasText] = useState('');
+    const [criterios, setCriterios] = useState([]);
 
     // ── Carga de datos ──
     const loadData = useCallback(async () => {
         try {
             setLoading(true);
-            const [data, statsData] = await Promise.all([
+            const [data, statsData, criteriosData] = await Promise.all([
                 fetchAltas({ fromDate, toDate: toDate || undefined, estado: filterEstado, search: searchTerm }),
                 getAltasStats(fromDate, toDate || undefined),
+                fetchAsignaciones().catch(() => []),
             ]);
             setAltas(data);
             setStats(statsData);
+            setCriterios(criteriosData);
         } catch (err) {
             addToast?.('Error al cargar altas: ' + err.message, 'error');
         } finally {
@@ -269,7 +273,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                     </div>
                 ) : (
                     <div className="cart__table-wrapper" style={{ overflowX: 'auto' }}>
-                        <table className="cart__table" style={{ minWidth: '800px' }}>
+                        <table className="cart__table" style={{ minWidth: '950px' }}>
                             <thead>
                                 <tr>
                                     <th className="cart__th" style={{ width: '30px' }}></th>
@@ -280,6 +284,8 @@ export default function AltasPanel({ addToast, currentUser }) {
                                     <th className="cart__th">Médico</th>
                                     <th className="cart__th" style={{ width: '90px' }}>Ingreso</th>
                                     <th className="cart__th" style={{ width: '90px' }}>Alta</th>
+                                    <th className="cart__th" style={{ width: '90px' }}>Responsable</th>
+                                    <th className="cart__th" style={{ width: '80px' }}>Tutor</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -290,9 +296,10 @@ export default function AltasPanel({ addToast, currentUser }) {
                                     return true;
                                 }).map(alta => {
                                     // Si control_adm = 'Sí', forzar estado visual verde (Alta ADM)
-                                    const effectiveEstado = alta.control_adm_finalizado === 'Sí' ? 'Finalizada' : alta.estado;
+                                    const effectiveEstado = alta.control_adm_finalizado === 'Sí' ? 'Alta Adm' : alta.estado;
                                     const cfg = ALTA_ESTADOS[effectiveEstado] || ALTA_ESTADOS['Procesada'];
                                     const isExpanded = expandedId === alta.id;
+                                    const asignacion = matchAsignacion(criterios, alta.cliente, alta.especialidad, alta.proceso);
 
                                     return [
                                         // ── Row ──
@@ -412,13 +419,33 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             <td className="cart__td" style={{ fontSize: '0.75rem', fontFamily: 'monospace', fontWeight: 600 }}>
                                                 {formatDate(alta.fecha_alta)}
                                             </td>
+                                            {/* Responsable (auto-matched) */}
+                                            <td className="cart__td">
+                                                {asignacion?.responsable ? (
+                                                    <span style={{
+                                                        display: 'inline-block', padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                                                        background: '#EFF6FF', color: '#1E40AF',
+                                                        fontSize: '0.7rem', fontWeight: 700,
+                                                    }}>{asignacion.responsable}</span>
+                                                ) : <span style={{ color: 'var(--neutral-300)', fontSize: '0.75rem' }}>—</span>}
+                                            </td>
+                                            {/* Tutor (auto-matched) */}
+                                            <td className="cart__td">
+                                                {asignacion?.tutor ? (
+                                                    <span style={{
+                                                        display: 'inline-block', padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                                                        background: '#F5F3FF', color: '#6D28D9',
+                                                        fontSize: '0.68rem', fontWeight: 600,
+                                                    }}>{asignacion.tutor}</span>
+                                                ) : <span style={{ color: 'var(--neutral-300)', fontSize: '0.75rem' }}>—</span>}
+                                            </td>
 
                                         </tr>,
 
                                         // ── Expanded Detail ──
                                         isExpanded && (
                                             <tr key={`${alta.id}-detail`}>
-                                                <td colSpan={8} style={{
+                                                <td colSpan={10} style={{
                                                     padding: 0, background: 'var(--neutral-50)',
                                                     borderLeft: `4px solid ${cfg.color}`,
                                                     animation: 'fadeIn 0.2s ease-out',

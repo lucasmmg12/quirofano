@@ -29,6 +29,7 @@ import MetricsPanel from './components/MetricsPanel.jsx';
 import TurnoAdminPanel from './components/TurnoAdminPanel.jsx';
 import DeudasPanel from './components/DeudasPanel.jsx';
 import AltasPanel from './components/AltasPanel.jsx';
+import AsignacionPanel from './components/AsignacionPanel.jsx';
 import SimonPanel from './components/SimonPanel.jsx';
 import './App.css';
 
@@ -646,6 +647,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'altas' && (
                     <AltasPanel addToast={addToast} currentUser={currentUser} />
+                )}
+
+                {activeView === 'asignaciones' && (
+                    <AsignacionPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'simon' && (
