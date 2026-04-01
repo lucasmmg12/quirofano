@@ -33,7 +33,7 @@ export const CATEGORIES = [
     { id: 'kinesiologia', label: 'Kinesiología' },
     { id: 'radiologia', label: 'Radiología' },
     { id: 'ecografia', label: 'Ecografía' },
-    { id: 'eco_doppler', label: 'Eco Doppler' },
+
     { id: 'ginecologia', label: 'Ginecología' },
     { id: 'tomografia', label: 'Tomografía' },
 ];
@@ -126,13 +126,11 @@ export const PRACTICES = [
     { code: '180206', name: 'Scan morfológico fetal', category: 'ecografia' },
     { code: '180206B', name: 'Diferencia scan morfológico fetal', category: 'ecografia' },
     { code: '180207', name: 'Ecografía en habitación', category: 'ecografia' },
-
-    // === ECO DOPPLER ===
-    { code: '180130', name: 'Eco Doppler pulsado color cardiopatías', category: 'eco_doppler' },
-    { code: '180132', name: 'Ecodoppler Portal', category: 'eco_doppler' },
-    { code: '180134', name: 'Eco Doppler color de miembros', category: 'eco_doppler' },
-    { code: '180135', name: 'Eco Doppler color otras regiones', category: 'eco_doppler' },
-    { code: '180136', name: 'Eco Doppler color obstétrico', category: 'eco_doppler' },
+    { code: '180130', name: 'Eco Doppler pulsado color cardiopatías', category: 'ecografia' },
+    { code: '180132', name: 'Ecodoppler Portal', category: 'ecografia' },
+    { code: '180134', name: 'Eco Doppler color de miembros', category: 'ecografia' },
+    { code: '180135', name: 'Eco Doppler color otras regiones', category: 'ecografia' },
+    { code: '180136', name: 'Eco Doppler color obstétrico', category: 'ecografia' },
 
     // === GINECOLOGÍA ===
     { code: '220101', name: 'Colposcopía', category: 'ginecologia' },

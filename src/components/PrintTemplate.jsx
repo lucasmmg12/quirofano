@@ -6,7 +6,7 @@ import { formatDate } from '../utils/searchUtils';
  * Cuando un pedido tiene varias prácticas de estas categorías,
  * se imprimen juntas en una sola hoja (en vez de una hoja por práctica).
  */
-const GROUPABLE_CATEGORIES = ['ecografia', 'tomografia', 'biopsia', 'eco_doppler'];
+const GROUPABLE_CATEGORIES = ['ecografia', 'tomografia', 'biopsia'];
 
 /**
  * Categorías y códigos que NO deben mostrar la línea "Cod.:" en la impresión.

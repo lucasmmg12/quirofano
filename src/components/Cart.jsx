@@ -3,7 +3,7 @@ import { Trash2, Minus, Plus, ShoppingCart, Printer, Send, XCircle, Calendar } f
 import { INTERCONSULTA_SPECIALTIES } from '../data/nomenclador';
 
 /** Categorías que se agrupan en un solo comprobante al imprimir */
-const GROUPABLE_CATEGORIES = ['ecografia', 'tomografia', 'biopsia', 'eco_doppler'];
+const GROUPABLE_CATEGORIES = ['ecografia', 'tomografia', 'biopsia'];
 
 export default function Cart({ items, onUpdateItem, onRemoveItem, onClearCart, onPrintAll, onPrintSingle, onSendWhatsApp, hideDate }) {
     const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);

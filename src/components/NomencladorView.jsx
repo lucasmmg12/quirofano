@@ -46,7 +46,6 @@ export default function NomencladorView({ onAddToCart }) {
         kinesiologia: '#14B8A6',
         radiologia: '#3B82F6',
         ecografia: '#0EA5E9',
-        eco_doppler: '#0891B2',
         ginecologia: '#D946EF',
         tomografia: '#7C3AED',
     };
