@@ -269,7 +269,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                     </div>
                 ) : (
                     <div className="cart__table-wrapper" style={{ overflowX: 'auto' }}>
-                        <table className="cart__table" style={{ minWidth: '900px' }}>
+                        <table className="cart__table" style={{ minWidth: '800px' }}>
                             <thead>
                                 <tr>
                                     <th className="cart__th" style={{ width: '30px' }}></th>
@@ -280,15 +280,19 @@ export default function AltasPanel({ addToast, currentUser }) {
                                     <th className="cart__th">Médico</th>
                                     <th className="cart__th" style={{ width: '90px' }}>Ingreso</th>
                                     <th className="cart__th" style={{ width: '90px' }}>Alta</th>
-                                    <th className="cart__th" style={{ width: '55px', textAlign: 'center' }}>Días</th>
-                                    <th className="cart__th" style={{ width: '75px', textAlign: 'center' }}>Ctrl ADM</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {altas.map(alta => {
-                                    const cfg = ALTA_ESTADOS[alta.estado] || ALTA_ESTADOS['Procesada'];
+                                {altas.filter(alta => {
+                                    // Filtrar médicos qsoft / profesional,chequeo
+                                    const doc = (alta.doctor || '').toLowerCase().trim();
+                                    if (doc === 'qsoft' || doc === 'profesional,chequeo' || doc === 'profesional, chequeo') return false;
+                                    return true;
+                                }).map(alta => {
+                                    // Si control_adm = 'Sí', forzar estado visual verde (Alta ADM)
+                                    const effectiveEstado = alta.control_adm_finalizado === 'Sí' ? 'Finalizada' : alta.estado;
+                                    const cfg = ALTA_ESTADOS[effectiveEstado] || ALTA_ESTADOS['Procesada'];
                                     const isExpanded = expandedId === alta.id;
-                                    const dias = daysBetween(alta.fecha_ingreso, alta.fecha_alta);
 
                                     return [
                                         // ── Row ──
@@ -408,40 +412,13 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             <td className="cart__td" style={{ fontSize: '0.75rem', fontFamily: 'monospace', fontWeight: 600 }}>
                                                 {formatDate(alta.fecha_alta)}
                                             </td>
-                                            {/* Días */}
-                                            <td className="cart__td" style={{ textAlign: 'center' }}>
-                                                {dias !== null ? (
-                                                    <span style={{
-                                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                        minWidth: '28px', padding: '2px 6px', borderRadius: '6px',
-                                                        background: dias > 7 ? '#FEF3C7' : '#F0FDF4',
-                                                        color: dias > 7 ? '#92400E' : '#166534',
-                                                        fontSize: '0.72rem', fontWeight: 700, fontFamily: 'monospace',
-                                                    }}>
-                                                        {dias}d
-                                                    </span>
-                                                ) : '—'}
-                                            </td>
-                                            {/* Control ADM */}
-                                            <td className="cart__td" style={{ textAlign: 'center' }}>
-                                                {alta.control_adm_finalizado ? (
-                                                    <span style={{
-                                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                                        padding: '2px 8px', borderRadius: '6px',
-                                                        background: alta.control_adm_finalizado === 'Sí' ? '#ECFDF5' : '#FEF2F2',
-                                                        color: alta.control_adm_finalizado === 'Sí' ? '#10B981' : '#EF4444',
-                                                        fontSize: '0.68rem', fontWeight: 700,
-                                                    }}>
-                                                        {alta.control_adm_finalizado === 'Sí' ? '✓' : '✗'}
-                                                    </span>
-                                                ) : '—'}
-                                            </td>
+
                                         </tr>,
 
                                         // ── Expanded Detail ──
                                         isExpanded && (
                                             <tr key={`${alta.id}-detail`}>
-                                                <td colSpan={10} style={{
+                                                <td colSpan={8} style={{
                                                     padding: 0, background: 'var(--neutral-50)',
                                                     borderLeft: `4px solid ${cfg.color}`,
                                                     animation: 'fadeIn 0.2s ease-out',
