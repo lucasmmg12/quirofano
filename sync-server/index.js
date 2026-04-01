@@ -134,7 +134,7 @@ const EXCLUDED_NAME_PREFIXES = ['BLOQUE'];
 // SYNC CIRUGÍAS — SQL Server → Supabase
 // ════════════════════════════════════════════════
 async function syncCirugias(db) {
-    console.log('📋 [1/3] Extrayendo cirugías de SALUS...');
+    console.log('📋 [1/4] Extrayendo cirugías de SALUS...');
     const result = await db.request().query(`
         SELECT TOP 400
             CAST(A.Data AS DATE) AS Data_Fecha,
@@ -333,7 +333,7 @@ async function syncCirugias(db) {
 // SYNC PRESUPUESTOS — SQL Server → Supabase
 // ════════════════════════════════════════════════
 async function syncPresupuestos(db) {
-    console.log('💰 [2/3] Extrayendo presupuestos de SALUS...');
+    console.log('💰 [2/4] Extrayendo presupuestos de SALUS...');
     const result = await db.request().query(`
         SELECT idPresupuesto, idPaciente, Paciente, fecha, Observaciones,
                idArticulo, descripcion, cantidad, importeUnitario,
@@ -432,7 +432,7 @@ async function syncPresupuestos(db) {
 // SYNC DEUDAS — SQL Server → Supabase
 // ════════════════════════════════════════════════
 async function syncDeudas(db) {
-    console.log('📊 [3/3] Extrayendo deudas de SALUS...');
+    console.log('📊 [3/4] Extrayendo deudas de SALUS...');
     const result = await db.request().query(`
         SELECT TOP 1000
             T.[Fecha albaran], T.Paciente, T.Paciente_NHC, T.Paciente_NIF,
@@ -615,6 +615,123 @@ async function syncDeudas(db) {
 }
 
 // ════════════════════════════════════════════════
+// SYNC ALTAS ADMINISTRATIVAS — SQL Server → Supabase
+// ════════════════════════════════════════════════
+async function syncAltasAdministrativas(db) {
+    console.log('📋 [4/4] Extrayendo altas administrativas de SALUS...');
+
+    // Rango: últimos 60 días de altas
+    const result = await db.request().query(`
+        SELECT 
+            TA.[Número admisión],
+            TA.[Fecha ingreso],
+            CAST(TA.[Fecha alta] AS DATE) AS [Fecha alta],
+            TA.[Paciente],
+            TA.[Cliente],
+            TA.[Especialidad],
+            TA.[Proceso],
+            TA.[Doctor],
+            TA.[Motivo de alta],
+            TA.[Control ADM finalizado],
+            OBS.ValorM AS [Observaciones]
+        FROM [SALUS].[dbo].[TABLEAU_Admisiones] TA
+        LEFT JOIN [PR InstRespHospi] OBS 
+            ON TA.idAdmision = OBS.idHospi 
+            AND OBS.idPreguntaPr = 6175 
+            AND OBS.activo = 1
+        WHERE 
+            TA.[Fecha alta] >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE))
+            AND TA.[Fecha alta] < DATEADD(DAY, 1, CAST(GETDATE() AS DATE))
+    `);
+    console.log(`   📥 ${result.recordset.length} registros extraídos`);
+
+    const records = [];
+    for (const r of result.recordset) {
+        const numAdmision = r['Número admisión'] ? String(r['Número admisión']).trim() : null;
+        if (!numAdmision) continue;
+
+        records.push({
+            numero_admision: numAdmision,
+            paciente: r.Paciente?.trim() || 'Sin nombre',
+            cliente: r.Cliente?.trim() || null,
+            especialidad: r.Especialidad?.trim() || null,
+            proceso: r.Proceso?.trim() || null,
+            doctor: r.Doctor?.trim() || null,
+            motivo_alta: r['Motivo de alta']?.trim() || null,
+            control_adm_finalizado: r['Control ADM finalizado']?.trim() || null,
+            observaciones: r.Observaciones?.trim() || null,
+            fecha_ingreso: formatDate(r['Fecha ingreso']),
+            fecha_alta: formatDate(r['Fecha alta']),
+        });
+    }
+
+    // Deduplicar por numero_admision (último gana)
+    const deduped = new Map();
+    for (const row of records) {
+        deduped.set(row.numero_admision, row);
+    }
+    const uniqueRecords = [...deduped.values()];
+    console.log(`   📦 ${uniqueRecords.length} registros únicos`);
+
+    // Obtener estados existentes para preservarlos
+    const ESTADO_FIELD = 'estado';
+    const FIELDS_TO_PRESERVE = ['estado', 'operador', 'notas_internas'];
+    const existingMap = new Map();
+
+    const admNums = uniqueRecords.map(r => r.numero_admision);
+    const FETCH_BATCH = 200;
+    for (let i = 0; i < admNums.length; i += FETCH_BATCH) {
+        const batch = admNums.slice(i, i + FETCH_BATCH);
+        const { data: existing } = await supabase
+            .from('altas_administrativas')
+            .select(`numero_admision, ${FIELDS_TO_PRESERVE.join(', ')}`)
+            .in('numero_admision', batch);
+
+        if (existing) {
+            for (const row of existing) {
+                const preserved = {};
+                for (const f of FIELDS_TO_PRESERVE) {
+                    if (row[f] != null) preserved[f] = row[f];
+                }
+                if (Object.keys(preserved).length > 0) {
+                    existingMap.set(row.numero_admision, preserved);
+                }
+            }
+        }
+    }
+    console.log(`   🔒 ${existingMap.size} registros con estados a preservar`);
+
+    // Upsert en lotes
+    let inserted = 0, updated = 0, skipped = 0;
+    const BATCH = 50;
+
+    for (let i = 0; i < uniqueRecords.length; i += BATCH) {
+        const batch = uniqueRecords.slice(i, i + BATCH).map(row => {
+            const preserved = existingMap.get(row.numero_admision);
+            return preserved ? { ...row, ...preserved } : row;
+        });
+
+        const { data, error } = await supabase
+            .from('altas_administrativas')
+            .upsert(batch, { onConflict: 'numero_admision', ignoreDuplicates: false })
+            .select('id, created_at, updated_at');
+
+        if (error) {
+            console.error('   ❌ Batch error:', error.message);
+            skipped += batch.length;
+        } else if (data) {
+            data.forEach(d => {
+                d.created_at === d.updated_at ? inserted++ : updated++;
+            });
+        }
+    }
+
+    const summary = { total: result.recordset.length, inserted, updated, skipped };
+    console.log(`   ✅ Altas: ${inserted} nuevas, ${updated} actualizadas, ${skipped} errores`);
+    return summary;
+}
+
+// ════════════════════════════════════════════════
 // ENDPOINT PRINCIPAL: SYNC TODO
 // ════════════════════════════════════════════════
 let syncInProgress = false;
@@ -652,6 +769,13 @@ app.get('/api/salus/sync-all', async (req, res) => {
         } catch (err) {
             console.error('❌ Error en deudas:', err.message);
             results.deudas = { error: err.message };
+        }
+
+        try {
+            results.altas = await syncAltasAdministrativas(db);
+        } catch (err) {
+            console.error('❌ Error en altas administrativas:', err.message);
+            results.altas = { error: err.message };
         }
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);

@@ -592,15 +592,17 @@ export default function SurgeryPanel({ addToast, currentUser }) {
 
     const handleSaveQuickEditPhone = async () => {
         if (!quickEditPhoneSurgery) return;
-        const newPhone = quickEditPhoneValue.trim();
-        if (newPhone === (quickEditPhoneSurgery.telefono || '')) {
+        const rawPhone = quickEditPhoneValue.trim();
+        if (rawPhone === (quickEditPhoneSurgery.telefono || '')) {
             setQuickEditPhoneOpen(false);
             setQuickEditPhoneSurgery(null);
             return;
         }
+        // Normalizar al formato 549XXXXXXXXXX para que la UI lo reconozca como válido
+        const normalizedPhone = rawPhone ? normalizeArgentinePhone(rawPhone) : '';
         try {
             setProcessing(true);
-            await updateSurgery(quickEditPhoneSurgery.id, { telefono: newPhone });
+            await updateSurgery(quickEditPhoneSurgery.id, { telefono: normalizedPhone || rawPhone });
             addToast?.('Teléfono actualizado correctamente', 'success');
             setQuickEditPhoneOpen(false);
             setQuickEditPhoneSurgery(null);
@@ -844,6 +846,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
         const actions = [];
         if (surgery.ausente !== '0') actions.push({ label: 'Realizada', icon: CheckCircle, action: () => handleAusenteChange(surgery.id, '0'), color: '#16A34A' });
         if (surgery.ausente !== '1') actions.push({ label: 'Suspendida', icon: XCircle, action: () => handleAusenteChange(surgery.id, '1'), color: '#DC2626' });
+        if (surgery.ausente === '0' || surgery.ausente === '1') actions.push({ label: 'Pendiente', icon: ArrowRight, action: () => handleAusenteChange(surgery.id, null), color: '#6B7280' });
         return actions;
     };
 

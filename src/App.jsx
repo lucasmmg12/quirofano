@@ -28,6 +28,7 @@ import WhatsAppLineStatus from './components/WhatsAppLineStatus.jsx';
 import MetricsPanel from './components/MetricsPanel.jsx';
 import TurnoAdminPanel from './components/TurnoAdminPanel.jsx';
 import DeudasPanel from './components/DeudasPanel.jsx';
+import AltasPanel from './components/AltasPanel.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -640,6 +641,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'deudas' && (
                     <DeudasPanel addToast={addToast} currentUser={currentUser} />
+                )}
+
+                {activeView === 'altas' && (
+                    <AltasPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'config' && (

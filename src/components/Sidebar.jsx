@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
     ClipboardList, History, BookOpen, Settings, PanelLeftClose, PanelLeft,
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
-    ClipboardPlus, BarChart3, Ticket, DollarSign,
+    ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0 }) {
@@ -177,6 +177,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                 {[
                     { id: 'turnos', label: 'Cola de Turnos', icon: Ticket },
                     { id: 'deudas', label: 'Deudas', icon: DollarSign },
+                    { id: 'altas', label: 'Altas Adm', icon: ClipboardCheck },
                     { id: 'pedidos_marcela', label: 'Pedidos Marcela', icon: ClipboardPlus },
                     { id: 'cirugias', label: 'Control de Cirugías', icon: Stethoscope },
                     { id: 'metricas', label: 'Métricas', icon: BarChart3 },
