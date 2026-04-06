@@ -325,10 +325,70 @@ export default function SimonPanel({ addToast }) {
 
                 <div className="rag-messages">
                     {messages.length === 0 && !isLoading && (
-                        <div className="rag-empty-state">
+                        <div className="rag-empty-state" style={{ maxWidth: '520px' }}>
                             <Brain size={48} style={{ marginBottom: '12px', opacity: 0.3 }} />
                             <h3 style={{ margin: '0 0 6px', fontSize: '1rem', fontWeight: 700, color: 'var(--neutral-500)' }}>¿En qué puedo ayudarte?</h3>
-                            <p style={{ margin: '0 0 20px', fontSize: '0.8rem' }}>Consultá documentos del Sanatorio con IA</p>
+                            <p style={{ margin: '0 0 24px', fontSize: '0.8rem' }}>Consultá documentos del Sanatorio con IA</p>
+
+                            {/* ── Banner colaborativo ── */}
+                            <div style={{
+                                background: 'linear-gradient(135deg, #EFF6FF 0%, #F0F9FF 50%, #F5F3FF 100%)',
+                                borderRadius: '14px',
+                                padding: '20px',
+                                border: '1px solid rgba(59, 130, 246, 0.12)',
+                                textAlign: 'left',
+                                width: '100%',
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                                    <Sparkles size={16} color="#3B82F6" />
+                                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--neutral-700)' }}>
+                                        Mejoremos a Simon juntos
+                                    </span>
+                                </div>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', lineHeight: 1.5, margin: '0 0 14px' }}>
+                                    Simon aprende de los documentos y reglas que vos le enseñás. Cuanta más información le des, mejores van a ser sus respuestas.
+                                </p>
+
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button
+                                        onClick={() => setActiveTab('docs')}
+                                        style={{
+                                            flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
+                                            padding: '10px 12px', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.15)',
+                                            background: '#fff', cursor: 'pointer', transition: 'all 0.2s',
+                                        }}
+                                        onMouseEnter={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(59,130,246,0.12)'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(59,130,246,0.15)'; e.currentTarget.style.boxShadow = 'none'; }}
+                                    >
+                                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                            <Upload size={15} color="#3B82F6" />
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-700)' }}>Subí documentos</div>
+                                            <div style={{ fontSize: '0.65rem', color: 'var(--neutral-400)' }}>PDF, Word, Excel...</div>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => setActiveTab('rules')}
+                                        style={{
+                                            flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
+                                            padding: '10px 12px', borderRadius: '10px', border: '1px solid rgba(139,92,246,0.15)',
+                                            background: '#fff', cursor: 'pointer', transition: 'all 0.2s',
+                                        }}
+                                        onMouseEnter={e => { e.currentTarget.style.borderColor = '#8B5CF6'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(139,92,246,0.12)'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(139,92,246,0.15)'; e.currentTarget.style.boxShadow = 'none'; }}
+                                    >
+                                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#F5F3FF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                            <Shield size={15} color="#8B5CF6" />
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-700)' }}>Agregá reglas</div>
+                                            <div style={{ fontSize: '0.65rem', color: 'var(--neutral-400)' }}>Conocimiento extra</div>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     )}
 
