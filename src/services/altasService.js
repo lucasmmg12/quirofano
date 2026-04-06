@@ -36,8 +36,8 @@ export async function fetchAltas({ fromDate, toDate, estado, search } = {}) {
             .order('fecha_alta', { ascending: false })
             .range(from, from + PAGE_SIZE - 1);
 
-        if (fromDate) query = query.gte('fecha_alta', fromDate);
-        if (toDate) query = query.lte('fecha_alta', toDate);
+        if (fromDate) query = query.gte('fecha_ingreso', fromDate);
+        if (toDate) query = query.lte('fecha_ingreso', toDate);
         if (estado && estado !== 'all') query = query.eq('estado', estado);
         if (search) {
             query = query.or(`paciente.ilike.%${search}%,doctor.ilike.%${search}%,cliente.ilike.%${search}%,numero_admision.ilike.%${search}%`);
@@ -98,8 +98,8 @@ export async function getAltasStats(fromDate, toDate) {
             .select('estado')
             .range(from, from + PAGE_SIZE - 1);
 
-        if (fromDate) query = query.gte('fecha_alta', fromDate);
-        if (toDate) query = query.lte('fecha_alta', toDate);
+        if (fromDate) query = query.gte('fecha_ingreso', fromDate);
+        if (toDate) query = query.lte('fecha_ingreso', toDate);
 
         const { data, error } = await query;
         if (error) throw error;

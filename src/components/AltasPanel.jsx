@@ -168,8 +168,8 @@ export default function AltasPanel({ addToast, currentUser }) {
             return true;
         }).map(alta => {
             const asignacion = matchAsignacion(criterios, alta.cliente, alta.especialidad, alta.proceso);
-            const effectiveEstado = alta.control_adm_finalizado === 'Sí' ? 'Alta Adm' : alta.estado;
-            return { ...alta, _effectiveEstado: effectiveEstado, _responsable: asignacion?.responsable || '', _tutor: asignacion?.tutor || '' };
+            const effectiveEstado = alta.control_adm_finalizado === 'Sí' ? 'Alta Adm' : (alta.estado === 'Alta Adm' ? 'Procesada' : alta.estado);
+            return { ...alta, _effectiveEstado: effectiveEstado, _responsable: asignacion?.responsable || '' };
         });
     }, [altas, criterios]);
 
@@ -181,7 +181,6 @@ export default function AltasPanel({ addToast, currentUser }) {
             especialidad: new Set(),
             doctor: new Set(),
             responsable: new Set(),
-            tutor: new Set(),
         };
         preFilteredAltas.forEach(a => {
             const ecfg = ALTA_ESTADOS[a._effectiveEstado];
@@ -190,7 +189,6 @@ export default function AltasPanel({ addToast, currentUser }) {
             if (a.especialidad) cols.especialidad.add(a.especialidad);
             if (a.doctor) cols.doctor.add(a.doctor);
             if (a._responsable) cols.responsable.add(a._responsable);
-            if (a._tutor) cols.tutor.add(a._tutor);
         });
         return Object.fromEntries(Object.entries(cols).map(([k, v]) => [k, [...v].sort()]));
     }, [preFilteredAltas]);
@@ -206,7 +204,6 @@ export default function AltasPanel({ addToast, currentUser }) {
             if (columnFilters.especialidad && !columnFilters.especialidad.has(a.especialidad)) return false;
             if (columnFilters.doctor && !columnFilters.doctor.has(a.doctor)) return false;
             if (columnFilters.responsable && !columnFilters.responsable.has(a._responsable)) return false;
-            if (columnFilters.tutor && !columnFilters.tutor.has(a._tutor)) return false;
             return true;
         });
     }, [preFilteredAltas, columnFilters]);
@@ -439,6 +436,7 @@ export default function AltasPanel({ addToast, currentUser }) {
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <Calendar size={14} color="var(--neutral-400)" />
+                    <span style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', fontWeight: 600 }}>F. Ingreso:</span>
                     <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
                         style={{
                             padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--neutral-200)',
@@ -510,13 +508,12 @@ export default function AltasPanel({ addToast, currentUser }) {
                                     <FilterHeader label="Especialidad" col="especialidad" />
                                     <FilterHeader label="Médico" col="doctor" />
                                     <th className="cart__th" style={{ width: '90px' }}>Ingreso</th>
-                                    <th className="cart__th" style={{ width: '90px' }}>Alta</th>
+                                    <th className="cart__th" style={{ width: '110px' }}>Alta</th>
                                     <FilterHeader label="Responsable" col="responsable" width="90px" />
-                                    <FilterHeader label="Tutor" col="tutor" width="80px" />
                                 </tr>
                                 {activeFilterCount > 0 && (
                                     <tr>
-                                        <td colSpan={10} style={{ padding: '4px 10px', background: '#EFF6FF', borderBottom: '1px solid #DBEAFE' }}>
+                                        <td colSpan={9} style={{ padding: '4px 10px', background: '#EFF6FF', borderBottom: '1px solid #DBEAFE' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                                 <ListFilter size={12} color="#4F46E5" />
                                                 <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#4F46E5' }}>
@@ -612,32 +609,35 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                                 padding: '4px', minWidth: '165px',
                                                                 animation: 'fadeIn 0.15s ease-out',
                                                             }}>
-                                                                {Object.entries(ALTA_ESTADOS).map(([key, scfg]) => (
-                                                                    <button
-                                                                        key={key}
-                                                                        onClick={e => {
-                                                                            e.stopPropagation();
-                                                                            handleEstadoChange(alta.id, key);
-                                                                        }}
-                                                                        disabled={processing}
-                                                                        style={{
-                                                                            display: 'flex', alignItems: 'center', gap: '8px',
-                                                                            width: '100%', padding: '7px 12px',
-                                                                            border: 'none', borderRadius: '6px',
-                                                                            background: alta.estado === key ? scfg.bg : 'transparent',
-                                                                            color: scfg.color, cursor: 'pointer',
-                                                                            fontSize: '0.76rem', fontWeight: 600,
-                                                                            transition: 'background 0.1s',
-                                                                            textAlign: 'left',
-                                                                        }}
-                                                                        onMouseOver={e => e.currentTarget.style.background = scfg.bg}
-                                                                        onMouseOut={e => e.currentTarget.style.background = alta.estado === key ? scfg.bg : 'transparent'}
-                                                                    >
-                                                                        <span>{scfg.icon}</span>
-                                                                        <span>{scfg.label}</span>
-                                                                        {alta.estado === key && <span style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>✓</span>}
-                                                                    </button>
-                                                                ))}
+                                                                {Object.entries(ALTA_ESTADOS).map(([key, scfg]) => {
+                                                                    if (key === 'Alta Adm') return null; // No permitir selecc. manual
+                                                                    return (
+                                                                        <button
+                                                                            key={key}
+                                                                            onClick={e => {
+                                                                                e.stopPropagation();
+                                                                                handleEstadoChange(alta.id, key);
+                                                                            }}
+                                                                            disabled={processing}
+                                                                            style={{
+                                                                                display: 'flex', alignItems: 'center', gap: '8px',
+                                                                                width: '100%', padding: '7px 12px',
+                                                                                border: 'none', borderRadius: '6px',
+                                                                                background: alta.estado === key ? scfg.bg : 'transparent',
+                                                                                color: scfg.color, cursor: 'pointer',
+                                                                                fontSize: '0.76rem', fontWeight: 600,
+                                                                                transition: 'background 0.1s',
+                                                                                textAlign: 'left',
+                                                                            }}
+                                                                            onMouseOver={e => e.currentTarget.style.background = scfg.bg}
+                                                                            onMouseOut={e => e.currentTarget.style.background = alta.estado === key ? scfg.bg : 'transparent'}
+                                                                        >
+                                                                            <span>{scfg.icon}</span>
+                                                                            <span>{scfg.label}</span>
+                                                                            {alta.estado === key && <span style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>✓</span>}
+                                                                        </button>
+                                                                    );
+                                                                })}
                                                             </div>
                                                         </>
                                                     )}
@@ -665,7 +665,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             </td>
                                             {/* Fecha Alta */}
                                             <td className="cart__td" style={{ fontSize: '0.75rem', fontFamily: 'monospace', fontWeight: 600 }}>
-                                                {formatDate(alta.fecha_alta)}
+                                                {alta.fecha_alta ? formatDate(alta.fecha_alta) : <span style={{ color: '#4F46E5', fontWeight: 700, fontSize: '0.7rem', padding: '2px 6px', background: '#EEF2FF', borderRadius: '4px' }}>Paciente internado</span>}
                                             </td>
                                             {/* Responsable (auto-matched) */}
                                             <td className="cart__td">
@@ -677,23 +677,12 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                     }}>{asignacion.responsable}</span>
                                                 ) : <span style={{ color: 'var(--neutral-300)', fontSize: '0.75rem' }}>—</span>}
                                             </td>
-                                            {/* Tutor (auto-matched) */}
-                                            <td className="cart__td">
-                                                {asignacion?.tutor ? (
-                                                    <span style={{
-                                                        display: 'inline-block', padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                                                        background: '#F5F3FF', color: '#6D28D9',
-                                                        fontSize: '0.68rem', fontWeight: 600,
-                                                    }}>{asignacion.tutor}</span>
-                                                ) : <span style={{ color: 'var(--neutral-300)', fontSize: '0.75rem' }}>—</span>}
-                                            </td>
-
                                         </tr>,
 
                                         // ── Expanded Detail ──
                                         isExpanded && (
                                             <tr key={`${alta.id}-detail`}>
-                                                <td colSpan={10} style={{
+                                                <td colSpan={9} style={{
                                                     padding: 0, background: 'var(--neutral-50)',
                                                     borderLeft: `4px solid ${cfg.color}`,
                                                     animation: 'fadeIn 0.2s ease-out',

@@ -622,26 +622,30 @@ async function syncAltasAdministrativas(db) {
 
     // Rango: últimos 60 días de altas
     const result = await db.request().query(`
-        SELECT 
-            TA.[Número admisión],
-            TA.[Fecha ingreso],
-            CAST(TA.[Fecha alta] AS DATE) AS [Fecha alta],
-            TA.[Paciente],
-            TA.[Cliente],
-            TA.[Especialidad],
-            TA.[Proceso],
-            TA.[Doctor],
-            TA.[Motivo de alta],
-            TA.[Control ADM finalizado],
-            OBS.ValorM AS [Observaciones]
-        FROM [SALUS].[dbo].[TABLEAU_Admisiones] TA
-        LEFT JOIN [PR InstRespHospi] OBS 
-            ON TA.idAdmision = OBS.idHospi 
-            AND OBS.idPreguntaPr = 6175 
-            AND OBS.activo = 1
-        WHERE 
-            TA.[Fecha alta] >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE))
-            AND TA.[Fecha alta] < DATEADD(DAY, 1, CAST(GETDATE() AS DATE))
+        WITH CTE AS (
+            SELECT 
+                TA.[Número admisión],
+                TA.[Fecha ingreso],
+                CAST(TA.[Fecha alta] AS DATE) AS [Fecha alta],
+                TA.[Paciente],
+                TA.[Cliente],
+                TA.[Especialidad],
+                TA.[Proceso],
+                TA.[Doctor],
+                TA.[Motivo de alta],
+                TA.[Control ADM finalizado],
+                OBS.ValorM AS [Observaciones],
+                ROW_NUMBER() OVER (PARTITION BY TA.[Paciente] ORDER BY TA.[Fecha ingreso] DESC, TA.[Número admisión] DESC) as rn
+            FROM [SALUS].[dbo].[TABLEAU_Admisiones] TA
+            LEFT JOIN [PR InstRespHospi] OBS 
+                ON TA.idAdmision = OBS.idHospi 
+                AND OBS.idPreguntaPr = 6175 
+                AND OBS.activo = 1
+            WHERE 
+                TA.[Fecha ingreso] >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE))
+                AND TA.[Fecha ingreso] < DATEADD(DAY, 1, CAST(GETDATE() AS DATE))
+        )
+        SELECT * FROM CTE WHERE rn = 1
     `);
     console.log(`   📥 ${result.recordset.length} registros extraídos`);
 
