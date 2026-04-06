@@ -679,7 +679,7 @@ async function syncAltasAdministrativas(db) {
 
     // Obtener estados existentes para preservarlos
     const ESTADO_FIELD = 'estado';
-    const FIELDS_TO_PRESERVE = ['estado', 'operador', 'notas_internas'];
+    const FIELDS_TO_PRESERVE = ['estado', 'operador', 'notas_internas', 'fecha_alta_adm'];
     const existingMap = new Map();
 
     const admNums = uniqueRecords.map(r => r.numero_admision);
@@ -688,7 +688,7 @@ async function syncAltasAdministrativas(db) {
         const batch = admNums.slice(i, i + FETCH_BATCH);
         const { data: existing } = await supabase
             .from('altas_administrativas')
-            .select(`numero_admision, ${FIELDS_TO_PRESERVE.join(', ')}`)
+            .select(`numero_admision, ${FIELDS_TO_PRESERVE.join(', ')}, control_adm_finalizado`)
             .in('numero_admision', batch);
 
         if (existing) {
@@ -697,6 +697,8 @@ async function syncAltasAdministrativas(db) {
                 for (const f of FIELDS_TO_PRESERVE) {
                     if (row[f] != null) preserved[f] = row[f];
                 }
+                // Guardar también el estado previo de control_adm para detectar transición
+                preserved._prev_control_adm = row.control_adm_finalizado;
                 if (Object.keys(preserved).length > 0) {
                     existingMap.set(row.numero_admision, preserved);
                 }
@@ -712,7 +714,20 @@ async function syncAltasAdministrativas(db) {
     for (let i = 0; i < uniqueRecords.length; i += BATCH) {
         const batch = uniqueRecords.slice(i, i + BATCH).map(row => {
             const preserved = existingMap.get(row.numero_admision);
-            return preserved ? { ...row, ...preserved } : row;
+            const merged = preserved ? { ...row, ...preserved } : row;
+            // Limpiar campo interno antes de enviar
+            delete merged._prev_control_adm;
+
+            // ── Detectar transición a "Alta Adm" para setear timestamp ──
+            const prevControl = preserved?._prev_control_adm;
+            const newControl = row.control_adm_finalizado;
+            
+            if (newControl === 'Sí' && !merged.fecha_alta_adm) {
+                // Primera vez que control_adm_finalizado pasa a 'Sí' → marcar timestamp
+                merged.fecha_alta_adm = new Date().toISOString();
+            }
+
+            return merged;
         });
 
         const { data, error } = await supabase

@@ -13,7 +13,7 @@ import {
 import {
     TrendingUp, Users, Building2, Activity, Clock, Stethoscope,
     CheckCircle, AlertCircle, UserCheck, PieChart as PieIcon,
-    Filter, X, Calendar, ChevronDown, Search,
+    Filter, X, Calendar, ChevronDown, Search, Timer, Hourglass,
 } from 'lucide-react';
 import { ALTA_ESTADOS } from '../services/altasService';
 
@@ -42,6 +42,26 @@ function formatShortDate(d) {
     if (!d) return '';
     const dt = new Date(d + 'T12:00:00');
     return dt.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+}
+
+/**
+ * Calcula la demora administrativa en días.
+ * - Si tiene fecha_alta_adm (cerrada): fecha_alta_adm - created_at
+ * - Si tiene fecha_alta pero NO fecha_alta_adm (abierta): hoy - created_at
+ * - Si NO tiene fecha_alta: null (paciente internado, no aplica)
+ */
+function calcDemora(alta) {
+    if (!alta.fecha_alta || !alta.created_at) return null;
+    const start = new Date(alta.created_at);
+    const end = alta.fecha_alta_adm ? new Date(alta.fecha_alta_adm) : new Date();
+    const diffMs = end - start;
+    return Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+}
+
+function calcDemoraStatus(alta) {
+    if (!alta.fecha_alta) return 'internado';
+    if (alta.fecha_alta_adm) return 'cerrada';
+    return 'abierta';
 }
 
 // ── Custom Tooltip ──
@@ -403,6 +423,103 @@ export default function AltasMetricsPanel({ altas = [] }) {
         return Object.entries(map).map(([name, value]) => ({ name: name.length > 20 ? name.slice(0, 18) + '…' : name, value, fullName: name })).sort((a, b) => b.value - a.value).slice(0, 10);
     }, [data]);
 
+    // ══════════════════════════════════════════════════
+    // MÉTRICAS DE DEMORA ADMINISTRATIVA
+    // ══════════════════════════════════════════════════
+
+    // ── 11) KPIs de Demora ──
+    const demoraKpis = useMemo(() => {
+        const conAlta = data.filter(a => a.fecha_alta && a.created_at);
+        const cerradas = conAlta.filter(a => a.fecha_alta_adm);
+        const abiertas = conAlta.filter(a => !a.fecha_alta_adm);
+
+        const demorasCerradas = cerradas.map(calcDemora).filter(d => d !== null);
+        const demorasAbiertas = abiertas.map(calcDemora).filter(d => d !== null);
+        const todasDemoras = [...demorasCerradas, ...demorasAbiertas];
+
+        const avg = todasDemoras.length > 0 ? (todasDemoras.reduce((s, d) => s + d, 0) / todasDemoras.length).toFixed(1) : '—';
+        const avgCerradas = demorasCerradas.length > 0 ? (demorasCerradas.reduce((s, d) => s + d, 0) / demorasCerradas.length).toFixed(1) : '—';
+        const max = todasDemoras.length > 0 ? Math.max(...todasDemoras) : 0;
+
+        return {
+            totalConAlta: conAlta.length,
+            cerradas: cerradas.length,
+            abiertas: abiertas.length,
+            avgDemora: avg,
+            avgDemoraCompletadas: avgCerradas,
+            maxDemora: max,
+        };
+    }, [data]);
+
+    // ── 12) Demora promedio por Responsable ──
+    const demoraPorResponsable = useMemo(() => {
+        const map = {};
+        data.filter(a => a.fecha_alta && a.created_at).forEach(a => {
+            const r = a._responsable || 'Sin asignar';
+            const d = calcDemora(a);
+            if (d === null) return;
+            if (!map[r]) map[r] = { total: 0, count: 0, max: 0 };
+            map[r].total += d; map[r].count++;
+            if (d > map[r].max) map[r].max = d;
+        });
+        return Object.entries(map)
+            .map(([name, v]) => ({ name, promedio: parseFloat((v.total / v.count).toFixed(1)), max: v.max, count: v.count }))
+            .sort((a, b) => b.promedio - a.promedio);
+    }, [data]);
+
+    // ── 13) Demora promedio por Obra Social ──
+    const demoraPorOS = useMemo(() => {
+        const map = {};
+        data.filter(a => a.fecha_alta && a.created_at).forEach(a => {
+            const os = a.cliente || 'Sin OS';
+            const d = calcDemora(a);
+            if (d === null) return;
+            if (!map[os]) map[os] = { total: 0, count: 0 };
+            map[os].total += d; map[os].count++;
+        });
+        return Object.entries(map)
+            .filter(([, v]) => v.count >= 2)
+            .map(([name, v]) => ({ name: name.length > 18 ? name.slice(0, 16) + '…' : name, promedio: parseFloat((v.total / v.count).toFixed(1)), count: v.count, fullName: name }))
+            .sort((a, b) => b.promedio - a.promedio).slice(0, 10);
+    }, [data]);
+
+    // ── 14) Pacientes con demora abierta (pendientes) ──
+    const pendientesDemora = useMemo(() => {
+        return data
+            .filter(a => a.fecha_alta && a.created_at && !a.fecha_alta_adm)
+            .map(a => ({
+                paciente: a.paciente,
+                responsable: a._responsable || 'Sin asignar',
+                os: a.cliente || '—',
+                demora: calcDemora(a),
+                fechaAlta: a.fecha_alta,
+            }))
+            .filter(a => a.demora !== null)
+            .sort((a, b) => b.demora - a.demora)
+            .slice(0, 15);
+    }, [data]);
+
+    // ── 15) Histograma de demoras (rangos de días) ──
+    const histogramaDemora = useMemo(() => {
+        const rangos = [
+            { label: '0-1 día', min: 0, max: 1 },
+            { label: '2-3 días', min: 2, max: 3 },
+            { label: '4-7 días', min: 4, max: 7 },
+            { label: '8-14 días', min: 8, max: 14 },
+            { label: '15-30 días', min: 15, max: 30 },
+            { label: '30+ días', min: 31, max: Infinity },
+        ];
+        const counts = rangos.map(r => ({ name: r.label, value: 0 }));
+        data.filter(a => a.fecha_alta && a.created_at).forEach(a => {
+            const d = calcDemora(a);
+            if (d === null) return;
+            for (let i = 0; i < rangos.length; i++) {
+                if (d >= rangos[i].min && d <= rangos[i].max) { counts[i].value++; break; }
+            }
+        });
+        return counts;
+    }, [data]);
+
     // ════════════════════════════════════════════════
     // RENDER
     // ════════════════════════════════════════════════
@@ -673,6 +790,140 @@ export default function AltasMetricsPanel({ altas = [] }) {
                             </div>
                         </div>
                     </div>
+                </SectionCard>
+            </div>
+
+            {/* ══════════════════════════════════════════════════════════════ */}
+            {/* ══════ SECCIÓN: DEMORA ADMINISTRATIVA ══════ */}
+            {/* ══════════════════════════════════════════════════════════════ */}
+            <div style={{
+                padding: '14px 18px', borderRadius: '14px',
+                background: 'linear-gradient(135deg, #FDF2F8 0%, #EEF2FF 100%)',
+                border: '1px solid #E0E7FF',
+                display: 'flex', alignItems: 'center', gap: '10px',
+            }}>
+                <div style={{
+                    width: '36px', height: '36px', borderRadius: '10px',
+                    background: 'linear-gradient(135deg, #F59E0B, #EF4444)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', fontSize: '1rem',
+                }}>⏱️</div>
+                <div>
+                    <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#1F2937' }}>Demora Administrativa</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>
+                        Tiempo entre la carga del paciente en el sistema (con alta médica) y la finalización del alta administrativa
+                    </div>
+                </div>
+            </div>
+
+            {/* ── Demora KPIs ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                <KpiCard icon={<Timer size={18} />} label="Prom. Demora (todos)" value={`${demoraKpis.avgDemora}d`}
+                    subtitle="Abiertas + cerradas" color="#F59E0B" />
+                <KpiCard icon={<CheckCircle size={18} />} label="Prom. Demora (completadas)" value={`${demoraKpis.avgDemoraCompletadas}d`}
+                    subtitle={`${demoraKpis.cerradas} altas ADM cerradas`} color="#10B981" />
+                <KpiCard icon={<Hourglass size={18} />} label="Pendientes" value={demoraKpis.abiertas}
+                    subtitle="Con alta médica, sin alta ADM" color="#EF4444" />
+                <KpiCard icon={<AlertCircle size={18} />} label="Demora Máxima" value={`${demoraKpis.maxDemora}d`}
+                    color="#DC2626" />
+            </div>
+
+            {/* ── Histograma + Demora por Responsable ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <SectionCard title="Distribución de Demoras" icon={<Timer size={15} />}>
+                    <ResponsiveContainer width="100%" height={240}>
+                        <BarChart data={histogramaDemora} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                            <XAxis dataKey="name" fontSize={10} tick={{ fill: '#6B7280' }} />
+                            <YAxis fontSize={11} tick={{ fill: '#9CA3AF' }} allowDecimals={false} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Bar dataKey="value" name="Pacientes" radius={[6, 6, 0, 0]} maxBarSize={40}>
+                                {histogramaDemora.map((_, idx) => {
+                                    const colors = ['#10B981', '#34D399', '#F59E0B', '#F97316', '#EF4444', '#DC2626'];
+                                    return <Cell key={idx} fill={colors[idx]} />;
+                                })}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </SectionCard>
+
+                <SectionCard title="Demora Promedio por Responsable" icon={<UserCheck size={15} />}>
+                    {demoraPorResponsable.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={Math.max(220, demoraPorResponsable.length * 36)}>
+                            <BarChart data={demoraPorResponsable} layout="vertical" margin={{ top: 5, right: 30, bottom: 5, left: 10 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" horizontal={false} />
+                                <XAxis type="number" fontSize={11} tick={{ fill: '#9CA3AF' }} />
+                                <YAxis type="category" dataKey="name" fontSize={11} tick={{ fill: '#6B7280' }} width={100} />
+                                <Tooltip content={<CustomTooltip />} />
+                                <Bar dataKey="promedio" name="Prom. Días" fill="#F59E0B" radius={[0, 6, 6, 0]} maxBarSize={24} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px', color: 'var(--neutral-400)', fontSize: '0.8rem' }}>
+                            Sin datos de demora por responsable
+                        </div>
+                    )}
+                </SectionCard>
+            </div>
+
+            {/* ── Demora por OS + Tabla de Pendientes ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <SectionCard title="Demora Promedio por Obra Social" icon={<Building2 size={15} />}>
+                    {demoraPorOS.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={Math.max(220, demoraPorOS.length * 30)}>
+                            <BarChart data={demoraPorOS} layout="vertical" margin={{ top: 5, right: 30, bottom: 5, left: 10 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" horizontal={false} />
+                                <XAxis type="number" fontSize={11} tick={{ fill: '#9CA3AF' }} />
+                                <YAxis type="category" dataKey="name" fontSize={10} tick={{ fill: '#6B7280' }} width={130} />
+                                <Tooltip content={<CustomTooltip />} />
+                                <Bar dataKey="promedio" name="Prom. Días" fill="#EC4899" radius={[0, 6, 6, 0]} maxBarSize={20} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px', color: 'var(--neutral-400)', fontSize: '0.8rem' }}>
+                            Datos insuficientes
+                        </div>
+                    )}
+                </SectionCard>
+
+                <SectionCard title="🚨 Top Pendientes (Mayor Demora)" icon={<Hourglass size={15} />} minHeight="280px">
+                    {pendientesDemora.length > 0 ? (
+                        <div style={{ overflowY: 'auto', maxHeight: '300px' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '2px solid #F3F4F6' }}>
+                                        <th style={{ textAlign: 'left', padding: '6px 8px', color: '#6B7280', fontWeight: 700 }}>Paciente</th>
+                                        <th style={{ textAlign: 'left', padding: '6px 8px', color: '#6B7280', fontWeight: 700 }}>Resp.</th>
+                                        <th style={{ textAlign: 'right', padding: '6px 8px', color: '#6B7280', fontWeight: 700 }}>Días</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {pendientesDemora.map((p, idx) => (
+                                        <tr key={idx} style={{ borderBottom: '1px solid #F9FAFB' }}>
+                                            <td style={{ padding: '5px 8px', color: '#374151', fontWeight: 600 }}>
+                                                {p.paciente?.length > 22 ? p.paciente.slice(0, 20) + '…' : p.paciente}
+                                            </td>
+                                            <td style={{ padding: '5px 8px', color: '#6B7280' }}>
+                                                {p.responsable?.length > 12 ? p.responsable.slice(0, 10) + '…' : p.responsable}
+                                            </td>
+                                            <td style={{ padding: '5px 8px', textAlign: 'right' }}>
+                                                <span style={{
+                                                    display: 'inline-block', padding: '2px 8px', borderRadius: '10px',
+                                                    background: p.demora > 7 ? '#FEF2F2' : p.demora > 3 ? '#FFFBEB' : '#ECFDF5',
+                                                    color: p.demora > 7 ? '#DC2626' : p.demora > 3 ? '#D97706' : '#059669',
+                                                    fontWeight: 800, fontSize: '0.72rem',
+                                                }}>{p.demora}d</span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px', color: '#10B981', fontSize: '0.85rem', fontWeight: 700 }}>
+                            ✅ Sin pendientes
+                        </div>
+                    )}
                 </SectionCard>
             </div>
 
