@@ -9,6 +9,7 @@ import {
     Search, RefreshCw, ChevronRight, Clock, Calendar,
     Filter, X, Loader2, FileText, User, Building2,
     Stethoscope, ChevronDown, ChevronUp, StickyNote, Save,
+    ListFilter,
 } from 'lucide-react';
 import { fetchAltas, updateAltaEstado, updateAltaNotas, getAltasStats, ALTA_ESTADOS } from '../services/altasService';
 import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
@@ -49,6 +50,11 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [editingNotas, setEditingNotas] = useState(null);
     const [notasText, setNotasText] = useState('');
     const [criterios, setCriterios] = useState([]);
+
+    // ── Filtros por columna (tipo Excel) ──
+    const [columnFilters, setColumnFilters] = useState({});
+    const [activeFilterCol, setActiveFilterCol] = useState(null);
+    const [filterSearch, setFilterSearch] = useState('');
 
     // ── Carga de datos ──
     const loadData = useCallback(async () => {
@@ -102,6 +108,223 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     // ── KPIs ──
     const total = stats._total || 0;
+
+    // ── Filtros por columna helpers ──
+    const toggleColumnFilter = (col) => {
+        setActiveFilterCol(prev => prev === col ? null : col);
+        setFilterSearch('');
+    };
+
+    const setFilterValues = (col, values) => {
+        setColumnFilters(prev => {
+            const next = { ...prev };
+            if (!values || values.size === 0) {
+                delete next[col];
+            } else {
+                next[col] = values;
+            }
+            return next;
+        });
+    };
+
+    const toggleFilterValue = (col, value) => {
+        setColumnFilters(prev => {
+            const current = prev[col] ? new Set(prev[col]) : new Set();
+            if (current.has(value)) {
+                current.delete(value);
+            } else {
+                current.add(value);
+            }
+            const next = { ...prev };
+            if (current.size === 0) delete next[col];
+            else next[col] = current;
+            return next;
+        });
+    };
+
+    const clearColumnFilter = (col) => {
+        setColumnFilters(prev => {
+            const next = { ...prev };
+            delete next[col];
+            return next;
+        });
+        setActiveFilterCol(null);
+    };
+
+    const clearAllColumnFilters = () => {
+        setColumnFilters({});
+        setActiveFilterCol(null);
+    };
+
+    // Obtener datos pre-filtrados (sin filtro de columna, para extraer valores únicos)
+    const preFilteredAltas = useMemo(() => {
+        return altas.filter(alta => {
+            const doc = (alta.doctor || '').toLowerCase().trim();
+            if (doc.includes('qsoft') || doc.includes('profesional') && doc.includes('chequeo')) return false;
+            return true;
+        }).map(alta => {
+            const asignacion = matchAsignacion(criterios, alta.cliente, alta.especialidad, alta.proceso);
+            const effectiveEstado = alta.control_adm_finalizado === 'Sí' ? 'Alta Adm' : alta.estado;
+            return { ...alta, _effectiveEstado: effectiveEstado, _responsable: asignacion?.responsable || '', _tutor: asignacion?.tutor || '' };
+        });
+    }, [altas, criterios]);
+
+    // Extraer valores únicos por columna
+    const uniqueValues = useMemo(() => {
+        const cols = {
+            estado: new Set(),
+            cliente: new Set(),
+            especialidad: new Set(),
+            doctor: new Set(),
+            responsable: new Set(),
+            tutor: new Set(),
+        };
+        preFilteredAltas.forEach(a => {
+            const ecfg = ALTA_ESTADOS[a._effectiveEstado];
+            if (ecfg) cols.estado.add(ecfg.label);
+            if (a.cliente) cols.cliente.add(a.cliente);
+            if (a.especialidad) cols.especialidad.add(a.especialidad);
+            if (a.doctor) cols.doctor.add(a.doctor);
+            if (a._responsable) cols.responsable.add(a._responsable);
+            if (a._tutor) cols.tutor.add(a._tutor);
+        });
+        return Object.fromEntries(Object.entries(cols).map(([k, v]) => [k, [...v].sort()]));
+    }, [preFilteredAltas]);
+
+    // Aplicar filtros de columna
+    const filteredAltas = useMemo(() => {
+        return preFilteredAltas.filter(a => {
+            if (columnFilters.estado) {
+                const ecfg = ALTA_ESTADOS[a._effectiveEstado];
+                if (!ecfg || !columnFilters.estado.has(ecfg.label)) return false;
+            }
+            if (columnFilters.cliente && !columnFilters.cliente.has(a.cliente)) return false;
+            if (columnFilters.especialidad && !columnFilters.especialidad.has(a.especialidad)) return false;
+            if (columnFilters.doctor && !columnFilters.doctor.has(a.doctor)) return false;
+            if (columnFilters.responsable && !columnFilters.responsable.has(a._responsable)) return false;
+            if (columnFilters.tutor && !columnFilters.tutor.has(a._tutor)) return false;
+            return true;
+        });
+    }, [preFilteredAltas, columnFilters]);
+
+    const activeFilterCount = Object.keys(columnFilters).length;
+
+    // ── FilterHeader Component ──
+    const FilterHeader = ({ label, col, width }) => {
+        const isActive = !!columnFilters[col];
+        const isOpen = activeFilterCol === col;
+        const values = uniqueValues[col] || [];
+        const filtered = filterSearch
+            ? values.filter(v => v.toLowerCase().includes(filterSearch.toLowerCase()))
+            : values;
+
+        return (
+            <th className="cart__th" style={{ width, position: 'relative', userSelect: 'none' }}>
+                <div
+                    style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                    onClick={() => toggleColumnFilter(col)}
+                >
+                    {label}
+                    <ListFilter size={12} style={{
+                        color: isActive ? '#4F46E5' : 'var(--neutral-300)',
+                        transition: 'color 0.15s',
+                        flexShrink: 0,
+                    }} />
+                    {isActive && (
+                        <span style={{
+                            width: '6px', height: '6px', borderRadius: '50%',
+                            background: '#4F46E5', flexShrink: 0,
+                        }} />
+                    )}
+                </div>
+
+                {isOpen && (
+                    <>
+                        <div
+                            onClick={() => setActiveFilterCol(null)}
+                            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 998 }}
+                        />
+                        <div style={{
+                            position: 'absolute', top: '100%', left: 0, zIndex: 999,
+                            marginTop: '2px', minWidth: '200px', maxWidth: '280px',
+                            background: '#fff', borderRadius: '10px',
+                            boxShadow: '0 8px 30px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
+                            padding: '8px', animation: 'fadeIn 0.15s ease-out',
+                        }}>
+                            {/* Search dentro del filtro */}
+                            <div style={{ position: 'relative', marginBottom: '6px' }}>
+                                <Search size={12} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar..."
+                                    value={filterSearch}
+                                    onChange={e => setFilterSearch(e.target.value)}
+                                    onClick={e => e.stopPropagation()}
+                                    style={{
+                                        width: '100%', padding: '5px 8px 5px 26px',
+                                        border: '1px solid var(--neutral-200)', borderRadius: '6px',
+                                        fontSize: '0.72rem', outline: 'none',
+                                    }}
+                                    autoFocus
+                                />
+                            </div>
+                            {/* Botones rápidos */}
+                            <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+                                <button
+                                    onClick={e => { e.stopPropagation(); setFilterValues(col, new Set(filtered)); }}
+                                    style={{
+                                        flex: 1, padding: '3px', borderRadius: '4px',
+                                        border: '1px solid var(--neutral-200)', background: '#F9FAFB',
+                                        fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer',
+                                        color: 'var(--neutral-600)',
+                                    }}
+                                >Todos</button>
+                                <button
+                                    onClick={e => { e.stopPropagation(); clearColumnFilter(col); }}
+                                    style={{
+                                        flex: 1, padding: '3px', borderRadius: '4px',
+                                        border: '1px solid var(--neutral-200)', background: '#F9FAFB',
+                                        fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer',
+                                        color: '#DC2626',
+                                    }}
+                                >Limpiar</button>
+                            </div>
+                            {/* Lista de valores */}
+                            <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                                {filtered.length === 0 ? (
+                                    <div style={{ padding: '10px', textAlign: 'center', fontSize: '0.72rem', color: 'var(--neutral-400)' }}>Sin valores</div>
+                                ) : filtered.map(val => {
+                                    const checked = columnFilters[col] ? columnFilters[col].has(val) : false;
+                                    return (
+                                        <label
+                                            key={val}
+                                            onClick={e => e.stopPropagation()}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '6px',
+                                                padding: '4px 6px', borderRadius: '4px',
+                                                cursor: 'pointer', fontSize: '0.73rem', fontWeight: 500,
+                                                color: 'var(--neutral-700)', transition: 'background 0.1s',
+                                            }}
+                                            onMouseOver={e => e.currentTarget.style.background = '#F3F4F6'}
+                                            onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => toggleFilterValue(col, val)}
+                                                style={{ width: '14px', height: '14px', accentColor: '#4F46E5', cursor: 'pointer' }}
+                                            />
+                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{val}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </>
+                )}
+            </th>
+        );
+    };
 
     // ════════════════════════════════════════════════
     // RENDER
@@ -277,29 +500,50 @@ export default function AltasPanel({ addToast, currentUser }) {
                             <thead>
                                 <tr>
                                     <th className="cart__th" style={{ width: '30px' }}></th>
-                                    <th className="cart__th" style={{ width: '120px' }}>Estado</th>
+                                    <FilterHeader label="Estado" col="estado" width="120px" />
                                     <th className="cart__th">Paciente</th>
-                                    <th className="cart__th">Obra Social</th>
-                                    <th className="cart__th">Especialidad</th>
-                                    <th className="cart__th">Médico</th>
+                                    <FilterHeader label="Obra Social" col="cliente" />
+                                    <FilterHeader label="Especialidad" col="especialidad" />
+                                    <FilterHeader label="Médico" col="doctor" />
                                     <th className="cart__th" style={{ width: '90px' }}>Ingreso</th>
                                     <th className="cart__th" style={{ width: '90px' }}>Alta</th>
-                                    <th className="cart__th" style={{ width: '90px' }}>Responsable</th>
-                                    <th className="cart__th" style={{ width: '80px' }}>Tutor</th>
+                                    <FilterHeader label="Responsable" col="responsable" width="90px" />
+                                    <FilterHeader label="Tutor" col="tutor" width="80px" />
                                 </tr>
+                                {activeFilterCount > 0 && (
+                                    <tr>
+                                        <td colSpan={10} style={{ padding: '4px 10px', background: '#EFF6FF', borderBottom: '1px solid #DBEAFE' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                <ListFilter size={12} color="#4F46E5" />
+                                                <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#4F46E5' }}>
+                                                    {activeFilterCount} filtro{activeFilterCount > 1 ? 's' : ''} activo{activeFilterCount > 1 ? 's' : ''}
+                                                </span>
+                                                <span style={{ fontSize: '0.68rem', color: 'var(--neutral-400)' }}>—</span>
+                                                <span style={{ fontSize: '0.68rem', color: 'var(--neutral-500)' }}>
+                                                    {filteredAltas.length} de {preFilteredAltas.length} registros
+                                                </span>
+                                                <button
+                                                    onClick={clearAllColumnFilters}
+                                                    style={{
+                                                        marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                        padding: '2px 8px', borderRadius: '4px',
+                                                        background: '#FEE2E2', color: '#DC2626',
+                                                        border: 'none', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600,
+                                                    }}
+                                                >
+                                                    <X size={10} /> Quitar filtros
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
                             </thead>
                             <tbody>
-                                {altas.filter(alta => {
-                                    // Filtrar médicos qsoft / profesional,chequeo
-                                    const doc = (alta.doctor || '').toLowerCase().trim();
-                                    if (doc === 'qsoft' || doc === 'profesional,chequeo' || doc === 'profesional, chequeo') return false;
-                                    return true;
-                                }).map(alta => {
-                                    // Si control_adm = 'Sí', forzar estado visual verde (Alta ADM)
-                                    const effectiveEstado = alta.control_adm_finalizado === 'Sí' ? 'Alta Adm' : alta.estado;
+                                {filteredAltas.map(alta => {
+                                    const effectiveEstado = alta._effectiveEstado;
                                     const cfg = ALTA_ESTADOS[effectiveEstado] || ALTA_ESTADOS['Procesada'];
                                     const isExpanded = expandedId === alta.id;
-                                    const asignacion = matchAsignacion(criterios, alta.cliente, alta.especialidad, alta.proceso);
+                                    const asignacion = { responsable: alta._responsable, tutor: alta._tutor };
 
                                     return [
                                         // ── Row ──
