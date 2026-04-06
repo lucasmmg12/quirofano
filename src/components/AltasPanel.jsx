@@ -161,6 +161,10 @@ export default function AltasPanel({ addToast, currentUser }) {
         return altas.filter(alta => {
             const doc = (alta.doctor || '').toLowerCase().trim();
             if (doc.includes('qsoft') || doc.includes('profesional') && doc.includes('chequeo')) return false;
+            // Particulares: si paciente = obra social, no nos interesa
+            const pac = (alta.paciente || '').trim().toUpperCase();
+            const os = (alta.cliente || '').trim().toUpperCase();
+            if (pac && os && pac === os) return false;
             return true;
         }).map(alta => {
             const asignacion = matchAsignacion(criterios, alta.cliente, alta.especialidad, alta.proceso);
