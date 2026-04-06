@@ -56,6 +56,7 @@ export const PRACTICES = [
     { code: 'HEMO', name: 'Estudio inmunohematológico', category: 'hemoterapia' },
 
     // === CARDIOLOGÍA ===
+    { code: '180130', name: 'Ecocardiograma', category: 'cardiologia' },
     { code: '420303+180130', name: 'Interconsulta + Ecocardiograma', category: 'cardiologia' },
     { code: '170101+420303', name: 'Interconsulta + ECG', category: 'cardiologia' },
     { code: '170113', name: 'Valoración riesgo cardiovascular prequirúrgica', category: 'cardiologia' },

@@ -11,6 +11,7 @@ export const MARCELA_CATEGORIES = [
     { id: 'certificado', label: 'Certificados' },
     { id: 'hemodialisis', label: 'Hemodiálisis' },
     { id: 'doppler', label: 'Doppler Periférico' },
+    { id: 'cardiologia', label: 'Cardiología' },
     { id: 'adicionales', label: 'Adicionales' },
 ];
 
@@ -41,6 +42,9 @@ export const MARCELA_PRACTICES = [
     { code: '180134', name: 'Eco Doppler color transesofágico', category: 'doppler', uImagen: 394 },
     { code: '180802', name: 'Eco Doppler transcraneal', category: 'doppler', uImagen: 231 },
 
+    // === CARDIOLOGÍA ===
+    { code: '180130', name: 'Ecocardiograma', category: 'cardiologia' },
+
     // === ADICIONALES ===
     { code: '340012', name: 'Tomografía computada reconstrucción 3D (Adicional)', category: 'adicionales', uImagen: 250 },
     { code: '340015', name: 'Tomografía computada alta resolución', category: 'adicionales', uImagen: 250 },
@@ -54,5 +58,6 @@ export const MARCELA_CATEGORY_COLORS = {
     certificado: '#F59E0B',
     hemodialisis: '#EF4444',
     doppler: '#EC4899',
+    cardiologia: '#EF4444',
     adicionales: '#14B8A6',
 };
