@@ -329,15 +329,6 @@ export default function SimonPanel({ addToast }) {
                             <Brain size={48} style={{ marginBottom: '12px', opacity: 0.3 }} />
                             <h3 style={{ margin: '0 0 6px', fontSize: '1rem', fontWeight: 700, color: 'var(--neutral-500)' }}>¿En qué puedo ayudarte?</h3>
                             <p style={{ margin: '0 0 20px', fontSize: '0.8rem' }}>Consultá documentos del Sanatorio con IA</p>
-                            {suggestions.top_queries?.length > 0 && (
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'center' }}>
-                                    {suggestions.top_queries.slice(0, 4).map((q, i) => (
-                                        <button key={i} className="rag-suggestion-btn" onClick={() => setInputValue(typeof q === 'string' ? q : q.query)}>
-                                            💡 {typeof q === 'string' ? q : q.query}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
                         </div>
                     )}
 
