@@ -33,7 +33,7 @@ export async function fetchAltas({ fromDate, toDate, estado, search } = {}) {
         let query = supabase
             .from('altas_administrativas')
             .select('*')
-            .order('fecha_alta', { ascending: false })
+            .order('fecha_ingreso', { ascending: false })
             .range(from, from + PAGE_SIZE - 1);
 
         if (fromDate) query = query.gte('fecha_ingreso', fromDate);

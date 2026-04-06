@@ -635,7 +635,7 @@ async function syncAltasAdministrativas(db) {
                 TA.[Motivo de alta],
                 TA.[Control ADM finalizado],
                 OBS.ValorM AS [Observaciones],
-                ROW_NUMBER() OVER (PARTITION BY TA.[Paciente] ORDER BY TA.[Fecha ingreso] DESC, TA.[Número admisión] DESC) as rn
+                ROW_NUMBER() OVER (PARTITION BY TA.[Paciente], CAST(TA.[Fecha ingreso] AS DATE) ORDER BY TA.[Número admisión] DESC) as rn
             FROM [SALUS].[dbo].[TABLEAU_Admisiones] TA
             LEFT JOIN [PR InstRespHospi] OBS 
                 ON TA.idAdmision = OBS.idHospi 
