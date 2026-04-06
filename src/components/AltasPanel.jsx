@@ -14,6 +14,7 @@ import {
 import { fetchAltas, updateAltaEstado, updateAltaNotas, getAltasStats, ALTA_ESTADOS } from '../services/altasService';
 import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
 import SalusSyncButton from './SalusSyncButton';
+import AltasMetricsPanel from './AltasMetricsPanel';
 
 // ── Helpers ──
 function formatDate(d) {
@@ -55,6 +56,9 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [columnFilters, setColumnFilters] = useState({});
     const [activeFilterCol, setActiveFilterCol] = useState(null);
     const [filterSearch, setFilterSearch] = useState('');
+
+    // ── Tab activo ──
+    const [activeTab, setActiveTab] = useState('tabla'); // 'tabla' | 'metricas'
 
     // ── Carga de datos ──
     const loadData = useCallback(async () => {
@@ -377,6 +381,39 @@ export default function AltasPanel({ addToast, currentUser }) {
                     </button>
                 </div>
             </div>
+
+            {/* ── Tab Toggle ── */}
+            <div style={{
+                display: 'flex', gap: '4px', padding: '4px',
+                background: '#F3F4F6', borderRadius: '12px', width: 'fit-content',
+            }}>
+                {[
+                    { key: 'tabla', label: '📋 Tabla', icon: null },
+                    { key: 'metricas', label: '📊 Métricas BI', icon: null },
+                ].map(tab => (
+                    <button
+                        key={tab.key}
+                        onClick={() => setActiveTab(tab.key)}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            padding: '8px 18px', borderRadius: '8px',
+                            background: activeTab === tab.key ? '#fff' : 'transparent',
+                            color: activeTab === tab.key ? '#1F2937' : '#6B7280',
+                            border: 'none', cursor: 'pointer',
+                            fontSize: '0.8rem', fontWeight: activeTab === tab.key ? 700 : 500,
+                            boxShadow: activeTab === tab.key ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                            transition: 'all 0.2s',
+                        }}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+
+            {activeTab === 'metricas' ? (
+                <AltasMetricsPanel altas={preFilteredAltas} />
+            ) : (
+            <>
 
             {/* ── KPI Pills ── */}
             <div style={{
@@ -826,6 +863,8 @@ export default function AltasPanel({ addToast, currentUser }) {
                     </div>
                 )}
             </div>
+        </>
+            )}
         </div>
     );
 }
