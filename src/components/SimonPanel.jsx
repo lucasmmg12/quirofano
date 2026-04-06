@@ -6,9 +6,9 @@
 import { useState, useEffect, useRef } from 'react';
 import {
     Send, Upload, FileText, Trash2, MessageSquare, Plus, Loader2,
-    ChevronRight, Brain, BookOpen, AlertCircle, CheckCircle, X, Clock,
+    ChevronRight, ChevronDown, Brain, BookOpen, AlertCircle, CheckCircle, X, Clock,
     Sparkles, FolderOpen, Tag, Download, FolderPlus, Home, Folder,
-    Shield, RefreshCw, BarChart3,
+    Shield, RefreshCw, BarChart3, HelpCircle, Search, Zap, ArrowRight,
 } from 'lucide-react';
 import {
     sendRAGMessage, listRAGConversations, getRAGConversationMessages,
@@ -60,6 +60,7 @@ export default function SimonPanel({ addToast }) {
     const [bootTimer, setBootTimer] = useState(0);
     const bootTimerRef = useRef(null);
     const [activeTab, setActiveTab] = useState('chat');
+    const [showGuide, setShowGuide] = useState(false);
 
     // Chat
     const [conversations, setConversations] = useState([]);
@@ -389,6 +390,213 @@ export default function SimonPanel({ addToast }) {
                                     </button>
                                 </div>
                             </div>
+
+                            {/* ── Guía: ¿Cómo funciona Simon? ── */}
+                            <button
+                                onClick={() => setShowGuide(prev => !prev)}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
+                                    padding: '12px 16px', marginTop: '12px', borderRadius: '12px',
+                                    border: '1px solid var(--neutral-200)', background: 'white',
+                                    cursor: 'pointer', transition: 'all 0.2s',
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.background = '#FAFCFF'; }}
+                                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--neutral-200)'; e.currentTarget.style.background = 'white'; }}
+                            >
+                                <HelpCircle size={16} color="#3B82F6" />
+                                <span style={{ flex: 1, fontSize: '0.8rem', fontWeight: 700, color: 'var(--neutral-600)', textAlign: 'left' }}>
+                                    ¿Cómo funciona Simon?
+                                </span>
+                                <ChevronDown size={14} style={{
+                                    transition: 'transform 0.25s ease',
+                                    transform: showGuide ? 'rotate(180deg)' : 'rotate(0deg)',
+                                    color: 'var(--neutral-400)',
+                                }} />
+                            </button>
+
+                            {showGuide && (
+                                <div className="animate-fade-in" style={{
+                                    width: '100%', textAlign: 'left', marginTop: '4px',
+                                    border: '1px solid var(--neutral-200)', borderRadius: '14px',
+                                    overflow: 'hidden', background: 'white',
+                                }}>
+                                    {/* Header */}
+                                    <div style={{
+                                        padding: '20px 24px 16px',
+                                        background: 'linear-gradient(135deg, #EFF6FF, #F5F3FF)',
+                                        borderBottom: '1px solid var(--neutral-100)',
+                                    }}>
+                                        <h4 style={{ margin: '0 0 6px', fontSize: '0.95rem', fontWeight: 800, color: 'var(--neutral-800)' }}>
+                                            🧠 Guía completa de Simon IA
+                                        </h4>
+                                        <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--neutral-500)', lineHeight: 1.5 }}>
+                                            Simon es un asistente de inteligencia artificial que responde preguntas basándose en los documentos y reglas que vos le cargás. Así funciona:
+                                        </p>
+                                    </div>
+
+                                    {/* Pipeline visual */}
+                                    <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--neutral-100)' }}>
+                                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>
+                                            Flujo de procesamiento
+                                        </div>
+                                        <div style={{
+                                            display: 'flex', alignItems: 'center', gap: '0', padding: '12px',
+                                            background: 'var(--neutral-50)', borderRadius: '10px',
+                                            overflowX: 'auto',
+                                        }}>
+                                            {[
+                                                { icon: MessageSquare, label: 'Tu pregunta', color: '#3B82F6', bg: '#EFF6FF' },
+                                                { icon: Search, label: 'Busca en docs', color: '#8B5CF6', bg: '#F5F3FF' },
+                                                { icon: Zap, label: 'IA procesa', color: '#F59E0B', bg: '#FFFBEB' },
+                                                { icon: CheckCircle, label: 'Respuesta + fuentes', color: '#10B981', bg: '#ECFDF5' },
+                                            ].map((step, i) => (
+                                                <div key={i} style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1 }}>
+                                                        <div style={{
+                                                            width: '36px', height: '36px', borderRadius: '10px',
+                                                            background: step.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                            border: `1px solid ${step.color}20`,
+                                                        }}>
+                                                            <step.icon size={16} color={step.color} />
+                                                        </div>
+                                                        <span style={{ fontSize: '0.62rem', fontWeight: 600, color: 'var(--neutral-600)', textAlign: 'center', lineHeight: 1.3 }}>
+                                                            {step.label}
+                                                        </span>
+                                                    </div>
+                                                    {i < 3 && <ArrowRight size={12} color="var(--neutral-300)" style={{ flexShrink: 0, margin: '0 2px' }} />}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Paso 1: Documentos */}
+                                    <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--neutral-100)' }}>
+                                        <div style={{ display: 'flex', gap: '14px' }}>
+                                            <div style={{
+                                                width: '40px', height: '40px', borderRadius: '12px',
+                                                background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                flexShrink: 0, border: '1px solid #BFDBFE',
+                                            }}>
+                                                <Upload size={18} color="#3B82F6" />
+                                            </div>
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                                    <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#3B82F6', background: '#EFF6FF', padding: '1px 8px', borderRadius: '10px' }}>PASO 1</span>
+                                                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--neutral-800)' }}>Subí tus documentos</span>
+                                                </div>
+                                                <p style={{ margin: '0 0 8px', fontSize: '0.73rem', color: 'var(--neutral-500)', lineHeight: 1.6 }}>
+                                                    Andá a la pestaña <strong>"Docs"</strong> en la barra lateral y subí los archivos que quieras que Simon conozca. 
+                                                    Simon los procesa, los divide en fragmentos y los almacena para poder buscar en ellos.
+                                                </p>
+                                                <div style={{
+                                                    display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '8px',
+                                                }}>
+                                                    {['PDF', 'Word (.docx)', 'Excel (.xlsx)', 'CSV', 'TXT', 'Markdown'].map(f => (
+                                                        <span key={f} style={{
+                                                            padding: '2px 8px', borderRadius: '6px', fontSize: '0.62rem',
+                                                            fontWeight: 600, background: '#EFF6FF', color: '#3B82F6',
+                                                        }}>{f}</span>
+                                                    ))}
+                                                </div>
+                                                <img src="/simon_step_docs.png" alt="Subir documentos" style={{
+                                                    width: '100%', maxHeight: '140px', objectFit: 'cover',
+                                                    borderRadius: '8px', border: '1px solid var(--neutral-100)',
+                                                }} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Paso 2: Reglas */}
+                                    <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--neutral-100)' }}>
+                                        <div style={{ display: 'flex', gap: '14px' }}>
+                                            <div style={{
+                                                width: '40px', height: '40px', borderRadius: '12px',
+                                                background: '#F5F3FF', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                flexShrink: 0, border: '1px solid #DDD6FE',
+                                            }}>
+                                                <Shield size={18} color="#8B5CF6" />
+                                            </div>
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                                    <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#8B5CF6', background: '#F5F3FF', padding: '1px 8px', borderRadius: '10px' }}>PASO 2</span>
+                                                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--neutral-800)' }}>Agregá reglas de conocimiento</span>
+                                                </div>
+                                                <p style={{ margin: '0 0 8px', fontSize: '0.73rem', color: 'var(--neutral-500)', lineHeight: 1.6 }}>
+                                                    ¿Hay información que NO está en ningún documento pero es importante? Andá a <strong>"Reglas"</strong> y escribila en texto libre. 
+                                                    Simon la clasifica automáticamente y la usa para responder.
+                                                </p>
+                                                <div style={{
+                                                    padding: '10px 12px', background: '#FAFAFE', borderRadius: '8px',
+                                                    border: '1px dashed #DDD6FE', fontSize: '0.7rem', color: 'var(--neutral-500)',
+                                                    fontStyle: 'italic', lineHeight: 1.5, marginBottom: '8px',
+                                                }}>
+                                                    💡 <strong>Ejemplo:</strong> "El plus de OSDE al día de hoy es $2.000" o "Para cirugías de Medisalud se necesita autorización previa del auditor"
+                                                </div>
+                                                <img src="/simon_step_rules.png" alt="Agregar reglas" style={{
+                                                    width: '100%', maxHeight: '140px', objectFit: 'cover',
+                                                    borderRadius: '8px', border: '1px solid var(--neutral-100)',
+                                                }} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Paso 3: Preguntar */}
+                                    <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--neutral-100)' }}>
+                                        <div style={{ display: 'flex', gap: '14px' }}>
+                                            <div style={{
+                                                width: '40px', height: '40px', borderRadius: '12px',
+                                                background: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                flexShrink: 0, border: '1px solid #A7F3D0',
+                                            }}>
+                                                <MessageSquare size={18} color="#10B981" />
+                                            </div>
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                                    <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#10B981', background: '#ECFDF5', padding: '1px 8px', borderRadius: '10px' }}>PASO 3</span>
+                                                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--neutral-800)' }}>Hacé tu pregunta</span>
+                                                </div>
+                                                <p style={{ margin: '0 0 8px', fontSize: '0.73rem', color: 'var(--neutral-500)', lineHeight: 1.6 }}>
+                                                    Escribí tu consulta en el chat. Simon busca en todos tus documentos y reglas, encuentra los fragmentos más relevantes, 
+                                                    y genera una respuesta precisa <strong>citando las fuentes</strong> de donde sacó la información.
+                                                </p>
+                                                <img src="/simon_step_chat.png" alt="Chatear con Simon" style={{
+                                                    width: '100%', maxHeight: '140px', objectFit: 'cover',
+                                                    borderRadius: '8px', border: '1px solid var(--neutral-100)',
+                                                }} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Tips */}
+                                    <div style={{ padding: '16px 24px' }}>
+                                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
+                                            💡 Tips para mejores resultados
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            {[
+                                                { text: 'Subí los convenios de obras sociales completos para preguntas de cobertura', color: '#3B82F6' },
+                                                { text: 'Agregá reglas con datos que cambian seguido: precios, plus, requisitos actuales', color: '#8B5CF6' },
+                                                { text: 'Sé específico en tus preguntas — "¿OSDE cubre ecografía doppler?" es mejor que "ecografía"', color: '#10B981' },
+                                                { text: 'Simon aprende de cada conversación y mejora sus respuestas con el tiempo', color: '#F59E0B' },
+                                                { text: 'Podés organizar documentos en carpetas desde la pestaña Docs', color: '#EF4444' },
+                                            ].map((tip, i) => (
+                                                <div key={i} style={{
+                                                    display: 'flex', alignItems: 'flex-start', gap: '8px',
+                                                    padding: '8px 10px', borderRadius: '8px', background: 'var(--neutral-50)',
+                                                }}>
+                                                    <div style={{
+                                                        width: '6px', height: '6px', borderRadius: '50%',
+                                                        background: tip.color, flexShrink: 0, marginTop: '5px',
+                                                    }} />
+                                                    <span style={{ fontSize: '0.72rem', color: 'var(--neutral-600)', lineHeight: 1.5 }}>
+                                                        {tip.text}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
