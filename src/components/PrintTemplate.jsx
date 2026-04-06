@@ -109,7 +109,7 @@ function SinglePage({ item, patientData }) {
                 {item.displayName || item.name}
             </div>
 
-            {/* === Campos: Diag. / Cod. === */}
+            {/* === Campos: Diag. / Trat. / Cod. === */}
             <div className="print-fields">
                 <div className="print-field-row">
                     <span className="print-field-label">Diag.:</span>
@@ -117,6 +117,15 @@ function SinglePage({ item, patientData }) {
                         {patientData.diagnostico || ''}
                     </span>
                 </div>
+
+                {item.category === 'anestesia' && (
+                    <div className="print-field-row">
+                        <span className="print-field-label">Trat.:</span>
+                        <span className="print-field-value">
+                            {patientData.tratamiento || '—'}
+                        </span>
+                    </div>
+                )}
 
                 {!HIDE_CODE_CATEGORIES.includes(item.category) && !HIDE_CODE_CODES.includes(item.code) && (
                     <div className="print-field-row">
@@ -177,7 +186,7 @@ function GroupedPage({ items, patientData }) {
                 ))}
             </div>
 
-            {/* === Campos: Diag. / Cod. === */}
+            {/* === Campos: Diag. / Trat. / Cod. === */}
             <div className="print-fields">
                 <div className="print-field-row">
                     <span className="print-field-label">Diag.:</span>
@@ -185,6 +194,15 @@ function GroupedPage({ items, patientData }) {
                         {patientData.diagnostico || ''}
                     </span>
                 </div>
+
+                {items[0]?.category === 'anestesia' && (
+                    <div className="print-field-row">
+                        <span className="print-field-label">Trat.:</span>
+                        <span className="print-field-value">
+                            {patientData.tratamiento || '—'}
+                        </span>
+                    </div>
+                )}
 
                 {!HIDE_CODE_CATEGORIES.includes(items[0]?.category) && (
                     <div className="print-field-row">
