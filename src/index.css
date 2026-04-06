@@ -810,6 +810,11 @@ a {
   text-align: center;
   padding: 60px 20px;
   color: var(--neutral-400);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .rag-suggestion-btn {
