@@ -3,14 +3,12 @@
  */
 import { supabase } from '../lib/supabase';
 
-// Usuarios con permiso de edición
-const EDIT_USERS = [
-    'jcorrea@sanatorioargentino.com.ar',
-    'lmarinero@sanatorioargentino.com.ar',
-];
+// Usuarios con permiso de edición (usuario sin @dominio)
+const EDIT_USERS = ['jcorrea', 'lmarinero'];
 
 export function canEditAsignacion(user) {
-    return EDIT_USERS.includes(user?.email?.toLowerCase());
+    const u = (user?.usuario || user?.email || '').toLowerCase().split('@')[0];
+    return EDIT_USERS.includes(u);
 }
 
 /**

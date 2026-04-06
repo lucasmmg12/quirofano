@@ -9,6 +9,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const [pedidosOpen, setPedidosOpen] = useState(false);
     const [mensajeriaOpen, setMensajeriaOpen] = useState(false);
     const [altasOpen, setAltasOpen] = useState(false);
+    const [cirugiasOpen, setCirugiasOpen] = useState(false);
 
     // Sub-items dentro de "Altas Adm"
     const altasSubItems = [
@@ -30,9 +31,16 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         { id: 'plantillas', label: 'Plantillas WhatsApp', icon: MessageSquareText },
     ];
 
+    // Sub-items dentro de "Control de Cirugías"
+    const cirugiasSubItems = [
+        { id: 'cirugias', label: 'Control de Cirugías', icon: Stethoscope },
+        { id: 'metricas', label: 'Métricas', icon: BarChart3 },
+    ];
+
     const isPedidosActive = pedidosSubItems.some(i => activeView === i.id);
     const isMensajeriaActive = mensajeriaSubItems.some(i => activeView === i.id);
     const isAltasActive = altasSubItems.some(i => activeView === i.id);
+    const isCirugiasActive = cirugiasSubItems.some(i => activeView === i.id);
 
     // Helper to render a collapsible group
     function renderGroup({ label, icon: GroupIcon, isOpen, setOpen, isGroupActive, subItems, badge }) {
@@ -194,8 +202,35 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                 {[
                     { id: 'turnos', label: 'Cola de Turnos', icon: Ticket },
                     { id: 'deudas', label: 'Deudas', icon: DollarSign },
-                    { id: 'cirugias', label: 'Control de Cirugías', icon: Stethoscope },
-                    { id: 'metricas', label: 'Métricas', icon: BarChart3 },
+                ].map(item => {
+                    const Icon = item.icon;
+                    const isActive = activeView === item.id;
+                    return (
+                        <button
+                            key={item.id}
+                            className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
+                            onClick={() => onViewChange(item.id)}
+                            title={collapsed ? item.label : undefined}
+                        >
+                            <Icon size={20} className="sidebar__item-icon" />
+                            {!collapsed && <span className="sidebar__item-label">{item.label}</span>}
+                            {isActive && <div className="sidebar__item-indicator" />}
+                        </button>
+                    );
+                })}
+
+                {/* ─── Control de Cirugías (grupo colapsable) ─── */}
+                {renderGroup({
+                    label: 'Cirugías',
+                    icon: Stethoscope,
+                    isOpen: cirugiasOpen,
+                    setOpen: setCirugiasOpen,
+                    isGroupActive: isCirugiasActive,
+                    subItems: cirugiasSubItems,
+                })}
+
+                {/* ─── Items finales ─── */}
+                {[
                     { id: 'simon', label: 'Simon IA', icon: Brain },
                     { id: 'config', label: 'Configuración', icon: Settings },
                 ].map(item => {
