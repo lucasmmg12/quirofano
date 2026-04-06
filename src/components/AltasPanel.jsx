@@ -715,7 +715,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                                     { label: 'N° Admisión', value: alta.numero_admision, icon: '🔢' },
                                                                     { label: 'Proceso', value: alta.proceso, icon: '📂' },
                                                                     { label: 'Motivo Alta', value: alta.motivo_alta, icon: '📝' },
-                                                                    { label: 'Control ADM', value: alta.control_adm_finalizado, icon: '✅' },
+                                                                    { label: 'Control ADM', value: alta.control_adm_finalizado === 'Sí' ? 'Sí' : 'No', icon: alta.control_adm_finalizado === 'Sí' ? '✅' : '❌' },
                                                                 ].map((item, i) => (
                                                                     <div key={i} style={{ display: 'flex', gap: '8px', fontSize: '0.8rem' }}>
                                                                         <span style={{ width: '22px', textAlign: 'center' }}>{item.icon}</span>
