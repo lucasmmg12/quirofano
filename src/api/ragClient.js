@@ -7,6 +7,22 @@
 
 const RAG_API_BASE = import.meta.env.VITE_RAG_API_URL || '/rag-api';
 
+/**
+ * Safe JSON parser — protects against Render returning HTML error pages
+ * instead of JSON (common during cold starts / deploy failures).
+ */
+async function safeJson(response) {
+    const text = await response.text();
+    if (text.trim().startsWith('<')) {
+        throw new Error('El servidor devolvió HTML en vez de JSON. Probablemente está reiniciándose.');
+    }
+    try {
+        return JSON.parse(text);
+    } catch {
+        throw new Error('Respuesta inválida del servidor');
+    }
+}
+
 // ═══════════════════════════════════
 // CHAT
 // ═══════════════════════════════════
@@ -18,10 +34,10 @@ export async function sendRAGMessage(question, conversationId = null) {
         body: JSON.stringify({ question, conversation_id: conversationId }),
     });
     if (!response.ok) {
-        const error = await response.json().catch(() => ({ detail: 'Error de conexión' }));
+        const error = await safeJson(response).catch(() => ({ detail: 'Error de conexión' }));
         throw new Error(error.detail || 'Error al enviar pregunta');
     }
-    return response.json();
+    return safeJson(response);
 }
 
 // ═══════════════════════════════════
@@ -31,13 +47,13 @@ export async function sendRAGMessage(question, conversationId = null) {
 export async function listRAGConversations() {
     const response = await fetch(`${RAG_API_BASE}/conversations`);
     if (!response.ok) throw new Error('Error al cargar conversaciones');
-    return response.json();
+    return safeJson(response);
 }
 
 export async function getRAGConversationMessages(conversationId) {
     const response = await fetch(`${RAG_API_BASE}/conversations/${conversationId}/messages`);
     if (!response.ok) throw new Error('Error al cargar mensajes');
-    return response.json();
+    return safeJson(response);
 }
 
 export async function deleteRAGConversation(conversationId) {
@@ -45,7 +61,7 @@ export async function deleteRAGConversation(conversationId) {
         method: 'DELETE',
     });
     if (!response.ok) throw new Error('Error al eliminar conversación');
-    return response.json();
+    return safeJson(response);
 }
 
 // ═══════════════════════════════════
@@ -69,10 +85,10 @@ export async function uploadRAGDocument(file, folder = '', tag = '', timeoutMs =
         });
         clearTimeout(timer);
         if (!response.ok) {
-            const error = await response.json().catch(() => ({ detail: 'Error al subir archivo' }));
+            const error = await safeJson(response).catch(() => ({ detail: 'Error al subir archivo' }));
             throw new Error(error.detail || 'Error al subir documento');
         }
-        return response.json();
+        return safeJson(response);
     } catch (e) {
         clearTimeout(timer);
         if (e.name === 'AbortError') {
@@ -140,13 +156,13 @@ export async function listRAGFiles(folder = '') {
     const params = folder ? `?folder=${encodeURIComponent(folder)}` : '';
     const response = await fetch(`${RAG_API_BASE}/files${params}`);
     if (!response.ok) throw new Error('Error al cargar archivos');
-    return response.json();
+    return safeJson(response);
 }
 
 export async function downloadRAGFile(path) {
     const response = await fetch(`${RAG_API_BASE}/files/download?path=${encodeURIComponent(path)}`);
     if (!response.ok) throw new Error('Error al descargar archivo');
-    const data = await response.json();
+    const data = await safeJson(response);
     if (data.download_url) window.open(data.download_url, '_blank');
     return data;
 }
@@ -156,19 +172,19 @@ export async function createRAGFolder(name, parent = '') {
     if (parent) params.append('parent', parent);
     const response = await fetch(`${RAG_API_BASE}/folders?${params}`, { method: 'POST' });
     if (!response.ok) throw new Error('Error al crear carpeta');
-    return response.json();
+    return safeJson(response);
 }
 
 export async function deleteRAGFile(path) {
     const response = await fetch(`${RAG_API_BASE}/files?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
     if (!response.ok) throw new Error('Error al eliminar archivo');
-    return response.json();
+    return safeJson(response);
 }
 
 export async function deleteRAGFolder(path) {
     const response = await fetch(`${RAG_API_BASE}/folders?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
     if (!response.ok) throw new Error('Error al eliminar carpeta');
-    return response.json();
+    return safeJson(response);
 }
 
 // ═══════════════════════════════════
@@ -178,7 +194,7 @@ export async function deleteRAGFolder(path) {
 export async function listRAGRules() {
     const response = await fetch(`${RAG_API_BASE}/rules`);
     if (!response.ok) throw new Error('Error al cargar reglas');
-    return response.json();
+    return safeJson(response);
 }
 
 export async function createRAGRule(text) {
@@ -188,16 +204,16 @@ export async function createRAGRule(text) {
         body: JSON.stringify({ text }),
     });
     if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
+        const err = await safeJson(response).catch(() => ({}));
         throw new Error(err.detail || 'Error al guardar regla');
     }
-    return response.json();
+    return safeJson(response);
 }
 
 export async function deleteRAGRule(ruleId) {
     const response = await fetch(`${RAG_API_BASE}/rules/${ruleId}`, { method: 'DELETE' });
     if (!response.ok) throw new Error('Error al eliminar regla');
-    return response.json();
+    return safeJson(response);
 }
 
 // ═══════════════════════════════════
@@ -207,14 +223,14 @@ export async function deleteRAGRule(ruleId) {
 export async function fetchRAGAnalytics(days = 30) {
     const response = await fetch(`${RAG_API_BASE}/analytics?days=${days}`);
     if (!response.ok) throw new Error('Error al cargar analytics');
-    return response.json();
+    return safeJson(response);
 }
 
 export async function fetchLearningStats() {
     try {
         const response = await fetch(`${RAG_API_BASE}/learning/stats`);
         if (!response.ok) return null;
-        return response.json();
+        return safeJson(response);
     } catch { return null; }
 }
 
@@ -224,7 +240,10 @@ export async function fetchLearningStats() {
 
 export async function checkRAGHealth() {
     try {
-        const response = await fetch(`${RAG_API_BASE}/health`);
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 8000);
+        const response = await fetch(`${RAG_API_BASE}/health`, { signal: controller.signal });
+        clearTimeout(timer);
         return response.ok;
     } catch { return false; }
 }
@@ -233,6 +252,6 @@ export async function fetchSuggestions() {
     try {
         const response = await fetch(`${RAG_API_BASE}/suggestions`);
         if (!response.ok) return { categories: [], top_queries: [] };
-        return await response.json();
+        return await safeJson(response);
     } catch { return { categories: [], top_queries: [] }; }
 }

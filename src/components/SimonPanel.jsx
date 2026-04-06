@@ -111,8 +111,15 @@ export default function SimonPanel({ addToast }) {
         setBootPhase('connecting');
         await new Promise(r => setTimeout(r, 800));
         setBootPhase('loading');
-        await Promise.all([loadConversations(), loadFiles(), loadLearningStats()]);
-        fetchSuggestions().then(d => setSuggestions(d)).catch(() => {});
+        try {
+            await Promise.all([loadConversations(), loadFiles(), loadLearningStats()]);
+            fetchSuggestions().then(d => setSuggestions(d)).catch(() => {});
+        } catch (e) {
+            console.error('Simon boot: error cargando datos', e);
+            setBootPhase('error');
+            clearInterval(bootTimerRef.current);
+            return;
+        }
         setBootPhase('ready');
         clearInterval(bootTimerRef.current);
         await new Promise(r => setTimeout(r, 1200));
