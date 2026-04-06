@@ -22,7 +22,7 @@ export const ALTA_ESTADOS = {
 /**
  * Obtiene altas administrativas con filtros
  */
-export async function fetchAltas({ fromDate, toDate, estado, search, limit = 500 } = {}) {
+export async function fetchAltas({ fromDate, toDate, estado, search } = {}) {
     let query = supabase
         .from('altas_administrativas')
         .select('*')
@@ -34,7 +34,6 @@ export async function fetchAltas({ fromDate, toDate, estado, search, limit = 500
     if (search) {
         query = query.or(`paciente.ilike.%${search}%,doctor.ilike.%${search}%,cliente.ilike.%${search}%,numero_admision.ilike.%${search}%`);
     }
-    query = query.limit(limit);
 
     const { data, error } = await query;
     if (error) throw error;
