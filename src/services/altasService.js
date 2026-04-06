@@ -21,23 +21,38 @@ export const ALTA_ESTADOS = {
 
 /**
  * Obtiene altas administrativas con filtros
+ * Paginación automática para superar el límite de 1000 filas de Supabase
  */
 export async function fetchAltas({ fromDate, toDate, estado, search } = {}) {
-    let query = supabase
-        .from('altas_administrativas')
-        .select('*')
-        .order('fecha_alta', { ascending: false });
+    const PAGE_SIZE = 1000;
+    let allData = [];
+    let from = 0;
+    let hasMore = true;
 
-    if (fromDate) query = query.gte('fecha_alta', fromDate);
-    if (toDate) query = query.lte('fecha_alta', toDate);
-    if (estado && estado !== 'all') query = query.eq('estado', estado);
-    if (search) {
-        query = query.or(`paciente.ilike.%${search}%,doctor.ilike.%${search}%,cliente.ilike.%${search}%,numero_admision.ilike.%${search}%`);
+    while (hasMore) {
+        let query = supabase
+            .from('altas_administrativas')
+            .select('*')
+            .order('fecha_alta', { ascending: false })
+            .range(from, from + PAGE_SIZE - 1);
+
+        if (fromDate) query = query.gte('fecha_alta', fromDate);
+        if (toDate) query = query.lte('fecha_alta', toDate);
+        if (estado && estado !== 'all') query = query.eq('estado', estado);
+        if (search) {
+            query = query.or(`paciente.ilike.%${search}%,doctor.ilike.%${search}%,cliente.ilike.%${search}%,numero_admision.ilike.%${search}%`);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        const rows = data || [];
+        allData = allData.concat(rows);
+        hasMore = rows.length === PAGE_SIZE;
+        from += PAGE_SIZE;
     }
 
-    const { data, error } = await query;
-    if (error) throw error;
-    return data || [];
+    return allData;
 }
 
 /**
@@ -69,27 +84,40 @@ export async function updateAltaNotas(id, notas_internas) {
 }
 
 /**
- * Obtiene estadísticas de altas por estado
+ * Obtiene estadísticas de altas por estado (paginado)
  */
 export async function getAltasStats(fromDate, toDate) {
-    let query = supabase
-        .from('altas_administrativas')
-        .select('estado');
-    
-    if (fromDate) query = query.gte('fecha_alta', fromDate);
-    if (toDate) query = query.lte('fecha_alta', toDate);
+    const PAGE_SIZE = 1000;
+    let allData = [];
+    let from = 0;
+    let hasMore = true;
 
-    const { data, error } = await query;
-    if (error) throw error;
+    while (hasMore) {
+        let query = supabase
+            .from('altas_administrativas')
+            .select('estado')
+            .range(from, from + PAGE_SIZE - 1);
+
+        if (fromDate) query = query.gte('fecha_alta', fromDate);
+        if (toDate) query = query.lte('fecha_alta', toDate);
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        const rows = data || [];
+        allData = allData.concat(rows);
+        hasMore = rows.length === PAGE_SIZE;
+        from += PAGE_SIZE;
+    }
 
     const stats = {};
     for (const key of Object.keys(ALTA_ESTADOS)) {
         stats[key] = 0;
     }
-    (data || []).forEach(row => {
+    allData.forEach(row => {
         if (stats[row.estado] !== undefined) stats[row.estado]++;
         else stats[row.estado] = 1;
     });
-    stats._total = (data || []).length;
+    stats._total = allData.length;
     return stats;
 }
