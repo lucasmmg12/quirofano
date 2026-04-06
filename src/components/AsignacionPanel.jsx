@@ -2,7 +2,7 @@
  * AsignacionPanel.jsx — Criterios de Asignación para Altas Administrativas
  * CRUD editable + Import Excel + Matching jerárquico
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
     Search, Upload, Plus, Trash2, Save, X, Loader2, FileText,
     Edit2, Check, AlertCircle, Download, Filter, ChevronDown,
@@ -57,8 +57,13 @@ export default function AsignacionPanel({ addToast, currentUser }) {
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    // Unique responsables for filter
+    // Unique values for filters & comboboxes
     const responsables = [...new Set(reglas.map(r => r.responsable).filter(Boolean))].sort();
+    const uniqueOS = useMemo(() => [...new Set(reglas.map(r => r.obra_social).filter(Boolean))].sort(), [reglas]);
+    const uniqueEsp = useMemo(() => [...new Set(reglas.map(r => r.especialidad).filter(Boolean))].sort(), [reglas]);
+    const uniqueProc = useMemo(() => [...new Set(reglas.map(r => r.proceso).filter(Boolean))].sort(), [reglas]);
+    const uniqueResp = useMemo(() => [...new Set(reglas.map(r => r.responsable).filter(Boolean))].sort(), [reglas]);
+    const uniqueTutor = useMemo(() => [...new Set(reglas.map(r => r.tutor).filter(Boolean))].sort(), [reglas]);
 
     // Filtered list
     const filtered = reglas.filter(r => {
@@ -359,24 +364,24 @@ export default function AsignacionPanel({ addToast, currentUser }) {
                                     <tr style={{ background: '#ECFDF5' }}>
                                         <td className="cart__td" style={{ textAlign: 'center' }}><Plus size={14} color="#10B981" /></td>
                                         <td className="cart__td">
-                                            <input type="text" value={newForm.obra_social} onChange={e => setNewForm(p => ({ ...p, obra_social: e.target.value }))}
-                                                placeholder="001 - PROVINCIA" style={inputStyle} autoFocus />
+                                            <Combobox value={newForm.obra_social} onChange={v => setNewForm(p => ({ ...p, obra_social: v }))}
+                                                options={uniqueOS} placeholder="001 - PROVINCIA" autoFocus />
                                         </td>
                                         <td className="cart__td">
-                                            <input type="text" value={newForm.especialidad} onChange={e => setNewForm(p => ({ ...p, especialidad: e.target.value }))}
-                                                placeholder="CIRUGIA" style={inputStyle} />
+                                            <Combobox value={newForm.especialidad} onChange={v => setNewForm(p => ({ ...p, especialidad: v }))}
+                                                options={uniqueEsp} placeholder="CIRUGIA" />
                                         </td>
                                         <td className="cart__td">
-                                            <input type="text" value={newForm.proceso} onChange={e => setNewForm(p => ({ ...p, proceso: e.target.value }))}
-                                                placeholder="110403 - CESAREA" style={inputStyle} />
+                                            <Combobox value={newForm.proceso} onChange={v => setNewForm(p => ({ ...p, proceso: v }))}
+                                                options={uniqueProc} placeholder="110403 - CESAREA" />
                                         </td>
                                         <td className="cart__td">
-                                            <input type="text" value={newForm.responsable} onChange={e => setNewForm(p => ({ ...p, responsable: e.target.value }))}
-                                                placeholder="MARCE" style={{ ...inputStyle, fontWeight: 700 }} />
+                                            <Combobox value={newForm.responsable} onChange={v => setNewForm(p => ({ ...p, responsable: v }))}
+                                                options={uniqueResp} placeholder="MARCE" bold />
                                         </td>
                                         <td className="cart__td">
-                                            <input type="text" value={newForm.tutor} onChange={e => setNewForm(p => ({ ...p, tutor: e.target.value }))}
-                                                placeholder="—" style={inputStyle} />
+                                            <Combobox value={newForm.tutor} onChange={v => setNewForm(p => ({ ...p, tutor: v }))}
+                                                options={uniqueTutor} placeholder="—" />
                                         </td>
                                         <td className="cart__td" style={{ textAlign: 'center' }}>
                                             <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
@@ -413,19 +418,19 @@ export default function AsignacionPanel({ addToast, currentUser }) {
                                                 }}>{r.prioridad}</span>
                                             </td>
                                             <td className="cart__td">
-                                                {isEditing ? <input type="text" value={editForm.obra_social || ''} onChange={e => setEditForm(p => ({ ...p, obra_social: e.target.value }))} style={inputStyle} /> :
+                                                {isEditing ? <Combobox value={editForm.obra_social || ''} onChange={v => setEditForm(p => ({ ...p, obra_social: v }))} options={uniqueOS} placeholder="OS" /> :
                                                 <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>{r.obra_social}</span>}
                                             </td>
                                             <td className="cart__td">
-                                                {isEditing ? <input type="text" value={editForm.especialidad || ''} onChange={e => setEditForm(p => ({ ...p, especialidad: e.target.value }))} style={inputStyle} /> :
+                                                {isEditing ? <Combobox value={editForm.especialidad || ''} onChange={v => setEditForm(p => ({ ...p, especialidad: v }))} options={uniqueEsp} placeholder="Especialidad" /> :
                                                 <span style={{ fontSize: '0.78rem', color: r.especialidad ? 'var(--neutral-600)' : 'var(--neutral-300)' }}>{r.especialidad || '—'}</span>}
                                             </td>
                                             <td className="cart__td">
-                                                {isEditing ? <input type="text" value={editForm.proceso || ''} onChange={e => setEditForm(p => ({ ...p, proceso: e.target.value }))} style={inputStyle} /> :
+                                                {isEditing ? <Combobox value={editForm.proceso || ''} onChange={v => setEditForm(p => ({ ...p, proceso: v }))} options={uniqueProc} placeholder="Proceso" /> :
                                                 <span style={{ fontSize: '0.75rem', color: r.proceso ? 'var(--neutral-500)' : 'var(--neutral-300)', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{r.proceso || '—'}</span>}
                                             </td>
                                             <td className="cart__td">
-                                                {isEditing ? <input type="text" value={editForm.responsable || ''} onChange={e => setEditForm(p => ({ ...p, responsable: e.target.value }))} style={{ ...inputStyle, fontWeight: 700 }} /> :
+                                                {isEditing ? <Combobox value={editForm.responsable || ''} onChange={v => setEditForm(p => ({ ...p, responsable: v }))} options={uniqueResp} placeholder="Responsable" bold /> :
                                                 <span style={{
                                                     display: 'inline-block', padding: '2px 10px', borderRadius: 'var(--radius-full)',
                                                     background: '#EFF6FF', color: '#1E40AF',
@@ -433,7 +438,7 @@ export default function AsignacionPanel({ addToast, currentUser }) {
                                                 }}>{r.responsable}</span>}
                                             </td>
                                             <td className="cart__td">
-                                                {isEditing ? <input type="text" value={editForm.tutor || ''} onChange={e => setEditForm(p => ({ ...p, tutor: e.target.value }))} style={inputStyle} /> :
+                                                {isEditing ? <Combobox value={editForm.tutor || ''} onChange={v => setEditForm(p => ({ ...p, tutor: v }))} options={uniqueTutor} placeholder="Tutor" /> :
                                                 r.tutor ? <span style={{
                                                     display: 'inline-block', padding: '2px 10px', borderRadius: 'var(--radius-full)',
                                                     background: '#F5F3FF', color: '#6D28D9',
@@ -490,13 +495,106 @@ export default function AsignacionPanel({ addToast, currentUser }) {
     );
 }
 
-// ── Shared Styles ──
-const inputStyle = {
-    width: '100%', padding: '4px 8px', borderRadius: '6px',
-    border: '1px solid #10B98150', fontSize: '0.78rem',
-    fontFamily: 'inherit', outline: 'none',
-};
+// ── Combobox Component ("Agregar o elegir") ──
+function Combobox({ value, onChange, options = [], placeholder = '', autoFocus = false, bold = false }) {
+    const [open, setOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const ref = useRef(null);
 
+    // Sync search with value when not focused
+    useEffect(() => {
+        if (!open) setSearch(value || '');
+    }, [value, open]);
+
+    const filtered = useMemo(() => {
+        const s = search.toLowerCase();
+        return options.filter(o => o.toLowerCase().includes(s));
+    }, [options, search]);
+
+    const exactMatch = options.some(o => o.toLowerCase() === search.trim().toLowerCase());
+
+    const handleSelect = (val) => {
+        onChange(val);
+        setSearch(val);
+        setOpen(false);
+    };
+
+    const handleInputChange = (e) => {
+        setSearch(e.target.value);
+        onChange(e.target.value);
+        if (!open) setOpen(true);
+    };
+
+    const handleBlur = (e) => {
+        // Delay to allow click on option
+        setTimeout(() => setOpen(false), 150);
+    };
+
+    return (
+        <div ref={ref} style={{ position: 'relative' }}>
+            <input
+                type="text"
+                value={search}
+                onChange={handleInputChange}
+                onFocus={() => setOpen(true)}
+                onBlur={handleBlur}
+                placeholder={placeholder}
+                autoFocus={autoFocus}
+                style={{
+                    width: '100%', padding: '4px 8px', borderRadius: '6px',
+                    border: `1px solid ${open ? '#10B981' : '#10B98150'}`,
+                    fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none',
+                    fontWeight: bold ? 700 : 400,
+                    transition: 'border-color 0.15s',
+                }}
+            />
+            {open && (filtered.length > 0 || (search.trim() && !exactMatch)) && (
+                <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 999,
+                    marginTop: '2px', background: '#fff', borderRadius: '8px',
+                    boxShadow: '0 8px 30px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
+                    maxHeight: '180px', overflowY: 'auto',
+                    animation: 'fadeIn 0.1s ease-out',
+                }}>
+                    {filtered.map(opt => (
+                        <div
+                            key={opt}
+                            onMouseDown={(e) => { e.preventDefault(); handleSelect(opt); }}
+                            style={{
+                                padding: '6px 10px', cursor: 'pointer',
+                                fontSize: '0.75rem', fontWeight: 500,
+                                color: 'var(--neutral-700)',
+                                background: opt === value ? '#F0FDF4' : 'transparent',
+                                transition: 'background 0.1s',
+                            }}
+                            onMouseOver={e => e.currentTarget.style.background = '#F0FDF4'}
+                            onMouseOut={e => e.currentTarget.style.background = opt === value ? '#F0FDF4' : 'transparent'}
+                        >
+                            {opt}
+                        </div>
+                    ))}
+                    {search.trim() && !exactMatch && (
+                        <div
+                            onMouseDown={(e) => { e.preventDefault(); handleSelect(search.trim()); }}
+                            style={{
+                                padding: '6px 10px', cursor: 'pointer',
+                                fontSize: '0.75rem', fontWeight: 600,
+                                color: '#10B981', borderTop: filtered.length ? '1px solid #E5E7EB' : 'none',
+                                display: 'flex', alignItems: 'center', gap: '5px',
+                            }}
+                            onMouseOver={e => e.currentTarget.style.background = '#ECFDF5'}
+                            onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                            <Plus size={12} /> Crear "{search.trim()}"
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ── Shared Styles ──
 function actionBtnStyle(color) {
     return {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
