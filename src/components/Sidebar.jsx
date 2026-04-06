@@ -6,9 +6,9 @@ import {
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0 }) {
-    const [pedidosOpen, setPedidosOpen] = useState(true);
-    const [mensajeriaOpen, setMensajeriaOpen] = useState(true);
-    const [altasOpen, setAltasOpen] = useState(true);
+    const [pedidosOpen, setPedidosOpen] = useState(false);
+    const [mensajeriaOpen, setMensajeriaOpen] = useState(false);
+    const [altasOpen, setAltasOpen] = useState(false);
 
     // Sub-items dentro de "Altas Adm"
     const altasSubItems = [
@@ -194,9 +194,9 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                 {[
                     { id: 'turnos', label: 'Cola de Turnos', icon: Ticket },
                     { id: 'deudas', label: 'Deudas', icon: DollarSign },
-                    { id: 'simon', label: 'Simon IA', icon: Brain },
                     { id: 'cirugias', label: 'Control de Cirugías', icon: Stethoscope },
                     { id: 'metricas', label: 'Métricas', icon: BarChart3 },
+                    { id: 'simon', label: 'Simon IA', icon: Brain },
                     { id: 'config', label: 'Configuración', icon: Settings },
                 ].map(item => {
                     const Icon = item.icon;
