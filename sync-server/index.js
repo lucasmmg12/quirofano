@@ -134,7 +134,7 @@ const EXCLUDED_NAME_PREFIXES = ['BLOQUE'];
 // SYNC CIRUGÍAS — SQL Server → Supabase
 // ════════════════════════════════════════════════
 async function syncCirugias(db) {
-    console.log('📋 [1/4] Extrayendo cirugías de SALUS...');
+    console.log('📋 [1/5] Extrayendo cirugías de SALUS...');
     const result = await db.request().query(`
         SELECT TOP 400
             CAST(A.Data AS DATE) AS Data_Fecha,
@@ -333,7 +333,7 @@ async function syncCirugias(db) {
 // SYNC PRESUPUESTOS — SQL Server → Supabase
 // ════════════════════════════════════════════════
 async function syncPresupuestos(db) {
-    console.log('💰 [2/4] Extrayendo presupuestos de SALUS...');
+    console.log('💰 [2/5] Extrayendo presupuestos de SALUS...');
     const result = await db.request().query(`
         SELECT idPresupuesto, idPaciente, Paciente, fecha, Observaciones,
                idArticulo, descripcion, cantidad, importeUnitario,
@@ -432,7 +432,7 @@ async function syncPresupuestos(db) {
 // SYNC DEUDAS — SQL Server → Supabase
 // ════════════════════════════════════════════════
 async function syncDeudas(db) {
-    console.log('📊 [3/4] Extrayendo deudas de SALUS...');
+    console.log('📊 [3/5] Extrayendo deudas de SALUS...');
     const result = await db.request().query(`
         SELECT TOP 1000
             T.[Fecha albaran], T.Paciente, T.Paciente_NHC, T.Paciente_NIF,
@@ -618,7 +618,7 @@ async function syncDeudas(db) {
 // SYNC ALTAS ADMINISTRATIVAS — SQL Server → Supabase
 // ════════════════════════════════════════════════
 async function syncAltasAdministrativas(db) {
-    console.log('📋 [4/4] Extrayendo altas administrativas de SALUS...');
+    console.log('📋 [4/5] Extrayendo altas administrativas de SALUS...');
 
     // Rango: últimos 60 días de altas
     const result = await db.request().query(`
@@ -751,6 +751,111 @@ async function syncAltasAdministrativas(db) {
 }
 
 // ════════════════════════════════════════════════
+// SYNC FACTURACIÓN SEDE — SQL Server → Supabase
+// (Datos para Tablero Financiero de Recepcionistas)
+// ════════════════════════════════════════════════
+async function syncFacturacionSede(db) {
+    console.log('💰 [5/5] Extrayendo facturación Sede Santa Fe de SALUS...');
+
+    // Rango: mes en curso
+    const hoy = new Date();
+    const primerDiaMes = `${hoy.getUTCFullYear()}-${String(hoy.getUTCMonth() + 1).padStart(2, '0')}-01`;
+
+    const result = await db.request().query(`
+        SELECT [Fecha albaran], [Hora albaran], [Paciente], [Paciente_NIF],
+               [Tarifa], [Concepto], [Familia], [Numero factura],
+               [Cantidad], [Importe unitario], [Total importe], [Cobrado linea],
+               [Responsable], [Servicio], [Usuario creación factura]
+        FROM [SALUS].[dbo].[TABLEAU_Detalle de ventas Facturadas con Gastos y Honorarios]
+        WHERE [Fecha albaran] >= '${primerDiaMes}'
+          AND [Centro Factura] = 'SANTA FE'
+        ORDER BY [Fecha albaran] DESC, [Hora albaran] DESC
+    `);
+    console.log(`   📥 ${result.recordset.length} filas extraídas (desde ${primerDiaMes})`);
+
+    if (result.recordset.length === 0) {
+        return { total: 0, inserted: 0, updated: 0, skipped: 0 };
+    }
+
+    // Transformar filas
+    const records = [];
+    for (const r of result.recordset) {
+        const usuario = r['Usuario creación factura']?.trim();
+        if (!usuario) continue;
+
+        const fecha = formatDate(r['Fecha albaran']);
+        if (!fecha) continue;
+
+        // Extraer hora y calcular turno
+        let hora = null;
+        let turno = null;
+        if (r['Hora albaran']) {
+            if (r['Hora albaran'] instanceof Date) {
+                const h = r['Hora albaran'].getUTCHours();
+                const m = r['Hora albaran'].getUTCMinutes();
+                const s = r['Hora albaran'].getUTCSeconds();
+                hora = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+                turno = h < 15 ? 'mañana' : 'tarde';
+            } else {
+                const timeStr = String(r['Hora albaran']);
+                const hMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
+                if (hMatch) {
+                    hora = timeStr.substring(0, 8); // HH:MM:SS
+                    turno = parseInt(hMatch[1], 10) < 15 ? 'mañana' : 'tarde';
+                }
+            }
+        }
+
+        records.push({
+            fecha,
+            hora,
+            turno,
+            paciente: r.Paciente?.trim() || null,
+            paciente_nif: r.Paciente_NIF ? String(r.Paciente_NIF).trim() : null,
+            tarifa: r.Tarifa?.trim() || null,
+            concepto: r.Concepto?.trim() || null,
+            familia: r.Familia?.trim() || null,
+            numero_factura: r['Numero factura'] ? String(r['Numero factura']).trim() : null,
+            cantidad: Number(r.Cantidad) || 1,
+            importe_unitario: Number(r['Importe unitario']) || 0,
+            total_importe: Number(r['Total importe']) || 0,
+            cobrado_linea: Number(r['Cobrado linea']) || 0,
+            responsable: r.Responsable?.trim() || null,
+            servicio: r.Servicio?.trim() || null,
+            usuario_factura: usuario,
+        });
+    }
+
+    console.log(`   📦 ${records.length} registros válidos para upsert`);
+
+    // Upsert en lotes
+    let inserted = 0, updated = 0, skipped = 0;
+    const BATCH = 100;
+
+    for (let i = 0; i < records.length; i += BATCH) {
+        const batch = records.slice(i, i + BATCH);
+        const { data, error } = await supabase
+            .from('facturacion_sede')
+            .upsert(batch, {
+                onConflict: 'fecha,numero_factura,concepto,paciente_nif',
+                ignoreDuplicates: false,
+            })
+            .select('id, created_at');
+
+        if (error) {
+            console.error(`   ❌ Batch ${Math.floor(i/BATCH)+1} error:`, error.message);
+            skipped += batch.length;
+        } else if (data) {
+            inserted += data.length;
+        }
+    }
+
+    const summary = { total: result.recordset.length, inserted, updated, skipped };
+    console.log(`   ✅ Facturación Sede: ${inserted} registros sincronizados, ${skipped} errores`);
+    return summary;
+}
+
+// ════════════════════════════════════════════════
 // ENDPOINT PRINCIPAL: SYNC TODO
 // ════════════════════════════════════════════════
 let syncInProgress = false;
@@ -795,6 +900,13 @@ app.get('/api/salus/sync-all', async (req, res) => {
         } catch (err) {
             console.error('❌ Error en altas administrativas:', err.message);
             results.altas = { error: err.message };
+        }
+
+        try {
+            results.facturacion = await syncFacturacionSede(db);
+        } catch (err) {
+            console.error('❌ Error en facturación sede:', err.message);
+            results.facturacion = { error: err.message };
         }
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -849,6 +961,11 @@ app.get('/api/salus/sync/presupuestos', async (req, res) => {
 
 app.get('/api/salus/sync/deudas', async (req, res) => {
     try { const db = await getPool(); res.json({ success: true, results: await syncDeudas(db) }); }
+    catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+app.get('/api/salus/sync/facturacion', async (req, res) => {
+    try { const db = await getPool(); res.json({ success: true, results: await syncFacturacionSede(db) }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
