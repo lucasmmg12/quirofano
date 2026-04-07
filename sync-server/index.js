@@ -826,14 +826,21 @@ async function syncFacturacionSede(db) {
         });
     }
 
-    console.log(`   📦 ${records.length} registros válidos para upsert`);
+    // Deduplicar por clave única (última ocurrencia gana)
+    const deduped = new Map();
+    for (const row of records) {
+        const key = `${row.fecha}|${row.numero_factura}|${row.concepto}|${row.paciente_nif}`;
+        deduped.set(key, row);
+    }
+    const uniqueRecords = [...deduped.values()];
+    console.log(`   📦 ${uniqueRecords.length} registros únicos para upsert (de ${records.length} totales)`);
 
     // Upsert en lotes
     let inserted = 0, updated = 0, skipped = 0;
     const BATCH = 100;
 
-    for (let i = 0; i < records.length; i += BATCH) {
-        const batch = records.slice(i, i + BATCH);
+    for (let i = 0; i < uniqueRecords.length; i += BATCH) {
+        const batch = uniqueRecords.slice(i, i + BATCH);
         const { data, error } = await supabase
             .from('facturacion_sede')
             .upsert(batch, {
