@@ -57,6 +57,9 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [activeFilterCol, setActiveFilterCol] = useState(null);
     const [filterSearch, setFilterSearch] = useState('');
 
+    // ── Ordenamiento fecha ingreso ──
+    const [ingresoSort, setIngresoSort] = useState('desc'); // 'desc' = recientes primero | 'asc' = antiguas primero
+
     // ── Tab activo ──
     const [activeTab, setActiveTab] = useState('tabla'); // 'tabla' | 'metricas'
 
@@ -211,6 +214,19 @@ export default function AltasPanel({ addToast, currentUser }) {
             return true;
         });
     }, [preFilteredAltas, columnFilters]);
+
+    // ── Ordenamiento por fecha ingreso ──
+    const sortedAltas = useMemo(() => {
+        const sorted = [...filteredAltas];
+        sorted.sort((a, b) => {
+            const dateA = a.fecha_ingreso || '';
+            const dateB = b.fecha_ingreso || '';
+            return ingresoSort === 'asc'
+                ? dateA.localeCompare(dateB)
+                : dateB.localeCompare(dateA);
+        });
+        return sorted;
+    }, [filteredAltas, ingresoSort]);
 
     const activeFilterCount = Object.keys(columnFilters).length;
 
@@ -544,7 +560,29 @@ export default function AltasPanel({ addToast, currentUser }) {
                                     <FilterHeader label="Obra Social" col="cliente" />
                                     <FilterHeader label="Especialidad" col="especialidad" />
                                     <FilterHeader label="Médico" col="doctor" />
-                                    <th className="cart__th" style={{ width: '90px' }}>Ingreso</th>
+                                    <th className="cart__th" style={{ width: '100px', userSelect: 'none' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                            Ingreso
+                                            <button
+                                                onClick={e => {
+                                                    e.stopPropagation();
+                                                    setIngresoSort(prev => prev === 'desc' ? 'asc' : 'desc');
+                                                }}
+                                                title={ingresoSort === 'desc' ? 'Ordenar: más antiguas primero' : 'Ordenar: más recientes primero'}
+                                                style={{
+                                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                    width: '20px', height: '20px', borderRadius: '4px',
+                                                    border: 'none', background: 'transparent',
+                                                    cursor: 'pointer', transition: 'all 0.15s',
+                                                    color: '#4F46E5', padding: 0, flexShrink: 0,
+                                                }}
+                                                onMouseOver={e => e.currentTarget.style.background = '#EEF2FF'}
+                                                onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                                            >
+                                                {ingresoSort === 'desc' ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                                            </button>
+                                        </div>
+                                    </th>
                                     <th className="cart__th" style={{ width: '110px' }}>Alta</th>
                                     <FilterHeader label="Responsable" col="responsable" width="90px" />
                                 </tr>
@@ -577,7 +615,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                 )}
                             </thead>
                             <tbody>
-                                {filteredAltas.map(alta => {
+                                {sortedAltas.map(alta => {
                                     const effectiveEstado = alta._effectiveEstado;
                                     const cfg = ALTA_ESTADOS[effectiveEstado] || ALTA_ESTADOS['Procesada'];
                                     const isExpanded = expandedId === alta.id;
@@ -618,18 +656,35 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                         }}
                                                         style={{
                                                             display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                            padding: '4px 10px', borderRadius: 'var(--radius-full)',
+                                                            padding: effectiveEstado === 'Procesada' ? '4px 6px' : '4px 10px',
+                                                            borderRadius: 'var(--radius-full)',
                                                             fontSize: '0.72rem', fontWeight: 700,
-                                                            background: cfg.bg, color: cfg.color,
-                                                            border: `1px solid ${cfg.color}25`,
+                                                            background: effectiveEstado === 'Procesada' ? 'transparent' : cfg.bg,
+                                                            color: effectiveEstado === 'Procesada' ? 'transparent' : cfg.color,
+                                                            border: effectiveEstado === 'Procesada' ? '1px dashed transparent' : `1px solid ${cfg.color}25`,
                                                             cursor: 'pointer', transition: 'all 0.15s',
                                                             whiteSpace: 'nowrap',
+                                                            minWidth: effectiveEstado === 'Procesada' ? '70px' : 'auto',
                                                         }}
-                                                        onMouseOver={e => { e.currentTarget.style.boxShadow = `0 0 0 2px ${cfg.color}30`; }}
-                                                        onMouseOut={e => { e.currentTarget.style.boxShadow = 'none'; }}
+                                                        onMouseOver={e => {
+                                                            if (effectiveEstado === 'Procesada') {
+                                                                e.currentTarget.style.borderColor = 'var(--neutral-250, #C5CCD6)';
+                                                                e.currentTarget.style.color = 'var(--neutral-400)';
+                                                            } else {
+                                                                e.currentTarget.style.boxShadow = `0 0 0 2px ${cfg.color}30`;
+                                                            }
+                                                        }}
+                                                        onMouseOut={e => {
+                                                            if (effectiveEstado === 'Procesada') {
+                                                                e.currentTarget.style.borderColor = 'transparent';
+                                                                e.currentTarget.style.color = 'transparent';
+                                                            } else {
+                                                                e.currentTarget.style.boxShadow = 'none';
+                                                            }
+                                                        }}
                                                         title="Cambiar estado"
                                                     >
-                                                        {cfg.icon} {cfg.label}
+                                                        {effectiveEstado === 'Procesada' ? '—' : <>{cfg.icon} {cfg.label}</>}
                                                     </button>
                                                     {/* Dropdown */}
                                                     {statusDropdownId === alta.id && (
