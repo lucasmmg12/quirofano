@@ -752,102 +752,125 @@ async function syncAltasAdministrativas(db) {
 
 // ════════════════════════════════════════════════
 // SYNC FACTURACIÓN SEDE — SQL Server → Supabase
-// (Datos para Tablero Financiero de Recepcionistas)
+// Fuente: PR_FACTURAS_QRY (dedup por idVisita)
 // ════════════════════════════════════════════════
 async function syncFacturacionSede(db) {
     console.log('💰 [5/5] Extrayendo facturación Sede Santa Fe de SALUS...');
 
-    // Rango: mes en curso
+    // Rango: mes en curso (formato seguro YYYYMMDD)
     const hoy = new Date();
-    const primerDiaMes = `${hoy.getUTCFullYear()}-${String(hoy.getUTCMonth() + 1).padStart(2, '0')}-01`;
+    const y = hoy.getFullYear();
+    const m = String(hoy.getMonth() + 1).padStart(2, '0');
+    const primerDiaMes = `${y}${m}01`;
+    const primerDiaMesFmt = `${y}-${m}-01`;
 
     const result = await db.request().query(`
-        SELECT [Fecha albaran], [Hora albaran], [Paciente], [Paciente_NIF],
-               [Tarifa], [Concepto], [Familia], [Numero factura],
-               [Cantidad], [Importe unitario], [Total importe], [Cobrado linea],
-               [Responsable], [Servicio], [Usuario creación factura]
-        FROM [SALUS].[dbo].[TABLEAU_Detalle de ventas Facturadas con Gastos y Honorarios]
-        WHERE [Fecha albaran] >= '${primerDiaMes}'
-          AND [Centro Factura] = 'SANTA FE'
-        ORDER BY [Fecha albaran] DESC, [Hora albaran] DESC
+        WITH VisitasUnicas AS (
+            SELECT [idVisita], [Paciente_Nombre], [Paciente_NHC], [descripcion],
+                   CAST([cantidad] AS INT) AS [cantidad],
+                   CAST([ImporteTotal] AS INT) AS [ImporteTotal],
+                   [idPaciente], [Factura_FechaActualizacion],
+                   CAST([Factura_FechaActualizacion] AS DATE) AS [Fecha],
+                   CAST([Factura_FechaActualizacion] AS TIME(0)) AS [Hora],
+                   [Centro_Alias], [Familia], [Servicio], [FormaDePago],
+                   [Responsable], [Visita_TipoVisita], [Tarifa],
+                   [UsuarioFactura], [Paciente_Telf1],
+                   ROW_NUMBER() OVER(PARTITION BY [idVisita] ORDER BY [Factura_FechaActualizacion] DESC) as FilaNumero
+            FROM [SALUS].[dbo].[PR_FACTURAS_QRY]
+            WHERE [Factura_FechaActualizacion] >= '${primerDiaMes}'
+              AND [Centro_Alias] = 'SANTA FE'
+        )
+        SELECT [idVisita], [Paciente_Nombre], [Paciente_NHC], [descripcion],
+               [cantidad], [ImporteTotal], [idPaciente], [Fecha], [Hora],
+               [Centro_Alias], [Familia], [Servicio], [FormaDePago],
+               [Responsable], [Visita_TipoVisita], [Tarifa],
+               [UsuarioFactura], [Paciente_Telf1]
+        FROM VisitasUnicas
+        WHERE FilaNumero = 1
+        ORDER BY [Fecha] DESC, [Hora] DESC
     `);
-    console.log(`   📥 ${result.recordset.length} filas extraídas (desde ${primerDiaMes})`);
+    console.log(`   📥 ${result.recordset.length} visitas únicas extraídas (desde ${primerDiaMesFmt})`);
 
     if (result.recordset.length === 0) {
-        return { total: 0, inserted: 0, updated: 0, skipped: 0 };
+        return { total: 0, deleted: 0, inserted: 0, skipped: 0 };
     }
 
     // Transformar filas
     const records = [];
     for (const r of result.recordset) {
-        const usuario = r['Usuario creación factura']?.trim();
+        const usuario = r.UsuarioFactura?.trim();
         if (!usuario) continue;
 
-        const fecha = formatDate(r['Fecha albaran']);
+        const fecha = formatDate(r.Fecha);
         if (!fecha) continue;
 
         // Extraer hora y calcular turno
         let hora = null;
         let turno = null;
-        if (r['Hora albaran']) {
-            if (r['Hora albaran'] instanceof Date) {
-                const h = r['Hora albaran'].getUTCHours();
-                const m = r['Hora albaran'].getUTCMinutes();
-                const s = r['Hora albaran'].getUTCSeconds();
-                hora = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        if (r.Hora) {
+            if (r.Hora instanceof Date) {
+                const h = r.Hora.getUTCHours();
+                const mn = r.Hora.getUTCMinutes();
+                const s = r.Hora.getUTCSeconds();
+                hora = `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
                 turno = h < 15 ? 'mañana' : 'tarde';
             } else {
-                const timeStr = String(r['Hora albaran']);
+                const timeStr = String(r.Hora);
                 const hMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
                 if (hMatch) {
-                    hora = timeStr.substring(0, 8); // HH:MM:SS
+                    hora = timeStr.substring(0, 8);
                     turno = parseInt(hMatch[1], 10) < 15 ? 'mañana' : 'tarde';
                 }
             }
         }
 
         records.push({
+            id_visita: r.idVisita ? String(r.idVisita).trim() : null,
+            id_paciente: r.idPaciente ? String(r.idPaciente).trim() : null,
+            paciente: r.Paciente_Nombre?.trim() || null,
+            paciente_nhc: r.Paciente_NHC ? String(r.Paciente_NHC).trim() : null,
+            paciente_telefono: r.Paciente_Telf1 ? String(r.Paciente_Telf1).trim() : null,
+            descripcion: r.descripcion?.trim() || null,
+            cantidad: Number(r.cantidad) || 1,
+            total_importe: Number(r.ImporteTotal) || 0,
             fecha,
             hora,
             turno,
-            paciente: r.Paciente?.trim() || null,
-            paciente_nif: r.Paciente_NIF ? String(r.Paciente_NIF).trim() : null,
-            tarifa: r.Tarifa?.trim() || null,
-            concepto: r.Concepto?.trim() || null,
             familia: r.Familia?.trim() || null,
-            numero_factura: r['Numero factura'] ? String(r['Numero factura']).trim() : null,
-            cantidad: Number(r.Cantidad) || 1,
-            importe_unitario: Number(r['Importe unitario']) || 0,
-            total_importe: Number(r['Total importe']) || 0,
-            cobrado_linea: Number(r['Cobrado linea']) || 0,
-            responsable: r.Responsable?.trim() || null,
             servicio: r.Servicio?.trim() || null,
+            forma_de_pago: r.FormaDePago?.trim() || null,
+            responsable: r.Responsable?.trim() || null,
+            visita_tipo: r.Visita_TipoVisita?.trim() || null,
+            tarifa: r.Tarifa?.trim() || null,
             usuario_factura: usuario,
         });
     }
 
-    // Deduplicar por clave única (última ocurrencia gana)
-    const deduped = new Map();
-    for (const row of records) {
-        const key = `${row.fecha}|${row.numero_factura}|${row.concepto}|${row.paciente_nif}`;
-        deduped.set(key, row);
-    }
-    const uniqueRecords = [...deduped.values()];
-    console.log(`   📦 ${uniqueRecords.length} registros únicos para upsert (de ${records.length} totales)`);
+    console.log(`   📦 ${records.length} registros válidos`);
 
-    // Upsert en lotes
-    let inserted = 0, updated = 0, skipped = 0;
+    // Estrategia: delete-insert (el mes completo)
+    // Más confiable que upsert con idVisita que puede ser NULL
+    const { error: delError } = await supabase
+        .from('facturacion_sede')
+        .delete()
+        .gte('fecha', primerDiaMesFmt);
+
+    if (delError) {
+        console.error(`   ⚠️ Error al limpiar mes:`, delError.message);
+    } else {
+        console.log(`   🗑️ Datos del mes limpiados para refresh`);
+    }
+
+    // Insert en lotes
+    let inserted = 0, skipped = 0;
     const BATCH = 100;
 
-    for (let i = 0; i < uniqueRecords.length; i += BATCH) {
-        const batch = uniqueRecords.slice(i, i + BATCH);
+    for (let i = 0; i < records.length; i += BATCH) {
+        const batch = records.slice(i, i + BATCH);
         const { data, error } = await supabase
             .from('facturacion_sede')
-            .upsert(batch, {
-                onConflict: 'fecha,numero_factura,concepto,paciente_nif',
-                ignoreDuplicates: false,
-            })
-            .select('id, created_at');
+            .insert(batch)
+            .select('id');
 
         if (error) {
             console.error(`   ❌ Batch ${Math.floor(i/BATCH)+1} error:`, error.message);
@@ -857,7 +880,7 @@ async function syncFacturacionSede(db) {
         }
     }
 
-    const summary = { total: result.recordset.length, inserted, updated, skipped };
+    const summary = { total: result.recordset.length, deleted: 'mes completo', inserted, skipped };
     console.log(`   ✅ Facturación Sede: ${inserted} registros sincronizados, ${skipped} errores`);
     return summary;
 }
