@@ -798,17 +798,21 @@ export default function SimonPanel({ addToast }) {
         if (!analyticsData) return <div className="rag-empty-state"><BarChart3 size={28} style={{ opacity: 0.4 }} /><p style={{ fontSize: '0.78rem' }}>Sin datos</p></div>;
 
         const { overview, response_quality, knowledge_base, pipeline_performance } = analyticsData;
-        const feedbackCorrect = response_quality?.feedback_correct || 0;
-        const feedbackIncorrect = response_quality?.feedback_incorrect || 0;
+        // Feedback stats: prefer backend stats (from rag_feedback table), fallback to local
+        const backendFb = learningStats?.feedback || {};
+        const feedbackCorrect = backendFb.correct || response_quality?.feedback_correct || 0;
+        const feedbackIncorrect = backendFb.incorrect || response_quality?.feedback_incorrect || 0;
         const feedbackTotal = feedbackCorrect + feedbackIncorrect;
         const feedbackAccuracy = feedbackTotal > 0 ? Math.round((feedbackCorrect / feedbackTotal) * 100) : 0;
+        const verifiedChunks = learningStats?.verified_chunks || 0;
 
         const kpis = [
             { label: 'Consultas', value: overview?.total_questions || 0, icon: '💬', color: '#3B82F6' },
             { label: 'Precisión', value: feedbackTotal > 0 ? `${feedbackAccuracy}%` : '—', icon: '🎯', color: '#10B981' },
             { label: 'Conversaciones', value: overview?.total_conversations || 0, icon: '🧠', color: '#8B5CF6' },
             { label: 'Docs indexados', value: knowledge_base?.total_chunks || 0, icon: '📄', color: '#F97316' },
-            { label: 'Reglas', value: knowledge_base?.total_rules || 0, icon: '🛡️', color: '#6366F1' },
+            { label: 'Aprendidos', value: learningStats?.learned_chunks || knowledge_base?.learned_qa || 0, icon: '📚', color: '#6366F1' },
+            { label: 'Verificados', value: verifiedChunks || '—', icon: '✅', color: '#059669' },
             { label: 'Feedback', value: feedbackTotal > 0 ? `${feedbackCorrect}/${feedbackTotal}` : '—', icon: '👍', color: '#EC4899' },
         ];
 
