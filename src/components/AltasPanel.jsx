@@ -170,12 +170,15 @@ export default function AltasPanel({ addToast, currentUser }) {
         }).map(alta => {
             const asignacion = matchAsignacion(criterios, alta.cliente, alta.especialidad, alta.proceso);
             const ctrlAdm = (alta.control_adm_finalizado || '').trim().toLowerCase();
-            const isAltaAdm = ctrlAdm === 'sí' || ctrlAdm === 'si';
-            // Alta Adm es EXCLUSIVO de SALUS: solo verde si control_adm = Sí
-            // Si estado='Alta Adm' pero control_adm='No' → dato obsoleto, limpiar
-            const effectiveEstado = isAltaAdm
+            const isCtrlAdmSi = ctrlAdm === 'sí' || ctrlAdm === 'si';
+            const obsHasAltaAdm = (alta.observaciones || '').toLowerCase().includes('alta adm');
+            // Alta Adm se detecta de 3 fuentes:
+            // 1) SALUS control_adm_finalizado = 'Si'
+            // 2) Observaciones contienen 'alta adm' (escrito por el personal)
+            // 3) Estado manual = 'Alta Adm' (puesto por operador)
+            const effectiveEstado = (isCtrlAdmSi || obsHasAltaAdm || alta.estado === 'Alta Adm')
                 ? 'Alta Adm'
-                : (alta.estado === 'Alta Adm' ? null : (alta.estado || null));
+                : (alta.estado || null);
             return { ...alta, _effectiveEstado: effectiveEstado, _responsable: asignacion?.responsable || '' };
         });
     }, [altas, criterios]);
@@ -843,9 +846,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                                 animation: 'fadeIn 0.15s ease-out',
                                                             }}>
                                                                 {Object.entries(ALTA_ESTADOS).map(([key, scfg]) => {
-                                                                    // Procesada y Alta Adm no son seleccionables manualmente
-                                                                    // Alta Adm viene automáticamente de SALUS (control_adm = Sí)
-                                                                    if (key === 'Procesada' || key === 'Alta Adm') return null;
+                                                                    if (key === 'Procesada') return null; // 'Procesada' ya no se usa
                                                                     return (
                                                                         <button
                                                                             key={key}

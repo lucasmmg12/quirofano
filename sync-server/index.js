@@ -897,6 +897,106 @@ async function syncFacturacionSede(db) {
 }
 
 // ════════════════════════════════════════════════
+// SYNC VISITAS SEDE — SQL Server → Supabase
+// Fuente: VLISE_Visitas (Centro SANTA FE, Asistencia = Presente)
+// ════════════════════════════════════════════════
+async function syncVisitasSede(db) {
+    console.log('🏥 [6/6] Extrayendo visitas Sede Santa Fe de SALUS...');
+
+    // Rango: mes en curso
+    const hoy = new Date();
+    const y = hoy.getFullYear();
+    const m = String(hoy.getMonth() + 1).padStart(2, '0');
+    const primerDiaMes = `${y}${m}01`;
+    const primerDiaMesFmt = `${y}-${m}-01`;
+
+    const result = await db.request().query(`
+        SELECT 
+            [idVisita],
+            CAST([Fecha Visita] AS DATE) AS [Fecha],
+            [IdPaciente],
+            [Paciente],
+            [Cliente],
+            [Responsable],
+            [Tipo Visita],
+            [Centro],
+            [Visita_Especialidad],
+            [Usuario Creacion Nombre]
+        FROM [SALUS].[dbo].[VLISE_Visitas]
+        WHERE 
+            CAST([Fecha Visita] AS DATE) >= '${primerDiaMes}'
+            AND [Asistencia] = 'Presente'
+            AND [Centro] = 'SANTA FE'
+        ORDER BY [Fecha Visita] DESC
+    `);
+    console.log(`   📥 ${result.recordset.length} visitas extraídas (desde ${primerDiaMesFmt})`);
+
+    if (result.recordset.length === 0) {
+        return { total: 0, deleted: 0, inserted: 0, skipped: 0 };
+    }
+
+    // Transformar filas
+    const records = [];
+    for (const r of result.recordset) {
+        const usuario = r['Usuario Creacion Nombre']?.trim();
+        if (!usuario) continue;
+
+        const fecha = formatDate(r.Fecha);
+        if (!fecha) continue;
+
+        records.push({
+            id_visita: r.idVisita ? String(r.idVisita).trim() : null,
+            fecha,
+            id_paciente: r.IdPaciente ? String(r.IdPaciente).trim() : null,
+            paciente: r.Paciente?.trim() || null,
+            cliente: r.Cliente?.trim() || null,
+            responsable: r.Responsable?.trim() || null,
+            tipo_visita: r['Tipo Visita']?.trim() || null,
+            especialidad: r.Visita_Especialidad?.trim() || null,
+            usuario_creacion: usuario,
+            centro: 'SANTA FE',
+        });
+    }
+
+    console.log(`   📦 ${records.length} registros válidos`);
+
+    // Estrategia: delete-insert (mes completo)
+    const { error: delError } = await supabase
+        .from('visitas_sede')
+        .delete()
+        .gte('fecha', primerDiaMesFmt);
+
+    if (delError) {
+        console.error(`   ⚠️ Error al limpiar mes:`, delError.message);
+    } else {
+        console.log(`   🗑️ Datos del mes limpiados para refresh`);
+    }
+
+    // Insert en lotes
+    let inserted = 0, skipped = 0;
+    const BATCH = 100;
+
+    for (let i = 0; i < records.length; i += BATCH) {
+        const batch = records.slice(i, i + BATCH);
+        const { data, error } = await supabase
+            .from('visitas_sede')
+            .insert(batch)
+            .select('id');
+
+        if (error) {
+            console.error(`   ❌ Batch ${Math.floor(i/BATCH)+1} error:`, error.message);
+            skipped += batch.length;
+        } else if (data) {
+            inserted += data.length;
+        }
+    }
+
+    const summary = { total: result.recordset.length, deleted: 'mes completo', inserted, skipped };
+    console.log(`   ✅ Visitas Sede: ${inserted} registros sincronizados, ${skipped} errores`);
+    return summary;
+}
+
+// ════════════════════════════════════════════════
 // ENDPOINT PRINCIPAL: SYNC TODO
 // ════════════════════════════════════════════════
 let syncInProgress = false;
@@ -948,6 +1048,13 @@ app.get('/api/salus/sync-all', async (req, res) => {
         } catch (err) {
             console.error('❌ Error en facturación sede:', err.message);
             results.facturacion = { error: err.message };
+        }
+
+        try {
+            results.visitas = await syncVisitasSede(db);
+        } catch (err) {
+            console.error('❌ Error en visitas sede:', err.message);
+            results.visitas = { error: err.message };
         }
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -1007,6 +1114,11 @@ app.get('/api/salus/sync/deudas', async (req, res) => {
 
 app.get('/api/salus/sync/facturacion', async (req, res) => {
     try { const db = await getPool(); res.json({ success: true, results: await syncFacturacionSede(db) }); }
+    catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+app.get('/api/salus/sync/visitas', async (req, res) => {
+    try { const db = await getPool(); res.json({ success: true, results: await syncVisitasSede(db) }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
