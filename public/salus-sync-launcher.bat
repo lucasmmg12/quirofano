@@ -34,15 +34,20 @@ if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 :: 3. Descargar archivos del repositorio
 echo [3/5] Descargando archivos desde GitHub...
 echo      Descargando index.js...
-curl -sL "%REPO_RAW%/sync-server/index.js" -o "%INSTALL_DIR%\index.js"
+curl.exe -sL "%REPO_RAW%/sync-server/index.js" -o "%INSTALL_DIR%\index.js"
 if %ERRORLEVEL% NEQ 0 (
-    echo  ERROR: No se pudo descargar index.js
-    pause
-    exit /b 1
+    if exist "%INSTALL_DIR%\index.js" (
+        echo  AVISO: No se pudo descargar la ultima version, usando version local existente.
+    ) else (
+        echo  ERROR: No se pudo descargar index.js y no hay version local.
+        echo  Verifique su conexion a Internet o que el repositorio sea accesible.
+        pause
+        exit /b 1
+    )
 )
 
 echo      Descargando package.json...
-curl -sL "%REPO_RAW%/sync-server/package.json" -o "%INSTALL_DIR%\package.json"
+curl.exe -sL "%REPO_RAW%/sync-server/package.json" -o "%INSTALL_DIR%\package.json"
 
 echo      Generando archivo .env local...
 echo VITE_SUPABASE_URL=https://hakysnqiryimxbwdslwe.supabase.co > "%INSTALL_DIR%\.env"
