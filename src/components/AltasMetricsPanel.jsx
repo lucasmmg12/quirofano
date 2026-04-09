@@ -369,7 +369,7 @@ export default function AltasMetricsPanel({ altas = [] }) {
     // ── 4) Estado ──
     const estadoDistribution = useMemo(() => {
         const map = {};
-        data.forEach(a => { const e = a._effectiveEstado || 'Procesada'; map[e] = (map[e] || 0) + 1; });
+        data.forEach(a => { const e = a._effectiveEstado || 'Sin estado'; map[e] = (map[e] || 0) + 1; });
         return Object.entries(map).map(([name, value]) => ({ name: ALTA_ESTADOS[name]?.label || name, value, fill: ESTADO_COLORS[name] || '#6B7280' })).sort((a, b) => b.value - a.value);
     }, [data]);
 

@@ -175,7 +175,7 @@ export default function AltasPanel({ addToast, currentUser }) {
             return true;
         }).map(alta => {
             const asignacion = matchAsignacion(criterios, alta.cliente, alta.especialidad, alta.proceso);
-            const effectiveEstado = alta.control_adm_finalizado === 'Sí' ? 'Alta Adm' : (alta.estado === 'Alta Adm' ? 'Procesada' : alta.estado);
+            const effectiveEstado = alta.control_adm_finalizado === 'Sí' ? 'Alta Adm' : (alta.estado || null);
             return { ...alta, _effectiveEstado: effectiveEstado, _responsable: asignacion?.responsable || '' };
         });
     }, [altas, criterios]);
@@ -617,7 +617,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                             <tbody>
                                 {sortedAltas.map(alta => {
                                     const effectiveEstado = alta._effectiveEstado;
-                                    const cfg = ALTA_ESTADOS[effectiveEstado] || ALTA_ESTADOS['Procesada'];
+                                    const cfg = effectiveEstado ? (ALTA_ESTADOS[effectiveEstado] || ALTA_ESTADOS['Procesada']) : null;
                                     const isExpanded = expandedId === alta.id;
                                     const asignacion = { responsable: alta._responsable, tutor: alta._tutor };
 
@@ -656,18 +656,18 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                         }}
                                                         style={{
                                                             display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                            padding: effectiveEstado === 'Procesada' ? '4px 6px' : '4px 10px',
+                                                            padding: !cfg ? '4px 6px' : '4px 10px',
                                                             borderRadius: 'var(--radius-full)',
                                                             fontSize: '0.72rem', fontWeight: 700,
-                                                            background: effectiveEstado === 'Procesada' ? 'transparent' : cfg.bg,
-                                                            color: effectiveEstado === 'Procesada' ? 'transparent' : cfg.color,
-                                                            border: effectiveEstado === 'Procesada' ? '1px dashed transparent' : `1px solid ${cfg.color}25`,
+                                                            background: !cfg ? 'transparent' : cfg.bg,
+                                                            color: !cfg ? 'transparent' : cfg.color,
+                                                            border: !cfg ? '1px dashed transparent' : `1px solid ${cfg.color}25`,
                                                             cursor: 'pointer', transition: 'all 0.15s',
                                                             whiteSpace: 'nowrap',
-                                                            minWidth: effectiveEstado === 'Procesada' ? '70px' : 'auto',
+                                                            minWidth: !cfg ? '70px' : 'auto',
                                                         }}
                                                         onMouseOver={e => {
-                                                            if (effectiveEstado === 'Procesada') {
+                                                            if (!cfg) {
                                                                 e.currentTarget.style.borderColor = 'var(--neutral-250, #C5CCD6)';
                                                                 e.currentTarget.style.color = 'var(--neutral-400)';
                                                             } else {
@@ -675,7 +675,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                             }
                                                         }}
                                                         onMouseOut={e => {
-                                                            if (effectiveEstado === 'Procesada') {
+                                                            if (!cfg) {
                                                                 e.currentTarget.style.borderColor = 'transparent';
                                                                 e.currentTarget.style.color = 'transparent';
                                                             } else {
@@ -684,7 +684,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                         }}
                                                         title="Cambiar estado"
                                                     >
-                                                        {effectiveEstado === 'Procesada' ? '—' : <>{cfg.icon} {cfg.label}</>}
+                                                        {!cfg ? '—' : <>{cfg.icon} {cfg.label}</>}
                                                     </button>
                                                     {/* Dropdown */}
                                                     {statusDropdownId === alta.id && (
@@ -776,7 +776,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             <tr key={`${alta.id}-detail`}>
                                                 <td colSpan={9} style={{
                                                     padding: 0, background: 'var(--neutral-50)',
-                                                    borderLeft: `4px solid ${cfg.color}`,
+                                                    borderLeft: `4px solid ${cfg?.color || '#CBD5E1'}`,
                                                     animation: 'fadeIn 0.2s ease-out',
                                                 }}>
                                                     <div style={{

@@ -695,7 +695,11 @@ async function syncAltasAdministrativas(db) {
             for (const row of existing) {
                 const preserved = {};
                 for (const f of FIELDS_TO_PRESERVE) {
-                    if (row[f] != null) preserved[f] = row[f];
+                    if (row[f] != null) {
+                        // No preservar 'Procesada' — era el default viejo, ahora es null
+                        if (f === 'estado' && row[f] === 'Procesada') continue;
+                        preserved[f] = row[f];
+                    }
                 }
                 // Guardar también el estado previo de control_adm para detectar transición
                 preserved._prev_control_adm = row.control_adm_finalizado;
