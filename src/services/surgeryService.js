@@ -64,7 +64,7 @@ function normalizeNameForUpsert(name) {
  * @param {number} [options.limit] - Límite de registros
  * @param {string} [options.ausenteFilter] - 'pending' (NULL), 'completed' (0), 'suspended' (1), 'active' (pending+suspended), 'all'
  */
-export async function fetchSurgeries({ status, fromDate, toDate, limit = 500, ausenteFilter = 'pending' } = {}) {
+export async function fetchSurgeries({ status, fromDate, toDate, limit, ausenteFilter = 'pending' } = {}) {
     let query = supabase
         .from('surgeries')
         .select('*, surgery_events(*)')
@@ -93,11 +93,30 @@ export async function fetchSurgeries({ status, fromDate, toDate, limit = 500, au
     if (status) query = query.eq('status', status);
     if (fromDate) query = query.or(`fecha_cirugia.gte.${fromDate},fecha_cirugia.is.null`);
     if (toDate) query = query.lte('fecha_cirugia', toDate);
-    query = query.limit(limit);
 
-    const { data, error } = await query;
-    if (error) throw error;
-    return data;
+    // Si se especifica un límite, aplicarlo directamente
+    if (limit && limit > 0) {
+        query = query.limit(limit);
+        const { data, error } = await query;
+        if (error) throw error;
+        return data;
+    }
+
+    // Sin límite: paginar para obtener TODO (Supabase default = 1000 por request)
+    const PAGE_SIZE = 1000;
+    let allData = [];
+    let from = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+        const { data, error } = await query.range(from, from + PAGE_SIZE - 1);
+        if (error) throw error;
+        allData = allData.concat(data || []);
+        hasMore = (data || []).length === PAGE_SIZE;
+        from += PAGE_SIZE;
+    }
+
+    return allData;
 }
 
 /**

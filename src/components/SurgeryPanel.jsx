@@ -209,6 +209,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
 
     // Far days collapsible
     const [showFarDays, setShowFarDays] = useState(false);
+    // History month filter (YYYY-MM or 'all')
+    const [historyMonth, setHistoryMonth] = useState('all');
     // Purge modal
     const [showPurgeModal, setShowPurgeModal] = useState(false);
     const [purgeConfirmText, setPurgeConfirmText] = useState('');
@@ -228,12 +230,23 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             const dbStatus = dbStatusValues.includes(filter) ? filter : undefined;
             const today = new Date().toISOString().split('T')[0];
 
+            // En modo historial con filtro de mes, usar fromDate/toDate para acotar el query
+            let historyFromDate = undefined;
+            let historyToDate = undefined;
+            if (viewMode === 'history' && historyMonth && historyMonth !== 'all') {
+                historyFromDate = `${historyMonth}-01`;
+                const [y, m] = historyMonth.split('-').map(Number);
+                const lastDay = new Date(y, m, 0).getDate();
+                historyToDate = `${historyMonth}-${String(lastDay).padStart(2, '0')}`;
+            }
+
             const [surgeriesData, statsData] = await Promise.all([
                 fetchSurgeries({
                     ...(dbStatus && { status: dbStatus }),
                     ausenteFilter,
                     ...(viewMode === 'upcoming' && { fromDate: today }),
-                    ...(viewMode === 'history' && { limit: 2000 }),
+                    ...(historyFromDate && { fromDate: historyFromDate }),
+                    ...(historyToDate && { toDate: historyToDate }),
                 }),
                 getSurgeryStats(),
             ]);
@@ -257,7 +270,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             setLoading(false);
             setInitialLoadDone(true);
         }
-    }, [filter, viewMode, addToast, initialLoadDone]);
+    }, [filter, viewMode, historyMonth, addToast, initialLoadDone]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
@@ -1941,6 +1954,47 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                             }}>{viewMode === 'history' ? filtered.length : '📋'}</span>
                         </button>
                     </div>
+
+                    {/* History Month Filter */}
+                    {viewMode === 'history' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)' }}>Filtrar mes:</span>
+                            <select
+                                value={historyMonth}
+                                onChange={e => { setHistoryMonth(e.target.value); setShowFarDays(false); }}
+                                style={{
+                                    padding: '5px 10px', borderRadius: 'var(--radius-sm)',
+                                    border: '1px solid var(--neutral-200)', fontSize: '0.78rem',
+                                    fontWeight: 600, color: 'var(--neutral-700)',
+                                    background: '#fff', cursor: 'pointer',
+                                }}
+                            >
+                                <option value="all">📋 Todos los meses</option>
+                                {(() => {
+                                    // Generar opciones desde Enero 2025 hasta el mes actual
+                                    const opts = [];
+                                    const now = new Date();
+                                    const endYear = now.getFullYear();
+                                    const endMonth = now.getMonth(); // 0-based
+                                    for (let y = endYear; y >= 2025; y--) {
+                                        const startM = y === endYear ? endMonth : 11;
+                                        const endM = 0;
+                                        for (let m = startM; m >= endM; m--) {
+                                            const val = `${y}-${String(m + 1).padStart(2, '0')}`;
+                                            const label = new Date(y, m, 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+                                            opts.push(<option key={val} value={val}>{label.charAt(0).toUpperCase() + label.slice(1)}</option>);
+                                        }
+                                    }
+                                    return opts;
+                                })()}
+                            </select>
+                            <span style={{
+                                fontSize: '0.72rem', color: 'var(--neutral-400)', fontWeight: 500,
+                            }}>
+                                {historyMonth === 'all' ? 'Mostrando todas las cirugías' : `${filtered.length} cirugías en el mes`}
+                            </span>
+                        </div>
+                    )}
                 </div>
 
                 {loading && !initialLoadDone ? (
