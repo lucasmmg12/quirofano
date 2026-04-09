@@ -175,7 +175,8 @@ export default function AltasPanel({ addToast, currentUser }) {
             return true;
         }).map(alta => {
             const asignacion = matchAsignacion(criterios, alta.cliente, alta.especialidad, alta.proceso);
-            const effectiveEstado = alta.control_adm_finalizado === 'Sí' ? 'Alta Adm' : (alta.estado || null);
+            const ctrlAdm = (alta.control_adm_finalizado || '').trim().toLowerCase();
+            const effectiveEstado = (ctrlAdm === 'sí' || ctrlAdm === 'si') ? 'Alta Adm' : (alta.estado || null);
             return { ...alta, _effectiveEstado: effectiveEstado, _responsable: asignacion?.responsable || '' };
         });
     }, [altas, criterios]);
@@ -351,7 +352,7 @@ export default function AltasPanel({ addToast, currentUser }) {
     // RENDER
     // ════════════════════════════════════════════════
     return (
-        <div className="content no-print" style={{ padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        <div className="content no-print" style={{ padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', overflow: 'auto' }}>
             
             {/* ── Header ── */}
             <div style={{
@@ -537,7 +538,7 @@ export default function AltasPanel({ addToast, currentUser }) {
             </div>
 
             {/* ── Tabla ── */}
-            <div className="cart animate-fade-in" style={{ overflow: 'visible' }}>
+            <div className="cart animate-fade-in" style={{ overflow: 'visible', minHeight: 0, flex: '1 1 auto' }}>
                 {loading ? (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', gap: '10px', color: 'var(--neutral-400)' }}>
                         <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} />
@@ -702,7 +703,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                                 animation: 'fadeIn 0.15s ease-out',
                                                             }}>
                                                                 {Object.entries(ALTA_ESTADOS).map(([key, scfg]) => {
-                                                                    if (key === 'Alta Adm') return null; // No permitir selecc. manual
+                                                                    if (key === 'Procesada') return null; // 'Procesada' ya no se usa como estado
                                                                     return (
                                                                         <button
                                                                             key={key}
