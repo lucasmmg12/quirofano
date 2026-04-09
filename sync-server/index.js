@@ -769,7 +769,7 @@ async function syncFacturacionSede(db) {
     const primerDiaMesFmt = `${y}-${m}-01`;
 
     const result = await db.request().query(`
-        WITH VisitasUnicas AS (
+        WITH LineasVisita AS (
             SELECT [idVisita], [Paciente_Nombre], [Paciente_NHC], [descripcion],
                    CAST([cantidad] AS INT) AS [cantidad],
                    CAST([ImporteTotal] AS INT) AS [ImporteTotal],
@@ -779,21 +779,23 @@ async function syncFacturacionSede(db) {
                    [Centro_Alias], [Familia], [Servicio], [FormaDePago],
                    [Responsable], [Visita_TipoVisita], [Tarifa],
                    [UsuarioFactura], [Paciente_Telf1],
-                   ROW_NUMBER() OVER(PARTITION BY [idVisita] ORDER BY [Factura_FechaActualizacion] DESC) as FilaNumero
+                   COUNT(*) OVER(PARTITION BY [idVisita]) AS LineasEnVisita,
+                   ROW_NUMBER() OVER(PARTITION BY [idVisita], [descripcion] ORDER BY [Factura_FechaActualizacion] DESC) as DupFila
             FROM [SALUS].[dbo].[PR_FACTURAS_QRY]
             WHERE [Factura_FechaActualizacion] >= '${primerDiaMes}'
               AND [Centro_Alias] = 'SANTA FE'
         )
         SELECT [idVisita], [Paciente_Nombre], [Paciente_NHC], [descripcion],
-               [cantidad], [ImporteTotal], [idPaciente], [Fecha], [Hora],
+               [cantidad], [ImporteTotal], [LineasEnVisita],
+               [idPaciente], [Fecha], [Hora],
                [Centro_Alias], [Familia], [Servicio], [FormaDePago],
                [Responsable], [Visita_TipoVisita], [Tarifa],
                [UsuarioFactura], [Paciente_Telf1]
-        FROM VisitasUnicas
-        WHERE FilaNumero = 1
+        FROM LineasVisita
+        WHERE DupFila = 1
         ORDER BY [Fecha] DESC, [Hora] DESC
     `);
-    console.log(`   📥 ${result.recordset.length} visitas únicas extraídas (desde ${primerDiaMesFmt})`);
+    console.log(`   📥 ${result.recordset.length} líneas extraídas (desde ${primerDiaMesFmt})`);
 
     if (result.recordset.length === 0) {
         return { total: 0, deleted: 0, inserted: 0, skipped: 0 };
@@ -828,6 +830,11 @@ async function syncFacturacionSede(db) {
             }
         }
 
+        // ImporteTotal es el total de TODA la visita
+        // Si hay N líneas en la visita, dividir el importe entre N
+        const lineasEnVisita = Number(r.LineasEnVisita) || 1;
+        const importeLinea = Math.round((Number(r.ImporteTotal) || 0) / lineasEnVisita);
+
         records.push({
             id_visita: r.idVisita ? String(r.idVisita).trim() : null,
             id_paciente: r.idPaciente ? String(r.idPaciente).trim() : null,
@@ -836,7 +843,7 @@ async function syncFacturacionSede(db) {
             paciente_telefono: r.Paciente_Telf1 ? String(r.Paciente_Telf1).trim() : null,
             descripcion: r.descripcion?.trim() || null,
             cantidad: Number(r.cantidad) || 1,
-            total_importe: Number(r.ImporteTotal) || 0,
+            total_importe: importeLinea,
             fecha,
             hora,
             turno,

@@ -9,7 +9,7 @@ import {
     Search, RefreshCw, ChevronRight, Clock, Calendar,
     Filter, X, Loader2, FileText, User, Building2,
     Stethoscope, ChevronDown, ChevronUp, StickyNote, Save,
-    ListFilter,
+    ListFilter, Download, FileDown,
 } from 'lucide-react';
 import { fetchAltas, updateAltaEstado, updateAltaNotas, ALTA_ESTADOS } from '../services/altasService';
 import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
@@ -242,6 +242,96 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     const activeFilterCount = Object.keys(columnFilters).length;
 
+    // ── Exportar a Excel (CSV con BOM para UTF-8) ──
+    const exportToExcel = () => {
+        const headers = ['Estado', 'Paciente', 'Obra Social', 'Especialidad', 'Médico', 'Ingreso', 'Alta', 'Responsable', 'Proceso', 'Notas'];
+        const rows = sortedAltas.map(a => {
+            const ecfg = ALTA_ESTADOS[a._effectiveEstado];
+            return [
+                ecfg?.label || '—',
+                a.paciente || '',
+                a.cliente || '',
+                a.especialidad || '',
+                a.doctor || '',
+                a.fecha_ingreso || '',
+                a.fecha_alta || '',
+                a._responsable || '',
+                a.proceso || '',
+                (a.notas_internas || '').replace(/[\n\r]+/g, ' '),
+            ];
+        });
+
+        const csvContent = [headers, ...rows]
+            .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(';'))
+            .join('\n');
+
+        const BOM = '\uFEFF';
+        const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const today = new Date().toISOString().split('T')[0];
+        link.href = url;
+        link.download = `altas_administrativas_${today}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+        addToast?.(`📊 Excel exportado: ${sortedAltas.length} registros`, 'success');
+    };
+
+    // ── Exportar a PDF (abre diálogo de impresión del navegador) ──
+    const exportToPDF = () => {
+        const today = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const rows = sortedAltas.map(a => {
+            const ecfg = ALTA_ESTADOS[a._effectiveEstado];
+            return `<tr>
+                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px;font-weight:600;color:${ecfg?.color || '#666'}">${ecfg?.label || '—'}</td>
+                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px;font-weight:600">${a.paciente || '—'}</td>
+                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px">${a.cliente || '—'}</td>
+                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px">${a.especialidad || '—'}</td>
+                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px">${a.doctor || '—'}</td>
+                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px;font-family:monospace">${formatDate(a.fecha_ingreso)}</td>
+                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px;font-family:monospace;font-weight:600">${a.fecha_alta ? formatDate(a.fecha_alta) : 'Internado'}</td>
+                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px;font-weight:600;color:#1E40AF">${a._responsable || '—'}</td>
+            </tr>`;
+        }).join('');
+
+        // KPI summary for PDF
+        const kpiHtml = Object.entries(ALTA_ESTADOS).map(([key, cfg]) => {
+            const count = localStats[key] || 0;
+            return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:${cfg.bg};color:${cfg.color};font-size:11px;font-weight:700;border:1px solid ${cfg.color}25">${cfg.icon} ${cfg.label}: ${count}</span>`;
+        }).join(' ');
+
+        const html = `<!DOCTYPE html>
+        <html><head><meta charset="utf-8"><title>Altas Administrativas — ${today}</title>
+        <style>
+            @page { size: landscape; margin: 12mm; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1f2937; }
+            table { border-collapse: collapse; width: 100%; }
+            th { padding: 6px 8px; background: #f1f5f9; border: 1px solid #e2e8f0; font-size: 11px; font-weight: 700; text-align: left; color: #374151; }
+            tr:nth-child(even) td { background: #f9fafb; }
+        </style></head><body>
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+                <div style="font-size:20px;font-weight:800;color:#1f2937">📋 Control de Altas Administrativas</div>
+                <div style="margin-left:auto;font-size:12px;color:#6b7280">${today} — ${sortedAltas.length} registros</div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+                <span style="padding:3px 10px;border-radius:20px;background:#1F2937;color:#fff;font-size:11px;font-weight:700">Total: ${total}</span>
+                ${kpiHtml}
+            </div>
+            <table>
+                <thead><tr>
+                    <th>Estado</th><th>Paciente</th><th>Obra Social</th><th>Especialidad</th><th>Médico</th><th>Ingreso</th><th>Alta</th><th>Responsable</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+            <div style="margin-top:20px;font-size:10px;color:#9ca3af;text-align:center;">Sanatorio Argentino — Sistema ADM-QUI — Generado el ${today}</div>
+        </body></html>`;
+
+        const printWin = window.open('', '_blank', 'width=1200,height=800');
+        printWin.document.write(html);
+        printWin.document.close();
+        setTimeout(() => printWin.print(), 400);
+    };
+
     // ── FilterHeader Component ──
     const FilterHeader = ({ label, col, width }) => {
         const isActive = !!columnFilters[col];
@@ -390,6 +480,45 @@ export default function AltasPanel({ addToast, currentUser }) {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <SalusSyncButton onComplete={loadData} addToast={addToast} />
+                    {/* Export buttons */}
+                    <button
+                        onClick={exportToExcel}
+                        disabled={loading || sortedAltas.length === 0}
+                        title="Exportar a Excel (.csv)"
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '5px',
+                            padding: '8px 12px', borderRadius: '10px',
+                            background: '#fff', color: '#059669',
+                            border: '1px solid #05966930',
+                            fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            opacity: sortedAltas.length === 0 ? 0.4 : 1,
+                        }}
+                        onMouseOver={e => { e.currentTarget.style.background = '#ECFDF5'; e.currentTarget.style.borderColor = '#059669'; }}
+                        onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#05966930'; }}
+                    >
+                        <FileDown size={14} />
+                        Excel
+                    </button>
+                    <button
+                        onClick={exportToPDF}
+                        disabled={loading || sortedAltas.length === 0}
+                        title="Exportar a PDF"
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '5px',
+                            padding: '8px 12px', borderRadius: '10px',
+                            background: '#fff', color: '#DC2626',
+                            border: '1px solid #DC262630',
+                            fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            opacity: sortedAltas.length === 0 ? 0.4 : 1,
+                        }}
+                        onMouseOver={e => { e.currentTarget.style.background = '#FEF2F2'; e.currentTarget.style.borderColor = '#DC2626'; }}
+                        onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#DC262630'; }}
+                    >
+                        <Download size={14} />
+                        PDF
+                    </button>
                     <button
                         onClick={loadData}
                         disabled={loading}
