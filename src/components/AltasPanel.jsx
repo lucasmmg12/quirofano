@@ -110,18 +110,6 @@ export default function AltasPanel({ addToast, currentUser }) {
         }
     };
 
-    // ── KPIs (calculados desde effectiveEstado del frontend, no del campo crudo de la DB) ──
-    const localStats = useMemo(() => {
-        const s = {};
-        for (const key of Object.keys(ALTA_ESTADOS)) s[key] = 0;
-        preFilteredAltas.forEach(a => {
-            if (a._effectiveEstado && s[a._effectiveEstado] !== undefined) s[a._effectiveEstado]++;
-        });
-        s._total = preFilteredAltas.length;
-        return s;
-    }, [preFilteredAltas]);
-    const total = localStats._total || 0;
-
     // ── Filtros por columna helpers ──
     const toggleColumnFilter = (col) => {
         setActiveFilterCol(prev => prev === col ? null : col);
@@ -191,6 +179,18 @@ export default function AltasPanel({ addToast, currentUser }) {
             return { ...alta, _effectiveEstado: effectiveEstado, _responsable: asignacion?.responsable || '' };
         });
     }, [altas, criterios]);
+
+    // ── KPIs (calculados desde effectiveEstado del frontend, no del campo crudo de la DB) ──
+    const localStats = useMemo(() => {
+        const s = {};
+        for (const key of Object.keys(ALTA_ESTADOS)) s[key] = 0;
+        preFilteredAltas.forEach(a => {
+            if (a._effectiveEstado && s[a._effectiveEstado] !== undefined) s[a._effectiveEstado]++;
+        });
+        s._total = preFilteredAltas.length;
+        return s;
+    }, [preFilteredAltas]);
+    const total = localStats._total || 0;
 
     // Extraer valores únicos por columna
     const uniqueValues = useMemo(() => {
