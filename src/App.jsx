@@ -399,7 +399,9 @@ function App({ currentUser, onLogout }) {
                                 fontSize: '0.78rem', fontWeight: 600,
                                 color: 'var(--neutral-600)',
                             }}>
-                                {currentUser.nombre}
+                                {currentUser.nombre?.includes('@')
+                                    ? currentUser.nombre.split('@')[0].replace(/^\w/, c => c.toUpperCase())
+                                    : currentUser.nombre}
                             </span>
                             <div style={{
                                 width: '28px', height: '28px', borderRadius: '50%',
