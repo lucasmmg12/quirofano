@@ -11,7 +11,7 @@ import {
     Stethoscope, ChevronDown, ChevronUp, StickyNote, Save,
     ListFilter,
 } from 'lucide-react';
-import { fetchAltas, updateAltaEstado, updateAltaNotas, getAltasStats, ALTA_ESTADOS } from '../services/altasService';
+import { fetchAltas, updateAltaEstado, updateAltaNotas, ALTA_ESTADOS } from '../services/altasService';
 import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
 import SalusSyncButton from './SalusSyncButton';
 import AltasMetricsPanel from './AltasMetricsPanel';
@@ -34,7 +34,6 @@ export default function AltasPanel({ addToast, currentUser }) {
     // ── State ──
     const [altas, setAltas] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [stats, setStats] = useState({});
     const [expandedId, setExpandedId] = useState(null);
     const [statusDropdownId, setStatusDropdownId] = useState(null);
     const [processing, setProcessing] = useState(false);
@@ -67,13 +66,11 @@ export default function AltasPanel({ addToast, currentUser }) {
     const loadData = useCallback(async () => {
         try {
             setLoading(true);
-            const [data, statsData, criteriosData] = await Promise.all([
+            const [data, criteriosData] = await Promise.all([
                 fetchAltas({ fromDate, toDate: toDate || undefined, estado: filterEstado, search: searchTerm }),
-                getAltasStats(fromDate, toDate || undefined),
                 fetchAsignaciones().catch(() => []),
             ]);
             setAltas(data);
-            setStats(statsData);
             setCriterios(criteriosData);
         } catch (err) {
             addToast?.('Error al cargar altas: ' + err.message, 'error');
@@ -113,8 +110,17 @@ export default function AltasPanel({ addToast, currentUser }) {
         }
     };
 
-    // ── KPIs ──
-    const total = stats._total || 0;
+    // ── KPIs (calculados desde effectiveEstado del frontend, no del campo crudo de la DB) ──
+    const localStats = useMemo(() => {
+        const s = {};
+        for (const key of Object.keys(ALTA_ESTADOS)) s[key] = 0;
+        preFilteredAltas.forEach(a => {
+            if (a._effectiveEstado && s[a._effectiveEstado] !== undefined) s[a._effectiveEstado]++;
+        });
+        s._total = preFilteredAltas.length;
+        return s;
+    }, [preFilteredAltas]);
+    const total = localStats._total || 0;
 
     // ── Filtros por columna helpers ──
     const toggleColumnFilter = (col) => {
@@ -459,7 +465,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                     }}>{total}</span>
                 </button>
                 {Object.entries(ALTA_ESTADOS).map(([key, cfg]) => {
-                    const count = stats[key] || 0;
+                    const count = localStats[key] || 0;
                     const isActive = filterEstado === key;
                     return (
                         <button
