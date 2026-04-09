@@ -67,7 +67,7 @@ export default function AltasPanel({ addToast, currentUser }) {
         try {
             setLoading(true);
             const [data, criteriosData] = await Promise.all([
-                fetchAltas({ fromDate, toDate: toDate || undefined, estado: filterEstado, search: searchTerm }),
+                fetchAltas({ fromDate, toDate: toDate || undefined, search: searchTerm }),
                 fetchAsignaciones().catch(() => []),
             ]);
             setAltas(data);
@@ -77,7 +77,7 @@ export default function AltasPanel({ addToast, currentUser }) {
         } finally {
             setLoading(false);
         }
-    }, [fromDate, toDate, filterEstado, searchTerm, addToast]);
+    }, [fromDate, toDate, searchTerm, addToast]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
@@ -157,8 +157,8 @@ export default function AltasPanel({ addToast, currentUser }) {
         setActiveFilterCol(null);
     };
 
-    // Obtener datos pre-filtrados (sin filtro de columna, para extraer valores únicos)
-    const preFilteredAltas = useMemo(() => {
+    // Obtener datos procesados con effectiveEstado (sin filtro de pill, para KPIs)
+    const allProcessedAltas = useMemo(() => {
         return altas.filter(alta => {
             const doc = (alta.doctor || '').toLowerCase().trim();
             if (doc.includes('qsoft') || doc.includes('profesional') && doc.includes('chequeo')) return false;
@@ -183,17 +183,23 @@ export default function AltasPanel({ addToast, currentUser }) {
         });
     }, [altas, criterios]);
 
-    // ── KPIs (calculados desde effectiveEstado del frontend, no del campo crudo de la DB) ──
+    // ── KPIs (calculados ANTES del filtro de pill para mostrar conteos globales) ──
     const localStats = useMemo(() => {
         const s = {};
         for (const key of Object.keys(ALTA_ESTADOS)) s[key] = 0;
-        preFilteredAltas.forEach(a => {
+        allProcessedAltas.forEach(a => {
             if (a._effectiveEstado && s[a._effectiveEstado] !== undefined) s[a._effectiveEstado]++;
         });
-        s._total = preFilteredAltas.length;
+        s._total = allProcessedAltas.length;
         return s;
-    }, [preFilteredAltas]);
+    }, [allProcessedAltas]);
     const total = localStats._total || 0;
+
+    // Aplicar filtro de pill (estado) — frontend
+    const preFilteredAltas = useMemo(() => {
+        if (!filterEstado || filterEstado === 'all') return allProcessedAltas;
+        return allProcessedAltas.filter(a => a._effectiveEstado === filterEstado);
+    }, [allProcessedAltas, filterEstado]);
 
     // Extraer valores únicos por columna
     const uniqueValues = useMemo(() => {

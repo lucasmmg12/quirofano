@@ -23,7 +23,7 @@ export const ALTA_ESTADOS = {
  * Obtiene altas administrativas con filtros
  * Paginación automática para superar el límite de 1000 filas de Supabase
  */
-export async function fetchAltas({ fromDate, toDate, estado, search } = {}) {
+export async function fetchAltas({ fromDate, toDate, search } = {}) {
     const PAGE_SIZE = 1000;
     let allData = [];
     let from = 0;
@@ -38,7 +38,6 @@ export async function fetchAltas({ fromDate, toDate, estado, search } = {}) {
 
         if (fromDate) query = query.gte('fecha_ingreso', fromDate);
         if (toDate) query = query.lte('fecha_ingreso', toDate);
-        if (estado && estado !== 'all') query = query.eq('estado', estado);
         if (search) {
             query = query.or(`paciente.ilike.%${search}%,doctor.ilike.%${search}%,cliente.ilike.%${search}%,numero_admision.ilike.%${search}%`);
         }
