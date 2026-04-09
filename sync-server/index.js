@@ -769,7 +769,7 @@ async function syncFacturacionSede(db) {
     const primerDiaMesFmt = `${y}-${m}-01`;
 
     const result = await db.request().query(`
-        WITH LineasVisita AS (
+        WITH Deduped AS (
             SELECT [idVisita], [Paciente_Nombre], [Paciente_NHC], [descripcion],
                    CAST([cantidad] AS INT) AS [cantidad],
                    CAST([ImporteTotal] AS INT) AS [ImporteTotal],
@@ -779,21 +779,21 @@ async function syncFacturacionSede(db) {
                    [Centro_Alias], [Familia], [Servicio], [FormaDePago],
                    [Responsable], [Visita_TipoVisita], [Tarifa],
                    [UsuarioFactura], [Paciente_Telf1],
-                   COUNT(*) OVER(PARTITION BY [idVisita]) AS LineasEnVisita,
                    ROW_NUMBER() OVER(PARTITION BY [idVisita], [descripcion] ORDER BY [Factura_FechaActualizacion] DESC) as DupFila
             FROM [SALUS].[dbo].[PR_FACTURAS_QRY]
             WHERE [Factura_FechaActualizacion] >= '${primerDiaMes}'
               AND [Centro_Alias] = 'SANTA FE'
         )
-        SELECT [idVisita], [Paciente_Nombre], [Paciente_NHC], [descripcion],
-               [cantidad], [ImporteTotal], [LineasEnVisita],
-               [idPaciente], [Fecha], [Hora],
-               [Centro_Alias], [Familia], [Servicio], [FormaDePago],
-               [Responsable], [Visita_TipoVisita], [Tarifa],
-               [UsuarioFactura], [Paciente_Telf1]
-        FROM LineasVisita
-        WHERE DupFila = 1
-        ORDER BY [Fecha] DESC, [Hora] DESC
+        SELECT d.[idVisita], d.[Paciente_Nombre], d.[Paciente_NHC], d.[descripcion],
+               d.[cantidad], d.[ImporteTotal],
+               COUNT(*) OVER(PARTITION BY d.[idVisita]) AS LineasEnVisita,
+               d.[idPaciente], d.[Fecha], d.[Hora],
+               d.[Centro_Alias], d.[Familia], d.[Servicio], d.[FormaDePago],
+               d.[Responsable], d.[Visita_TipoVisita], d.[Tarifa],
+               d.[UsuarioFactura], d.[Paciente_Telf1]
+        FROM Deduped d
+        WHERE d.DupFila = 1
+        ORDER BY d.[Fecha] DESC, d.[Hora] DESC
     `);
     console.log(`   📥 ${result.recordset.length} líneas extraídas (desde ${primerDiaMesFmt})`);
 
