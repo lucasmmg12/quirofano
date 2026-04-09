@@ -217,6 +217,27 @@ export async function deleteRAGRule(ruleId) {
 }
 
 // ═══════════════════════════════════
+// FEEDBACK (Correct / Incorrect)
+// ═══════════════════════════════════
+
+export async function submitRAGFeedback(conversationId, messageIndex, isCorrect) {
+    const response = await fetch(`${RAG_API_BASE}/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            conversation_id: conversationId,
+            message_index: messageIndex,
+            is_correct: isCorrect,
+        }),
+    });
+    if (!response.ok) {
+        const err = await safeJson(response).catch(() => ({}));
+        throw new Error(err.detail || 'Error al enviar feedback');
+    }
+    return safeJson(response);
+}
+
+// ═══════════════════════════════════
 // ANALYTICS
 // ═══════════════════════════════════
 

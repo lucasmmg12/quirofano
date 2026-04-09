@@ -9,6 +9,7 @@ import {
     ChevronRight, ChevronDown, Brain, BookOpen, AlertCircle, CheckCircle, X, Clock,
     Sparkles, FolderOpen, Tag, Download, FolderPlus, Home, Folder,
     Shield, RefreshCw, BarChart3, HelpCircle, Search, Zap, ArrowRight,
+    ThumbsUp, ThumbsDown,
 } from 'lucide-react';
 import {
     sendRAGMessage, listRAGConversations, getRAGConversationMessages,
@@ -16,6 +17,7 @@ import {
     listRAGFiles, downloadRAGFile, createRAGFolder, deleteRAGFile,
     deleteRAGFolder, checkRAGHealth, fetchSuggestions, fetchLearningStats,
     listRAGRules, createRAGRule, deleteRAGRule, fetchRAGAnalytics,
+    submitRAGFeedback,
 } from '../api/ragClient';
 
 function renderMarkdown(text) {
@@ -94,6 +96,9 @@ export default function SimonPanel({ addToast }) {
     const [analyticsData, setAnalyticsData] = useState(null);
     const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
+    // Feedback
+    const [feedbackMap, setFeedbackMap] = useState({});  // { [msgIndex]: 'correct' | 'incorrect' }
+
     useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
     // ═══ BOOT ═══
@@ -165,6 +170,21 @@ export default function SimonPanel({ addToast }) {
     async function handleDeleteConv(id, e) {
         e.stopPropagation();
         try { await deleteRAGConversation(id); if (activeConversation === id) startNewConversation(); loadConversations(); } catch(err) { setError(err.message); }
+    }
+
+    // ═══ FEEDBACK ═══
+    async function handleFeedback(msgIndex, isCorrect) {
+        const key = `${activeConversation || 'new'}_${msgIndex}`;
+        if (feedbackMap[key]) return; // Already voted
+        const vote = isCorrect ? 'correct' : 'incorrect';
+        setFeedbackMap(prev => ({ ...prev, [key]: vote }));
+        try {
+            await submitRAGFeedback(activeConversation, msgIndex, isCorrect);
+            addToast?.(isCorrect ? '✅ Marcada como correcta' : '❌ Marcada como incorrecta', 'info');
+        } catch (e) {
+            console.error('Feedback error:', e);
+            // Keep the local state even if API fails
+        }
     }
 
     // ═══ FILES ═══
@@ -600,31 +620,63 @@ export default function SimonPanel({ addToast }) {
                         </div>
                     )}
 
-                    {messages.map((msg, i) => (
-                        <div key={i} className={msg.role === 'user' ? 'rag-msg-user' : 'rag-msg-assistant'}>
-                            {msg.role === 'assistant' ? (
-                                <>
-                                    <div dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
-                                    {msg.sources?.length > 0 && (
-                                        <div className="rag-msg-sources">
-                                            {msg.sources.map((src, j) => (
-                                                <span key={j} className="rag-source-chip">
-                                                    <FileText size={10} /> {(src.filename || src).slice(0, 30)}
-                                                </span>
-                                            ))}
+                    {messages.map((msg, i) => {
+                        const feedbackKey = `${activeConversation || 'new'}_${i}`;
+                        const currentFeedback = feedbackMap[feedbackKey];
+                        return (
+                            <div key={i} className={msg.role === 'user' ? 'rag-msg-user' : 'rag-msg-assistant'}>
+                                {msg.role === 'assistant' ? (
+                                    <>
+                                        <div dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
+                                        {msg.sources?.length > 0 && (
+                                            <div className="rag-msg-sources">
+                                                {msg.sources.map((src, j) => (
+                                                    <span key={j} className="rag-source-chip">
+                                                        <FileText size={10} /> {(src.filename || src).slice(0, 30)}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {msg.type === 'clarification' && msg.suggestions?.length > 0 && (
+                                            <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                {msg.suggestions.map((s, j) => (
+                                                    <button key={j} className="rag-suggestion-btn" style={{ textAlign: 'left' }} onClick={() => setInputValue(s)}>{s}</button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {/* ── Feedback Buttons ── */}
+                                        <div className={`simon-feedback ${currentFeedback ? 'voted' : ''}`}>
+                                            {currentFeedback ? (
+                                                <div className={`simon-feedback-result ${currentFeedback}`}>
+                                                    {currentFeedback === 'correct'
+                                                        ? <><ThumbsUp size={12} /> Correcta</>
+                                                        : <><ThumbsDown size={12} /> Incorrecta</>}
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <span className="simon-feedback-label">¿Fue útil?</span>
+                                                    <button
+                                                        className="simon-feedback-btn correct"
+                                                        onClick={() => handleFeedback(i, true)}
+                                                        title="Respuesta correcta"
+                                                    >
+                                                        <ThumbsUp size={13} /> Correcta
+                                                    </button>
+                                                    <button
+                                                        className="simon-feedback-btn incorrect"
+                                                        onClick={() => handleFeedback(i, false)}
+                                                        title="Respuesta incorrecta"
+                                                    >
+                                                        <ThumbsDown size={13} /> Incorrecta
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
-                                    )}
-                                    {msg.type === 'clarification' && msg.suggestions?.length > 0 && (
-                                        <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                            {msg.suggestions.map((s, j) => (
-                                                <button key={j} className="rag-suggestion-btn" style={{ textAlign: 'left' }} onClick={() => setInputValue(s)}>{s}</button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </>
-                            ) : msg.content}
-                        </div>
-                    ))}
+                                    </>
+                                ) : msg.content}
+                            </div>
+                        );
+                    })}
 
                     {isLoading && (
                         <div className="rag-msg-assistant" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--neutral-500)' }}>
@@ -746,13 +798,18 @@ export default function SimonPanel({ addToast }) {
         if (!analyticsData) return <div className="rag-empty-state"><BarChart3 size={28} style={{ opacity: 0.4 }} /><p style={{ fontSize: '0.78rem' }}>Sin datos</p></div>;
 
         const { overview, response_quality, knowledge_base, pipeline_performance } = analyticsData;
+        const feedbackCorrect = response_quality?.feedback_correct || 0;
+        const feedbackIncorrect = response_quality?.feedback_incorrect || 0;
+        const feedbackTotal = feedbackCorrect + feedbackIncorrect;
+        const feedbackAccuracy = feedbackTotal > 0 ? Math.round((feedbackCorrect / feedbackTotal) * 100) : 0;
+
         const kpis = [
             { label: 'Consultas', value: overview?.total_questions || 0, icon: '💬', color: '#3B82F6' },
-            { label: 'Satisfacción', value: `${response_quality?.satisfaction_score || 0}%`, icon: '✅', color: '#10B981' },
+            { label: 'Precisión', value: feedbackTotal > 0 ? `${feedbackAccuracy}%` : '—', icon: '🎯', color: '#10B981' },
             { label: 'Conversaciones', value: overview?.total_conversations || 0, icon: '🧠', color: '#8B5CF6' },
             { label: 'Docs indexados', value: knowledge_base?.total_chunks || 0, icon: '📄', color: '#F97316' },
             { label: 'Reglas', value: knowledge_base?.total_rules || 0, icon: '🛡️', color: '#6366F1' },
-            { label: 'Aprendidos', value: knowledge_base?.total_learned || 0, icon: '🎓', color: '#EC4899' },
+            { label: 'Feedback', value: feedbackTotal > 0 ? `${feedbackCorrect}/${feedbackTotal}` : '—', icon: '👍', color: '#EC4899' },
         ];
 
         return (

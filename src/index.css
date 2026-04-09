@@ -909,3 +909,116 @@ a {
 }
 
 .rag-kpi-card:hover { box-shadow: var(--shadow-sm); }
+
+/* ===============================================
+   Simon IA — Feedback Buttons (Correct/Incorrect)
+   =============================================== */
+
+.simon-feedback {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--neutral-150, #e8e8e8);
+  animation: fadeIn 0.3s ease-out;
+}
+
+.simon-feedback-label {
+  font-size: 0.68rem;
+  color: var(--neutral-400);
+  font-weight: 600;
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+.simon-feedback-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1.5px solid transparent;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--neutral-50);
+  color: var(--neutral-500);
+}
+
+.simon-feedback-btn.correct {
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.simon-feedback-btn.correct:hover {
+  background: #ecfdf5;
+  color: #059669;
+  border-color: #10b981;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
+}
+
+.simon-feedback-btn.correct:active {
+  transform: translateY(0);
+}
+
+.simon-feedback-btn.incorrect {
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.simon-feedback-btn.incorrect:hover {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #ef4444;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.15);
+}
+
+.simon-feedback-btn.incorrect:active {
+  transform: translateY(0);
+}
+
+/* Voted state */
+.simon-feedback.voted {
+  border-top-color: transparent;
+  padding-top: 6px;
+  margin-top: 8px;
+}
+
+.simon-feedback-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 12px;
+  border-radius: 20px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  animation: simonFeedbackIn 0.35s ease-out;
+}
+
+.simon-feedback-result.correct {
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+}
+
+.simon-feedback-result.incorrect {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+@keyframes simonFeedbackIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  60% {
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

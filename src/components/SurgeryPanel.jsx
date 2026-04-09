@@ -222,8 +222,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
         if (!initialLoadDone) setLoading(true);
         try {
             // Vista activa: mostrar pendientes + suspendidas (las suspendidas siguen visibles con indicador)
-            // Vista historial: mostrar realizadas + suspendidas
-            const ausenteFilter = viewMode === 'history' ? 'history' : 'active';
+            // Vista historial: mostrar TODAS las cirugías (sin restricción de fecha ni estado)
+            const ausenteFilter = viewMode === 'history' ? 'all' : 'active';
             const dbStatusValues = ['lila', 'amarillo', 'verde', 'azul', 'rojo', 'precaucion'];
             const dbStatus = dbStatusValues.includes(filter) ? filter : undefined;
             const today = new Date().toISOString().split('T')[0];
@@ -233,6 +233,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                     ...(dbStatus && { status: dbStatus }),
                     ausenteFilter,
                     ...(viewMode === 'upcoming' && { fromDate: today }),
+                    ...(viewMode === 'history' && { limit: 2000 }),
                 }),
                 getSurgeryStats(),
             ]);
