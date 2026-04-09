@@ -176,7 +176,12 @@ export default function AltasPanel({ addToast, currentUser }) {
         }).map(alta => {
             const asignacion = matchAsignacion(criterios, alta.cliente, alta.especialidad, alta.proceso);
             const ctrlAdm = (alta.control_adm_finalizado || '').trim().toLowerCase();
-            const effectiveEstado = (ctrlAdm === 'sí' || ctrlAdm === 'si') ? 'Alta Adm' : (alta.estado || null);
+            const isAltaAdm = ctrlAdm === 'sí' || ctrlAdm === 'si';
+            // Alta Adm es EXCLUSIVO de SALUS: solo verde si control_adm = Sí
+            // Si estado='Alta Adm' pero control_adm='No' → dato obsoleto, limpiar
+            const effectiveEstado = isAltaAdm
+                ? 'Alta Adm'
+                : (alta.estado === 'Alta Adm' ? null : (alta.estado || null));
             return { ...alta, _effectiveEstado: effectiveEstado, _responsable: asignacion?.responsable || '' };
         });
     }, [altas, criterios]);
@@ -703,7 +708,9 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                                 animation: 'fadeIn 0.15s ease-out',
                                                             }}>
                                                                 {Object.entries(ALTA_ESTADOS).map(([key, scfg]) => {
-                                                                    if (key === 'Procesada') return null; // 'Procesada' ya no se usa como estado
+                                                                    // Procesada y Alta Adm no son seleccionables manualmente
+                                                                    // Alta Adm viene automáticamente de SALUS (control_adm = Sí)
+                                                                    if (key === 'Procesada' || key === 'Alta Adm') return null;
                                                                     return (
                                                                         <button
                                                                             key={key}
