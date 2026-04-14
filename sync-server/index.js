@@ -437,7 +437,7 @@ async function syncPresupuestos(db) {
 async function syncDeudas(db) {
     console.log('📊 [3/7] Extrayendo deudas de SALUS...');
     const result = await db.request().query(`
-        SELECT TOP 1000
+        SELECT
             T.[Fecha albaran], T.Paciente, T.Paciente_NHC, T.Paciente_NIF,
             T.Tarifa, T.Concepto, T.[Numero folio], T.[Cobrado linea],
             T.[Deuda linea], T.[Núm.Admisión], T.HOSP_Habitacion,
@@ -460,7 +460,7 @@ async function syncDeudas(db) {
         LEFT JOIN VIS_Pacientes AS V ON T.Paciente_NHC = V.NHC
         WHERE T.Tarifa LIKE '042%'
           AND T.[Deuda linea] > 0
-          AND T.[Numero folio] IS NOT NULL
+          AND T.[Numero folio] LIKE 'B 00028%'
           AND T.Paciente IS NOT NULL
           AND T.[Fecha albaran] >= '2025-05-01'
         ORDER BY T.[Fecha albaran] DESC
