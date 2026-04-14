@@ -84,6 +84,9 @@ function formatDate(val) {
     const str = String(val);
     const isoMatch = str.match(/^(\d{4}-\d{2}-\d{2})/);
     if (isoMatch) return isoMatch[1];
+    // dd/mm/yyyy or dd-mm-yyyy (formato argentino)
+    const dmy = str.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})/);
+    if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
     return str;
 }
 
@@ -1014,7 +1017,7 @@ async function syncAsociacionesCirugias(db) {
 
     const result = await db.request().query(`
         SELECT 
-            [Fecha realización],
+            CAST(CONVERT(DATETIME, [Fecha realización], 103) AS DATE) AS [Fecha realización],
             [Nombre Paciente],
             [Cliente],
             [DNI],
