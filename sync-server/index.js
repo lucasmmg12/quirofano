@@ -1,5 +1,5 @@
 /**
- * SALUS Sync Server â€” ETL autónomo
+ * SALUS Sync Server — ETL autónomo
  * =================================
  * Servidor Express que:
  *   1. Conecta a SQL Server SALUS (red local)
@@ -58,7 +58,7 @@ async function getPool() {
     if (!pool || !pool.connected) {
         console.log('🔌 Conectando a SQL Server SALUS...');
         pool = await sql.connect(SQL_CONFIG);
-        console.log('âœ… Conectado a SALUS');
+        console.log('–… Conectado a SALUS');
     }
     return pool;
 }
@@ -80,7 +80,7 @@ function formatDate(val) {
         const d = String(val.getUTCDate()).padStart(2, '0');
         return `${y}-${m}-${d}`;
     }
-    // Si no es Date, puede ser un string ISO â€” extraer solo la parte de fecha
+    // Si no es Date, puede ser un string ISO — extraer solo la parte de fecha
     const str = String(val);
     const isoMatch = str.match(/^(\d{4}-\d{2}-\d{2})/);
     if (isoMatch) return isoMatch[1];
@@ -134,7 +134,7 @@ const EXCLUDED_MODULES = ['Transferencia embrionaria', 'Fertilidad', 'Bloque Mé
 const EXCLUDED_NAME_PREFIXES = ['BLOQUE'];
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// SYNC CIRUGÍAS â€” SQL Server â†’ Supabase
+// SYNC CIRUGÍAS — SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncCirugias(db) {
     console.log('📋 [1/7] Extrayendo cirugías de SALUS...');
@@ -158,7 +158,7 @@ async function syncCirugias(db) {
         ) V
         WHERE A.Descrip LIKE '(CX)%'
           AND A.nombre NOT LIKE '%Bloque%'
-          AND A.GrupoAgendas IN (N'QUIRÃ“FANOS CENTRALES', N'QUIRÃ“FANOS HdD')
+          AND A.GrupoAgendas IN (N'QUIRÓFANOS CENTRALES', N'QUIRÓFANOS HdD')
           AND CAST(A.Data AS DATE) >= DATEADD(DAY, -7, CAST(GETDATE() AS DATE))
         ORDER BY A.Data DESC
     `);
@@ -328,12 +328,12 @@ async function syncCirugias(db) {
     }
 
     const summary = { total: result.recordset.length, inserted, updated, skipped };
-    console.log(`   âœ… Cirugías: ${inserted} nuevos, ${updated} actualizados, ${skipped} errores`);
+    console.log(`   –… Cirugías: ${inserted} nuevos, ${updated} actualizados, ${skipped} errores`);
     return summary;
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// SYNC PRESUPUESTOS â€” SQL Server â†’ Supabase
+// SYNC PRESUPUESTOS — SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncPresupuestos(db) {
     console.log('💰 [2/7] Extrayendo presupuestos de SALUS...');
@@ -427,12 +427,12 @@ async function syncPresupuestos(db) {
     }
 
     const summary = { total: result.recordset.length, presupuestos: presupuestos.length, headers: insertedHeaders, items: insertedItems, skippedNoPatient };
-    console.log(`   âœ… Presupuestos: ${insertedHeaders} cabeceras, ${insertedItems} ítems`);
+    console.log(`   –… Presupuestos: ${insertedHeaders} cabeceras, ${insertedItems} ítems`);
     return summary;
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// SYNC DEUDAS â€” SQL Server â†’ Supabase
+// SYNC DEUDAS — SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncDeudas(db) {
     console.log('📊 [3/7] Extrayendo deudas de SALUS...');
@@ -613,12 +613,12 @@ async function syncDeudas(db) {
     });
 
     const summary = { total: result.recordset.length, pacientesNuevos, pacientesActualizados, filasImportadas };
-    console.log(`   âœ… Deudas: ${pacientesNuevos} nuevos, ${pacientesActualizados} actualizados, ${filasImportadas} líneas`);
+    console.log(`   –… Deudas: ${pacientesNuevos} nuevos, ${pacientesActualizados} actualizados, ${filasImportadas} líneas`);
     return summary;
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// SYNC ALTAS ADMINISTRATIVAS â€” SQL Server â†’ Supabase
+// SYNC ALTAS ADMINISTRATIVAS — SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncAltasAdministrativas(db) {
     console.log('📋 [4/7] Extrayendo altas administrativas de SALUS...');
@@ -699,7 +699,7 @@ async function syncAltasAdministrativas(db) {
                 const preserved = {};
                 for (const f of FIELDS_TO_PRESERVE) {
                     if (row[f] != null) {
-                        // No preservar 'Procesada' â€” era el default viejo, ahora es null
+                        // No preservar 'Procesada' — era el default viejo, ahora es null
                         if (f === 'estado' && row[f] === 'Procesada') continue;
                         preserved[f] = row[f];
                     }
@@ -753,12 +753,12 @@ async function syncAltasAdministrativas(db) {
     }
 
     const summary = { total: result.recordset.length, inserted, updated, skipped };
-    console.log(`   âœ… Altas: ${inserted} nuevas, ${updated} actualizadas, ${skipped} errores`);
+    console.log(`   –… Altas: ${inserted} nuevas, ${updated} actualizadas, ${skipped} errores`);
     return summary;
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// SYNC FACTURACIÃ“N SEDE â€” SQL Server â†’ Supabase
+// SYNC FACTURACIÃ“N SEDE — SQL Server â†’ Supabase
 // Fuente: PR_FACTURAS_QRY (dedup por idVisita)
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncFacturacionSede(db) {
@@ -895,12 +895,12 @@ async function syncFacturacionSede(db) {
     }
 
     const summary = { total: result.recordset.length, deleted: 'mes completo', inserted, skipped };
-    console.log(`   âœ… Facturación Sede: ${inserted} registros sincronizados, ${skipped} errores`);
+    console.log(`   –… Facturación Sede: ${inserted} registros sincronizados, ${skipped} errores`);
     return summary;
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// SYNC VISITAS SEDE â€” SQL Server â†’ Supabase
+// SYNC VISITAS SEDE — SQL Server â†’ Supabase
 // Fuente: VLISE_Visitas (Centro SANTA FE, Asistencia = Presente)
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncVisitasSede(db) {
@@ -995,7 +995,7 @@ async function syncVisitasSede(db) {
     }
 
     const summary = { total: result.recordset.length, deleted: 'mes completo', inserted, skipped };
-    console.log(`   âœ… Visitas Sede: ${inserted} registros sincronizados, ${skipped} errores`);
+    console.log(`   –… Visitas Sede: ${inserted} registros sincronizados, ${skipped} errores`);
     return summary;
 }
 
@@ -1217,7 +1217,7 @@ app.get('/api/salus/sync-all', async (req, res) => {
         }
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`\nâœ… â•â•â• SINCRONIZACIÃ“N COMPLETADA en ${elapsed}s â•â•â•\n`);
+        console.log(`\n–… â•â•â• SINCRONIZACIÃ“N COMPLETADA en ${elapsed}s â•â•â•\n`);
 
         console.log(`
          ___  _____
@@ -1238,7 +1238,7 @@ app.get('/api/salus/sync-all', async (req, res) => {
              |           \\
              j            Y
 
-    âœ¨ "Â¡Mmm... Deudas y Presupuestos frescos!" âœ¨
+    –¨ "Â¡Mmm... Deudas y Presupuestos frescos!" –¨
         `);
 
         res.json({
@@ -1301,10 +1301,10 @@ app.get('/api/salus/health', async (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
-â•‘  🏥 SALUS Sync Server â€” ADM-QUI                    â•‘
+â•‘  🏥 SALUS Sync Server — ADM-QUI                    â•‘
 â•‘  Puerto: ${PORT}                                      â•‘
 â•‘  SQL Server: 128.223.16.29:2450 (SALUS)            â•‘
-â•‘  Supabase: ${supabaseUrl ? 'âœ… Configurado' : 'âŒ FALTA'}                       â•‘
+â•‘  Supabase: ${supabaseUrl ? '–… Configurado' : 'âŒ FALTA'}                       â•‘
 â•‘                                                    â•‘
 â•‘  Endpoints:                                        â•‘
 â•‘    GET /api/salus/sync-all    (todo de una vez)     â•‘
