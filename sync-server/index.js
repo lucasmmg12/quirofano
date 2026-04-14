@@ -1,14 +1,14 @@
 /**
- * SALUS Sync Server â€” ETL autÃ³nomo
+ * SALUS Sync Server â€” ETL autónomo
  * =================================
  * Servidor Express que:
  *   1. Conecta a SQL Server SALUS (red local)
- *   2. Ejecuta las queries de extracciÃ³n
+ *   2. Ejecuta las queries de extracción
  *   3. Procesa y transforma los datos
  *   4. Inserta directamente en Supabase
  *
  * El frontend solo necesita llamar /api/salus/sync-all para disparar todo.
- * No requiere que Vite estÃ© corriendo.
+ * No requiere que Vite esté corriendo.
  *
  * Uso: doble click en "Actualizar SALUS.bat" o: cd sync-server && npm start
  */
@@ -56,7 +56,7 @@ const SQL_CONFIG = {
 let pool = null;
 async function getPool() {
     if (!pool || !pool.connected) {
-        console.log('ðŸ”Œ Conectando a SQL Server SALUS...');
+        console.log('🔌 Conectando a SQL Server SALUS...');
         pool = await sql.connect(SQL_CONFIG);
         console.log('âœ… Conectado a SALUS');
     }
@@ -71,10 +71,10 @@ app.use(express.json());
 function formatDate(val) {
     if (!val) return null;
     if (val instanceof Date) {
-        // CRÃTICO: Usar mÃ©todos UTC para evitar desplazamiento por timezone.
+        // CRÍTICO: Usar métodos UTC para evitar desplazamiento por timezone.
         // SQL Server DATE llega como midnight UTC (ej: 2026-03-31T00:00:00.000Z).
-        // En Argentina (UTC-3), getDate() devuelve el dÃ­a ANTERIOR (30 en vez de 31).
-        // getUTCDate() siempre devuelve el dÃ­a correcto del valor original.
+        // En Argentina (UTC-3), getDate() devuelve el día ANTERIOR (30 en vez de 31).
+        // getUTCDate() siempre devuelve el día correcto del valor original.
         const y = val.getUTCFullYear();
         const m = String(val.getUTCMonth() + 1).padStart(2, '0');
         const d = String(val.getUTCDate()).padStart(2, '0');
@@ -118,26 +118,26 @@ function normalizePhone(raw, areaCode = '264') {
     if (cleaned.startsWith('549') && cleaned.length === 13) {
         return { normalized: cleaned, valid: true, original: raw };
     }
-    // Tiene 10 dÃ­gitos (con cÃ³digo de Ã¡rea)
+    // Tiene 10 dígitos (con código de área)
     if (cleaned.length === 10 && !cleaned.startsWith('0')) {
         return { normalized: '549' + cleaned, valid: true, original: raw };
     }
-    // 8 dÃ­gitos (sin cÃ³digo de Ã¡rea)
+    // 8 dígitos (sin código de área)
     if (cleaned.length >= 7 && cleaned.length <= 8) {
         return { normalized: '549' + areaCode + cleaned, valid: true, original: raw };
     }
     return { normalized: cleaned, valid: false, original: raw };
 }
 
-// MÃ³dulos excluidos
-const EXCLUDED_MODULES = ['Transferencia embrionaria', 'Fertilidad', 'Bloque MÃ©dico'];
+// Módulos excluidos
+const EXCLUDED_MODULES = ['Transferencia embrionaria', 'Fertilidad', 'Bloque Médico'];
 const EXCLUDED_NAME_PREFIXES = ['BLOQUE'];
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// SYNC CIRUGÃAS â€” SQL Server â†’ Supabase
+// SYNC CIRUGÍAS â€” SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncCirugias(db) {
-    console.log('ðŸ“‹ [1/7] Extrayendo cirugÃ­as de SALUS...');
+    console.log('📋 [1/7] Extrayendo cirugías de SALUS...');
     const result = await db.request().query(`
         SELECT TOP 400
             CAST(A.Data AS DATE) AS Data_Fecha,
@@ -162,7 +162,7 @@ async function syncCirugias(db) {
           AND CAST(A.Data AS DATE) >= DATEADD(DAY, -7, CAST(GETDATE() AS DATE))
         ORDER BY A.Data DESC
     `);
-    console.log(`   ðŸ“¥ ${result.recordset.length} registros extraÃ­dos`);
+    console.log(`   📥 ${result.recordset.length} registros extraídos`);
 
     // Transformar y preparar para upsert
     const records = [];
@@ -202,7 +202,7 @@ async function syncCirugias(db) {
     // Filtrar registros con datos completos para upsert
     const validRecords = records.filter(r => r.id_paciente && r.nombre && r.fecha_cirugia);
     
-    // Deduplicar (Ãºltimo gana)
+    // Deduplicar (último gana)
     const deduped = new Map();
     for (const row of validRecords) {
         const key = `${row.id_paciente}|${row.nombre}|${row.fecha_cirugia}`;
@@ -212,7 +212,7 @@ async function syncCirugias(db) {
     const patientIds = [...new Set([...deduped.values()].map(r => r.id_paciente))];
 
     // â”€â”€ PASO 1: Obtener estados existentes para preservarlos â”€â”€
-    // IMPORTANTE: Capturar estados ANTES de cualquier eliminaciÃ³n
+    // IMPORTANTE: Capturar estados ANTES de cualquier eliminación
     const FIELDS_TO_PRESERVE_QUERY = FIELDS_TO_PRESERVE.join(', ');
     const existingMap = new Map();
 
@@ -239,15 +239,15 @@ async function syncCirugias(db) {
             }
         }
     }
-    console.log(`   ðŸ”’ ${existingMap.size} registros con estados a preservar`);
+    console.log(`   🔒 ${existingMap.size} registros con estados a preservar`);
 
-    // â”€â”€ PASO 2: Limpiar registros huÃ©rfanos con fechas incorrectas â”€â”€
+    // â”€â”€ PASO 2: Limpiar registros huérfanos con fechas incorrectas â”€â”€
     // Detectar registros en Supabase cuya fecha NO coincide con SALUS.
-    // Estos son restos del bug de timezone (fecha -1 dÃ­a) o reprogramaciones.
-    // Se ELIMINAN directamente. El upsert posterior los recrearÃ¡ con la fecha correcta
+    // Estos son restos del bug de timezone (fecha -1 día) o reprogramaciones.
+    // Se ELIMINAN directamente. El upsert posterior los recreará con la fecha correcta
     // y los estados se preservan via existingMap.
     if (patientIds.length > 0) {
-        // Crear mapa de SALUS: id_paciente+nombre â†’ fecha mÃ¡s reciente
+        // Crear mapa de SALUS: id_paciente+nombre â†’ fecha más reciente
         const salusDateMap = new Map();
         for (const row of deduped.values()) {
             if (row.ausente === '0' || row.ausente === '1') continue;
@@ -274,8 +274,8 @@ async function syncCirugias(db) {
                     const salusDate = salusDateMap.get(pKey);
                     if (salusDate && row.fecha_cirugia !== salusDate) {
                         // La fecha en Supabase no coincide con SALUS â†’ eliminar el registro obsoleto
-                        // El upsert posterior crearÃ¡ el registro con la fecha correcta
-                        console.log(`   ðŸ—‘ï¸ Eliminando obsoleto: ${row.nombre} ${row.fecha_cirugia} (correcto: ${salusDate})`);
+                        // El upsert posterior creará el registro con la fecha correcta
+                        console.log(`   🖑ï¸ Eliminando obsoleto: ${row.nombre} ${row.fecha_cirugia} (correcto: ${salusDate})`);
                         const { error: delErr } = await supabase
                             .from('surgeries')
                             .delete()
@@ -296,7 +296,7 @@ async function syncCirugias(db) {
                 }
             }
         }
-        if (cleaned > 0) console.log(`   ðŸ§¹ ${cleaned} registros obsoletos eliminados`);
+        if (cleaned > 0) console.log(`   🧹 ${cleaned} registros obsoletos eliminados`);
     }
 
 
@@ -328,7 +328,7 @@ async function syncCirugias(db) {
     }
 
     const summary = { total: result.recordset.length, inserted, updated, skipped };
-    console.log(`   âœ… CirugÃ­as: ${inserted} nuevos, ${updated} actualizados, ${skipped} errores`);
+    console.log(`   âœ… Cirugías: ${inserted} nuevos, ${updated} actualizados, ${skipped} errores`);
     return summary;
 }
 
@@ -336,7 +336,7 @@ async function syncCirugias(db) {
 // SYNC PRESUPUESTOS â€” SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncPresupuestos(db) {
-    console.log('ðŸ’° [2/7] Extrayendo presupuestos de SALUS...');
+    console.log('💰 [2/7] Extrayendo presupuestos de SALUS...');
     const result = await db.request().query(`
         SELECT idPresupuesto, idPaciente, Paciente, fecha, Observaciones,
                idArticulo, descripcion, cantidad, importeUnitario,
@@ -345,7 +345,7 @@ async function syncPresupuestos(db) {
         FROM VLISE_Presupuestos
         WHERE fecha >= '2026-01-01'
     `);
-    console.log(`   ðŸ“¥ ${result.recordset.length} filas extraÃ­das`);
+    console.log(`   📥 ${result.recordset.length} filas extraídas`);
 
     // Agrupar por idPresupuesto
     const grouped = {};
@@ -390,7 +390,7 @@ async function syncPresupuestos(db) {
         importe_cobrado: p.items.reduce((s, i) => s + i.importe_cobrado, 0),
     }));
 
-    console.log(`   ðŸ“¦ ${presupuestos.length} presupuestos agrupados`);
+    console.log(`   📦 ${presupuestos.length} presupuestos agrupados`);
 
     // Upsert cabeceras en lotes
     let insertedHeaders = 0;
@@ -405,18 +405,18 @@ async function syncPresupuestos(db) {
         else if (error) console.error('   âŒ Presupuesto header error:', error.message);
     }
 
-    // Upsert Ã­tems: limpiar y reinsertar
+    // Upsert ítems: limpiar y reinsertar
     let insertedItems = 0;
     const budgetIds = presupuestos.map(p => p.id_presupuesto);
     
     if (budgetIds.length > 0) {
-        // Borrar Ã­tems existentes para los presupuestos que se actualizan
+        // Borrar ítems existentes para los presupuestos que se actualizan
         for (let i = 0; i < budgetIds.length; i += BATCH) {
             const batchIds = budgetIds.slice(i, i + BATCH);
             await supabase.from('presupuesto_items').delete().in('id_presupuesto', batchIds);
         }
 
-        // Insertar todos los Ã­tems
+        // Insertar todos los ítems
         const allItems = presupuestos.flatMap(p => p.items);
         for (let i = 0; i < allItems.length; i += BATCH) {
             const batch = allItems.slice(i, i + BATCH);
@@ -427,7 +427,7 @@ async function syncPresupuestos(db) {
     }
 
     const summary = { total: result.recordset.length, presupuestos: presupuestos.length, headers: insertedHeaders, items: insertedItems, skippedNoPatient };
-    console.log(`   âœ… Presupuestos: ${insertedHeaders} cabeceras, ${insertedItems} Ã­tems`);
+    console.log(`   âœ… Presupuestos: ${insertedHeaders} cabeceras, ${insertedItems} ítems`);
     return summary;
 }
 
@@ -435,12 +435,12 @@ async function syncPresupuestos(db) {
 // SYNC DEUDAS â€” SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncDeudas(db) {
-    console.log('ðŸ“Š [3/7] Extrayendo deudas de SALUS...');
+    console.log('📊 [3/7] Extrayendo deudas de SALUS...');
     const result = await db.request().query(`
         SELECT TOP 1000
             T.[Fecha albaran], T.Paciente, T.Paciente_NHC, T.Paciente_NIF,
             T.Tarifa, T.Concepto, T.[Numero folio], T.[Cobrado linea],
-            T.[Deuda linea], T.[NÃºm.AdmisiÃ³n], T.HOSP_Habitacion,
+            T.[Deuda linea], T.[Núm.Admisión], T.HOSP_Habitacion,
             CASE 
                 WHEN V.telefono1 IS NOT NULL 
                 THEN '549' + 
@@ -450,9 +450,9 @@ async function syncDeudas(db) {
                     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                         LOWER(V.telefono1)
                     , 'a', ''), 'b', ''), 'c', ''), 'd', ''), 'e', ''), 'f', ''), 'g', ''), 'h', ''), 'i', ''), 'j', '')
-                    , 'k', ''), 'l', ''), 'm', ''), 'n', ''), N'Ã±', ''), 'o', ''), 'p', ''), 'q', ''), 'r', ''), 's', '')
-                    , 't', ''), 'u', ''), 'v', ''), 'w', ''), 'x', ''), 'y', ''), 'z', ''), N'Ã¡', ''), N'Ã©', ''), N'Ã­', '')
-                    , N'Ã³', ''), N'Ãº', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '+', ''), '*', ''), '.', ''), ',', '')
+                    , 'k', ''), 'l', ''), 'm', ''), 'n', ''), N'ñ', ''), 'o', ''), 'p', ''), 'q', ''), 'r', ''), 's', '')
+                    , 't', ''), 'u', ''), 'v', ''), 'w', ''), 'x', ''), 'y', ''), 'z', ''), N'á', ''), N'é', ''), N'í', '')
+                    , N'ó', ''), N'ú', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '+', ''), '*', ''), '.', ''), ',', '')
                 ELSE NULL
             END AS telefono1_formateado,
             V.email
@@ -465,7 +465,7 @@ async function syncDeudas(db) {
           AND T.[Fecha albaran] >= '2025-05-01'
         ORDER BY T.[Fecha albaran] DESC
     `);
-    console.log(`   ðŸ“¥ ${result.recordset.length} filas extraÃ­das`);
+    console.log(`   📥 ${result.recordset.length} filas extraídas`);
 
     // Agrupar por folio
     const facturasMap = new Map();
@@ -483,7 +483,7 @@ async function syncDeudas(db) {
             deuda, cobrado,
             fecha_albaran: formatDate(r['Fecha albaran']) || '',
             habitacion: String(r.HOSP_Habitacion || '').trim(),
-            nAdmision: String(r['NÃºm.AdmisiÃ³n'] || '').trim(),
+            nAdmision: String(r['Núm.Admisión'] || '').trim(),
         };
 
         if (!facturasMap.has(folio)) {
@@ -507,7 +507,7 @@ async function syncDeudas(db) {
 
     // Filtrar facturas con deuda > $1
     const registros = [...facturasMap.values()].filter(f => f.pendiente > 1);
-    console.log(`   ðŸ“¦ ${registros.length} facturas con deuda > $1`);
+    console.log(`   📦 ${registros.length} facturas con deuda > $1`);
 
     // Procesar cada paciente (agrupado por NHC)
     const porNhc = {};
@@ -526,7 +526,7 @@ async function syncDeudas(db) {
     for (const [nhc, grupo] of Object.entries(porNhc)) {
         const deudaTotal = grupo.facturas.reduce((s, f) => s + f.pendiente, 0);
 
-        // Fecha mÃ¡s reciente
+        // Fecha más reciente
         let fechaMasReciente = null;
         for (const f of grupo.facturas) {
             for (const l of f.lineas) {
@@ -575,7 +575,7 @@ async function syncDeudas(db) {
             pacientesNuevos++;
         }
 
-        // Upsert lÃ­neas de factura
+        // Upsert líneas de factura
         if (pacienteId) {
             for (const f of grupo.facturas) {
                 for (let i = 0; i < f.lineas.length; i++) {
@@ -601,9 +601,9 @@ async function syncDeudas(db) {
         }
     }
 
-    // Registrar importaciÃ³n
+    // Registrar importación
     await supabase.from('deudas_importaciones').insert({
-        archivo_nombre: 'SALUS Sync AutomÃ¡tico',
+        archivo_nombre: 'SALUS Sync Automático',
         total_filas: result.recordset.length,
         filas_importadas: filasImportadas,
         filas_ignoradas: result.recordset.length - filasImportadas,
@@ -613,7 +613,7 @@ async function syncDeudas(db) {
     });
 
     const summary = { total: result.recordset.length, pacientesNuevos, pacientesActualizados, filasImportadas };
-    console.log(`   âœ… Deudas: ${pacientesNuevos} nuevos, ${pacientesActualizados} actualizados, ${filasImportadas} lÃ­neas`);
+    console.log(`   âœ… Deudas: ${pacientesNuevos} nuevos, ${pacientesActualizados} actualizados, ${filasImportadas} líneas`);
     return summary;
 }
 
@@ -621,13 +621,13 @@ async function syncDeudas(db) {
 // SYNC ALTAS ADMINISTRATIVAS â€” SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncAltasAdministrativas(db) {
-    console.log('ðŸ“‹ [4/7] Extrayendo altas administrativas de SALUS...');
+    console.log('📋 [4/7] Extrayendo altas administrativas de SALUS...');
 
-    // Rango: Ãºltimos 60 dÃ­as de altas
+    // Rango: últimos 60 días de altas
     const result = await db.request().query(`
         WITH CTE AS (
             SELECT 
-                TA.[NÃºmero admisiÃ³n],
+                TA.[Número admisión],
                 TA.[Fecha ingreso],
                 CAST(TA.[Fecha alta] AS DATE) AS [Fecha alta],
                 TA.[Paciente],
@@ -638,7 +638,7 @@ async function syncAltasAdministrativas(db) {
                 TA.[Motivo de alta],
                 TA.[Control ADM finalizado],
                 OBS.ValorM AS [Observaciones],
-                ROW_NUMBER() OVER (PARTITION BY TA.[Paciente], CAST(TA.[Fecha ingreso] AS DATE) ORDER BY TA.[NÃºmero admisiÃ³n] DESC) as rn
+                ROW_NUMBER() OVER (PARTITION BY TA.[Paciente], CAST(TA.[Fecha ingreso] AS DATE) ORDER BY TA.[Número admisión] DESC) as rn
             FROM [SALUS].[dbo].[TABLEAU_Admisiones] TA
             LEFT JOIN [PR InstRespHospi] OBS 
                 ON TA.idAdmision = OBS.idHospi 
@@ -650,11 +650,11 @@ async function syncAltasAdministrativas(db) {
         )
         SELECT * FROM CTE WHERE rn = 1
     `);
-    console.log(`   ðŸ“¥ ${result.recordset.length} registros extraÃ­dos`);
+    console.log(`   📥 ${result.recordset.length} registros extraídos`);
 
     const records = [];
     for (const r of result.recordset) {
-        const numAdmision = r['NÃºmero admisiÃ³n'] ? String(r['NÃºmero admisiÃ³n']).trim() : null;
+        const numAdmision = r['Número admisión'] ? String(r['Número admisión']).trim() : null;
         if (!numAdmision) continue;
 
         records.push({
@@ -672,13 +672,13 @@ async function syncAltasAdministrativas(db) {
         });
     }
 
-    // Deduplicar por numero_admision (Ãºltimo gana)
+    // Deduplicar por numero_admision (último gana)
     const deduped = new Map();
     for (const row of records) {
         deduped.set(row.numero_admision, row);
     }
     const uniqueRecords = [...deduped.values()];
-    console.log(`   ðŸ“¦ ${uniqueRecords.length} registros Ãºnicos`);
+    console.log(`   📦 ${uniqueRecords.length} registros únicos`);
 
     // Obtener estados existentes para preservarlos
     const ESTADO_FIELD = 'estado';
@@ -704,7 +704,7 @@ async function syncAltasAdministrativas(db) {
                         preserved[f] = row[f];
                     }
                 }
-                // Guardar tambiÃ©n el estado previo de control_adm para detectar transiciÃ³n
+                // Guardar también el estado previo de control_adm para detectar transición
                 preserved._prev_control_adm = row.control_adm_finalizado;
                 if (Object.keys(preserved).length > 0) {
                     existingMap.set(row.numero_admision, preserved);
@@ -712,7 +712,7 @@ async function syncAltasAdministrativas(db) {
             }
         }
     }
-    console.log(`   ðŸ”’ ${existingMap.size} registros con estados a preservar`);
+    console.log(`   🔒 ${existingMap.size} registros con estados a preservar`);
 
     // Upsert en lotes
     let inserted = 0, updated = 0, skipped = 0;
@@ -725,12 +725,12 @@ async function syncAltasAdministrativas(db) {
             // Limpiar campo interno antes de enviar
             delete merged._prev_control_adm;
 
-            // â”€â”€ Detectar transiciÃ³n a "Alta Adm" para setear timestamp â”€â”€
+            // â”€â”€ Detectar transición a "Alta Adm" para setear timestamp â”€â”€
             const prevControl = preserved?._prev_control_adm;
             const newControl = row.control_adm_finalizado;
             
-            if (newControl === 'SÃ­' && !merged.fecha_alta_adm) {
-                // Primera vez que control_adm_finalizado pasa a 'SÃ­' â†’ marcar timestamp
+            if (newControl === 'Sí' && !merged.fecha_alta_adm) {
+                // Primera vez que control_adm_finalizado pasa a 'Sí' â†’ marcar timestamp
                 merged.fecha_alta_adm = new Date().toISOString();
             }
 
@@ -762,7 +762,7 @@ async function syncAltasAdministrativas(db) {
 // Fuente: PR_FACTURAS_QRY (dedup por idVisita)
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncFacturacionSede(db) {
-    console.log('ðŸ’° [5/7] Extrayendo facturaciÃ³n Sede Santa Fe de SALUS...');
+    console.log('💰 [5/7] Extrayendo facturación Sede Santa Fe de SALUS...');
 
     // Rango: mes en curso (formato seguro YYYYMMDD)
     const hoy = new Date();
@@ -798,7 +798,7 @@ async function syncFacturacionSede(db) {
         WHERE d.DupFila = 1
         ORDER BY d.[Fecha] DESC, d.[Hora] DESC
     `);
-    console.log(`   ðŸ“¥ ${result.recordset.length} lÃ­neas extraÃ­das (desde ${primerDiaMesFmt})`);
+    console.log(`   📥 ${result.recordset.length} líneas extraídas (desde ${primerDiaMesFmt})`);
 
     if (result.recordset.length === 0) {
         return { total: 0, deleted: 0, inserted: 0, skipped: 0 };
@@ -822,19 +822,19 @@ async function syncFacturacionSede(db) {
                 const mn = r.Hora.getUTCMinutes();
                 const s = r.Hora.getUTCSeconds();
                 hora = `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-                turno = h < 15 ? 'maÃ±ana' : 'tarde';
+                turno = h < 15 ? 'mañana' : 'tarde';
             } else {
                 const timeStr = String(r.Hora);
                 const hMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
                 if (hMatch) {
                     hora = timeStr.substring(0, 8);
-                    turno = parseInt(hMatch[1], 10) < 15 ? 'maÃ±ana' : 'tarde';
+                    turno = parseInt(hMatch[1], 10) < 15 ? 'mañana' : 'tarde';
                 }
             }
         }
 
         // ImporteTotal es el total de TODA la visita
-        // Si hay N lÃ­neas en la visita, dividir el importe entre N
+        // Si hay N líneas en la visita, dividir el importe entre N
         // Usar importeUnitario (por práctica) en lugar de ImporteTotal (por visita)
         const importeLinea = Number(r.ImporteUnitario) || 0;
 
@@ -860,10 +860,10 @@ async function syncFacturacionSede(db) {
         });
     }
 
-    console.log(`   ðŸ“¦ ${records.length} registros vÃ¡lidos`);
+    console.log(`   📦 ${records.length} registros válidos`);
 
     // Estrategia: delete-insert (el mes completo)
-    // MÃ¡s confiable que upsert con idVisita que puede ser NULL
+    // Más confiable que upsert con idVisita que puede ser NULL
     const { error: delError } = await supabase
         .from('facturacion_sede')
         .delete()
@@ -872,7 +872,7 @@ async function syncFacturacionSede(db) {
     if (delError) {
         console.error(`   âš ï¸ Error al limpiar mes:`, delError.message);
     } else {
-        console.log(`   ðŸ—‘ï¸ Datos del mes limpiados para refresh`);
+        console.log(`   🖑ï¸ Datos del mes limpiados para refresh`);
     }
 
     // Insert en lotes
@@ -895,7 +895,7 @@ async function syncFacturacionSede(db) {
     }
 
     const summary = { total: result.recordset.length, deleted: 'mes completo', inserted, skipped };
-    console.log(`   âœ… FacturaciÃ³n Sede: ${inserted} registros sincronizados, ${skipped} errores`);
+    console.log(`   âœ… Facturación Sede: ${inserted} registros sincronizados, ${skipped} errores`);
     return summary;
 }
 
@@ -904,7 +904,7 @@ async function syncFacturacionSede(db) {
 // Fuente: VLISE_Visitas (Centro SANTA FE, Asistencia = Presente)
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncVisitasSede(db) {
-    console.log('ðŸ¥ [6/7] Extrayendo visitas Sede Santa Fe de SALUS...');
+    console.log('🏥 [6/7] Extrayendo visitas Sede Santa Fe de SALUS...');
 
     // Rango: mes en curso
     const hoy = new Date();
@@ -932,7 +932,7 @@ async function syncVisitasSede(db) {
             AND [Centro] = 'SANTA FE'
         ORDER BY [Fecha Visita] DESC
     `);
-    console.log(`   ðŸ“¥ ${result.recordset.length} visitas extraÃ­das (desde ${primerDiaMesFmt})`);
+    console.log(`   📥 ${result.recordset.length} visitas extraídas (desde ${primerDiaMesFmt})`);
 
     if (result.recordset.length === 0) {
         return { total: 0, deleted: 0, inserted: 0, skipped: 0 };
@@ -961,7 +961,7 @@ async function syncVisitasSede(db) {
         });
     }
 
-    console.log(`   ðŸ“¦ ${records.length} registros vÃ¡lidos`);
+    console.log(`   📦 ${records.length} registros válidos`);
 
     // Estrategia: delete-insert (mes completo)
     const { error: delError } = await supabase
@@ -972,7 +972,7 @@ async function syncVisitasSede(db) {
     if (delError) {
         console.error(`   âš ï¸ Error al limpiar mes:`, delError.message);
     } else {
-        console.log(`   ðŸ—‘ï¸ Datos del mes limpiados para refresh`);
+        console.log(`   🖑ï¸ Datos del mes limpiados para refresh`);
     }
 
     // Insert en lotes
@@ -1155,12 +1155,12 @@ let syncInProgress = false;
 
 app.get('/api/salus/sync-all', async (req, res) => {
     if (syncInProgress) {
-        return res.status(429).json({ success: false, error: 'Ya hay una sincronizaciÃ³n en curso. Espere a que termine.' });
+        return res.status(429).json({ success: false, error: 'Ya hay una sincronización en curso. Espere a que termine.' });
     }
 
     syncInProgress = true;
     const startTime = Date.now();
-    console.log('\nðŸš€ â•â•â• SINCRONIZACIÃ“N COMPLETA INICIADA â•â•â•');
+    console.log('\n🚀 â•â•â• SINCRONIZACIÃ“N COMPLETA INICIADA â•â•â•');
 
     const results = {};
 
@@ -1170,7 +1170,7 @@ app.get('/api/salus/sync-all', async (req, res) => {
         try {
             results.cirugias = await syncCirugias(db);
         } catch (err) {
-            console.error('âŒ Error en cirugÃ­as:', err.message);
+            console.error('âŒ Error en cirugías:', err.message);
             results.cirugias = { error: err.message };
         }
 
@@ -1198,7 +1198,7 @@ app.get('/api/salus/sync-all', async (req, res) => {
         try {
             results.facturacion = await syncFacturacionSede(db);
         } catch (err) {
-            console.error('âŒ Error en facturaciÃ³n sede:', err.message);
+            console.error('âŒ Error en facturación sede:', err.message);
             results.facturacion = { error: err.message };
         }
 
@@ -1301,7 +1301,7 @@ app.get('/api/salus/health', async (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
-â•‘  ðŸ¥ SALUS Sync Server â€” ADM-QUI                    â•‘
+â•‘  🏥 SALUS Sync Server â€” ADM-QUI                    â•‘
 â•‘  Puerto: ${PORT}                                      â•‘
 â•‘  SQL Server: 128.223.16.29:2450 (SALUS)            â•‘
 â•‘  Supabase: ${supabaseUrl ? 'âœ… Configurado' : 'âŒ FALTA'}                       â•‘
@@ -1315,11 +1315,11 @@ app.listen(PORT, '0.0.0.0', () => {
 â•‘    GET /api/salus/health                            â•‘
 â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     `);
-    getPool().catch(err => console.warn('âš ï¸ ConexiÃ³n inicial fallida:', err.message));
+    getPool().catch(err => console.warn('âš ï¸ Conexión inicial fallida:', err.message));
 });
 
 process.on('SIGINT', async () => {
-    console.log('\nðŸ”’ Cerrando...');
+    console.log('\n🔒 Cerrando...');
     if (pool) await pool.close();
     process.exit(0);
 });
