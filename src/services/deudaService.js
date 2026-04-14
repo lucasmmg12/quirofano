@@ -95,6 +95,21 @@ export async function fetchFacturas(pacienteId) {
     return data || [];
 }
 
+// ─── Presupuestos vinculados por id_paciente_salus ───
+
+export async function fetchPresupuestosPorIdPaciente(idPacienteSalus) {
+    if (!idPacienteSalus) return [];
+    // presupuestos.id_paciente = idPaciente de SALUS (VIS_Pacientes)
+    // deudas_pacientes.id_paciente_salus = mismo campo
+    const { data, error } = await supabase
+        .from('presupuestos')
+        .select('id_presupuesto, paciente, fecha, observaciones, aceptado, presup_descripcion, importe_total, importe_cobrado, total_items')
+        .eq('id_paciente', idPacienteSalus)
+        .order('fecha', { ascending: false });
+    if (error) throw error;
+    return data || [];
+}
+
 // ─── Seguimiento / Timeline ───
 
 export async function fetchSeguimiento(pacienteId) {

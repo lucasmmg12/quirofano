@@ -15,7 +15,7 @@ import {
     fetchDeudores, fetchFacturas, fetchSeguimiento, addSeguimiento,
     updateDeudorTelefono, updateDeudorCategoria, importarDeudas,
     fetchMetricasDeudas, fetchWhatsAppTracking, CATEGORIAS_DEUDOR,
-    updateDeudor,
+    updateDeudor, fetchPresupuestosPorIdPaciente,
 } from '../services/deudaService';
 import { parseDeudaExcel } from '../utils/deudaExcelParser';
 import { subscribeToAllIncoming } from '../services/chatService';
@@ -46,6 +46,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
     const [facturas, setFacturas] = useState([]);
     const [seguimiento, setSeguimiento] = useState([]);
     const [whatsappTracking, setWhatsappTracking] = useState(null);
+    const [presupuestos, setPresupuestos] = useState([]);
     const [detailLoading, setDetailLoading] = useState(false);
     const [editingPhone, setEditingPhone] = useState(false);
     const [phoneInput, setPhoneInput] = useState('');
@@ -141,6 +142,18 @@ export default function DeudasPanel({ addToast, currentUser }) {
             ]);
             setFacturas(facts);
             setSeguimiento(segs);
+            // Buscar presupuestos vinculados por id_paciente_salus
+            if (deudor.id_paciente_salus) {
+                try {
+                    const presups = await fetchPresupuestosPorIdPaciente(deudor.id_paciente_salus);
+                    setPresupuestos(presups);
+                } catch (e) {
+                    console.warn('Error cargando presupuestos:', e);
+                    setPresupuestos([]);
+                }
+            } else {
+                setPresupuestos([]);
+            }
             if (deudor.telefono) {
                 const tracking = await fetchWhatsAppTracking(deudor.telefono);
                 setWhatsappTracking(tracking);
@@ -891,6 +904,84 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                     </div>
                                 );
                             })()}
+                        </div>
+
+                        {/* Presupuestos Vinculados */}
+                        <div style={st.card}>
+                            <h4 style={st.cardTitle}>
+                                <Banknote size={14} /> Presupuestos Vinculados
+                                {presupuestos.length > 0 && (
+                                    <span style={{
+                                        marginLeft: '8px', padding: '2px 8px', borderRadius: '10px',
+                                        background: '#DBEAFE', color: '#2563EB',
+                                        fontSize: '0.65rem', fontWeight: 700,
+                                    }}>
+                                        {presupuestos.length}
+                                    </span>
+                                )}
+                            </h4>
+                            {detailLoading ? (
+                                <span style={{ color: '#94A3B8' }}>Cargando...</span>
+                            ) : !selectedDeudor.id_paciente_salus ? (
+                                <div style={{ padding: '12px', background: '#FEF3C7', borderRadius: '10px', fontSize: '0.78rem', color: '#92400E' }}>
+                                    ⚠️ Este deudor no tiene <strong>id_paciente</strong> vinculado. Ejecutá una sincronización para obtenerlo desde SALUS.
+                                </div>
+                            ) : presupuestos.length === 0 ? (
+                                <span style={{ color: '#CBD5E1', fontSize: '0.85rem' }}>Sin presupuestos encontrados para este paciente</span>
+                            ) : (
+                                <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {presupuestos.map(p => (
+                                        <div key={p.id_presupuesto} style={{
+                                            borderRadius: '10px', border: '1px solid #E2E8F0',
+                                            overflow: 'hidden',
+                                        }}>
+                                            <div style={{
+                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                padding: '10px 14px',
+                                                background: p.aceptado === 'true' || p.aceptado === 'si' ? '#F0FDF4' : '#F8FAFC',
+                                                borderBottom: '1px solid #E2E8F0',
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+                                                    <Banknote size={14} style={{ color: '#3B82F6', flexShrink: 0 }} />
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0D3B66', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                            #{p.id_presupuesto} — {p.presup_descripcion || 'Sin descripción'}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.68rem', color: '#64748B', display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
+                                                            <span>📅 {formatDate(p.fecha)}</span>
+                                                            <span>📦 {p.total_items} ítem{p.total_items !== 1 ? 's' : ''}</span>
+                                                            {p.aceptado && (
+                                                                <span style={{
+                                                                    padding: '1px 6px', borderRadius: '8px', fontSize: '0.62rem', fontWeight: 700,
+                                                                    background: p.aceptado === 'true' || p.aceptado === 'si' ? '#DCFCE7' : '#FEF3C7',
+                                                                    color: p.aceptado === 'true' || p.aceptado === 'si' ? '#16A34A' : '#D97706',
+                                                                }}>
+                                                                    {p.aceptado === 'true' || p.aceptado === 'si' ? '✅ Aceptado' : '⏳ ' + p.aceptado}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '12px' }}>
+                                                    <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0D3B66' }}>
+                                                        {formatMoney(p.importe_total)}
+                                                    </div>
+                                                    {Number(p.importe_cobrado) > 0 && (
+                                                        <div style={{ fontSize: '0.65rem', color: '#16A34A' }}>
+                                                            Cobrado: {formatMoney(p.importe_cobrado)}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            {p.observaciones && (
+                                                <div style={{ padding: '6px 14px', fontSize: '0.72rem', color: '#64748B', background: '#FAFBFC' }}>
+                                                    💬 {p.observaciones}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
 
