@@ -455,7 +455,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                 onMouseOut={e => e.currentTarget.style.background = 'transparent'}
                                             >
                                                 <td style={tdStyle}>
-                                                    {c.fecha_realizacion ? new Date(c.fecha_realizacion + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—'}
+                                                    {c.fecha_realizacion ? new Date(c.fecha_realizacion + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
                                                 </td>
                                                 <td style={{ ...tdStyle, fontWeight: 600 }}>{c.nombre_paciente}</td>
                                                 <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '0.78rem' }}>{c.dni || '—'}</td>
@@ -608,7 +608,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                 {items.map(c => (
                                                     <tr key={c.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
                                                         <td style={tdStyle}>
-                                                            {c.fecha_realizacion ? new Date(c.fecha_realizacion + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—'}
+                                                            {c.fecha_realizacion ? new Date(c.fecha_realizacion + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
                                                         </td>
                                                         <td style={{ ...tdStyle, fontWeight: 600 }}>{c.nombre_paciente}</td>
                                                         <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '0.76rem' }}>{c.dni || '—'}</td>
