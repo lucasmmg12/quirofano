@@ -261,16 +261,30 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
             const colW = pageW - margin * 2;
             let y = 0;
 
-            // Load logo image
-            let logoBase64 = null;
+            // Load logo image and clip to circle via canvas
+            let logoCircleBase64 = null;
             try {
-                const logoResp = await fetch('/logosanatorio.png');
-                const logoBlob = await logoResp.blob();
-                logoBase64 = await new Promise(resolve => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result);
-                    reader.readAsDataURL(logoBlob);
+                const logoImg = new Image();
+                logoImg.crossOrigin = 'anonymous';
+                logoImg.src = '/logosanatorio.png';
+                await new Promise((resolve, reject) => {
+                    logoImg.onload = resolve;
+                    logoImg.onerror = reject;
                 });
+                // Draw circular clip on offscreen canvas
+                const canvasSize = 200;
+                const canvas = document.createElement('canvas');
+                canvas.width = canvasSize;
+                canvas.height = canvasSize;
+                const ctx = canvas.getContext('2d');
+                // Circle clip
+                ctx.beginPath();
+                ctx.arc(canvasSize / 2, canvasSize / 2, canvasSize / 2, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.clip();
+                // Draw image filling the circle
+                ctx.drawImage(logoImg, 0, 0, canvasSize, canvasSize);
+                logoCircleBase64 = canvas.toDataURL('image/png');
             } catch (e) { /* logo optional */ }
 
             // ═══════════════════════════════════════════
@@ -283,11 +297,12 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
             const logoX = margin + 1;
             const logoY = 10;
             const logoSize = 14;
-            if (logoBase64) {
-                // White circle background
+            if (logoCircleBase64) {
+                // White ring behind
                 doc.setFillColor(255, 255, 255);
-                doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2 + 1, 'F');
-                doc.addImage(logoBase64, 'PNG', logoX, logoY, logoSize, logoSize);
+                doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2 + 1.2, 'F');
+                // Circular logo
+                doc.addImage(logoCircleBase64, 'PNG', logoX, logoY, logoSize, logoSize);
             } else {
                 // Fallback text
                 doc.setFillColor(255, 255, 255);
