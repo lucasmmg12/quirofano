@@ -30,6 +30,15 @@ import PrintConstanciaEntrega from './PrintConstanciaEntrega';
 // ═══════════════════════════════
 // Sub-component: Dashboard Badges
 // ═══════════════════════════════
+
+// Helper: format date as dd/mm/yyyy (forced, no locale dependency)
+const fmtFecha = (isoDate) => {
+    if (!isoDate) return '—';
+    const parts = isoDate.split('-');
+    if (parts.length !== 3) return isoDate;
+    return parts[2] + '/' + parts[1] + '/' + parts[0];
+};
+
 function AsociacionBadges({ resumen, filtroAsociacion, onFilterChange }) {
     return (
         <div style={{
@@ -455,7 +464,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                 onMouseOut={e => e.currentTarget.style.background = 'transparent'}
                                             >
                                                 <td style={tdStyle}>
-                                                    {c.fecha_realizacion ? new Date(c.fecha_realizacion + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
+                                                    {fmtFecha(c.fecha_realizacion)}
                                                 </td>
                                                 <td style={{ ...tdStyle, fontWeight: 600 }}>{c.nombre_paciente}</td>
                                                 <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '0.78rem' }}>{c.dni || '—'}</td>
@@ -608,7 +617,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                 {items.map(c => (
                                                     <tr key={c.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
                                                         <td style={tdStyle}>
-                                                            {c.fecha_realizacion ? new Date(c.fecha_realizacion + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
+                                                            {fmtFecha(c.fecha_realizacion)}
                                                         </td>
                                                         <td style={{ ...tdStyle, fontWeight: 600 }}>{c.nombre_paciente}</td>
                                                         <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '0.76rem' }}>{c.dni || '—'}</td>
@@ -721,10 +730,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                         </span>
                                                     </td>
                                                     <td style={tdStyle}>
-                                                        {new Date(cons.fecha_entrega).toLocaleDateString('es-AR', {
-                                                            day: '2-digit', month: '2-digit', year: '2-digit',
-                                                            hour: '2-digit', minute: '2-digit',
-                                                        })}
+                                                        {fmtFecha(cons.fecha_entrega?.substring(0, 10))}
                                                     </td>
                                                     <td style={tdStyle}>{cons.responsable_entrega}</td>
                                                     <td style={tdStyle}>{cons.nombre_cadete || '—'}</td>
@@ -779,7 +785,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                                             <tr key={item.id} style={{ borderTop: '1px solid #F1F5F9' }}>
                                                                                 <td style={{ ...tdSmall, textAlign: 'center', fontWeight: 700, color: '#9CA3AF' }}>{idx + 1}</td>
                                                                                 <td style={tdSmall}>
-                                                                                    {item.fecha_realizacion ? new Date(item.fecha_realizacion + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—'}
+                                                                                    {fmtFecha(item.fecha_realizacion)}
                                                                                 </td>
                                                                                 <td style={{ ...tdSmall, fontWeight: 600 }}>{item.nombre_paciente}</td>
                                                                                 <td style={{ ...tdSmall, fontFamily: 'monospace' }}>{item.dni || '—'}</td>
