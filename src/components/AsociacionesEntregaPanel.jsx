@@ -6,7 +6,7 @@
  *   2. Carrito de Entrega — agrupar por asociación, generar constancia
  *   3. Historial de Entregas — auditoría de constancias pasadas
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
     Package, CheckCircle2, ShoppingCart, History, Search,
     Filter, ChevronDown, ChevronRight, Printer, FileCheck,
@@ -25,7 +25,6 @@ import {
     ASOCIACION_COLORS,
     ASOCIACION_LIST,
 } from '../services/asociacionesService';
-import PrintConstanciaEntrega from './PrintConstanciaEntrega';
 
 // ═══════════════════════════════
 // Sub-component: Dashboard Badges
@@ -129,9 +128,6 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     const [expandedConstancia, setExpandedConstancia] = useState(null);
     const [constanciaDetalle, setConstanciaDetalle] = useState({});
 
-    // Print state
-    const [printData, setPrintData] = useState(null); // { constancia, items }
-    const printRef = useRef(null);
 
     // Modal for generating constancia
     const [showConstanciaModal, setShowConstanciaModal] = useState(null); // asociacion name
@@ -238,21 +234,270 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     };
 
     const handlePrintConstancia = async (constancia, items) => {
-        // If items not loaded, load them
-        let printItems = items;
-        if (!printItems) {
-            printItems = await fetchConstanciaDetalle(constancia.id);
-        }
-        setPrintData({ constancia, items: printItems });
-        setTimeout(() => window.print(), 200);
-    };
+        try {
+            let printItems = items;
+            if (!printItems) {
+                printItems = await fetchConstanciaDetalle(constancia.id);
+            }
 
-    // Clear print data after printing
-    useEffect(() => {
-        const clear = () => setPrintData(null);
-        window.addEventListener('afterprint', clear);
-        return () => window.removeEventListener('afterprint', clear);
-    }, []);
+            const { default: jsPDF } = await import('jspdf');
+            await import('jspdf-autotable');
+            const doc = new jsPDF();
+            const pageW = doc.internal.pageSize.getWidth();
+            const pageH = doc.internal.pageSize.getHeight();
+            const margin = 14;
+            const colW = pageW - margin * 2;
+            let y = 0;
+
+            // ═══════════════════════════════════════════
+            //  HEADER — Barra azul institucional
+            // ═══════════════════════════════════════════
+            doc.setFillColor(13, 59, 102); // #0D3B66
+            doc.rect(0, 0, pageW, 34, 'F');
+
+            // Logo placeholder (circle)
+            doc.setFillColor(255, 255, 255);
+            doc.circle(margin + 7, 17, 7, 'F');
+            doc.setFontSize(6);
+            doc.setTextColor(13, 59, 102);
+            doc.text('SA', margin + 4.5, 18.5);
+
+            // Title
+            doc.setFontSize(16);
+            doc.setTextColor(255, 255, 255);
+            doc.setFont('helvetica', 'bold');
+            doc.text('SANATORIO ARGENTINO', margin + 18, 14);
+
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(180, 200, 220);
+            doc.text('Administración · Documentación Quirúrgica', margin + 18, 21);
+
+            // Top-right badge
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(255, 255, 255);
+            doc.text('CONSTANCIA DE ENTREGA', pageW - margin, 14, { align: 'right' });
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(180, 200, 220);
+            doc.text('Sistema ADM-QUI', pageW - margin, 21, { align: 'right' });
+
+            // Accent line
+            doc.setFillColor(59, 130, 246); // #3B82F6
+            doc.rect(0, 34, pageW, 2, 'F');
+
+            y = 44;
+
+            // ═══════════════════════════════════════════
+            //  INFO BAR — Código, Fecha, Asociación, Total
+            // ═══════════════════════════════════════════
+            const fechaHora = new Date(constancia.fecha_entrega).toLocaleString('es-AR', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit',
+            });
+
+            doc.setFillColor(241, 245, 249); // #F1F5F9
+            doc.roundedRect(margin, y, colW, 18, 3, 3, 'F');
+            doc.setDrawColor(226, 232, 240); // #E2E8F0
+            doc.roundedRect(margin, y, colW, 18, 3, 3, 'S');
+
+            const infoItems = [
+                { label: 'CÓDIGO', value: constancia.codigo },
+                { label: 'FECHA Y HORA', value: fechaHora },
+                { label: 'ASOCIACIÓN', value: constancia.asociacion },
+                { label: 'EXPEDIENTES', value: String(printItems.length) },
+            ];
+
+            const cellW = colW / 4;
+            infoItems.forEach((item, i) => {
+                const x = margin + cellW * i + 6;
+                doc.setFontSize(6);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(148, 163, 184);
+                doc.text(item.label, x, y + 6);
+                doc.setFontSize(i === 0 || i === 3 ? 11 : 9);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(13, 59, 102);
+                doc.text(item.value || '—', x, y + 13);
+            });
+
+            y += 26;
+
+            // ═══════════════════════════════════════════
+            //  SECTION TITLE — Detalle de Expedientes
+            // ═══════════════════════════════════════════
+            doc.setFillColor(59, 130, 246);
+            doc.rect(margin, y, 3, 7, 'F');
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(13, 59, 102);
+            doc.text('DETALLE DE EXPEDIENTES ENTREGADOS', margin + 6, y + 5.5);
+            y += 12;
+
+            // ═══════════════════════════════════════════
+            //  TABLE — Expedientes
+            // ═══════════════════════════════════════════
+            const tableBody = printItems.map((item, idx) => {
+                const fecha = item.fecha_realizacion
+                    ? new Date(item.fecha_realizacion + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+                    : '—';
+                return [
+                    String(idx + 1),
+                    fecha,
+                    item.nombre_paciente || '—',
+                    item.dni || '—',
+                    item.cliente || '—',
+                    (item.nombre_cirugia || '—').substring(0, 35),
+                    (item.cirujano || '—').substring(0, 20),
+                ];
+            });
+
+            doc.autoTable({
+                startY: y,
+                head: [['#', 'Fecha', 'Paciente', 'DNI', 'Obra Social', 'Cirugía', 'Cirujano']],
+                body: tableBody,
+                theme: 'grid',
+                headStyles: {
+                    fillColor: [13, 59, 102], // #0D3B66
+                    textColor: [255, 255, 255],
+                    fontSize: 7.5,
+                    fontStyle: 'bold',
+                    halign: 'left',
+                    cellPadding: 3,
+                },
+                bodyStyles: {
+                    fontSize: 7.5,
+                    cellPadding: 2.5,
+                    textColor: [30, 30, 30],
+                },
+                alternateRowStyles: {
+                    fillColor: [248, 250, 252], // #F8FAFC
+                },
+                columnStyles: {
+                    0: { cellWidth: 8, halign: 'center', fontStyle: 'bold', textColor: [148, 163, 184] },
+                    1: { cellWidth: 18 },
+                    2: { fontStyle: 'bold', cellWidth: 38 },
+                    3: { cellWidth: 22, font: 'courier' },
+                    4: { cellWidth: 30 },
+                    5: { cellWidth: 42 },
+                    6: { cellWidth: 24 },
+                },
+                margin: { left: margin, right: margin },
+                didDrawPage: () => {
+                    // Re-draw header on every page
+                    doc.setFillColor(13, 59, 102);
+                    doc.rect(0, 0, pageW, 8, 'F');
+                    doc.setFillColor(59, 130, 246);
+                    doc.rect(0, 8, pageW, 1, 'F');
+                },
+            });
+
+            y = doc.lastAutoTable.finalY + 6;
+
+            // ═══════════════════════════════════════════
+            //  OBSERVACIONES
+            // ═══════════════════════════════════════════
+            if (constancia.notas) {
+                doc.setFillColor(255, 251, 235); // #FFFBEB
+                doc.setDrawColor(253, 230, 138); // #FDE68A
+                doc.roundedRect(margin, y, colW, 14, 2, 2, 'FD');
+                doc.setFontSize(7.5);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(146, 64, 14);
+                doc.text('OBSERVACIONES:', margin + 4, y + 5);
+                doc.setFont('helvetica', 'normal');
+                doc.text(constancia.notas.substring(0, 120), margin + 32, y + 5);
+                y += 18;
+            }
+
+            // ═══════════════════════════════════════════
+            //  FIRMAS — Check if we need a new page
+            // ═══════════════════════════════════════════
+            if (y > pageH - 65) {
+                doc.addPage();
+                y = 20;
+            }
+
+            y += 8;
+            const sigBoxW = (colW - 20) / 2;
+
+            // Firma Entrega
+            const sig1X = margin;
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(sig1X, y, sigBoxW, 42, 3, 3, 'S');
+            doc.setFontSize(6.5);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(148, 163, 184);
+            doc.text('ENTREGA', sig1X + sigBoxW / 2, y + 6, { align: 'center' });
+            // Signature line
+            doc.setDrawColor(13, 59, 102);
+            doc.setLineWidth(0.5);
+            doc.line(sig1X + 12, y + 30, sig1X + sigBoxW - 12, y + 30);
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(13, 59, 102);
+            doc.text(constancia.responsable_entrega || '________________________', sig1X + sigBoxW / 2, y + 35, { align: 'center' });
+            doc.setFontSize(7);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100, 116, 139);
+            doc.text('Sanatorio Argentino — Administración', sig1X + sigBoxW / 2, y + 40, { align: 'center' });
+
+            // Firma Recibe
+            const sig2X = margin + sigBoxW + 20;
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(sig2X, y, sigBoxW, 42, 3, 3, 'S');
+            doc.setFontSize(6.5);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(148, 163, 184);
+            doc.text('RECIBE', sig2X + sigBoxW / 2, y + 6, { align: 'center' });
+            doc.setDrawColor(13, 59, 102);
+            doc.line(sig2X + 12, y + 30, sig2X + sigBoxW - 12, y + 30);
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(13, 59, 102);
+            doc.text(constancia.nombre_cadete || '________________________', sig2X + sigBoxW / 2, y + 35, { align: 'center' });
+            doc.setFontSize(7);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100, 116, 139);
+            doc.text(constancia.asociacion, sig2X + sigBoxW / 2, y + 40, { align: 'center' });
+
+            // ═══════════════════════════════════════════
+            //  FOOTER — Todas las páginas
+            // ═══════════════════════════════════════════
+            const totalPages = doc.internal.getNumberOfPages();
+            for (let p = 1; p <= totalPages; p++) {
+                doc.setPage(p);
+                // Footer line
+                doc.setDrawColor(226, 232, 240);
+                doc.setLineWidth(0.3);
+                doc.line(margin, pageH - 12, pageW - margin, pageH - 12);
+                // Footer text
+                doc.setFontSize(6.5);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(170, 170, 170);
+                doc.text(
+                    'Esta constancia acredita la entrega de la documentación quirúrgica detallada. Conserve este documento como comprobante.',
+                    margin, pageH - 8
+                );
+                doc.text(
+                    `Sistema ADM-QUI — Sanatorio Argentino · Pág. ${p}/${totalPages}`,
+                    pageW - margin, pageH - 8,
+                    { align: 'right' }
+                );
+            }
+
+            // ═══════════════════════════════════════════
+            //  SAVE
+            // ═══════════════════════════════════════════
+            const fileName = `constancia_${constancia.codigo}_${constancia.asociacion.replace(/\s+/g, '_')}.pdf`;
+            doc.save(fileName);
+            addToast?.(`✅ PDF "${fileName}" descargado`, 'success');
+        } catch (err) {
+            console.error('Error generating PDF:', err);
+            addToast?.('Error al generar PDF: ' + err.message, 'error');
+        }
+    };
 
     // ─── Filter display data ───
     const pendientesCirugias = cirugias.filter(c => !c.en_carrito);
@@ -822,24 +1067,14 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                     onGenerated={async (constanciaData) => {
                         setShowConstanciaModal(null);
                         addToast?.(`✅ Constancia ${constanciaData.codigo} generada`, 'success');
-                        // Print immediately
+                        // Generate PDF immediately
                         const detalle = await fetchConstanciaDetalle(constanciaData.id);
-                        setPrintData({ constancia: constanciaData, items: detalle });
-                        setTimeout(() => window.print(), 200);
+                        handlePrintConstancia(constanciaData, detalle);
                         // Refresh tabs
                         loadCarrito();
                         loadPendientes();
                     }}
                     addToast={addToast}
-                />
-            )}
-
-            {/* Print Template (hidden, shows on print) */}
-            {printData && (
-                <PrintConstanciaEntrega
-                    ref={printRef}
-                    constancia={printData.constancia}
-                    items={printData.items}
                 />
             )}
         </div>
