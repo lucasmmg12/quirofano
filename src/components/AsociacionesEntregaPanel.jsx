@@ -261,18 +261,41 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
             const colW = pageW - margin * 2;
             let y = 0;
 
+            // Load logo image
+            let logoBase64 = null;
+            try {
+                const logoResp = await fetch('/logosanatorio.png');
+                const logoBlob = await logoResp.blob();
+                logoBase64 = await new Promise(resolve => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.readAsDataURL(logoBlob);
+                });
+            } catch (e) { /* logo optional */ }
+
             // ═══════════════════════════════════════════
             //  HEADER — Barra azul institucional
             // ═══════════════════════════════════════════
             doc.setFillColor(13, 59, 102); // #0D3B66
             doc.rect(0, 0, pageW, 34, 'F');
 
-            // Logo placeholder (circle)
-            doc.setFillColor(255, 255, 255);
-            doc.circle(margin + 7, 17, 7, 'F');
-            doc.setFontSize(6);
-            doc.setTextColor(13, 59, 102);
-            doc.text('SA', margin + 4.5, 18.5);
+            // Logo circular
+            const logoX = margin + 1;
+            const logoY = 10;
+            const logoSize = 14;
+            if (logoBase64) {
+                // White circle background
+                doc.setFillColor(255, 255, 255);
+                doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2 + 1, 'F');
+                doc.addImage(logoBase64, 'PNG', logoX, logoY, logoSize, logoSize);
+            } else {
+                // Fallback text
+                doc.setFillColor(255, 255, 255);
+                doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 'F');
+                doc.setFontSize(6);
+                doc.setTextColor(13, 59, 102);
+                doc.text('SA', logoX + 3.5, logoY + logoSize / 2 + 1.5);
+            }
 
             // Title
             doc.setFontSize(16);
