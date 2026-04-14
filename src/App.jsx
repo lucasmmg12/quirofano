@@ -31,6 +31,7 @@ import DeudasPanel from './components/DeudasPanel.jsx';
 import AltasPanel from './components/AltasPanel.jsx';
 import AsignacionPanel from './components/AsignacionPanel.jsx';
 import SimonPanel from './components/SimonPanel.jsx';
+import AsociacionesEntregaPanel from './components/AsociacionesEntregaPanel.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -665,6 +666,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'metricas' && (
                     <MetricsPanel addToast={addToast} />
+                )}
+
+                {activeView === 'asociaciones_entrega' && (
+                    <AsociacionesEntregaPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'plantillas' && (

@@ -1,14 +1,14 @@
 /**
- * SALUS Sync Server — ETL autónomo
+ * SALUS Sync Server â€” ETL autÃ³nomo
  * =================================
  * Servidor Express que:
  *   1. Conecta a SQL Server SALUS (red local)
- *   2. Ejecuta las queries de extracción
+ *   2. Ejecuta las queries de extracciÃ³n
  *   3. Procesa y transforma los datos
  *   4. Inserta directamente en Supabase
  *
  * El frontend solo necesita llamar /api/salus/sync-all para disparar todo.
- * No requiere que Vite esté corriendo.
+ * No requiere que Vite estÃ© corriendo.
  *
  * Uso: doble click en "Actualizar SALUS.bat" o: cd sync-server && npm start
  */
@@ -29,12 +29,12 @@ config({ path: resolve(__dirname, '..', '.env') });
 const app = express();
 const PORT = process.env.PORT || 3456;
 
-// ── Supabase Client ──
+// â”€â”€ Supabase Client â”€â”€
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// ── SQL Server Config ──
+// â”€â”€ SQL Server Config â”€â”€
 const SQL_CONFIG = {
     server: '128.223.16.29',
     port: 2450,
@@ -52,35 +52,35 @@ const SQL_CONFIG = {
     pool: { max: 5, min: 0, idleTimeoutMillis: 30000 },
 };
 
-// ── Pool de conexiones ──
+// â”€â”€ Pool de conexiones â”€â”€
 let pool = null;
 async function getPool() {
     if (!pool || !pool.connected) {
-        console.log('🔌 Conectando a SQL Server SALUS...');
+        console.log('ðŸ”Œ Conectando a SQL Server SALUS...');
         pool = await sql.connect(SQL_CONFIG);
-        console.log('✅ Conectado a SALUS');
+        console.log('âœ… Conectado a SALUS');
     }
     return pool;
 }
 
-// ── Middleware ──
+// â”€â”€ Middleware â”€â”€
 app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
 app.use(express.json());
 
-// ── Helpers ──
+// â”€â”€ Helpers â”€â”€
 function formatDate(val) {
     if (!val) return null;
     if (val instanceof Date) {
-        // CRÍTICO: Usar métodos UTC para evitar desplazamiento por timezone.
+        // CRÃTICO: Usar mÃ©todos UTC para evitar desplazamiento por timezone.
         // SQL Server DATE llega como midnight UTC (ej: 2026-03-31T00:00:00.000Z).
-        // En Argentina (UTC-3), getDate() devuelve el día ANTERIOR (30 en vez de 31).
-        // getUTCDate() siempre devuelve el día correcto del valor original.
+        // En Argentina (UTC-3), getDate() devuelve el dÃ­a ANTERIOR (30 en vez de 31).
+        // getUTCDate() siempre devuelve el dÃ­a correcto del valor original.
         const y = val.getUTCFullYear();
         const m = String(val.getUTCMonth() + 1).padStart(2, '0');
         const d = String(val.getUTCDate()).padStart(2, '0');
         return `${y}-${m}-${d}`;
     }
-    // Si no es Date, puede ser un string ISO — extraer solo la parte de fecha
+    // Si no es Date, puede ser un string ISO â€” extraer solo la parte de fecha
     const str = String(val);
     const isoMatch = str.match(/^(\d{4}-\d{2}-\d{2})/);
     if (isoMatch) return isoMatch[1];
@@ -115,26 +115,26 @@ function normalizePhone(raw, areaCode = '264') {
     if (cleaned.startsWith('549') && cleaned.length === 13) {
         return { normalized: cleaned, valid: true, original: raw };
     }
-    // Tiene 10 dígitos (con código de área)
+    // Tiene 10 dÃ­gitos (con cÃ³digo de Ã¡rea)
     if (cleaned.length === 10 && !cleaned.startsWith('0')) {
         return { normalized: '549' + cleaned, valid: true, original: raw };
     }
-    // 8 dígitos (sin código de área)
+    // 8 dÃ­gitos (sin cÃ³digo de Ã¡rea)
     if (cleaned.length >= 7 && cleaned.length <= 8) {
         return { normalized: '549' + areaCode + cleaned, valid: true, original: raw };
     }
     return { normalized: cleaned, valid: false, original: raw };
 }
 
-// Módulos excluidos
-const EXCLUDED_MODULES = ['Transferencia embrionaria', 'Fertilidad', 'Bloque Médico'];
+// MÃ³dulos excluidos
+const EXCLUDED_MODULES = ['Transferencia embrionaria', 'Fertilidad', 'Bloque MÃ©dico'];
 const EXCLUDED_NAME_PREFIXES = ['BLOQUE'];
 
-// ════════════════════════════════════════════════
-// SYNC CIRUGÍAS — SQL Server → Supabase
-// ════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// SYNC CIRUGÃAS â€” SQL Server â†’ Supabase
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncCirugias(db) {
-    console.log('📋 [1/5] Extrayendo cirugías de SALUS...');
+    console.log('ðŸ“‹ [1/5] Extrayendo cirugÃ­as de SALUS...');
     const result = await db.request().query(`
         SELECT TOP 400
             CAST(A.Data AS DATE) AS Data_Fecha,
@@ -155,11 +155,11 @@ async function syncCirugias(db) {
         ) V
         WHERE A.Descrip LIKE '(CX)%'
           AND A.nombre NOT LIKE '%Bloque%'
-          AND A.GrupoAgendas IN (N'QUIRÓFANOS CENTRALES', N'QUIRÓFANOS HdD')
+          AND A.GrupoAgendas IN (N'QUIRÃ“FANOS CENTRALES', N'QUIRÃ“FANOS HdD')
           AND CAST(A.Data AS DATE) >= DATEADD(DAY, -7, CAST(GETDATE() AS DATE))
         ORDER BY A.Data DESC
     `);
-    console.log(`   📥 ${result.recordset.length} registros extraídos`);
+    console.log(`   ðŸ“¥ ${result.recordset.length} registros extraÃ­dos`);
 
     // Transformar y preparar para upsert
     const records = [];
@@ -199,7 +199,7 @@ async function syncCirugias(db) {
     // Filtrar registros con datos completos para upsert
     const validRecords = records.filter(r => r.id_paciente && r.nombre && r.fecha_cirugia);
     
-    // Deduplicar (último gana)
+    // Deduplicar (Ãºltimo gana)
     const deduped = new Map();
     for (const row of validRecords) {
         const key = `${row.id_paciente}|${row.nombre}|${row.fecha_cirugia}`;
@@ -208,8 +208,8 @@ async function syncCirugias(db) {
 
     const patientIds = [...new Set([...deduped.values()].map(r => r.id_paciente))];
 
-    // ── PASO 1: Obtener estados existentes para preservarlos ──
-    // IMPORTANTE: Capturar estados ANTES de cualquier eliminación
+    // â”€â”€ PASO 1: Obtener estados existentes para preservarlos â”€â”€
+    // IMPORTANTE: Capturar estados ANTES de cualquier eliminaciÃ³n
     const FIELDS_TO_PRESERVE_QUERY = FIELDS_TO_PRESERVE.join(', ');
     const existingMap = new Map();
 
@@ -236,15 +236,15 @@ async function syncCirugias(db) {
             }
         }
     }
-    console.log(`   🔒 ${existingMap.size} registros con estados a preservar`);
+    console.log(`   ðŸ”’ ${existingMap.size} registros con estados a preservar`);
 
-    // ── PASO 2: Limpiar registros huérfanos con fechas incorrectas ──
+    // â”€â”€ PASO 2: Limpiar registros huÃ©rfanos con fechas incorrectas â”€â”€
     // Detectar registros en Supabase cuya fecha NO coincide con SALUS.
-    // Estos son restos del bug de timezone (fecha -1 día) o reprogramaciones.
-    // Se ELIMINAN directamente. El upsert posterior los recreará con la fecha correcta
+    // Estos son restos del bug de timezone (fecha -1 dÃ­a) o reprogramaciones.
+    // Se ELIMINAN directamente. El upsert posterior los recrearÃ¡ con la fecha correcta
     // y los estados se preservan via existingMap.
     if (patientIds.length > 0) {
-        // Crear mapa de SALUS: id_paciente+nombre → fecha más reciente
+        // Crear mapa de SALUS: id_paciente+nombre â†’ fecha mÃ¡s reciente
         const salusDateMap = new Map();
         for (const row of deduped.values()) {
             if (row.ausente === '0' || row.ausente === '1') continue;
@@ -270,9 +270,9 @@ async function syncCirugias(db) {
                     const pKey = `${row.id_paciente}|${normalizeNameForUpsert(row.nombre)}`;
                     const salusDate = salusDateMap.get(pKey);
                     if (salusDate && row.fecha_cirugia !== salusDate) {
-                        // La fecha en Supabase no coincide con SALUS → eliminar el registro obsoleto
-                        // El upsert posterior creará el registro con la fecha correcta
-                        console.log(`   🗑️ Eliminando obsoleto: ${row.nombre} ${row.fecha_cirugia} (correcto: ${salusDate})`);
+                        // La fecha en Supabase no coincide con SALUS â†’ eliminar el registro obsoleto
+                        // El upsert posterior crearÃ¡ el registro con la fecha correcta
+                        console.log(`   ðŸ—‘ï¸ Eliminando obsoleto: ${row.nombre} ${row.fecha_cirugia} (correcto: ${salusDate})`);
                         const { error: delErr } = await supabase
                             .from('surgeries')
                             .delete()
@@ -287,13 +287,13 @@ async function syncCirugias(db) {
                                 existingMap.set(newKey, preserved);
                             }
                         } else {
-                            console.error(`   ❌ Error eliminando ${row.nombre}:`, delErr.message);
+                            console.error(`   âŒ Error eliminando ${row.nombre}:`, delErr.message);
                         }
                     }
                 }
             }
         }
-        if (cleaned > 0) console.log(`   🧹 ${cleaned} registros obsoletos eliminados`);
+        if (cleaned > 0) console.log(`   ðŸ§¹ ${cleaned} registros obsoletos eliminados`);
     }
 
 
@@ -315,7 +315,7 @@ async function syncCirugias(db) {
             .select('id, created_at, updated_at');
 
         if (error) {
-            console.error('   ❌ Batch error:', error.message);
+            console.error('   âŒ Batch error:', error.message);
             skipped += batch.length;
         } else if (data) {
             data.forEach(d => {
@@ -325,15 +325,15 @@ async function syncCirugias(db) {
     }
 
     const summary = { total: result.recordset.length, inserted, updated, skipped };
-    console.log(`   ✅ Cirugías: ${inserted} nuevos, ${updated} actualizados, ${skipped} errores`);
+    console.log(`   âœ… CirugÃ­as: ${inserted} nuevos, ${updated} actualizados, ${skipped} errores`);
     return summary;
 }
 
-// ════════════════════════════════════════════════
-// SYNC PRESUPUESTOS — SQL Server → Supabase
-// ════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// SYNC PRESUPUESTOS â€” SQL Server â†’ Supabase
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncPresupuestos(db) {
-    console.log('💰 [2/5] Extrayendo presupuestos de SALUS...');
+    console.log('ðŸ’° [2/5] Extrayendo presupuestos de SALUS...');
     const result = await db.request().query(`
         SELECT idPresupuesto, idPaciente, Paciente, fecha, Observaciones,
                idArticulo, descripcion, cantidad, importeUnitario,
@@ -342,7 +342,7 @@ async function syncPresupuestos(db) {
         FROM VLISE_Presupuestos
         WHERE fecha >= '2026-01-01'
     `);
-    console.log(`   📥 ${result.recordset.length} filas extraídas`);
+    console.log(`   ðŸ“¥ ${result.recordset.length} filas extraÃ­das`);
 
     // Agrupar por idPresupuesto
     const grouped = {};
@@ -387,7 +387,7 @@ async function syncPresupuestos(db) {
         importe_cobrado: p.items.reduce((s, i) => s + i.importe_cobrado, 0),
     }));
 
-    console.log(`   📦 ${presupuestos.length} presupuestos agrupados`);
+    console.log(`   ðŸ“¦ ${presupuestos.length} presupuestos agrupados`);
 
     // Upsert cabeceras en lotes
     let insertedHeaders = 0;
@@ -399,45 +399,45 @@ async function syncPresupuestos(db) {
             .upsert(batch, { onConflict: 'id_presupuesto', ignoreDuplicates: false })
             .select('id_presupuesto');
         if (!error && data) insertedHeaders += data.length;
-        else if (error) console.error('   ❌ Presupuesto header error:', error.message);
+        else if (error) console.error('   âŒ Presupuesto header error:', error.message);
     }
 
-    // Upsert ítems: limpiar y reinsertar
+    // Upsert Ã­tems: limpiar y reinsertar
     let insertedItems = 0;
     const budgetIds = presupuestos.map(p => p.id_presupuesto);
     
     if (budgetIds.length > 0) {
-        // Borrar ítems existentes para los presupuestos que se actualizan
+        // Borrar Ã­tems existentes para los presupuestos que se actualizan
         for (let i = 0; i < budgetIds.length; i += BATCH) {
             const batchIds = budgetIds.slice(i, i + BATCH);
             await supabase.from('presupuesto_items').delete().in('id_presupuesto', batchIds);
         }
 
-        // Insertar todos los ítems
+        // Insertar todos los Ã­tems
         const allItems = presupuestos.flatMap(p => p.items);
         for (let i = 0; i < allItems.length; i += BATCH) {
             const batch = allItems.slice(i, i + BATCH);
             const { data, error } = await supabase.from('presupuesto_items').insert(batch).select('id');
             if (!error && data) insertedItems += data.length;
-            else if (error) console.error('   ❌ Presupuesto items error:', error.message);
+            else if (error) console.error('   âŒ Presupuesto items error:', error.message);
         }
     }
 
     const summary = { total: result.recordset.length, presupuestos: presupuestos.length, headers: insertedHeaders, items: insertedItems, skippedNoPatient };
-    console.log(`   ✅ Presupuestos: ${insertedHeaders} cabeceras, ${insertedItems} ítems`);
+    console.log(`   âœ… Presupuestos: ${insertedHeaders} cabeceras, ${insertedItems} Ã­tems`);
     return summary;
 }
 
-// ════════════════════════════════════════════════
-// SYNC DEUDAS — SQL Server → Supabase
-// ════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// SYNC DEUDAS â€” SQL Server â†’ Supabase
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncDeudas(db) {
-    console.log('📊 [3/5] Extrayendo deudas de SALUS...');
+    console.log('ðŸ“Š [3/5] Extrayendo deudas de SALUS...');
     const result = await db.request().query(`
         SELECT TOP 1000
             T.[Fecha albaran], T.Paciente, T.Paciente_NHC, T.Paciente_NIF,
             T.Tarifa, T.Concepto, T.[Numero folio], T.[Cobrado linea],
-            T.[Deuda linea], T.[Núm.Admisión], T.HOSP_Habitacion,
+            T.[Deuda linea], T.[NÃºm.AdmisiÃ³n], T.HOSP_Habitacion,
             CASE 
                 WHEN V.telefono1 IS NOT NULL 
                 THEN '549' + 
@@ -447,9 +447,9 @@ async function syncDeudas(db) {
                     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                         LOWER(V.telefono1)
                     , 'a', ''), 'b', ''), 'c', ''), 'd', ''), 'e', ''), 'f', ''), 'g', ''), 'h', ''), 'i', ''), 'j', '')
-                    , 'k', ''), 'l', ''), 'm', ''), 'n', ''), N'ñ', ''), 'o', ''), 'p', ''), 'q', ''), 'r', ''), 's', '')
-                    , 't', ''), 'u', ''), 'v', ''), 'w', ''), 'x', ''), 'y', ''), 'z', ''), N'á', ''), N'é', ''), N'í', '')
-                    , N'ó', ''), N'ú', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '+', ''), '*', ''), '.', ''), ',', '')
+                    , 'k', ''), 'l', ''), 'm', ''), 'n', ''), N'Ã±', ''), 'o', ''), 'p', ''), 'q', ''), 'r', ''), 's', '')
+                    , 't', ''), 'u', ''), 'v', ''), 'w', ''), 'x', ''), 'y', ''), 'z', ''), N'Ã¡', ''), N'Ã©', ''), N'Ã­', '')
+                    , N'Ã³', ''), N'Ãº', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '+', ''), '*', ''), '.', ''), ',', '')
                 ELSE NULL
             END AS telefono1_formateado,
             V.email
@@ -462,7 +462,7 @@ async function syncDeudas(db) {
           AND T.[Fecha albaran] >= '2025-05-01'
         ORDER BY T.[Fecha albaran] DESC
     `);
-    console.log(`   📥 ${result.recordset.length} filas extraídas`);
+    console.log(`   ðŸ“¥ ${result.recordset.length} filas extraÃ­das`);
 
     // Agrupar por folio
     const facturasMap = new Map();
@@ -480,7 +480,7 @@ async function syncDeudas(db) {
             deuda, cobrado,
             fecha_albaran: formatDate(r['Fecha albaran']) || '',
             habitacion: String(r.HOSP_Habitacion || '').trim(),
-            nAdmision: String(r['Núm.Admisión'] || '').trim(),
+            nAdmision: String(r['NÃºm.AdmisiÃ³n'] || '').trim(),
         };
 
         if (!facturasMap.has(folio)) {
@@ -504,7 +504,7 @@ async function syncDeudas(db) {
 
     // Filtrar facturas con deuda > $1
     const registros = [...facturasMap.values()].filter(f => f.pendiente > 1);
-    console.log(`   📦 ${registros.length} facturas con deuda > $1`);
+    console.log(`   ðŸ“¦ ${registros.length} facturas con deuda > $1`);
 
     // Procesar cada paciente (agrupado por NHC)
     const porNhc = {};
@@ -523,7 +523,7 @@ async function syncDeudas(db) {
     for (const [nhc, grupo] of Object.entries(porNhc)) {
         const deudaTotal = grupo.facturas.reduce((s, f) => s + f.pendiente, 0);
 
-        // Fecha más reciente
+        // Fecha mÃ¡s reciente
         let fechaMasReciente = null;
         for (const f of grupo.facturas) {
             for (const l of f.lineas) {
@@ -572,7 +572,7 @@ async function syncDeudas(db) {
             pacientesNuevos++;
         }
 
-        // Upsert líneas de factura
+        // Upsert lÃ­neas de factura
         if (pacienteId) {
             for (const f of grupo.facturas) {
                 for (let i = 0; i < f.lineas.length; i++) {
@@ -598,9 +598,9 @@ async function syncDeudas(db) {
         }
     }
 
-    // Registrar importación
+    // Registrar importaciÃ³n
     await supabase.from('deudas_importaciones').insert({
-        archivo_nombre: 'SALUS Sync Automático',
+        archivo_nombre: 'SALUS Sync AutomÃ¡tico',
         total_filas: result.recordset.length,
         filas_importadas: filasImportadas,
         filas_ignoradas: result.recordset.length - filasImportadas,
@@ -610,21 +610,21 @@ async function syncDeudas(db) {
     });
 
     const summary = { total: result.recordset.length, pacientesNuevos, pacientesActualizados, filasImportadas };
-    console.log(`   ✅ Deudas: ${pacientesNuevos} nuevos, ${pacientesActualizados} actualizados, ${filasImportadas} líneas`);
+    console.log(`   âœ… Deudas: ${pacientesNuevos} nuevos, ${pacientesActualizados} actualizados, ${filasImportadas} lÃ­neas`);
     return summary;
 }
 
-// ════════════════════════════════════════════════
-// SYNC ALTAS ADMINISTRATIVAS — SQL Server → Supabase
-// ════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// SYNC ALTAS ADMINISTRATIVAS â€” SQL Server â†’ Supabase
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncAltasAdministrativas(db) {
-    console.log('📋 [4/5] Extrayendo altas administrativas de SALUS...');
+    console.log('ðŸ“‹ [4/5] Extrayendo altas administrativas de SALUS...');
 
-    // Rango: últimos 60 días de altas
+    // Rango: Ãºltimos 60 dÃ­as de altas
     const result = await db.request().query(`
         WITH CTE AS (
             SELECT 
-                TA.[Número admisión],
+                TA.[NÃºmero admisiÃ³n],
                 TA.[Fecha ingreso],
                 CAST(TA.[Fecha alta] AS DATE) AS [Fecha alta],
                 TA.[Paciente],
@@ -635,7 +635,7 @@ async function syncAltasAdministrativas(db) {
                 TA.[Motivo de alta],
                 TA.[Control ADM finalizado],
                 OBS.ValorM AS [Observaciones],
-                ROW_NUMBER() OVER (PARTITION BY TA.[Paciente], CAST(TA.[Fecha ingreso] AS DATE) ORDER BY TA.[Número admisión] DESC) as rn
+                ROW_NUMBER() OVER (PARTITION BY TA.[Paciente], CAST(TA.[Fecha ingreso] AS DATE) ORDER BY TA.[NÃºmero admisiÃ³n] DESC) as rn
             FROM [SALUS].[dbo].[TABLEAU_Admisiones] TA
             LEFT JOIN [PR InstRespHospi] OBS 
                 ON TA.idAdmision = OBS.idHospi 
@@ -647,11 +647,11 @@ async function syncAltasAdministrativas(db) {
         )
         SELECT * FROM CTE WHERE rn = 1
     `);
-    console.log(`   📥 ${result.recordset.length} registros extraídos`);
+    console.log(`   ðŸ“¥ ${result.recordset.length} registros extraÃ­dos`);
 
     const records = [];
     for (const r of result.recordset) {
-        const numAdmision = r['Número admisión'] ? String(r['Número admisión']).trim() : null;
+        const numAdmision = r['NÃºmero admisiÃ³n'] ? String(r['NÃºmero admisiÃ³n']).trim() : null;
         if (!numAdmision) continue;
 
         records.push({
@@ -669,13 +669,13 @@ async function syncAltasAdministrativas(db) {
         });
     }
 
-    // Deduplicar por numero_admision (último gana)
+    // Deduplicar por numero_admision (Ãºltimo gana)
     const deduped = new Map();
     for (const row of records) {
         deduped.set(row.numero_admision, row);
     }
     const uniqueRecords = [...deduped.values()];
-    console.log(`   📦 ${uniqueRecords.length} registros únicos`);
+    console.log(`   ðŸ“¦ ${uniqueRecords.length} registros Ãºnicos`);
 
     // Obtener estados existentes para preservarlos
     const ESTADO_FIELD = 'estado';
@@ -696,12 +696,12 @@ async function syncAltasAdministrativas(db) {
                 const preserved = {};
                 for (const f of FIELDS_TO_PRESERVE) {
                     if (row[f] != null) {
-                        // No preservar 'Procesada' — era el default viejo, ahora es null
+                        // No preservar 'Procesada' â€” era el default viejo, ahora es null
                         if (f === 'estado' && row[f] === 'Procesada') continue;
                         preserved[f] = row[f];
                     }
                 }
-                // Guardar también el estado previo de control_adm para detectar transición
+                // Guardar tambiÃ©n el estado previo de control_adm para detectar transiciÃ³n
                 preserved._prev_control_adm = row.control_adm_finalizado;
                 if (Object.keys(preserved).length > 0) {
                     existingMap.set(row.numero_admision, preserved);
@@ -709,7 +709,7 @@ async function syncAltasAdministrativas(db) {
             }
         }
     }
-    console.log(`   🔒 ${existingMap.size} registros con estados a preservar`);
+    console.log(`   ðŸ”’ ${existingMap.size} registros con estados a preservar`);
 
     // Upsert en lotes
     let inserted = 0, updated = 0, skipped = 0;
@@ -722,12 +722,12 @@ async function syncAltasAdministrativas(db) {
             // Limpiar campo interno antes de enviar
             delete merged._prev_control_adm;
 
-            // ── Detectar transición a "Alta Adm" para setear timestamp ──
+            // â”€â”€ Detectar transiciÃ³n a "Alta Adm" para setear timestamp â”€â”€
             const prevControl = preserved?._prev_control_adm;
             const newControl = row.control_adm_finalizado;
             
-            if (newControl === 'Sí' && !merged.fecha_alta_adm) {
-                // Primera vez que control_adm_finalizado pasa a 'Sí' → marcar timestamp
+            if (newControl === 'SÃ­' && !merged.fecha_alta_adm) {
+                // Primera vez que control_adm_finalizado pasa a 'SÃ­' â†’ marcar timestamp
                 merged.fecha_alta_adm = new Date().toISOString();
             }
 
@@ -740,7 +740,7 @@ async function syncAltasAdministrativas(db) {
             .select('id, created_at, updated_at');
 
         if (error) {
-            console.error('   ❌ Batch error:', error.message);
+            console.error('   âŒ Batch error:', error.message);
             skipped += batch.length;
         } else if (data) {
             data.forEach(d => {
@@ -750,16 +750,16 @@ async function syncAltasAdministrativas(db) {
     }
 
     const summary = { total: result.recordset.length, inserted, updated, skipped };
-    console.log(`   ✅ Altas: ${inserted} nuevas, ${updated} actualizadas, ${skipped} errores`);
+    console.log(`   âœ… Altas: ${inserted} nuevas, ${updated} actualizadas, ${skipped} errores`);
     return summary;
 }
 
-// ════════════════════════════════════════════════
-// SYNC FACTURACIÓN SEDE — SQL Server → Supabase
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// SYNC FACTURACIÃ“N SEDE â€” SQL Server â†’ Supabase
 // Fuente: PR_FACTURAS_QRY (dedup por idVisita)
-// ════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncFacturacionSede(db) {
-    console.log('💰 [5/5] Extrayendo facturación Sede Santa Fe de SALUS...');
+    console.log('ðŸ’° [5/5] Extrayendo facturaciÃ³n Sede Santa Fe de SALUS...');
 
     // Rango: mes en curso (formato seguro YYYYMMDD)
     const hoy = new Date();
@@ -772,7 +772,8 @@ async function syncFacturacionSede(db) {
         WITH Deduped AS (
             SELECT [idVisita], [Paciente_Nombre], [Paciente_NHC], [descripcion],
                    CAST([cantidad] AS INT) AS [cantidad],
-                   CAST([ImporteTotal] AS INT) AS [ImporteTotal],
+                   CAST([importeUnitario] AS DECIMAL(18,2)) AS [ImporteUnitario],
+                   CAST([ImporteTotal] AS DECIMAL(18,2)) AS [ImporteTotal],
                    [idPaciente], [Factura_FechaActualizacion],
                    CAST([Factura_FechaActualizacion] AS DATE) AS [Fecha],
                    CAST([Factura_FechaActualizacion] AS TIME(0)) AS [Hora],
@@ -785,8 +786,7 @@ async function syncFacturacionSede(db) {
               AND [Centro_Alias] = 'SANTA FE'
         )
         SELECT d.[idVisita], d.[Paciente_Nombre], d.[Paciente_NHC], d.[descripcion],
-               d.[cantidad], d.[ImporteTotal],
-               COUNT(*) OVER(PARTITION BY d.[idVisita]) AS LineasEnVisita,
+               d.[cantidad], d.[ImporteUnitario], d.[ImporteTotal],
                d.[idPaciente], d.[Fecha], d.[Hora],
                d.[Centro_Alias], d.[Familia], d.[Servicio], d.[FormaDePago],
                d.[Responsable], d.[Visita_TipoVisita], d.[Tarifa],
@@ -795,7 +795,7 @@ async function syncFacturacionSede(db) {
         WHERE d.DupFila = 1
         ORDER BY d.[Fecha] DESC, d.[Hora] DESC
     `);
-    console.log(`   📥 ${result.recordset.length} líneas extraídas (desde ${primerDiaMesFmt})`);
+    console.log(`   ðŸ“¥ ${result.recordset.length} lÃ­neas extraÃ­das (desde ${primerDiaMesFmt})`);
 
     if (result.recordset.length === 0) {
         return { total: 0, deleted: 0, inserted: 0, skipped: 0 };
@@ -819,21 +819,21 @@ async function syncFacturacionSede(db) {
                 const mn = r.Hora.getUTCMinutes();
                 const s = r.Hora.getUTCSeconds();
                 hora = `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-                turno = h < 15 ? 'mañana' : 'tarde';
+                turno = h < 15 ? 'maÃ±ana' : 'tarde';
             } else {
                 const timeStr = String(r.Hora);
                 const hMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
                 if (hMatch) {
                     hora = timeStr.substring(0, 8);
-                    turno = parseInt(hMatch[1], 10) < 15 ? 'mañana' : 'tarde';
+                    turno = parseInt(hMatch[1], 10) < 15 ? 'maÃ±ana' : 'tarde';
                 }
             }
         }
 
         // ImporteTotal es el total de TODA la visita
-        // Si hay N líneas en la visita, dividir el importe entre N
-        const lineasEnVisita = Number(r.LineasEnVisita) || 1;
-        const importeLinea = Math.round((Number(r.ImporteTotal) || 0) / lineasEnVisita);
+        // Si hay N lÃ­neas en la visita, dividir el importe entre N
+        // Usar importeUnitario (por práctica) en lugar de ImporteTotal (por visita)
+        const importeLinea = Number(r.ImporteUnitario) || 0;
 
         records.push({
             id_visita: r.idVisita ? String(r.idVisita).trim() : null,
@@ -857,19 +857,19 @@ async function syncFacturacionSede(db) {
         });
     }
 
-    console.log(`   📦 ${records.length} registros válidos`);
+    console.log(`   ðŸ“¦ ${records.length} registros vÃ¡lidos`);
 
     // Estrategia: delete-insert (el mes completo)
-    // Más confiable que upsert con idVisita que puede ser NULL
+    // MÃ¡s confiable que upsert con idVisita que puede ser NULL
     const { error: delError } = await supabase
         .from('facturacion_sede')
         .delete()
         .gte('fecha', primerDiaMesFmt);
 
     if (delError) {
-        console.error(`   ⚠️ Error al limpiar mes:`, delError.message);
+        console.error(`   âš ï¸ Error al limpiar mes:`, delError.message);
     } else {
-        console.log(`   🗑️ Datos del mes limpiados para refresh`);
+        console.log(`   ðŸ—‘ï¸ Datos del mes limpiados para refresh`);
     }
 
     // Insert en lotes
@@ -884,7 +884,7 @@ async function syncFacturacionSede(db) {
             .select('id');
 
         if (error) {
-            console.error(`   ❌ Batch ${Math.floor(i/BATCH)+1} error:`, error.message);
+            console.error(`   âŒ Batch ${Math.floor(i/BATCH)+1} error:`, error.message);
             skipped += batch.length;
         } else if (data) {
             inserted += data.length;
@@ -892,16 +892,16 @@ async function syncFacturacionSede(db) {
     }
 
     const summary = { total: result.recordset.length, deleted: 'mes completo', inserted, skipped };
-    console.log(`   ✅ Facturación Sede: ${inserted} registros sincronizados, ${skipped} errores`);
+    console.log(`   âœ… FacturaciÃ³n Sede: ${inserted} registros sincronizados, ${skipped} errores`);
     return summary;
 }
 
-// ════════════════════════════════════════════════
-// SYNC VISITAS SEDE — SQL Server → Supabase
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// SYNC VISITAS SEDE â€” SQL Server â†’ Supabase
 // Fuente: VLISE_Visitas (Centro SANTA FE, Asistencia = Presente)
-// ════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncVisitasSede(db) {
-    console.log('🏥 [6/6] Extrayendo visitas Sede Santa Fe de SALUS...');
+    console.log('ðŸ¥ [6/6] Extrayendo visitas Sede Santa Fe de SALUS...');
 
     // Rango: mes en curso
     const hoy = new Date();
@@ -929,7 +929,7 @@ async function syncVisitasSede(db) {
             AND [Centro] = 'SANTA FE'
         ORDER BY [Fecha Visita] DESC
     `);
-    console.log(`   📥 ${result.recordset.length} visitas extraídas (desde ${primerDiaMesFmt})`);
+    console.log(`   ðŸ“¥ ${result.recordset.length} visitas extraÃ­das (desde ${primerDiaMesFmt})`);
 
     if (result.recordset.length === 0) {
         return { total: 0, deleted: 0, inserted: 0, skipped: 0 };
@@ -958,7 +958,7 @@ async function syncVisitasSede(db) {
         });
     }
 
-    console.log(`   📦 ${records.length} registros válidos`);
+    console.log(`   ðŸ“¦ ${records.length} registros vÃ¡lidos`);
 
     // Estrategia: delete-insert (mes completo)
     const { error: delError } = await supabase
@@ -967,9 +967,9 @@ async function syncVisitasSede(db) {
         .gte('fecha', primerDiaMesFmt);
 
     if (delError) {
-        console.error(`   ⚠️ Error al limpiar mes:`, delError.message);
+        console.error(`   âš ï¸ Error al limpiar mes:`, delError.message);
     } else {
-        console.log(`   🗑️ Datos del mes limpiados para refresh`);
+        console.log(`   ðŸ—‘ï¸ Datos del mes limpiados para refresh`);
     }
 
     // Insert en lotes
@@ -984,7 +984,7 @@ async function syncVisitasSede(db) {
             .select('id');
 
         if (error) {
-            console.error(`   ❌ Batch ${Math.floor(i/BATCH)+1} error:`, error.message);
+            console.error(`   âŒ Batch ${Math.floor(i/BATCH)+1} error:`, error.message);
             skipped += batch.length;
         } else if (data) {
             inserted += data.length;
@@ -992,23 +992,172 @@ async function syncVisitasSede(db) {
     }
 
     const summary = { total: result.recordset.length, deleted: 'mes completo', inserted, skipped };
-    console.log(`   ✅ Visitas Sede: ${inserted} registros sincronizados, ${skipped} errores`);
+    console.log(`   âœ… Visitas Sede: ${inserted} registros sincronizados, ${skipped} errores`);
     return summary;
 }
 
-// ════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
+// SYNC CIRUGÍAS ASOCIACIONES — SQL Server → Supabase
+// Fuente: TABLEAU_Cirugias (especialidades con asociación)
+// ═══════════════════════════════════════════════════
+const ESPECIALIDAD_ASOCIACION = {
+    'CIRUGIA': 'Asociación de Cirujanos',
+    'GINECOLOGIA': 'Asociación de Ginecólogos',
+    'ORTOPEDIA / TRAUMATOLOGIA': 'Asociación de Traumatólogos',
+    'CIRUGIA PEDIATRICA': 'Asociación de Cirujanos Pediatras',
+    'OTORRINOLARINGOLOGIA': 'ORL (Particular)',
+};
+
+async function syncAsociacionesCirugias(db) {
+    console.log('📦 [7/7] Extrayendo cirugías para asociaciones de SALUS...');
+
+    const result = await db.request().query(`
+        SELECT 
+            [Fecha realización],
+            [Nombre Paciente],
+            [Cliente],
+            [DNI],
+            [Especialidad],
+            [Nombre cirugía],
+            [Estado],
+            [Cirujano]
+        FROM [SALUS].[dbo].[TABLEAU_Cirugias]
+        WHERE 
+            CONVERT(DATETIME, [Fecha realización], 103) >= '20260301'
+            AND [Especialidad] IN (
+                'CIRUGIA', 
+                'OTORRINOLARINGOLOGIA', 
+                'CIRUGIA PEDIATRICA', 
+                'ORTOPEDIA / TRAUMATOLOGIA',
+                'GINECOLOGIA'
+            )
+            AND [Estado] IN (
+                'Presente', 
+                'NO PROGRAMADA', 
+                'URGENCIA'
+            )
+        ORDER BY CONVERT(DATETIME, [Fecha realización], 103) ASC
+    `);
+    console.log(`   📥 ${result.recordset.length} registros extraídos`);
+
+    if (result.recordset.length === 0) {
+        return { total: 0, inserted: 0, updated: 0, skipped: 0 };
+    }
+
+    // Campos a preservar durante upsert (estados manuales del frontend)
+    const FIELDS_TO_PRESERVE = [
+        'docs_completos', 'en_carrito', 'constancia_id',
+        'operador', 'checked_at', 'entregado_at',
+    ];
+
+    // Transformar filas
+    const records = [];
+    for (const r of result.recordset) {
+        const nombre = r['Nombre Paciente']?.trim();
+        const especialidad = r.Especialidad?.trim();
+        if (!nombre || !especialidad) continue;
+
+        const asociacion = ESPECIALIDAD_ASOCIACION[especialidad];
+        if (!asociacion) continue;
+
+        const fechaRaw = r['Fecha realización'];
+        const fecha = formatDate(fechaRaw);
+        if (!fecha) continue;
+
+        records.push({
+            fecha_realizacion: fecha,
+            nombre_paciente: nombre,
+            cliente: r.Cliente?.trim() || null,
+            dni: r.DNI ? String(r.DNI).trim() : null,
+            especialidad,
+            nombre_cirugia: r['Nombre cirugía']?.trim() || null,
+            estado: r.Estado?.trim() || null,
+            cirujano: r.Cirujano?.trim() || null,
+            asociacion,
+        });
+    }
+
+    // Deduplicar (último gana por key: fecha+dni+cirugia)
+    const deduped = new Map();
+    for (const row of records) {
+        const key = `${row.fecha_realizacion}|${row.dni}|${row.nombre_cirugia}`;
+        deduped.set(key, row);
+    }
+    const uniqueRecords = [...deduped.values()];
+    console.log(`   📦 ${uniqueRecords.length} registros únicos`);
+
+    // Obtener estados existentes para preservarlos
+    const existingMap = new Map();
+    const FETCH_BATCH_SIZE = 200;
+
+    const fechas = [...new Set(uniqueRecords.map(r => r.fecha_realizacion))];
+    for (let i = 0; i < fechas.length; i += FETCH_BATCH_SIZE) {
+        const batchFechas = fechas.slice(i, i + FETCH_BATCH_SIZE);
+        const { data: existing } = await supabase
+            .from('asociaciones_cirugias')
+            .select(`fecha_realizacion, dni, nombre_cirugia, ${FIELDS_TO_PRESERVE.join(', ')}`)
+            .in('fecha_realizacion', batchFechas);
+
+        if (existing) {
+            for (const row of existing) {
+                const key = `${row.fecha_realizacion}|${row.dni}|${row.nombre_cirugia}`;
+                const preserved = {};
+                for (const f of FIELDS_TO_PRESERVE) {
+                    if (row[f] != null) preserved[f] = row[f];
+                }
+                if (Object.keys(preserved).length > 0) existingMap.set(key, preserved);
+            }
+        }
+    }
+    console.log(`   🔒 ${existingMap.size} registros con estados a preservar`);
+
+    // Upsert en lotes
+    let inserted = 0, updated = 0, skipped = 0;
+    const BATCH = 50;
+
+    for (let i = 0; i < uniqueRecords.length; i += BATCH) {
+        const batch = uniqueRecords.slice(i, i + BATCH).map(row => {
+            const key = `${row.fecha_realizacion}|${row.dni}|${row.nombre_cirugia}`;
+            const preserved = existingMap.get(key);
+            return preserved ? { ...row, ...preserved } : row;
+        });
+
+        const { data, error } = await supabase
+            .from('asociaciones_cirugias')
+            .upsert(batch, {
+                onConflict: 'fecha_realizacion,dni,nombre_cirugia',
+                ignoreDuplicates: false,
+            })
+            .select('id, created_at, updated_at');
+
+        if (error) {
+            console.error('   ❌ Batch error:', error.message);
+            skipped += batch.length;
+        } else if (data) {
+            data.forEach(d => {
+                d.created_at === d.updated_at ? inserted++ : updated++;
+            });
+        }
+    }
+
+    const summary = { total: result.recordset.length, inserted, updated, skipped };
+    console.log(`   ✅ Asociaciones: ${inserted} nuevos, ${updated} actualizados, ${skipped} errores`);
+    return summary;
+}
+
 // ENDPOINT PRINCIPAL: SYNC TODO
-// ════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 let syncInProgress = false;
 
 app.get('/api/salus/sync-all', async (req, res) => {
     if (syncInProgress) {
-        return res.status(429).json({ success: false, error: 'Ya hay una sincronización en curso. Espere a que termine.' });
+        return res.status(429).json({ success: false, error: 'Ya hay una sincronizaciÃ³n en curso. Espere a que termine.' });
     }
 
     syncInProgress = true;
     const startTime = Date.now();
-    console.log('\n🚀 ═══ SINCRONIZACIÓN COMPLETA INICIADA ═══');
+    console.log('\nðŸš€ â•â•â• SINCRONIZACIÃ“N COMPLETA INICIADA â•â•â•');
 
     const results = {};
 
@@ -1018,47 +1167,54 @@ app.get('/api/salus/sync-all', async (req, res) => {
         try {
             results.cirugias = await syncCirugias(db);
         } catch (err) {
-            console.error('❌ Error en cirugías:', err.message);
+            console.error('âŒ Error en cirugÃ­as:', err.message);
             results.cirugias = { error: err.message };
         }
 
         try {
             results.presupuestos = await syncPresupuestos(db);
         } catch (err) {
-            console.error('❌ Error en presupuestos:', err.message);
+            console.error('âŒ Error en presupuestos:', err.message);
             results.presupuestos = { error: err.message };
         }
 
         try {
             results.deudas = await syncDeudas(db);
         } catch (err) {
-            console.error('❌ Error en deudas:', err.message);
+            console.error('âŒ Error en deudas:', err.message);
             results.deudas = { error: err.message };
         }
 
         try {
             results.altas = await syncAltasAdministrativas(db);
         } catch (err) {
-            console.error('❌ Error en altas administrativas:', err.message);
+            console.error('âŒ Error en altas administrativas:', err.message);
             results.altas = { error: err.message };
         }
 
         try {
             results.facturacion = await syncFacturacionSede(db);
         } catch (err) {
-            console.error('❌ Error en facturación sede:', err.message);
+            console.error('âŒ Error en facturaciÃ³n sede:', err.message);
             results.facturacion = { error: err.message };
         }
 
         try {
             results.visitas = await syncVisitasSede(db);
         } catch (err) {
-            console.error('❌ Error en visitas sede:', err.message);
+            console.error('âŒ Error en visitas sede:', err.message);
             results.visitas = { error: err.message };
         }
 
+        try {
+            results.asociaciones = await syncAsociacionesCirugias(db);
+        } catch (err) {
+            console.error('Error en asociaciones:', err.message);
+            results.asociaciones = { error: err.message };
+        }
+
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`\n✅ ═══ SINCRONIZACIÓN COMPLETADA en ${elapsed}s ═══\n`);
+        console.log(`\nâœ… â•â•â• SINCRONIZACIÃ“N COMPLETADA en ${elapsed}s â•â•â•\n`);
 
         console.log(`
          ___  _____
@@ -1079,7 +1235,7 @@ app.get('/api/salus/sync-all', async (req, res) => {
              |           \\
              j            Y
 
-    ✨ "¡Mmm... Deudas y Presupuestos frescos!" ✨
+    âœ¨ "Â¡Mmm... Deudas y Presupuestos frescos!" âœ¨
         `);
 
         res.json({
@@ -1089,14 +1245,14 @@ app.get('/api/salus/sync-all', async (req, res) => {
             results,
         });
     } catch (err) {
-        console.error('❌ Error fatal:', err.message);
+        console.error('âŒ Error fatal:', err.message);
         res.status(500).json({ success: false, error: err.message });
     } finally {
         syncInProgress = false;
     }
 });
 
-// ── Endpoints individuales ──
+// â”€â”€ Endpoints individuales â”€â”€
 app.get('/api/salus/sync/cirugias', async (req, res) => {
     try { const db = await getPool(); res.json({ success: true, results: await syncCirugias(db) }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
@@ -1122,7 +1278,12 @@ app.get('/api/salus/sync/visitas', async (req, res) => {
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
-// ── Health check ──
+app.get('/api/salus/sync/asociaciones', async (req, res) => {
+    try { const db = await getPool(); res.json({ success: true, results: await syncAsociacionesCirugias(db) }); }
+    catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// â”€â”€ Health check â”€â”€
 app.get('/api/salus/health', async (req, res) => {
     try {
         const db = await getPool();
@@ -1133,28 +1294,29 @@ app.get('/api/salus/health', async (req, res) => {
     }
 });
 
-// ── Servidor ──
+// â”€â”€ Servidor â”€â”€
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
-╔════════════════════════════════════════════════════╗
-║  🏥 SALUS Sync Server — ADM-QUI                    ║
-║  Puerto: ${PORT}                                      ║
-║  SQL Server: 128.223.16.29:2450 (SALUS)            ║
-║  Supabase: ${supabaseUrl ? '✅ Configurado' : '❌ FALTA'}                       ║
-║                                                    ║
-║  Endpoints:                                        ║
-║    GET /api/salus/sync-all    (todo de una vez)     ║
-║    GET /api/salus/sync/cirugias                     ║
-║    GET /api/salus/sync/presupuestos                 ║
-║    GET /api/salus/sync/deudas                       ║
-║    GET /api/salus/health                            ║
-╚════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘  ðŸ¥ SALUS Sync Server â€” ADM-QUI                    â•‘
+â•‘  Puerto: ${PORT}                                      â•‘
+â•‘  SQL Server: 128.223.16.29:2450 (SALUS)            â•‘
+â•‘  Supabase: ${supabaseUrl ? 'âœ… Configurado' : 'âŒ FALTA'}                       â•‘
+â•‘                                                    â•‘
+â•‘  Endpoints:                                        â•‘
+â•‘    GET /api/salus/sync-all    (todo de una vez)     â•‘
+â•‘    GET /api/salus/sync/cirugias                     â•‘
+â•‘    GET /api/salus/sync/presupuestos                 â•‘
+â•‘    GET /api/salus/sync/deudas                       â•‘
+â•‘    GET /api/salus/health                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     `);
-    getPool().catch(err => console.warn('⚠️ Conexión inicial fallida:', err.message));
+    getPool().catch(err => console.warn('âš ï¸ ConexiÃ³n inicial fallida:', err.message));
 });
 
 process.on('SIGINT', async () => {
-    console.log('\n🔒 Cerrando...');
+    console.log('\nðŸ”’ Cerrando...');
     if (pool) await pool.close();
     process.exit(0);
 });
+

@@ -13,6 +13,7 @@ const SYNC_MODULES = {
     presupuestos: { label: 'Presupuestos', icon: '💰' },
     deudas: { label: 'Deudas', icon: '📊' },
     altas: { label: 'Altas Adm', icon: '📋' },
+    asociaciones: { label: 'Asociaciones', icon: '🏥' },
 };
 
 export default function SalusSyncButton({ onComplete, addToast }) {
@@ -222,6 +223,7 @@ export default function SalusSyncButton({ onComplete, addToast }) {
                             key === 'cirugias' ? `${r.total} registros → ${r.inserted} nuevos, ${r.updated} actualizados` :
                             key === 'presupuestos' ? `${r.total} filas → ${r.presupuestos} presupuestos, ${r.items} ítems` :
                             key === 'altas' ? `${r.total} registros → ${r.inserted} nuevas, ${r.updated} actualizadas` :
+                            key === 'asociaciones' ? `${r.total} registros → ${r.inserted} nuevos, ${r.updated} actualizados` :
                             `${r.total} filas → ${r.pacientesNuevos} nuevos, ${r.pacientesActualizados} actualizados`
                         )}
                     </div>

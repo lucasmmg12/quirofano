@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
     ClipboardList, History, BookOpen, Settings, PanelLeftClose, PanelLeft,
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
-    ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain, Users,
+    ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain, Users, PackageCheck,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0 }) {
@@ -35,6 +35,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const cirugiasSubItems = [
         { id: 'cirugias', label: 'Control de Cirugías', icon: Stethoscope },
         { id: 'metricas', label: 'Métricas', icon: BarChart3 },
+        { id: 'asociaciones_entrega', label: 'Entrega Asociaciones', icon: PackageCheck },
     ];
 
     const isPedidosActive = pedidosSubItems.some(i => activeView === i.id);
