@@ -1017,7 +1017,7 @@ async function syncAsociacionesCirugias(db) {
 
     const result = await db.request().query(`
         SELECT 
-            CAST(CONVERT(DATETIME, [Fecha realización], 103) AS DATE) AS [Fecha realización],
+            CAST(TRY_CONVERT(DATETIME, [Fecha realización], 103) AS DATE) AS [Fecha realización],
             [Nombre Paciente],
             [Cliente],
             [DNI],
@@ -1027,7 +1027,7 @@ async function syncAsociacionesCirugias(db) {
             [Cirujano]
         FROM [SALUS].[dbo].[TABLEAU_Cirugias]
         WHERE 
-            CONVERT(DATETIME, [Fecha realización], 103) >= '20260301'
+            TRY_CONVERT(DATETIME, [Fecha realización], 103) >= '20260301'
             AND [Especialidad] IN (
                 'CIRUGIA', 
                 'OTORRINOLARINGOLOGIA', 
@@ -1040,7 +1040,7 @@ async function syncAsociacionesCirugias(db) {
                 'NO PROGRAMADA', 
                 'URGENCIA'
             )
-        ORDER BY CONVERT(DATETIME, [Fecha realización], 103) ASC
+        ORDER BY TRY_CONVERT(DATETIME, [Fecha realización], 103) ASC
     `);
     console.log(`   📥 ${result.recordset.length} registros extraídos`);
 
