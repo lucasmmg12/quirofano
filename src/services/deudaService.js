@@ -95,16 +95,16 @@ export async function fetchFacturas(pacienteId) {
     return data || [];
 }
 
-// ─── Presupuestos vinculados por id_paciente_salus ───
+// ─── Presupuestos vinculados por NHC ───
 
-export async function fetchPresupuestosPorIdPaciente(idPacienteSalus) {
-    if (!idPacienteSalus) return [];
-    // presupuestos.id_paciente = idPaciente de SALUS (VIS_Pacientes)
-    // deudas_pacientes.id_paciente_salus = mismo campo
+export async function fetchPresupuestosPorNhc(nhc) {
+    if (!nhc) return [];
+    // presupuestos.nhc = NHC del paciente en VLISE_Presupuestos
+    // deudas_pacientes.nhc = Paciente_NHC de TABLEAU_Detalle de ventas
     const { data, error } = await supabase
         .from('presupuestos')
         .select('id_presupuesto, paciente, fecha, observaciones, aceptado, presup_descripcion, importe_total, importe_cobrado, total_items')
-        .eq('id_paciente', idPacienteSalus)
+        .eq('nhc', nhc)
         .order('fecha', { ascending: false });
     if (error) throw error;
     return data || [];

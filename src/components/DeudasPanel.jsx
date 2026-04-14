@@ -15,7 +15,7 @@ import {
     fetchDeudores, fetchFacturas, fetchSeguimiento, addSeguimiento,
     updateDeudorTelefono, updateDeudorCategoria, importarDeudas,
     fetchMetricasDeudas, fetchWhatsAppTracking, CATEGORIAS_DEUDOR,
-    updateDeudor, fetchPresupuestosPorIdPaciente,
+    updateDeudor, fetchPresupuestosPorNhc,
 } from '../services/deudaService';
 import { parseDeudaExcel } from '../utils/deudaExcelParser';
 import { subscribeToAllIncoming } from '../services/chatService';
@@ -142,10 +142,10 @@ export default function DeudasPanel({ addToast, currentUser }) {
             ]);
             setFacturas(facts);
             setSeguimiento(segs);
-            // Buscar presupuestos vinculados por id_paciente_salus
-            if (deudor.id_paciente_salus) {
+            // Buscar presupuestos vinculados por NHC
+            if (deudor.nhc) {
                 try {
-                    const presups = await fetchPresupuestosPorIdPaciente(deudor.id_paciente_salus);
+                    const presups = await fetchPresupuestosPorNhc(deudor.nhc);
                     setPresupuestos(presups);
                 } catch (e) {
                     console.warn('Error cargando presupuestos:', e);
@@ -922,9 +922,9 @@ export default function DeudasPanel({ addToast, currentUser }) {
                             </h4>
                             {detailLoading ? (
                                 <span style={{ color: '#94A3B8' }}>Cargando...</span>
-                            ) : !selectedDeudor.id_paciente_salus ? (
+                            ) : !selectedDeudor.nhc ? (
                                 <div style={{ padding: '12px', background: '#FEF3C7', borderRadius: '10px', fontSize: '0.78rem', color: '#92400E' }}>
-                                    ⚠️ Este deudor no tiene <strong>id_paciente</strong> vinculado. Ejecutá una sincronización para obtenerlo desde SALUS.
+                                    ⚠️ Este deudor no tiene <strong>NHC</strong> vinculado.
                                 </div>
                             ) : presupuestos.length === 0 ? (
                                 <span style={{ color: '#CBD5E1', fontSize: '0.85rem' }}>Sin presupuestos encontrados para este paciente</span>

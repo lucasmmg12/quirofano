@@ -338,7 +338,7 @@ async function syncCirugias(db) {
 async function syncPresupuestos(db) {
     console.log('💰 [2/7] Extrayendo presupuestos de SALUS...');
     const result = await db.request().query(`
-        SELECT idPresupuesto, idPaciente, Paciente, fecha, Observaciones,
+        SELECT idPresupuesto, idPaciente, Paciente, NHC, fecha, Observaciones,
                idArticulo, descripcion, cantidad, importeUnitario,
                [Importe Total Linea], [Importe Cobrado], Aceptado,
                FechaCaducidad, Presup_descripcion
@@ -360,6 +360,7 @@ async function syncPresupuestos(db) {
             grouped[budgetKey] = {
                 id_presupuesto: parseInt(budgetKey, 10),
                 id_paciente: String(r.idPaciente).trim(),
+                nhc: r.NHC ? String(r.NHC).trim() : null,
                 paciente: r.Paciente?.trim() || null,
                 fecha: formatDate(r.fecha),
                 observaciones: r.Observaciones?.trim() || null,
