@@ -19,11 +19,11 @@ export const ASOCIACION_MAP = {
 };
 
 export const ASOCIACION_COLORS = {
-    'Asociación de Cirujanos': '#0D3B66',       // Azul institucional oscuro
-    'Asociación de Ginecólogos': '#1D4ED8',      // Azul royal
-    'Asociación de Traumatólogos': '#2563EB',    // Azul brillante
-    'Asociación de Cirujanos Pediatras': '#3B82F6', // Azul medio
-    'ORL (Particular)': '#60A5FA',               // Azul claro
+    'Asociación de Cirujanos': '#6366F1',
+    'Asociación de Ginecólogos': '#EC4899',
+    'Asociación de Traumatólogos': '#F59E0B',
+    'Asociación de Cirujanos Pediatras': '#10B981',
+    'ORL (Particular)': '#8B5CF6',
 };
 
 export const ASOCIACION_LIST = Object.values(ASOCIACION_MAP);

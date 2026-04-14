@@ -679,10 +679,11 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                 </button>
             </div>
 
-            {/* Tabs */}
+            {/* Tabs — Estilo fichero */}
             <div style={{
-                display: 'flex', gap: '4px', marginBottom: '16px',
-                background: '#F3F4F6', padding: '4px', borderRadius: '12px',
+                display: 'flex', gap: '0', marginBottom: '0',
+                borderBottom: '2px solid #0D3B66',
+                paddingLeft: '4px',
             }}>
                 {tabs.map(tab => {
                     const Icon = tab.icon;
@@ -692,22 +693,38 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
                             style={{
-                                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                                padding: '10px 16px', borderRadius: '8px', border: 'none',
-                                background: isActive ? '#fff' : 'transparent',
-                                boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                                color: isActive ? '#1F2937' : '#9CA3AF',
-                                fontWeight: isActive ? 700 : 500, fontSize: '0.82rem',
-                                cursor: 'pointer', transition: 'all 0.2s',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                                padding: isActive ? '10px 22px 10px' : '8px 18px 8px',
+                                borderRadius: '10px 10px 0 0',
+                                border: isActive ? '2px solid #0D3B66' : '1px solid #CBD5E1',
+                                borderBottom: isActive ? '2px solid #fff' : '1px solid transparent',
+                                marginBottom: '-2px',
+                                background: isActive
+                                    ? '#fff'
+                                    : 'linear-gradient(180deg, #EFF6FF 0%, #DBEAFE 100%)',
+                                color: isActive ? '#0D3B66' : '#64748B',
+                                fontWeight: isActive ? 800 : 500,
+                                fontSize: '0.82rem',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                position: 'relative',
+                                zIndex: isActive ? 2 : 1,
+                                boxShadow: isActive
+                                    ? '0 -2px 6px rgba(13, 59, 102, 0.08)'
+                                    : 'none',
                             }}
                         >
-                            <Icon size={16} />
+                            <Icon size={15} style={{
+                                color: isActive ? '#0D3B66' : '#94A3B8',
+                            }} />
                             {tab.label}
                             {tab.count > 0 && (
                                 <span style={{
-                                    padding: '1px 7px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 700,
-                                    background: isActive ? '#EEF2FF' : '#E5E7EB',
-                                    color: isActive ? '#4F46E5' : '#9CA3AF',
+                                    padding: '1px 8px', borderRadius: '10px',
+                                    fontSize: '0.68rem', fontWeight: 700,
+                                    background: isActive ? '#0D3B66' : '#94A3B8',
+                                    color: '#fff',
+                                    minWidth: '20px', textAlign: 'center',
                                 }}>
                                     {tab.count}
                                 </span>
