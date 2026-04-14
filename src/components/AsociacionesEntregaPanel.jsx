@@ -6,7 +6,7 @@
  *   2. Carrito de Entrega — agrupar por asociación, generar constancia
  *   3. Historial de Entregas — auditoría de constancias pasadas
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     Package, CheckCircle2, ShoppingCart, History, Search,
     Filter, ChevronDown, ChevronRight, Printer, FileCheck,
@@ -128,6 +128,18 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     const [expandedConstancia, setExpandedConstancia] = useState(null);
     const [constanciaDetalle, setConstanciaDetalle] = useState({});
 
+
+    // Column filters state
+    const [columnFilters, setColumnFilters] = useState({});
+    const [openFilterCol, setOpenFilterCol] = useState(null);
+
+    // Close filter dropdown on outside click
+    useEffect(() => {
+        if (!openFilterCol) return;
+        const handleClick = () => setOpenFilterCol(null);
+        const timer = setTimeout(() => document.addEventListener('click', handleClick), 0);
+        return () => { clearTimeout(timer); document.removeEventListener('click', handleClick); };
+    }, [openFilterCol]);
 
     // Modal for generating constancia
     const [showConstanciaModal, setShowConstanciaModal] = useState(null); // asociacion name
@@ -503,6 +515,120 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     const pendientesCirugias = cirugias.filter(c => !c.en_carrito);
     const enCarritoCirugias = cirugias.filter(c => c.en_carrito);
 
+    // ─── Column-filtered data ───
+    const filteredPendientes = useMemo(() => {
+        return pendientesCirugias.filter(c => {
+            for (const [col, val] of Object.entries(columnFilters)) {
+                if (!val) continue;
+                let cellValue = '';
+                if (col === 'fecha') cellValue = fmtFecha(c.fecha_realizacion);
+                else if (col === 'paciente') cellValue = c.nombre_paciente || '';
+                else if (col === 'dni') cellValue = c.dni || '';
+                else if (col === 'os') cellValue = c.cliente || '';
+                else if (col === 'cirugia') cellValue = c.nombre_cirugia || '';
+                else if (col === 'cirujano') cellValue = c.cirujano || '';
+                else if (col === 'asociacion') cellValue = c.asociacion || '';
+                if (cellValue !== val) return false;
+            }
+            return true;
+        });
+    }, [pendientesCirugias, columnFilters]);
+
+    // ─── Unique values for column filter dropdowns ───
+    const columnUniqueValues = useMemo(() => {
+        const cols = ['fecha', 'paciente', 'dni', 'os', 'cirugia', 'cirujano', 'asociacion'];
+        const result = {};
+        cols.forEach(col => {
+            const vals = new Set();
+            pendientesCirugias.forEach(c => {
+                let v = '';
+                if (col === 'fecha') v = fmtFecha(c.fecha_realizacion);
+                else if (col === 'paciente') v = c.nombre_paciente || '';
+                else if (col === 'dni') v = c.dni || '';
+                else if (col === 'os') v = c.cliente || '';
+                else if (col === 'cirugia') v = c.nombre_cirugia || '';
+                else if (col === 'cirujano') v = c.cirujano || '';
+                else if (col === 'asociacion') v = c.asociacion || '';
+                if (v) vals.add(v);
+            });
+            result[col] = [...vals].sort();
+        });
+        return result;
+    }, [pendientesCirugias]);
+
+    const activeFilterCount = Object.values(columnFilters).filter(Boolean).length;
+
+    const FilterableHeader = ({ label, colKey, width }) => {
+        const isOpen = openFilterCol === colKey;
+        const isFiltered = !!columnFilters[colKey];
+        const uniqueVals = columnUniqueValues[colKey] || [];
+        return (
+            <th style={{ ...thStyle, width, position: 'relative', userSelect: 'none' }}>
+                <div
+                    onClick={() => setOpenFilterCol(isOpen ? null : colKey)}
+                    style={{
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                        cursor: 'pointer', color: isFiltered ? '#0D3B66' : undefined,
+                    }}
+                >
+                    {label}
+                    <Filter size={11} style={{
+                        color: isFiltered ? '#0D3B66' : '#CBD5E1',
+                        flexShrink: 0,
+                    }} />
+                    {isFiltered && (
+                        <span style={{
+                            width: '6px', height: '6px', borderRadius: '50%',
+                            background: '#0D3B66', flexShrink: 0,
+                        }} />
+                    )}
+                </div>
+                {isOpen && (
+                    <div
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                            position: 'absolute', top: '100%', left: 0, zIndex: 100,
+                            minWidth: '180px', maxHeight: '260px', overflowY: 'auto',
+                            background: '#fff', border: '1px solid #E2E8F0',
+                            borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                            padding: '4px', marginTop: '2px',
+                        }}
+                    >
+                        <button
+                            onClick={() => { setColumnFilters(prev => ({ ...prev, [colKey]: null })); setOpenFilterCol(null); }}
+                            style={{
+                                display: 'block', width: '100%', textAlign: 'left',
+                                padding: '6px 10px', border: 'none', borderRadius: '6px',
+                                background: !columnFilters[colKey] ? '#EFF6FF' : 'transparent',
+                                color: '#0D3B66', fontSize: '0.75rem', fontWeight: 600,
+                                cursor: 'pointer', marginBottom: '2px',
+                            }}
+                        >
+                            ✕ Todos ({uniqueVals.length})
+                        </button>
+                        {uniqueVals.map(val => (
+                            <button
+                                key={val}
+                                onClick={() => { setColumnFilters(prev => ({ ...prev, [colKey]: val })); setOpenFilterCol(null); }}
+                                style={{
+                                    display: 'block', width: '100%', textAlign: 'left',
+                                    padding: '5px 10px', border: 'none', borderRadius: '6px',
+                                    background: columnFilters[colKey] === val ? '#DBEAFE' : 'transparent',
+                                    color: columnFilters[colKey] === val ? '#1D4ED8' : '#374151',
+                                    fontSize: '0.73rem', fontWeight: columnFilters[colKey] === val ? 700 : 400,
+                                    cursor: 'pointer', overflow: 'hidden',
+                                    textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                }}
+                            >
+                                {val}
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </th>
+        );
+    };
+
     // Tab config
     const tabs = [
         { id: 'pendientes', label: 'Cirugías Pendientes', icon: FileCheck, count: pendientesCirugias.length },
@@ -687,18 +813,46 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                                 <thead>
                                     <tr style={{ background: '#F9FAFB' }}>
-                                        <th style={thStyle}>Fecha</th>
-                                        <th style={thStyle}>Paciente</th>
-                                        <th style={thStyle}>DNI</th>
-                                        <th style={thStyle}>OS</th>
-                                        <th style={thStyle}>Cirugía</th>
-                                        <th style={thStyle}>Cirujano</th>
-                                        <th style={thStyle}>Asociación</th>
+                                        <FilterableHeader label="Fecha" colKey="fecha" />
+                                        <FilterableHeader label="Paciente" colKey="paciente" />
+                                        <FilterableHeader label="DNI" colKey="dni" />
+                                        <FilterableHeader label="Obra Social" colKey="os" />
+                                        <FilterableHeader label="Cirugía" colKey="cirugia" />
+                                        <FilterableHeader label="Cirujano" colKey="cirujano" />
+                                        <FilterableHeader label="Asociación" colKey="asociacion" />
                                         <th style={{ ...thStyle, textAlign: 'center', width: '80px' }}>Docs ✓</th>
                                     </tr>
+                                    {activeFilterCount > 0 && (
+                                        <tr>
+                                            <td colSpan={8} style={{
+                                                padding: '4px 10px', background: '#EFF6FF',
+                                                borderBottom: '1px solid #DBEAFE',
+                                            }}>
+                                                <div style={{
+                                                    display: 'flex', alignItems: 'center', gap: '8px',
+                                                    fontSize: '0.72rem', color: '#1E40AF',
+                                                }}>
+                                                    <Filter size={12} />
+                                                    <strong>{activeFilterCount} filtro{activeFilterCount > 1 ? 's' : ''} activo{activeFilterCount > 1 ? 's' : ''}</strong>
+                                                    <span style={{ color: '#3B82F6' }}>— {filteredPendientes.length} de {pendientesCirugias.length} registros</span>
+                                                    <button
+                                                        onClick={() => setColumnFilters({})}
+                                                        style={{
+                                                            marginLeft: 'auto', background: '#DBEAFE',
+                                                            border: 'none', borderRadius: '6px',
+                                                            padding: '2px 8px', cursor: 'pointer',
+                                                            fontSize: '0.7rem', fontWeight: 600, color: '#1D4ED8',
+                                                        }}
+                                                    >
+                                                        Limpiar filtros
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
                                 </thead>
                                 <tbody>
-                                    {pendientesCirugias.map(c => {
+                                    {filteredPendientes.map(c => {
                                         const color = ASOCIACION_COLORS[c.asociacion] || '#6B7280';
                                         return (
                                             <tr key={c.id} style={{
