@@ -134,7 +134,7 @@ const EXCLUDED_NAME_PREFIXES = ['BLOQUE'];
 // SYNC CIRUGÃAS â€” SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncCirugias(db) {
-    console.log('ðŸ“‹ [1/5] Extrayendo cirugÃ­as de SALUS...');
+    console.log('ðŸ“‹ [1/7] Extrayendo cirugÃ­as de SALUS...');
     const result = await db.request().query(`
         SELECT TOP 400
             CAST(A.Data AS DATE) AS Data_Fecha,
@@ -333,7 +333,7 @@ async function syncCirugias(db) {
 // SYNC PRESUPUESTOS â€” SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncPresupuestos(db) {
-    console.log('ðŸ’° [2/5] Extrayendo presupuestos de SALUS...');
+    console.log('ðŸ’° [2/7] Extrayendo presupuestos de SALUS...');
     const result = await db.request().query(`
         SELECT idPresupuesto, idPaciente, Paciente, fecha, Observaciones,
                idArticulo, descripcion, cantidad, importeUnitario,
@@ -432,7 +432,7 @@ async function syncPresupuestos(db) {
 // SYNC DEUDAS â€” SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncDeudas(db) {
-    console.log('ðŸ“Š [3/5] Extrayendo deudas de SALUS...');
+    console.log('ðŸ“Š [3/7] Extrayendo deudas de SALUS...');
     const result = await db.request().query(`
         SELECT TOP 1000
             T.[Fecha albaran], T.Paciente, T.Paciente_NHC, T.Paciente_NIF,
@@ -618,7 +618,7 @@ async function syncDeudas(db) {
 // SYNC ALTAS ADMINISTRATIVAS â€” SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncAltasAdministrativas(db) {
-    console.log('ðŸ“‹ [4/5] Extrayendo altas administrativas de SALUS...');
+    console.log('ðŸ“‹ [4/7] Extrayendo altas administrativas de SALUS...');
 
     // Rango: Ãºltimos 60 dÃ­as de altas
     const result = await db.request().query(`
@@ -759,7 +759,7 @@ async function syncAltasAdministrativas(db) {
 // Fuente: PR_FACTURAS_QRY (dedup por idVisita)
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncFacturacionSede(db) {
-    console.log('ðŸ’° [5/5] Extrayendo facturaciÃ³n Sede Santa Fe de SALUS...');
+    console.log('ðŸ’° [5/7] Extrayendo facturaciÃ³n Sede Santa Fe de SALUS...');
 
     // Rango: mes en curso (formato seguro YYYYMMDD)
     const hoy = new Date();
@@ -901,7 +901,7 @@ async function syncFacturacionSede(db) {
 // Fuente: VLISE_Visitas (Centro SANTA FE, Asistencia = Presente)
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncVisitasSede(db) {
-    console.log('ðŸ¥ [6/6] Extrayendo visitas Sede Santa Fe de SALUS...');
+    console.log('ðŸ¥ [6/7] Extrayendo visitas Sede Santa Fe de SALUS...');
 
     // Rango: mes en curso
     const hoy = new Date();
@@ -1308,6 +1308,7 @@ app.listen(PORT, '0.0.0.0', () => {
 â•‘    GET /api/salus/sync/cirugias                     â•‘
 â•‘    GET /api/salus/sync/presupuestos                 â•‘
 â•‘    GET /api/salus/sync/deudas                       â•‘
+â•‘    GET /api/salus/sync/asociaciones                     â•‘
 â•‘    GET /api/salus/health                            â•‘
 â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     `);
