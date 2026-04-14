@@ -253,7 +253,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
             }
 
             const { default: jsPDF } = await import('jspdf');
-            await import('jspdf-autotable');
+            const { default: autoTable } = await import('jspdf-autotable');
             const doc = new jsPDF();
             const pageW = doc.internal.pageSize.getWidth();
             const pageH = doc.internal.pageSize.getHeight();
@@ -365,7 +365,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                 ];
             });
 
-            doc.autoTable({
+            autoTable(doc, {
                 startY: y,
                 head: [['#', 'Fecha', 'Paciente', 'DNI', 'Obra Social', 'Cirugía', 'Cirujano']],
                 body: tableBody,
