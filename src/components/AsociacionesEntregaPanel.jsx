@@ -589,7 +589,15 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                 else if (col === 'asociacion') v = c.asociacion || '';
                 if (v) vals.add(v);
             });
-            result[col] = [...vals].sort();
+            result[col] = [...vals].sort((a, b) => {
+                if (col === 'fecha') {
+                    // Parse dd/mm/yyyy to comparable dates (newest first)
+                    const [da, ma, ya] = a.split('/');
+                    const [db, mb, yb] = b.split('/');
+                    return new Date(yb, mb - 1, db) - new Date(ya, ma - 1, da);
+                }
+                return a.localeCompare(b);
+            });
         });
         return result;
     }, [pendientesCirugias]);
