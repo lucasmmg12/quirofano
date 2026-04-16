@@ -30,10 +30,10 @@
     top: 0;
     bottom: 0;
     width: var(--sidebar-width);
-    background: linear-gradient(rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.95)), url('/SANARG2021_fondo.webp');
+    background: linear-gradient(rgba(10, 37, 64, 0.85), rgba(10, 37, 64, 0.95)), url('/SANARG2021_fondo.webp');
     background-size: cover;
     background-position: center;
-    border-right: 1px solid var(--neutral-200);
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
     display: flex;
     flex-direction: column;
     z-index: 100;
@@ -50,7 +50,7 @@
     align-items: center;
     justify-content: space-between;
     padding: var(--space-5);
-    border-bottom: 1px solid var(--neutral-100);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     min-height: var(--header-height);
 }
 
@@ -74,13 +74,13 @@
 .sidebar__brand-name {
     font-weight: 700;
     font-size: 0.95rem;
-    color: var(--primary-500);
+    color: #ffffff;
 }
 
 .sidebar__brand-sub {
     font-weight: 400;
     font-size: 0.75rem;
-    color: var(--neutral-500);
+    color: rgba(255, 255, 255, 0.7);
 }
 
 .sidebar__toggle {
@@ -90,14 +90,14 @@
     width: 32px;
     height: 32px;
     border-radius: var(--radius-md);
-    color: var(--neutral-500);
+    color: rgba(255, 255, 255, 0.7);
     transition: all var(--transition-fast);
     flex-shrink: 0;
 }
 
 .sidebar__toggle:hover {
-    background: var(--neutral-100);
-    color: var(--neutral-700);
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
 }
 
 .sidebar__nav {
@@ -115,7 +115,7 @@
     gap: var(--space-3);
     padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-lg);
-    color: var(--neutral-600);
+    color: rgba(255, 255, 255, 0.7);
     font-size: 0.875rem;
     font-weight: 500;
     transition: all var(--transition-fast);
@@ -124,21 +124,21 @@
 }
 
 .sidebar__item:hover {
-    background: var(--neutral-50);
-    color: var(--primary-600);
+    background: rgba(255, 255, 255, 0.05);
+    color: #ffffff;
     padding-left: calc(var(--space-4) + 3px);
-    border-left: 3px solid var(--primary-400);
+    border-left: 3px solid rgba(255, 255, 255, 0.5);
     border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
 }
 
 .sidebar__item--active {
-    background: var(--primary-50);
-    color: var(--primary-600);
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
     font-weight: 600;
 }
 
 .sidebar__item--active:hover {
-    background: var(--primary-100);
+    background: rgba(255, 255, 255, 0.15);
 }
 
 .sidebar__item-icon {
@@ -158,13 +158,13 @@
     transform: translateY(-50%);
     width: 3px;
     height: 20px;
-    background: var(--primary-500);
+    background: #ffffff;
     border-radius: 0 var(--radius-full) var(--radius-full) 0;
 }
 
 .sidebar__footer {
     padding: var(--space-4);
-    border-top: 1px solid var(--neutral-100);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .sidebar__footer-info {
@@ -173,12 +173,12 @@
 
 .sidebar__footer-version {
     font-size: 0.7rem;
-    color: var(--neutral-400);
+    color: rgba(255, 255, 255, 0.5);
 }
 
 .sidebar__footer-by {
     font-size: 0.65rem;
-    color: var(--neutral-300);
+    color: rgba(255, 255, 255, 0.4);
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;

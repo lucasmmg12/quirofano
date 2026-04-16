@@ -71,8 +71,8 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     style={{
                         display: 'flex', alignItems: 'center', gap: '10px',
                         width: '100%', padding: '10px 16px', border: 'none',
-                        background: isGroupActive ? 'var(--primary-50, #EFF6FF)' : 'transparent',
-                        color: isGroupActive ? 'var(--primary-500, #3B82F6)' : 'var(--neutral-500, #64748B)',
+                        background: isGroupActive ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                        color: isGroupActive ? '#ffffff' : 'rgba(255, 255, 255, 0.7)',
                         cursor: 'pointer', borderRadius: 'var(--radius-md, 8px)',
                         fontSize: '0.82rem', fontWeight: 700, transition: 'all 0.15s',
                         textAlign: 'left',
@@ -90,7 +90,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
 
                 {isOpen && (
                     <div className="animate-fade-in" style={{
-                        marginLeft: '20px', borderLeft: '2px solid var(--neutral-200, #E2E8F0)',
+                        marginLeft: '20px', borderLeft: '2px solid rgba(255, 255, 255, 0.2)',
                         paddingLeft: '0', marginTop: '2px',
                     }}>
                         {subItems.map(item => {
@@ -185,7 +185,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                 {/* ─── Separador visual ─── */}
                 {!collapsed && (
                     <div style={{
-                        height: '1px', background: 'var(--neutral-200, #E2E8F0)',
+                        height: '1px', background: 'rgba(255, 255, 255, 0.1)',
                         margin: '4px 16px 4px',
                     }} />
                 )}
