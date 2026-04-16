@@ -4,6 +4,7 @@ import { Microscope, Search, Filter, RefreshCw, Check, Clock, FileText, Download
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import ModulosQuantity from './ModulosQuantity';
 import { getEstadoFacturacion } from '../utils/facturacionRules';
 
 export default function LaboratoriosPanel({ addToast, currentUser }) {
@@ -41,7 +42,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
         loadData();
     }, [loadData]);
 
-    const handleAssignModulo = async (id_visita, newModulo) => {
+    const handleAssignModulo = async (id_visita, modA, modB, modC) => {
         const timestamp = new Date().toISOString();
         const username = currentUser?.nombre || 'Desconocido';
 
@@ -49,7 +50,9 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
             const { error } = await supabase
                 .from('laboratorios_anatomia_patologica')
                 .update({
-                    modulo_asignado: newModulo,
+                    modulo_a_qty: modA,
+                    modulo_b_qty: modB,
+                    modulo_c_qty: modC,
                     clasificado_at: timestamp,
                     clasificado_por: username
                 })
@@ -59,10 +62,10 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
 
             setRecords(prev => prev.map(r => 
                 r.id_visita === id_visita 
-                    ? { ...r, modulo_asignado: newModulo, clasificado_at: timestamp, clasificado_por: username } 
+                    ? { ...r, modulo_a_qty: modA, modulo_b_qty: modB, modulo_c_qty: modC, clasificado_at: timestamp, clasificado_por: username } 
                     : r
             ));
-            addToast(`Módulo actualizado a ${newModulo}`, 'success');
+            addToast(`Módulo actualizado`, 'success');
         } catch (err) {
             console.error('Error updating modulo:', err);
             addToast('Error al asignar módulo', 'error');
@@ -90,6 +93,12 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
 
             const estado = getEstadoFacturacion(r.cliente, r.laboratorio);
 
+            let modText = [];
+            if (r.modulo_a_qty > 0) modText.push(`A: ${r.modulo_a_qty}`);
+            if (r.modulo_b_qty > 0) modText.push(`B: ${r.modulo_b_qty}`);
+            if (r.modulo_c_qty > 0) modText.push(`C: ${r.modulo_c_qty}`);
+            const modSummary = modText.length > 0 ? modText.join(', ') : (r.modulo_asignado || 'Sin asignar');
+
             tableRows.push([
                 date,
                 r.paciente || 'S/D',
@@ -98,7 +107,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 r.coseguro || '-',
                 r.laboratorio || '-',
                 biopsias.length > 0 ? biopsias.join('\n') : '-',
-                r.modulo_asignado || 'Sin asignar',
+                modSummary,
                 estado
             ]);
         });
@@ -120,6 +129,12 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
             if (r.biopsia_simple) biopsias.push(`S: ${r.biopsia_simple}`);
             if (r.biopsia_ampliada) biopsias.push(`A: ${r.biopsia_ampliada}`);
 
+            let modText = [];
+            if (r.modulo_a_qty > 0) modText.push(`A: ${r.modulo_a_qty}`);
+            if (r.modulo_b_qty > 0) modText.push(`B: ${r.modulo_b_qty}`);
+            if (r.modulo_c_qty > 0) modText.push(`C: ${r.modulo_c_qty}`);
+            const modSummary = modText.length > 0 ? modText.join(', ') : (r.modulo_asignado || 'Sin asignar');
+
             return {
                 Fecha: r.fecha_visita ? new Date(r.fecha_visita).toLocaleDateString('es-AR') : '',
                 Paciente: r.paciente || '',
@@ -128,7 +143,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 Coseguro: r.coseguro || '',
                 Laboratorio: r.laboratorio || '',
                 Muestras: biopsias.join(' | '),
-                Modulo_Asignado: r.modulo_asignado || 'Sin asignar',
+                Modulo_Asignado: modSummary,
                 Accion_Facturacion: getEstadoFacturacion(r.cliente, r.laboratorio)
             };
         });
@@ -153,9 +168,10 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 (r.dni?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
                 (r.laboratorio?.toLowerCase() || '').includes(searchTerm.toLowerCase());
             
+            const isAssigned = r.modulo_a_qty > 0 || r.modulo_b_qty > 0 || r.modulo_c_qty > 0 || r.modulo_asignado;
             const matchFilter = filterModulo === 'all' || 
-                (filterModulo === 'unassigned' && !r.modulo_asignado) ||
-                (filterModulo === 'assigned' && r.modulo_asignado) ||
+                (filterModulo === 'unassigned' && !isAssigned) ||
+                (filterModulo === 'assigned' && isAssigned) ||
                 r.modulo_asignado === filterModulo;
 
             const matchLab = filterLaboratorio === 'all' || r.laboratorio === filterLaboratorio;
@@ -324,38 +340,9 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                             {!r.biopsia_congelacion && !r.biopsia_simple && !r.biopsia_ampliada && '-'}
                                         </div>
                                     </td>
-                                    <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                                        {r.modulo_asignado ? (
-                                            <div style={{ display: 'inline-block', textAlign: 'left' }}>
-                                                <div style={{ 
-                                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                    padding: '4px 10px', background: '#F5F3FF', color: '#7C3AED', 
-                                                    borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, border: '1px solid #DDD6FE'
-                                                }}>
-                                                    <Check size={12} />
-                                                    {r.modulo_asignado}
-                                                </div>
-                                                <div style={{ fontSize: '0.65rem', color: 'var(--neutral-400)', marginTop: '4px' }}>
-                                                    {r.clasificado_por} • {new Date(r.clasificado_at).toLocaleDateString('es-AR')}
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <select
-                                                onChange={(e) => handleAssignModulo(r.id_visita, e.target.value)}
-                                                defaultValue=""
-                                                style={{
-                                                    padding: '6px 12px', borderRadius: '6px', border: '1px solid #CBD5E1', 
-                                                    fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-600)', 
-                                                    background: '#fff', cursor: 'pointer', outline: 'none'
-                                                }}
-                                            >
-                                                <option value="" disabled>Asignar Módulo...</option>
-                                                {MODULOS.map(m => (
-                                                    <option key={m} value={m}>{m}</option>
-                                                ))}
-                                            </select>
-                                        )}
-                                    </td>
+                                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                            <ModulosQuantity record={r} onSave={handleAssignModulo} readonly={true} />
+                                        </td>
                                     <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                                         <div style={{ 
                                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

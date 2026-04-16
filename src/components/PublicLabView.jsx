@@ -4,6 +4,7 @@ import { Microscope, Search, RefreshCw, FileText, Download } from 'lucide-react'
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import ModulosQuantity from './ModulosQuantity';
 
 export default function PublicLabView({ labName }) {
     const [loading, setLoading] = useState(true);
@@ -36,7 +37,7 @@ export default function PublicLabView({ labName }) {
         }
     }, [labName]);
 
-    const updateModulo = async (id_visita, newModulo) => {
+    const updateModulo = async (id_visita, modA, modB, modC) => {
         try {
             const timestamp = new Date().toISOString();
             const username = `Portal ${labName}`;
@@ -44,7 +45,9 @@ export default function PublicLabView({ labName }) {
             const { error } = await supabase
                 .from('laboratorios_anatomia_patologica')
                 .update({ 
-                    modulo_asignado: newModulo,
+                    modulo_a_qty: modA,
+                    modulo_b_qty: modB,
+                    modulo_c_qty: modC,
                     clasificado_at: timestamp,
                     clasificado_por: username
                 })
@@ -54,7 +57,7 @@ export default function PublicLabView({ labName }) {
 
             setRecords(prev => prev.map(r => 
                 r.id_visita === id_visita 
-                    ? { ...r, modulo_asignado: newModulo, clasificado_at: timestamp, clasificado_por: username } 
+                    ? { ...r, modulo_a_qty: modA, modulo_b_qty: modB, modulo_c_qty: modC, clasificado_at: timestamp, clasificado_por: username } 
                     : r
             ));
         } catch (err) {
@@ -117,6 +120,12 @@ export default function PublicLabView({ labName }) {
             if (r.biopsia_ampliada) biopsias.push(`A: ${r.biopsia_ampliada}`);
             if (biopsias.length === 0) biopsias.push('Ninguna');
 
+            let modText = [];
+            if (r.modulo_a_qty > 0) modText.push(`A: ${r.modulo_a_qty}`);
+            if (r.modulo_b_qty > 0) modText.push(`B: ${r.modulo_b_qty}`);
+            if (r.modulo_c_qty > 0) modText.push(`C: ${r.modulo_c_qty}`);
+            const modSummary = modText.length > 0 ? modText.join(', ') : (r.modulo_asignado || 'Sin asignar');
+
             tableRows.push([
                 date,
                 r.paciente || 'S/D',
@@ -124,7 +133,7 @@ export default function PublicLabView({ labName }) {
                 r.cliente || '-',
                 r.coseguro || '-',
                 biopsias.join('\n'),
-                r.modulo_asignado || 'Sin asignar'
+                modSummary
             ]);
         });
 
@@ -145,6 +154,12 @@ export default function PublicLabView({ labName }) {
             if (r.biopsia_simple) biopsias.push(`S: ${r.biopsia_simple}`);
             if (r.biopsia_ampliada) biopsias.push(`A: ${r.biopsia_ampliada}`);
 
+            let modText = [];
+            if (r.modulo_a_qty > 0) modText.push(`A: ${r.modulo_a_qty}`);
+            if (r.modulo_b_qty > 0) modText.push(`B: ${r.modulo_b_qty}`);
+            if (r.modulo_c_qty > 0) modText.push(`C: ${r.modulo_c_qty}`);
+            const modSummary = modText.length > 0 ? modText.join(', ') : (r.modulo_asignado || 'Sin asignar');
+
             return {
                 Fecha: r.fecha_visita ? new Date(r.fecha_visita).toLocaleDateString('es-AR') : '',
                 Paciente: r.paciente || '',
@@ -152,7 +167,7 @@ export default function PublicLabView({ labName }) {
                 ObraSocial: r.cliente || '',
                 Coseguro: r.coseguro || '',
                 Muestras: biopsias.join(' | ') || 'Ninguna',
-                Modulo: r.modulo_asignado || 'Sin asignar'
+                Modulo: modSummary
             };
         });
 
@@ -246,20 +261,7 @@ export default function PublicLabView({ labName }) {
                                             {renderBiopsies(r)}
                                         </td>
                                         <td style={{ padding: '16px' }}>
-                                            <select
-                                                value={r.modulo_asignado || ''}
-                                                onChange={(e) => updateModulo(r.id_visita, e.target.value)}
-                                                style={{
-                                                    padding: '6px 12px', borderRadius: '6px', border: `1px solid ${r.modulo_asignado ? '#C7D2FE' : '#E2E8F0'}`,
-                                                    background: r.modulo_asignado ? '#EEF2FF' : '#fff', color: r.modulo_asignado ? '#4F46E5' : '#64748B',
-                                                    fontWeight: 600, fontSize: '0.85rem', outline: 'none', cursor: 'pointer'
-                                                }}
-                                            >
-                                                <option value="" disabled>Seleccione Módulo</option>
-                                                {MODULOS.map(m => (
-                                                    <option key={m} value={m}>{m}</option>
-                                                ))}
-                                            </select>
+                                            <ModulosQuantity record={r} onSave={updateModulo} readonly={false} />
                                         </td>
                                     </tr>
                                 ))}

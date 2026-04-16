@@ -17,7 +17,10 @@ CREATE TABLE IF NOT EXISTS public.laboratorios_anatomia_patologica (
     material_biopsia_ampliada TEXT,
     
     -- Campos gestionados por la plataforma
-    modulo_asignado TEXT, -- 'Módulo A', 'Módulo B', 'Módulo C', etc.
+    modulo_asignado TEXT, -- DEPRECATED
+    modulo_a_qty INTEGER DEFAULT 0,
+    modulo_b_qty INTEGER DEFAULT 0,
+    modulo_c_qty INTEGER DEFAULT 0,
     clasificado_at TIMESTAMPTZ,
     clasificado_por TEXT, -- Puede conectarse con id de usuario o nombre
     
