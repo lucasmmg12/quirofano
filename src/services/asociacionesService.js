@@ -37,7 +37,8 @@ export async function fetchAsociacionesCirugias({ asociacion, fechaDesde, fechaH
     let query = supabase
         .from('asociaciones_cirugias')
         .select('*')
-        .order('fecha_realizacion', { ascending: false });
+        .order('fecha_realizacion', { ascending: false })
+        .limit(10000);
 
     if (soloSinConstancia) {
         query = query.is('constancia_id', null);
@@ -135,7 +136,8 @@ export async function fetchCarrito() {
         .eq('en_carrito', true)
         .is('constancia_id', null)
         .order('asociacion')
-        .order('fecha_realizacion', { ascending: true });
+        .order('fecha_realizacion', { ascending: true })
+        .limit(10000);
 
     if (error) throw error;
 
@@ -278,7 +280,8 @@ export async function fetchConstanciaParaImpresion(constanciaId) {
 export async function fetchResumenAsociaciones() {
     const { data, error } = await supabase
         .from('asociaciones_cirugias')
-        .select('asociacion, docs_completos, en_carrito, constancia_id');
+        .select('asociacion, docs_completos, en_carrito, constancia_id')
+        .limit(10000);
 
     if (error) throw error;
 
