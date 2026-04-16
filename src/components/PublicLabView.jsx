@@ -106,7 +106,7 @@ export default function PublicLabView({ labName }) {
         doc.setFontSize(10);
         doc.text(`Fecha de exportación: ${new Date().toLocaleDateString('es-AR')}`, 14, 28);
 
-        const tableColumn = ["Fecha", "Paciente", "DNI", "Muestras / Biopsias", "Módulo"];
+        const tableColumn = ["Fecha", "Paciente", "DNI", "Obra Social", "Coseguro", "Muestras / Biopsias", "Módulo"];
         const tableRows = [];
 
         filteredRecords.forEach(r => {
@@ -121,6 +121,8 @@ export default function PublicLabView({ labName }) {
                 date,
                 r.paciente || 'S/D',
                 r.dni || 'S/D',
+                r.cliente || '-',
+                r.coseguro || '-',
                 biopsias.join('\n'),
                 r.modulo_asignado || 'Sin asignar'
             ]);
@@ -147,6 +149,8 @@ export default function PublicLabView({ labName }) {
                 Fecha: r.fecha_visita ? new Date(r.fecha_visita).toLocaleDateString('es-AR') : '',
                 Paciente: r.paciente || '',
                 DNI: r.dni || '',
+                ObraSocial: r.cliente || '',
+                Coseguro: r.coseguro || '',
                 Muestras: biopsias.join(' | ') || 'Ninguna',
                 Modulo: r.modulo_asignado || 'Sin asignar'
             };
@@ -204,6 +208,7 @@ export default function PublicLabView({ labName }) {
                                 <tr style={{ background: '#F8FAFC' }}>
                                     <th style={{ padding: '16px', color: '#64748B', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid #E2E8F0' }}>Fecha</th>
                                     <th style={{ padding: '16px', color: '#64748B', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid #E2E8F0' }}>Paciente</th>
+                                    <th style={{ padding: '16px', color: '#64748B', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid #E2E8F0' }}>Cobertura</th>
                                     <th style={{ padding: '16px', color: '#64748B', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid #E2E8F0' }}>Muestras / Biopsias</th>
                                     <th style={{ padding: '16px', color: '#64748B', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid #E2E8F0' }}>Módulo</th>
                                 </tr>
@@ -211,7 +216,7 @@ export default function PublicLabView({ labName }) {
                             <tbody>
                                 {loading && (
                                     <tr>
-                                        <td colSpan={4} style={{ padding: '40px', textAlign: 'center', color: '#94A3B8' }}>
+                                        <td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: '#94A3B8' }}>
                                             <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 12px' }} />
                                             Cargando información...
                                         </td>
@@ -219,7 +224,7 @@ export default function PublicLabView({ labName }) {
                                 )}
                                 {!loading && filteredRecords.length === 0 && (
                                     <tr>
-                                        <td colSpan={4} style={{ padding: '40px', textAlign: 'center', color: '#94A3B8' }}>
+                                        <td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: '#94A3B8' }}>
                                             No se encontraron registros.
                                         </td>
                                     </tr>
@@ -232,6 +237,10 @@ export default function PublicLabView({ labName }) {
                                         <td style={{ padding: '16px' }}>
                                             <div style={{ fontWeight: 600, color: '#1E293B' }}>{r.paciente}</div>
                                             <div style={{ fontSize: '0.85rem', color: '#64748B' }}>DNI: {r.dni || 'S/D'}</div>
+                                        </td>
+                                        <td style={{ padding: '16px' }}>
+                                            <div style={{ color: '#334155', fontSize: '0.85rem' }}>{r.cliente || '-'}</div>
+                                            <div style={{ fontSize: '0.8rem', color: '#64748B' }}>{r.coseguro ? `Coseguro: ${r.coseguro}` : ''}</div>
                                         </td>
                                         <td style={{ padding: '16px' }}>
                                             {renderBiopsies(r)}

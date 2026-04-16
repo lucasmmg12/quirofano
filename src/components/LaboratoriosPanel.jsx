@@ -78,7 +78,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
         doc.setFontSize(10);
         doc.text(`Filtros: Lab: ${filterLaboratorio !== 'all' ? filterLaboratorio : 'Todos'} | Modulo: ${filterModulo !== 'all' ? filterModulo : 'Todos'}`, 14, 28);
 
-        const tableColumn = ["Fecha", "Paciente", "DNI", "Obra Social", "Laboratorio", "Muestras / Biopsias", "Módulo", "Acción"];
+        const tableColumn = ["Fecha", "Paciente", "DNI", "Obra Social", "Coseguro", "Laboratorio", "Muestras / Biopsias", "Módulo", "Acción"];
         const tableRows = [];
 
         filteredRecords.forEach(r => {
@@ -95,6 +95,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 r.paciente || 'S/D',
                 r.dni || 'S/D',
                 r.cliente || '-',
+                r.coseguro || '-',
                 r.laboratorio || '-',
                 biopsias.length > 0 ? biopsias.join('\n') : '-',
                 r.modulo_asignado || 'Sin asignar',
@@ -124,6 +125,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 Paciente: r.paciente || '',
                 DNI: r.dni || '',
                 ObraSocial: r.cliente || '',
+                Coseguro: r.coseguro || '',
                 Laboratorio: r.laboratorio || '',
                 Muestras: biopsias.join(' | '),
                 Modulo_Asignado: r.modulo_asignado || 'Sin asignar',
@@ -273,6 +275,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                 <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)' }}>Fecha</th>
                                 <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)' }}>Paciente</th>
                                 <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)' }}>Obra Social</th>
+                                <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)' }}>Coseguro</th>
                                 <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)' }}>Laboratorio</th>
                                 <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)' }}>Muestra / Biopsia</th>
                                 <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)', textAlign: 'center' }}>Módulo Asignado</th>
@@ -306,6 +309,9 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                     </td>
                                     <td style={{ padding: '12px 16px', fontSize: '0.8rem', color: 'var(--neutral-600)', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.cliente}>
                                         {r.cliente || '-'}
+                                    </td>
+                                    <td style={{ padding: '12px 16px', fontSize: '0.8rem', color: 'var(--neutral-600)' }}>
+                                        {r.coseguro || '-'}
                                     </td>
                                     <td style={{ padding: '12px 16px', fontSize: '0.85rem', color: 'var(--neutral-600)' }}>
                                         {r.laboratorio || '-'}

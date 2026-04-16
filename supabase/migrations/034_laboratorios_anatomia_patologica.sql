@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS public.laboratorios_anatomia_patologica (
     paciente TEXT,
     dni TEXT,
     cliente TEXT,
+    coseguro TEXT,
     laboratorio TEXT,
     biopsia_congelacion TEXT,
     biopsia_simple TEXT,
