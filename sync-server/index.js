@@ -1206,15 +1206,15 @@ async function syncLaboratorios(db) {
         records.push({
             id_visita: idVisita,
             fecha_visita: fecha,
-            paciente: r.Paciente?.trim() || null,
+            paciente: r.Paciente ? String(r.Paciente).trim() : null,
             dni: r.NIF ? String(r.NIF).trim() : null,
-            cliente: r.Cliente?.trim() || null,
-            laboratorio: r.Laboratorio?.trim() || null,
-            biopsia_congelacion: r['Biopsia por congelación']?.trim() || null,
-            biopsia_simple: r['Biopsia simple']?.trim() || null,
-            material_biopsia_simple: r['Material Remitido (Biopsia simple)']?.trim() || null,
-            biopsia_ampliada: r['Biopsia ampliada']?.trim() || null,
-            material_biopsia_ampliada: r['Material remitido (Biopsia ampliada)']?.trim() || null,
+            cliente: r.Cliente ? String(r.Cliente).trim() : null,
+            laboratorio: r.Laboratorio ? String(r.Laboratorio).trim() : null,
+            biopsia_congelacion: r['Biopsia por congelación'] ? String(r['Biopsia por congelación']).trim() : null,
+            biopsia_simple: r['Biopsia simple'] ? String(r['Biopsia simple']).trim() : null,
+            material_biopsia_simple: r['Material Remitido (Biopsia simple)'] ? String(r['Material Remitido (Biopsia simple)']).trim() : null,
+            biopsia_ampliada: r['Biopsia ampliada'] ? String(r['Biopsia ampliada']).trim() : null,
+            material_biopsia_ampliada: r['Material remitido (Biopsia ampliada)'] ? String(r['Material remitido (Biopsia ampliada)']).trim() : null,
         });
     }
 
