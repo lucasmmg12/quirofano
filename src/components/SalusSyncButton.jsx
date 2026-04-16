@@ -128,9 +128,9 @@ export default function SalusSyncButton({ onComplete, addToast }) {
                             
                             {isFrojo ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center', margin: '16px 0' }}>
-                                    <img src="/frojo1.jpeg" alt="Operacion Frojo 1" style={{ maxWidth: '100%', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                                    <h3 style={{ margin: '8px 0', color: '#1F2937', fontSize: '1.1rem', textAlign: 'center', fontWeight: 'bold' }}>Esperando conexión F.Rojo...</h3>
-                                    <img src="/frojo2.jpeg" alt="Operacion Frojo 2" style={{ maxWidth: '100%', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                                    <img src="/frojo1.webp" alt="Operacion Frojo 1" style={{ maxWidth: '100%', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                                    <h3 style={{ margin: '8px 0', color: '#1F2937', fontSize: '1.1rem', textAlign: 'center', fontWeight: 'bold' }}>Esperando a que arranque el motor...</h3>
+                                    <img src="/frojo2.webp" alt="Operacion Frojo 2" style={{ maxWidth: '100%', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
                                 </div>
                             ) : (
                                 <>
