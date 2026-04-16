@@ -48,9 +48,17 @@ CREATE POLICY "Laboratorios - eliminación service role"
     FOR DELETE
     USING (true);
 
--- Trigger para updated_at
+-- Función y Trigger para updated_at
+CREATE OR REPLACE FUNCTION update_laboratorios_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 DROP TRIGGER IF EXISTS trg_laboratorios_anatomia_patologica_updated_at ON public.laboratorios_anatomia_patologica;
 CREATE TRIGGER trg_laboratorios_anatomia_patologica_updated_at
 BEFORE UPDATE ON public.laboratorios_anatomia_patologica
 FOR EACH ROW
-EXECUTE FUNCTION moddatetime (updated_at);
+EXECUTE FUNCTION update_laboratorios_timestamp();
