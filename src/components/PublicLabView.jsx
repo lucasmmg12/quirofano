@@ -140,9 +140,9 @@ export default function PublicLabView({ labName }) {
         doc.autoTable({
             head: [tableColumn],
             body: tableRows,
-            startY: 35,
+            startY: 40,
             theme: 'striped',
-            headStyles: { fillColor: [139, 92, 246] }
+            headStyles: { fillColor: [30, 64, 120] } // Azul institucional #1E4078
         });
         doc.save(`Laboratorio_${labName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
     };
@@ -180,36 +180,43 @@ export default function PublicLabView({ labName }) {
     return (
         <div style={{ minHeight: '100vh', background: '#F1F5F9', padding: '40px 20px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
             <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
-                <div style={{ background: '#fff', borderRadius: '16px', padding: '32px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }}>
+                <div style={{ background: '#fff', borderRadius: '16px', padding: '32px', boxShadow: '0 4px 20px -2px rgba(30,64,120,0.08)' }}>
                     
-                    {/* Header */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '24px', borderBottom: '1px solid #E2E8F0', marginBottom: '24px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#F5F3FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <Microscope size={28} style={{ color: '#8B5CF6' }} />
-                            </div>
-                            <div>
-                                <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 800, color: '#1E293B' }}>Portal del Laboratorio</h1>
-                                <p style={{ margin: '4px 0 0', color: '#64748B', fontWeight: 500 }}>{labName}</p>
+                    {/* Header Institucional */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '24px', borderBottom: '1px solid #E2E8F0', marginBottom: '24px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                <img src="/logosanatorio.png" alt="Sanatorio Argentino" style={{ height: '56px', objectFit: 'contain' }} />
+                                <div>
+                                    <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#1E4078', letterSpacing: '-0.02em' }}>
+                                        Portal del Laboratorio
+                                    </h1>
+                                    <p style={{ margin: '2px 0 0', color: '#64748B', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Microscope size={16} /> 
+                                        {labName}
+                                    </p>
+                                </div>
                             </div>
                         </div>
 
                         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div style={{ position: 'relative', width: '300px', maxWidth: '100%' }}>
-                                <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                            <div style={{ position: 'relative', width: '320px', maxWidth: '100%' }}>
+                                <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
                                 <input 
                                     type="text" 
                                     placeholder="Buscar paciente o DNI..." 
                                     value={searchTerm}
                                     onChange={e => setSearchTerm(e.target.value)}
-                                    style={{ width: '100%', padding: '10px 16px 10px 38px', borderRadius: '8px', border: '1px solid #CBD5E1', outline: 'none' }}
+                                    style={{ width: '100%', padding: '10px 16px 10px 42px', borderRadius: '10px', border: '1.5px solid #E2E8F0', outline: 'none', transition: 'all 0.2s', fontSize: '0.9rem' }}
+                                    onFocus={(e) => { e.target.style.borderColor = '#1E4078'; e.target.style.boxShadow = '0 0 0 3px rgba(30,64,120,0.1)'; }}
+                                    onBlur={(e) => { e.target.style.borderColor = '#E2E8F0'; e.target.style.boxShadow = 'none'; }}
                                 />
                             </div>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                                <button onClick={exportToPDF} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#FEE2E2', color: '#DC2626', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}>
+                                <button onClick={exportToPDF} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', color: '#DC2626', border: '1px solid #FECACA', padding: '8px 16px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'background 0.2s' }} onMouseOver={e=>e.currentTarget.style.background='#FEF2F2'} onMouseOut={e=>e.currentTarget.style.background='#fff'}>
                                     <FileText size={16} /> PDF
                                 </button>
-                                <button onClick={exportToExcel} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#DCFCE7', color: '#16A34A', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}>
+                                <button onClick={exportToExcel} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', color: '#16A34A', border: '1px solid #BBF7D0', padding: '8px 16px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'background 0.2s' }} onMouseOver={e=>e.currentTarget.style.background='#F0FDF4'} onMouseOut={e=>e.currentTarget.style.background='#fff'}>
                                     <Download size={16} /> Excel
                                 </button>
                             </div>
@@ -269,8 +276,8 @@ export default function PublicLabView({ labName }) {
                         </table>
                     </div>
 
-                    <div style={{ marginTop: '16px', textAlign: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
-                        Portal Seguro - Sanatorio Argentino
+                    <div style={{ marginTop: '20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.8rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                        Portal Seguro • Sanatorio Argentino
                     </div>
                 </div>
             </div>
