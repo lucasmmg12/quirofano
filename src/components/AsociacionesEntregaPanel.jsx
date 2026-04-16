@@ -559,7 +559,11 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
             for (const [col, val] of Object.entries(columnFilters)) {
                 if (!val) continue;
                 let cellValue = '';
-                if (col === 'fecha') cellValue = fmtFecha(c.fecha_realizacion);
+                if (col === 'fecha') {
+                    const d = new Date(c.fecha_realizacion + 'T12:00:00');
+                    const localeMes = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+                    cellValue = localeMes.charAt(0).toUpperCase() + localeMes.slice(1);
+                }
                 else if (col === 'paciente') cellValue = c.nombre_paciente || '';
                 else if (col === 'dni') cellValue = c.dni || '';
                 else if (col === 'os') cellValue = c.cliente || '';
@@ -580,7 +584,16 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
             const vals = new Set();
             pendientesCirugias.forEach(c => {
                 let v = '';
-                if (col === 'fecha') v = fmtFecha(c.fecha_realizacion);
+                if (col === 'fecha') {
+                    if (c.fecha_realizacion) {
+                        const d = new Date(c.fecha_realizacion + 'T12:00:00');
+                        const localeMes = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+                        v = localeMes.charAt(0).toUpperCase() + localeMes.slice(1);
+                        // Store the raw sortable value string mapped to the display label
+                        if (!result.fechaSort) result.fechaSort = {};
+                        result.fechaSort[v] = c.fecha_realizacion.substring(0, 7); // 'YYYY-MM'
+                    }
+                }
                 else if (col === 'paciente') v = c.nombre_paciente || '';
                 else if (col === 'dni') v = c.dni || '';
                 else if (col === 'os') v = c.cliente || '';
@@ -591,10 +604,9 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
             });
             result[col] = [...vals].sort((a, b) => {
                 if (col === 'fecha') {
-                    // Parse dd/mm/yyyy to comparable dates (newest first)
-                    const [da, ma, ya] = a.split('/');
-                    const [db, mb, yb] = b.split('/');
-                    return new Date(yb, mb - 1, db) - new Date(ya, ma - 1, da);
+                    const sortA = result.fechaSort?.[a] || '';
+                    const sortB = result.fechaSort?.[b] || '';
+                    return sortB.localeCompare(sortA); // Newest first
                 }
                 return a.localeCompare(b);
             });
