@@ -7,6 +7,7 @@
 import { useState, useEffect } from 'react';
 import { Database, Check, AlertTriangle, Loader2, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import { checkSalusHealth } from '../services/salusSync';
+import { getCurrentUser } from '../services/authService';
 
 const SYNC_MODULES = {
     cirugias: { label: 'Cirugías', icon: '🔪' },
@@ -24,6 +25,11 @@ export default function SalusSyncButton({ onComplete, addToast }) {
     const [lastSync, setLastSync] = useState(null);
     const [showDownloadHelp, setShowDownloadHelp] = useState(false);
 
+    // SECRETO: Broma exclusiva para frojo
+    const currentUser = getCurrentUser();
+    const isFrojo = currentUser?.usuario === 'frojo';
+    const [frojoJokePhase, setFrojoJokePhase] = useState(0); // 0: none, 1: frojo1 (syncing), 2: frojo2 (done)
+
     // Verificar disponibilidad cada 10s cuando está offline
     useEffect(() => {
         const check = () => checkSalusHealth().then(h => setSalusAvailable(h.available));
@@ -36,6 +42,7 @@ export default function SalusSyncButton({ onComplete, addToast }) {
         setSyncing(true);
         setExpanded(true);
         setResults(null);
+        if (isFrojo) setFrojoJokePhase(1); // Arranca broma 1
 
         try {
             const SYNC_URL = import.meta.env.VITE_SALUS_SYNC_URL || 'http://127.0.0.1:3456/api/salus';
@@ -47,13 +54,19 @@ export default function SalusSyncButton({ onComplete, addToast }) {
                 setLastSync(new Date());
                 addToast?.(`✅ Sincronización completada en ${json.elapsed}`, 'success');
                 onComplete?.();
+                if (isFrojo) {
+                    setFrojoJokePhase(2); // Termina broma 2
+                    setTimeout(() => setFrojoJokePhase(0), 8000); // quita la broma a los 8 seg si no hace clic
+                }
             } else {
                 setResults({ error: json.error });
                 addToast?.(`❌ Error: ${json.error}`, 'error');
+                if (isFrojo) setFrojoJokePhase(0); // Cancela broma si hay error
             }
         } catch (err) {
             setResults({ error: err.message });
             addToast?.('❌ Error de conexión con sync-server', 'error');
+            if (isFrojo) setFrojoJokePhase(0);
         } finally {
             setSyncing(false);
         }
@@ -306,6 +319,54 @@ export default function SalusSyncButton({ onComplete, addToast }) {
                         )}
                     </div>
                     {Object.keys(SYNC_MODULES).map(renderModule)}
+                </div>
+            )}
+
+            {/* BROMA SECRETA EXCLUSIVA FROJO */}
+            {isFrojo && frojoJokePhase > 0 && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    zIndex: 9999999, background: 'rgba(0,0,0,0.85)',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                    animation: 'fadeIn 0.5s', backdropFilter: 'blur(8px)'
+                }}>
+                    <h1 style={{ 
+                        color: '#fff', fontSize: '2.5rem', textAlign: 'center', 
+                        textShadow: '0 4px 15px rgba(239, 68, 68, 0.8)', padding: '0 20px',
+                        marginBottom: '30px', fontWeight: 900, letterSpacing: '1px' 
+                    }}>
+                        {frojoJokePhase === 1 
+                            ? 'Sincronizando toda la pesada, paciencia F.Rojo...' 
+                            : '¡DATOS ACTUALIZADOS AL TOQUE!'}
+                    </h1>
+                    
+                    <img 
+                        src={frojoJokePhase === 1 ? "/frojo1.jpeg" : "/frojo2.jpeg"} 
+                        alt="Operacion Frojo"
+                        style={{
+                            maxWidth: '85%', maxHeight: '60vh', borderRadius: '16px',
+                            boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+                            transform: frojoJokePhase === 1 ? 'scale(1)' : 'scale(1.05)',
+                            border: `4px solid ${frojoJokePhase === 1 ? '#F59E0B' : '#10B981'}`,
+                            transition: 'all 0.5s ease'
+                        }} 
+                    />
+                    
+                    {frojoJokePhase === 2 && (
+                        <button 
+                            onClick={() => setFrojoJokePhase(0)} 
+                            style={{ 
+                                marginTop: '30px', padding: '16px 32px', background: '#FCD34D', color: '#92400E', 
+                                border: 'none', borderRadius: '12px', fontSize: '1.2rem', fontWeight: 800, 
+                                cursor: 'pointer', boxShadow: '0 10px 25px rgba(252, 211, 77, 0.4)',
+                                transition: 'all 0.2s', textTransform: 'uppercase'
+                            }}
+                            onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'}
+                            onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
+                        >
+                            Lo Entendí
+                        </button>
+                    )}
                 </div>
             )}
         </div>
