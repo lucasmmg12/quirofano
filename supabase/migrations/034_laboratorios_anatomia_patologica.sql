@@ -28,25 +28,8 @@ CREATE TABLE IF NOT EXISTS public.laboratorios_anatomia_patologica (
 ALTER TABLE public.laboratorios_anatomia_patologica ENABLE ROW LEVEL SECURITY;
 
 -- Políticas de RLS
-CREATE POLICY "Laboratorios - lectura autenticada"
-    ON public.laboratorios_anatomia_patologica
-    FOR SELECT
-    USING (auth.role() = 'authenticated');
-
-CREATE POLICY "Laboratorios - actualización autenticada"
-    ON public.laboratorios_anatomia_patologica
-    FOR UPDATE
-    USING (auth.role() = 'authenticated');
-
-CREATE POLICY "Laboratorios - inserción service role"
-    ON public.laboratorios_anatomia_patologica
-    FOR INSERT
-    WITH CHECK (true);
-
-CREATE POLICY "Laboratorios - eliminación service role"
-    ON public.laboratorios_anatomia_patologica
-    FOR DELETE
-    USING (true);
+CREATE POLICY "laboratorios_full_access" ON public.laboratorios_anatomia_patologica
+    FOR ALL USING (true) WITH CHECK (true);
 
 -- Función y Trigger para updated_at
 CREATE OR REPLACE FUNCTION update_laboratorios_timestamp()

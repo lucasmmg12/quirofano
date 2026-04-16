@@ -1,3 +1,31 @@
-{
-    "query": "SELECT id, phone, direction, LEFT(content, 50) as content, sender_name, created_at FROM whatsapp_messages WHERE direction = 'incoming' AND created_at > '2026-03-04T12:00:00Z' ORDER BY created_at DESC LIMIT 20;"
+﻿{
+    "query":  {
+                  "value":  "-- Migration: 034_laboratorios_anatomia_patologica.sql\n-- DescripciÃ³n: Tabla para alojar los estudios de anatomÃ­a patolÃ³gica y la asignaciÃ³n manual de mÃ³dulos por parte de los laboratorios.\n\nCREATE TABLE IF NOT EXISTS public.laboratorios_anatomia_patologica (\n    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    id_visita TEXT UNIQUE NOT NULL,\n    fecha_visita DATE NOT NULL,\n    paciente TEXT,\n    dni TEXT,\n    cliente TEXT,\n    laboratorio TEXT,\n    biopsia_congelacion TEXT,\n    biopsia_simple TEXT,\n    material_biopsia_simple TEXT,\n    biopsia_ampliada TEXT,\n    material_biopsia_ampliada TEXT,\n    \n    -- Campos gestionados por la plataforma\n    modulo_asignado TEXT, -- \u0027MÃ³dulo A\u0027, \u0027MÃ³dulo B\u0027, \u0027MÃ³dulo C\u0027, etc.\n    clasificado_at TIMESTAMPTZ,\n    clasificado_por TEXT, -- Puede conectarse con id de usuario o nombre\n    \n    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\n-- Habilitar RLS\nALTER TABLE public.laboratorios_anatomia_patologica ENABLE ROW LEVEL SECURITY;\n\n-- PolÃ­ticas de RLS\nCREATE POLICY \"Laboratorios - lectura autenticada\"\n    ON public.laboratorios_anatomia_patologica\n    FOR SELECT\n    USING (auth.role() = \u0027authenticated\u0027);\n\nCREATE POLICY \"Laboratorios - actualizaciÃ³n autenticada\"\n    ON public.laboratorios_anatomia_patologica\n    FOR UPDATE\n    USING (auth.role() = \u0027authenticated\u0027);\n\nCREATE POLICY \"Laboratorios - inserciÃ³n service role\"\n    ON public.laboratorios_anatomia_patologica\n    FOR INSERT\n    WITH CHECK (true);\n\nCREATE POLICY \"Laboratorios - eliminaciÃ³n service role\"\n    ON public.laboratorios_anatomia_patologica\n    FOR DELETE\n    USING (true);\n\n-- Trigger para updated_at\nDROP TRIGGER IF EXISTS trg_laboratorios_anatomia_patologica_updated_at ON public.laboratorios_anatomia_patologica;\nCREATE TRIGGER trg_laboratorios_anatomia_patologica_updated_at\nBEFORE UPDATE ON public.laboratorios_anatomia_patologica\nFOR EACH ROW\nEXECUTE FUNCTION moddatetime (updated_at);\n",
+                  "PSPath":  "C:\\Users\\Sanatorio Argentino\\Desktop\\Proyectos\\Sistema ADM-QUI\\supabase\\migrations\\034_laboratorios_anatomia_patologica.sql",
+                  "PSParentPath":  "C:\\Users\\Sanatorio Argentino\\Desktop\\Proyectos\\Sistema ADM-QUI\\supabase\\migrations",
+                  "PSChildName":  "034_laboratorios_anatomia_patologica.sql",
+                  "PSDrive":  {
+                                  "CurrentLocation":  "Users\\Sanatorio Argentino\\Desktop\\Proyectos\\Sistema ADM-QUI",
+                                  "Name":  "C",
+                                  "Provider":  "Microsoft.PowerShell.Core\\FileSystem",
+                                  "Root":  "C:\\",
+                                  "Description":  "",
+                                  "MaximumSize":  null,
+                                  "Credential":  "System.Management.Automation.PSCredential",
+                                  "DisplayRoot":  null
+                              },
+                  "PSProvider":  {
+                                     "ImplementingType":  "Microsoft.PowerShell.Commands.FileSystemProvider",
+                                     "HelpFile":  "System.Management.Automation.dll-Help.xml",
+                                     "Name":  "FileSystem",
+                                     "PSSnapIn":  "Microsoft.PowerShell.Core",
+                                     "ModuleName":  "Microsoft.PowerShell.Core",
+                                     "Module":  null,
+                                     "Description":  "",
+                                     "Capabilities":  52,
+                                     "Home":  "C:\\Users\\Sanatorio Argentino",
+                                     "Drives":  "C F R S"
+                                 },
+                  "ReadCount":  1
+              }
 }
