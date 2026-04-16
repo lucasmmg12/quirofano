@@ -25,10 +25,8 @@ export default function SalusSyncButton({ onComplete, addToast }) {
     const [lastSync, setLastSync] = useState(null);
     const [showDownloadHelp, setShowDownloadHelp] = useState(false);
 
-    // SECRETO: Broma exclusiva para frojo
     const currentUser = getCurrentUser();
     const isFrojo = currentUser?.usuario === 'frojo';
-    const [frojoJokePhase, setFrojoJokePhase] = useState(0); // 0: none, 1: frojo1 (syncing), 2: frojo2 (done)
 
     // Verificar disponibilidad cada 10s cuando está offline
     useEffect(() => {
@@ -42,7 +40,6 @@ export default function SalusSyncButton({ onComplete, addToast }) {
         setSyncing(true);
         setExpanded(true);
         setResults(null);
-        if (isFrojo) setFrojoJokePhase(1); // Arranca broma 1
 
         try {
             const SYNC_URL = import.meta.env.VITE_SALUS_SYNC_URL || 'http://127.0.0.1:3456/api/salus';
@@ -54,19 +51,13 @@ export default function SalusSyncButton({ onComplete, addToast }) {
                 setLastSync(new Date());
                 addToast?.(`✅ Sincronización completada en ${json.elapsed}`, 'success');
                 onComplete?.();
-                if (isFrojo) {
-                    setFrojoJokePhase(2); // Termina broma 2
-                    setTimeout(() => setFrojoJokePhase(0), 8000); // quita la broma a los 8 seg si no hace clic
-                }
             } else {
                 setResults({ error: json.error });
                 addToast?.(`❌ Error: ${json.error}`, 'error');
-                if (isFrojo) setFrojoJokePhase(0); // Cancela broma si hay error
             }
         } catch (err) {
             setResults({ error: err.message });
             addToast?.('❌ Error de conexión con sync-server', 'error');
-            if (isFrojo) setFrojoJokePhase(0);
         } finally {
             setSyncing(false);
         }
@@ -132,46 +123,57 @@ export default function SalusSyncButton({ onComplete, addToast }) {
                             >✕</button>
                             
                             <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#1F2937', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Download size={22} color="#F59E0B" /> Pasos para activar SALUS
+                                <Download size={22} color="#F59E0B" /> {isFrojo ? 'Reiniciando motor...' : 'Pasos para activar SALUS'}
                             </div>
-                            <p style={{ fontSize: '0.85rem', color: '#6B7280', marginBottom: '20px', lineHeight: 1.5 }}>
-                                Se ha descargado un archivo para conectar su computadora con los servidores de SALUS. Siga estos sencillos pasos:
-                            </p>
+                            
+                            {isFrojo ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center', margin: '16px 0' }}>
+                                    <img src="/frojo1.jpeg" alt="Operacion Frojo 1" style={{ maxWidth: '100%', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                                    <h3 style={{ margin: '8px 0', color: '#1F2937', fontSize: '1.1rem', textAlign: 'center', fontWeight: 'bold' }}>Esperando conexión F.Rojo...</h3>
+                                    <img src="/frojo2.jpeg" alt="Operacion Frojo 2" style={{ maxWidth: '100%', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                                </div>
+                            ) : (
+                                <>
+                                    <p style={{ fontSize: '0.85rem', color: '#6B7280', marginBottom: '20px', lineHeight: 1.5 }}>
+                                        Se ha descargado un archivo para conectar su computadora con los servidores de SALUS. Siga estos sencillos pasos:
+                                    </p>
 
-                            <div style={{ fontSize: '0.9rem', color: '#4B5563', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                <div style={{ display: 'flex', gap: '12px' }}>
-                                    <span style={{ background: '#6366F1', color: '#fff', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, flexShrink: 0 }}>1</span>
-                                    <div>
-                                        <div style={{ fontWeight: 600, color: '#374151' }}>Abra el archivo descargado</div>
-                                        <div style={{ fontSize: '0.8rem', color: '#9CA3AF' }}>Haga doble clic en <strong style={{ color: '#4B5563' }}>SALUS Sync - Sanatorio Argentino.bat</strong></div>
+                                    <div style={{ fontSize: '0.9rem', color: '#4B5563', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                        <div style={{ display: 'flex', gap: '12px' }}>
+                                            <span style={{ background: '#6366F1', color: '#fff', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, flexShrink: 0 }}>1</span>
+                                            <div>
+                                                <div style={{ fontWeight: 600, color: '#374151' }}>Abra el archivo descargado</div>
+                                                <div style={{ fontSize: '0.8rem', color: '#9CA3AF' }}>Haga doble clic en <strong style={{ color: '#4B5563' }}>SALUS Sync - Sanatorio Argentino.bat</strong></div>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '12px' }}>
+                                            <span style={{ background: '#6366F1', color: '#fff', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, flexShrink: 0 }}>2</span>
+                                            <div>
+                                                <div style={{ fontWeight: 600, color: '#374151' }}>Espere que inicie el servidor</div>
+                                                <div style={{ fontSize: '0.8rem', color: '#9CA3AF' }}>Se abrirá una ventana negra. Espere hasta ver <strong>"Servidor INICIADO en puerto 3456"</strong>.</div>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '12px' }}>
+                                            <span style={{ background: '#6366F1', color: '#fff', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, flexShrink: 0 }}>3</span>
+                                            <div>
+                                                <div style={{ fontWeight: 600, color: '#374151' }}>¡Listo! Vuelva aquí</div>
+                                                <div style={{ fontSize: '0.8rem', color: '#9CA3AF' }}>Este botón se volverá color morado automáticamente.</div>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                                <div style={{ display: 'flex', gap: '12px' }}>
-                                    <span style={{ background: '#6366F1', color: '#fff', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, flexShrink: 0 }}>2</span>
-                                    <div>
-                                        <div style={{ fontWeight: 600, color: '#374151' }}>Espere que inicie el servidor</div>
-                                        <div style={{ fontSize: '0.8rem', color: '#9CA3AF' }}>Se abrirá una ventana negra. Espere hasta ver <strong>"Servidor INICIADO en puerto 3456"</strong>.</div>
+                                    <div style={{
+                                        marginTop: '24px', padding: '12px',
+                                        background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '12px',
+                                        fontSize: '0.8rem', color: '#92400E', display: 'flex', alignItems: 'flex-start', gap: '8px'
+                                    }}>
+                                        <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+                                        <div>
+                                            <strong style={{ display: 'block', marginBottom: '2px' }}>Importante</strong>
+                                            No cierre la ventana negra mientras use el sistema. Solo necesita hacer esto una vez por día.
+                                        </div>
                                     </div>
-                                </div>
-                                <div style={{ display: 'flex', gap: '12px' }}>
-                                    <span style={{ background: '#6366F1', color: '#fff', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, flexShrink: 0 }}>3</span>
-                                    <div>
-                                        <div style={{ fontWeight: 600, color: '#374151' }}>¡Listo! Vuelva aquí</div>
-                                        <div style={{ fontSize: '0.8rem', color: '#9CA3AF' }}>Este botón se volverá color morado automáticamente.</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div style={{
-                                marginTop: '24px', padding: '12px',
-                                background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '12px',
-                                fontSize: '0.8rem', color: '#92400E', display: 'flex', alignItems: 'flex-start', gap: '8px'
-                            }}>
-                                <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
-                                <div>
-                                    <strong style={{ display: 'block', marginBottom: '2px' }}>Importante</strong>
-                                    No cierre la ventana negra mientras use el sistema. Solo necesita hacer esto una vez por día.
-                                </div>
-                            </div>
+                                </>
+                            )}
                             
                             <button 
                                 onClick={() => setShowDownloadHelp(false)}
@@ -322,53 +324,9 @@ export default function SalusSyncButton({ onComplete, addToast }) {
                 </div>
             )}
 
-            {/* BROMA SECRETA EXCLUSIVA FROJO */}
-            {isFrojo && frojoJokePhase > 0 && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    zIndex: 9999999, background: 'rgba(0,0,0,0.85)',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    animation: 'fadeIn 0.5s', backdropFilter: 'blur(8px)'
-                }}>
-                    <h1 style={{ 
-                        color: '#fff', fontSize: '2.5rem', textAlign: 'center', 
-                        textShadow: '0 4px 15px rgba(239, 68, 68, 0.8)', padding: '0 20px',
-                        marginBottom: '30px', fontWeight: 900, letterSpacing: '1px' 
-                    }}>
-                        {frojoJokePhase === 1 
-                            ? 'Sincronizando toda la pesada, paciencia F.Rojo...' 
-                            : '¡DATOS ACTUALIZADOS AL TOQUE!'}
-                    </h1>
-                    
-                    <img 
-                        src={frojoJokePhase === 1 ? "/frojo1.jpeg" : "/frojo2.jpeg"} 
-                        alt="Operacion Frojo"
-                        style={{
-                            maxWidth: '85%', maxHeight: '60vh', borderRadius: '16px',
-                            boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
-                            transform: frojoJokePhase === 1 ? 'scale(1)' : 'scale(1.05)',
-                            border: `4px solid ${frojoJokePhase === 1 ? '#F59E0B' : '#10B981'}`,
-                            transition: 'all 0.5s ease'
-                        }} 
-                    />
-                    
-                    {frojoJokePhase === 2 && (
-                        <button 
-                            onClick={() => setFrojoJokePhase(0)} 
-                            style={{ 
-                                marginTop: '30px', padding: '16px 32px', background: '#FCD34D', color: '#92400E', 
-                                border: 'none', borderRadius: '12px', fontSize: '1.2rem', fontWeight: 800, 
-                                cursor: 'pointer', boxShadow: '0 10px 25px rgba(252, 211, 77, 0.4)',
-                                transition: 'all 0.2s', textTransform: 'uppercase'
-                            }}
-                            onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'}
-                            onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
-                        >
-                            Lo Entendí
-                        </button>
-                    )}
-                </div>
-            )}
+
+
+
         </div>
     );
 }
