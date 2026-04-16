@@ -355,6 +355,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                 ))}
                                             </select>
                                         )}
+                                    </td>
                                     <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                                         <div style={{ 
                                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
