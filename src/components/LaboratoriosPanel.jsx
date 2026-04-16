@@ -29,7 +29,32 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 .limit(500);
 
             if (error) throw error;
-            setRecords(data || []);
+
+            // Enriquecer con coseguro desde hospital_pacientes
+            const labRecords = data || [];
+            const dnisNeedCoseguro = [...new Set(
+                labRecords.filter(r => !r.coseguro && r.dni).map(r => r.dni)
+            )];
+
+            if (dnisNeedCoseguro.length > 0) {
+                const { data: pacientes } = await supabase
+                    .from('hospital_pacientes')
+                    .select('dni, coseguro')
+                    .in('dni', dnisNeedCoseguro)
+                    .not('coseguro', 'is', null);
+
+                if (pacientes && pacientes.length > 0) {
+                    const coseguroMap = {};
+                    pacientes.forEach(p => { coseguroMap[p.dni] = p.coseguro; });
+                    labRecords.forEach(r => {
+                        if (!r.coseguro && r.dni && coseguroMap[r.dni]) {
+                            r.coseguro = coseguroMap[r.dni];
+                        }
+                    });
+                }
+            }
+
+            setRecords(labRecords);
         } catch (err) {
             console.error('Error fetching laboratorios:', err);
             addToast('Error al cargar laboratorios', 'error');
