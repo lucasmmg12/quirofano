@@ -1,12 +1,21 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
-import { Microscope, Search, Filter, RefreshCw, Check, Clock } from 'lucide-react';
+import { Microscope, Search, Filter, RefreshCw, Check, Clock, FileText, Download, Link, Copy } from 'lucide-react';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 
 export default function LaboratoriosPanel({ addToast, currentUser }) {
     const [loading, setLoading] = useState(true);
     const [records, setRecords] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterModulo, setFilterModulo] = useState('all');
+    const [filterLaboratorio, setFilterLaboratorio] = useState('all');
+
+    const laboratoriosUnicos = useMemo(() => {
+        const unique = new Set(records.map(r => r.laboratorio).filter(Boolean));
+        return Array.from(unique).sort();
+    }, [records]);
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -61,6 +70,77 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
 
     const MODULOS = ['Módulo A', 'Módulo B', 'Módulo C'];
 
+    const exportToPDF = () => {
+        const doc = new jsPDF();
+        doc.setFontSize(16);
+        doc.text(`Reporte de Anatomía Patológica`, 14, 20);
+        doc.setFontSize(10);
+        doc.text(`Filtros: Lab: ${filterLaboratorio !== 'all' ? filterLaboratorio : 'Todos'} | Modulo: ${filterModulo !== 'all' ? filterModulo : 'Todos'}`, 14, 28);
+
+        const tableColumn = ["Fecha", "Paciente", "DNI", "Laboratorio", "Muestras / Biopsias", "Módulo"];
+        const tableRows = [];
+
+        filteredRecords.forEach(r => {
+            const date = r.fecha_visita ? new Date(r.fecha_visita).toLocaleDateString('es-AR') : '-';
+            let biopsias = [];
+            if (r.biopsia_congelacion) biopsias.push(`C: ${r.biopsia_congelacion}`);
+            if (r.biopsia_simple) biopsias.push(`S: ${r.biopsia_simple}`);
+            if (r.biopsia_ampliada) biopsias.push(`A: ${r.biopsia_ampliada}`);
+
+            tableRows.push([
+                date,
+                r.paciente || 'S/D',
+                r.dni || 'S/D',
+                r.laboratorio || '-',
+                biopsias.length > 0 ? biopsias.join('\n') : '-',
+                r.modulo_asignado || 'Sin asignar'
+            ]);
+        });
+
+        doc.autoTable({
+            head: [tableColumn],
+            body: tableRows,
+            startY: 35,
+            theme: 'striped',
+            headStyles: { fillColor: [139, 92, 246] }
+        });
+        doc.save(`Patologica_${new Date().toISOString().slice(0, 10)}.pdf`);
+    };
+
+    const exportToExcel = () => {
+        const worksheetData = filteredRecords.map(r => {
+            let biopsias = [];
+            if (r.biopsia_congelacion) biopsias.push(`C: ${r.biopsia_congelacion}`);
+            if (r.biopsia_simple) biopsias.push(`S: ${r.biopsia_simple}`);
+            if (r.biopsia_ampliada) biopsias.push(`A: ${r.biopsia_ampliada}`);
+
+            return {
+                Fecha: r.fecha_visita ? new Date(r.fecha_visita).toLocaleDateString('es-AR') : '',
+                Paciente: r.paciente || '',
+                DNI: r.dni || '',
+                Laboratorio: r.laboratorio || '',
+                Muestras: biopsias.join(' | '),
+                Modulo_Asignado: r.modulo_asignado || 'Sin asignar'
+            };
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(worksheetData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Patologica");
+        XLSX.writeFile(workbook, `Patologica_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    };
+
+    const copyPublicLink = () => {
+        if (filterLaboratorio === 'all') {
+            addToast('Primero selecciona un laboratorio específico', 'warning');
+            return;
+        }
+        const token = btoa(encodeURIComponent(filterLaboratorio));
+        const url = `${window.location.origin}/publico/laboratorio/${token}`;
+        navigator.clipboard.writeText(url);
+        addToast('Enlace público copiado al portapapeles', 'success');
+    };
+
     const filteredRecords = useMemo(() => {
         return records.filter(r => {
             const matchSearch = searchTerm === '' || 
@@ -73,9 +153,11 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 (filterModulo === 'assigned' && r.modulo_asignado) ||
                 r.modulo_asignado === filterModulo;
 
-            return matchSearch && matchFilter;
+            const matchLab = filterLaboratorio === 'all' || r.laboratorio === filterLaboratorio;
+
+            return matchSearch && matchFilter && matchLab;
         });
-    }, [records, searchTerm, filterModulo]);
+    }, [records, searchTerm, filterModulo, filterLaboratorio]);
 
     return (
         <div className="content animate-fade-in" style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
@@ -90,20 +172,33 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                         Clasificación de muestras para facturación
                     </p>
                 </div>
-                <button 
-                    onClick={loadData}
-                    disabled={loading}
-                    style={{
-                        padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--neutral-200)',
-                        background: '#fff', color: 'var(--neutral-600)', fontWeight: 600, fontSize: '0.85rem',
-                        display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
-                        opacity: loading ? 0.7 : 1, transition: 'all 0.2s',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                    }}
-                >
-                    <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-                    Actualizar
-                </button>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                    {filterLaboratorio !== 'all' && (
+                        <button onClick={copyPublicLink} style={{ padding: '8px 16px', borderRadius: '8px', background: '#F5F3FF', color: '#7C3AED', fontWeight: 600, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #DDD6FE', cursor: 'pointer' }}>
+                            <Link size={16} /> Link Lab.
+                        </button>
+                    )}
+                    <button onClick={exportToPDF} style={{ padding: '8px 16px', borderRadius: '8px', background: '#FEE2E2', color: '#DC2626', fontWeight: 600, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #FECACA', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                        <FileText size={16} /> PDF
+                    </button>
+                    <button onClick={exportToExcel} style={{ padding: '8px 16px', borderRadius: '8px', background: '#DCFCE7', color: '#16A34A', fontWeight: 600, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #BBF7D0', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                        <Download size={16} /> Excel
+                    </button>
+                    <button 
+                        onClick={loadData}
+                        disabled={loading}
+                        style={{
+                            padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--neutral-200)',
+                            background: '#fff', color: 'var(--neutral-600)', fontWeight: 600, fontSize: '0.85rem',
+                            display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
+                            opacity: loading ? 0.7 : 1, transition: 'all 0.2s',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                        }}
+                    >
+                        <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+                        Actualizar
+                    </button>
+                </div>
             </div>
 
             <div style={{ 
@@ -131,6 +226,18 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <Filter size={16} style={{ color: 'var(--neutral-400)' }} />
+                        <select 
+                            value={filterLaboratorio}
+                            onChange={e => setFilterLaboratorio(e.target.value)}
+                            style={{
+                                padding: '10px 32px 10px 12px', borderRadius: '8px', 
+                                border: '1px solid var(--neutral-200)', fontSize: '0.85rem',
+                                background: '#fff', cursor: 'pointer', outline: 'none'
+                             }}
+                        >
+                            <option value="all">Todos los Laboratorios</option>
+                            {laboratoriosUnicos.map(l => <option key={l} value={l}>{l}</option>)}
+                        </select>
                         <select 
                             value={filterModulo}
                             onChange={e => setFilterModulo(e.target.value)}
@@ -189,10 +296,12 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                         {r.laboratorio || '-'}
                                     </td>
                                     <td style={{ padding: '12px 16px', fontSize: '0.8rem', color: 'var(--neutral-600)' }}>
-                                        {r.biopsia_congelacion && <div><span style={{ fontWeight: 600 }}>C:</span> {r.biopsia_congelacion}</div>}
-                                        {r.biopsia_simple && <div><span style={{ fontWeight: 600 }}>S:</span> {r.biopsia_simple}</div>}
-                                        {r.biopsia_ampliada && <div><span style={{ fontWeight: 600 }}>A:</span> {r.biopsia_ampliada}</div>}
-                                        {!r.biopsia_congelacion && !r.biopsia_simple && !r.biopsia_ampliada && '-'}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            {r.biopsia_congelacion && <div style={{ background: '#E0F2FE', color: '#0369A1', padding: '2px 8px', borderRadius: '4px', display: 'inline-block', width: 'fit-content', fontWeight: 600 }}>C: {r.biopsia_congelacion}</div>}
+                                            {r.biopsia_simple && <div style={{ background: '#DCFCE7', color: '#15803D', padding: '2px 8px', borderRadius: '4px', display: 'inline-block', width: 'fit-content', fontWeight: 600 }}>S: {r.biopsia_simple}</div>}
+                                            {r.biopsia_ampliada && <div style={{ background: '#FFEDD5', color: '#C2410C', padding: '2px 8px', borderRadius: '4px', display: 'inline-block', width: 'fit-content', fontWeight: 600 }}>A: {r.biopsia_ampliada}</div>}
+                                            {!r.biopsia_congelacion && !r.biopsia_simple && !r.biopsia_ampliada && '-'}
+                                        </div>
                                     </td>
                                     <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                                         {r.modulo_asignado ? (

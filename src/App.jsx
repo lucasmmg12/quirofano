@@ -33,9 +33,13 @@ import AsignacionPanel from './components/AsignacionPanel.jsx';
 import SimonPanel from './components/SimonPanel.jsx';
 import AsociacionesEntregaPanel from './components/AsociacionesEntregaPanel.jsx';
 import LaboratoriosPanel from './components/LaboratoriosPanel.jsx';
+import PublicLabView from './components/PublicLabView.jsx';
 import './App.css';
 
 function AppRoot() {
+    const path = window.location.pathname;
+    const isPublicLab = path.startsWith('/publico/laboratorio/');
+
     const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
 
     const handleLogin = useCallback((user) => {
@@ -47,6 +51,16 @@ function AppRoot() {
         authLogout();
         setCurrentUser(null);
     }, [currentUser]);
+
+    if (isPublicLab) {
+        try {
+            const hash = path.split('/publico/laboratorio/')[1];
+            const labName = decodeURIComponent(atob(hash));
+            return <PublicLabView labName={labName} />;
+        } catch (e) {
+            return <div style={{ padding: '40px', textAlign: 'center' }}>Enlace público inválido.</div>;
+        }
+    }
 
     if (!currentUser) {
         return <LoginScreen onLogin={handleLogin} />;
