@@ -130,15 +130,11 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
         XLSX.writeFile(workbook, `Patologica_${new Date().toISOString().slice(0, 10)}.xlsx`);
     };
 
-    const copyPublicLink = () => {
-        if (filterLaboratorio === 'all') {
-            addToast('Primero selecciona un laboratorio específico', 'warning');
-            return;
-        }
-        const token = btoa(encodeURIComponent(filterLaboratorio));
+    const copyPublicLinkLab = (labString, toastName) => {
+        const token = btoa(encodeURIComponent(labString));
         const url = `${window.location.origin}/publico/laboratorio/${token}`;
         navigator.clipboard.writeText(url);
-        addToast('Enlace público copiado al portapapeles', 'success');
+        addToast(`Enlace de ${toastName} copiado!`, 'success');
     };
 
     const filteredRecords = useMemo(() => {
@@ -172,12 +168,17 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                         Clasificación de muestras para facturación
                     </p>
                 </div>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                    {filterLaboratorio !== 'all' && (
-                        <button onClick={copyPublicLink} style={{ padding: '8px 16px', borderRadius: '8px', background: '#F5F3FF', color: '#7C3AED', fontWeight: 600, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #DDD6FE', cursor: 'pointer' }}>
-                            <Link size={16} /> Link Lab.
-                        </button>
-                    )}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button onClick={() => copyPublicLinkLab('LDA - Dra. Aguero o Dra Rios', 'Agüero')} style={{ padding: '6px 12px', borderRadius: '8px', background: '#F5F3FF', color: '#7C3AED', fontWeight: 600, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #DDD6FE', cursor: 'pointer' }}>
+                        <Link size={14} /> Link Agüero
+                    </button>
+                    <button onClick={() => copyPublicLinkLab('LAB. CEDAP', 'CEDAP')} style={{ padding: '6px 12px', borderRadius: '8px', background: '#F5F3FF', color: '#7C3AED', fontWeight: 600, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #DDD6FE', cursor: 'pointer' }}>
+                        <Link size={14} /> Link CEDAP
+                    </button>
+                    <button onClick={() => copyPublicLinkLab('LAB.INST.PATOLOG.CUYO', 'Cuyo')} style={{ padding: '6px 12px', borderRadius: '8px', background: '#F5F3FF', color: '#7C3AED', fontWeight: 600, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #DDD6FE', cursor: 'pointer' }}>
+                        <Link size={14} /> Link Cuyo
+                    </button>
+                    <div style={{ width: '1px', background: '#E2E8F0', margin: '0 4px' }}></div>
                     <button onClick={exportToPDF} style={{ padding: '8px 16px', borderRadius: '8px', background: '#FEE2E2', color: '#DC2626', fontWeight: 600, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #FECACA', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                         <FileText size={16} /> PDF
                     </button>

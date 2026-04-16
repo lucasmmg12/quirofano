@@ -36,6 +36,35 @@ export default function PublicLabView({ labName }) {
         }
     }, [labName]);
 
+    const updateModulo = async (id_visita, newModulo) => {
+        try {
+            const timestamp = new Date().toISOString();
+            const username = `Portal ${labName}`;
+            
+            const { error } = await supabase
+                .from('laboratorios_anatomia_patologica')
+                .update({ 
+                    modulo_asignado: newModulo,
+                    clasificado_at: timestamp,
+                    clasificado_por: username
+                })
+                .eq('id_visita', id_visita);
+
+            if (error) throw error;
+
+            setRecords(prev => prev.map(r => 
+                r.id_visita === id_visita 
+                    ? { ...r, modulo_asignado: newModulo, clasificado_at: timestamp, clasificado_por: username } 
+                    : r
+            ));
+        } catch (err) {
+            console.error('Error updating modulo:', err);
+            alert('Error al asignar módulo en la base de datos');
+        }
+    };
+
+    const MODULOS = ['Módulo A', 'Módulo B', 'Módulo C'];
+
     const filteredRecords = useMemo(() => {
         if (!searchTerm) return records;
         const lower = searchTerm.toLowerCase();
@@ -77,7 +106,7 @@ export default function PublicLabView({ labName }) {
         doc.setFontSize(10);
         doc.text(`Fecha de exportación: ${new Date().toLocaleDateString('es-AR')}`, 14, 28);
 
-        const tableColumn = ["Fecha", "Paciente", "DNI", "Muestras / Biopsias"];
+        const tableColumn = ["Fecha", "Paciente", "DNI", "Muestras / Biopsias", "Módulo"];
         const tableRows = [];
 
         filteredRecords.forEach(r => {
@@ -92,7 +121,8 @@ export default function PublicLabView({ labName }) {
                 date,
                 r.paciente || 'S/D',
                 r.dni || 'S/D',
-                biopsias.join('\\n')
+                biopsias.join('\n'),
+                r.modulo_asignado || 'Sin asignar'
             ]);
         });
 
@@ -118,6 +148,7 @@ export default function PublicLabView({ labName }) {
                 Paciente: r.paciente || '',
                 DNI: r.dni || '',
                 Muestras: biopsias.join(' | ') || 'Ninguna',
+                Modulo: r.modulo_asignado || 'Sin asignar'
             };
         });
 
@@ -174,12 +205,13 @@ export default function PublicLabView({ labName }) {
                                     <th style={{ padding: '16px', color: '#64748B', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid #E2E8F0' }}>Fecha</th>
                                     <th style={{ padding: '16px', color: '#64748B', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid #E2E8F0' }}>Paciente</th>
                                     <th style={{ padding: '16px', color: '#64748B', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid #E2E8F0' }}>Muestras / Biopsias</th>
+                                    <th style={{ padding: '16px', color: '#64748B', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid #E2E8F0' }}>Módulo</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {loading && (
                                     <tr>
-                                        <td colSpan={3} style={{ padding: '40px', textAlign: 'center', color: '#94A3B8' }}>
+                                        <td colSpan={4} style={{ padding: '40px', textAlign: 'center', color: '#94A3B8' }}>
                                             <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 12px' }} />
                                             Cargando información...
                                         </td>
@@ -187,7 +219,7 @@ export default function PublicLabView({ labName }) {
                                 )}
                                 {!loading && filteredRecords.length === 0 && (
                                     <tr>
-                                        <td colSpan={3} style={{ padding: '40px', textAlign: 'center', color: '#94A3B8' }}>
+                                        <td colSpan={4} style={{ padding: '40px', textAlign: 'center', color: '#94A3B8' }}>
                                             No se encontraron registros.
                                         </td>
                                     </tr>
@@ -203,6 +235,22 @@ export default function PublicLabView({ labName }) {
                                         </td>
                                         <td style={{ padding: '16px' }}>
                                             {renderBiopsies(r)}
+                                        </td>
+                                        <td style={{ padding: '16px' }}>
+                                            <select
+                                                value={r.modulo_asignado || ''}
+                                                onChange={(e) => updateModulo(r.id_visita, e.target.value)}
+                                                style={{
+                                                    padding: '6px 12px', borderRadius: '6px', border: `1px solid ${r.modulo_asignado ? '#C7D2FE' : '#E2E8F0'}`,
+                                                    background: r.modulo_asignado ? '#EEF2FF' : '#fff', color: r.modulo_asignado ? '#4F46E5' : '#64748B',
+                                                    fontWeight: 600, fontSize: '0.85rem', outline: 'none', cursor: 'pointer'
+                                                }}
+                                            >
+                                                <option value="" disabled>Seleccione Módulo</option>
+                                                {MODULOS.map(m => (
+                                                    <option key={m} value={m}>{m}</option>
+                                                ))}
+                                            </select>
                                         </td>
                                     </tr>
                                 ))}
