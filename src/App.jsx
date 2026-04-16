@@ -32,6 +32,7 @@ import AltasPanel from './components/AltasPanel.jsx';
 import AsignacionPanel from './components/AsignacionPanel.jsx';
 import SimonPanel from './components/SimonPanel.jsx';
 import AsociacionesEntregaPanel from './components/AsociacionesEntregaPanel.jsx';
+import LaboratoriosPanel from './components/LaboratoriosPanel.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -670,6 +671,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'asociaciones_entrega' && (
                     <AsociacionesEntregaPanel addToast={addToast} currentUser={currentUser} />
+                )}
+
+                {activeView === 'laboratorios' && (
+                    <LaboratoriosPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'plantillas' && (

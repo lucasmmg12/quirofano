@@ -1157,6 +1157,132 @@ async function syncAsociacionesCirugias(db) {
     return summary;
 }
 
+// ═══════════════════════════════════════════════════
+// SYNC LABORATORIOS (Anatomía Patológica) — SQL Server → Supabase
+// ═══════════════════════════════════════════════════
+async function syncLaboratorios(db) {
+    console.log('🔬 [8/8] Extrayendo laboratorios de anatomía patológica de SALUS...');
+
+    const result = await db.request().query(`
+        SELECT 
+              AP.[idvisita]
+              ,AP.[Fecha visita]
+              ,AP.[Paciente]
+              ,V.[NIF]
+              ,V.[Cliente]
+              ,AP.[Laboratorio]
+              ,AP.[Biopsia por congelación]
+              ,AP.[Biopsia simple]
+              ,AP.[Material Remitido (Biopsia simple)]
+              ,AP.[Biopsia ampliada]
+              ,AP.[Material remitido (Biopsia ampliada)]
+          FROM [SALUS].[dbo].[VLIS_AnatomiaPatologica] AS AP
+          LEFT JOIN [SALUS].[dbo].[VLISE_Visitas] AS V 
+              ON AP.[idvisita] = V.[idVisita]
+          WHERE AP.[Fecha visita] >= '20260301'
+          ORDER BY AP.[Fecha visita] DESC;
+    `);
+    console.log(`   📥 ${result.recordset.length} registros extraídos`);
+
+    if (result.recordset.length === 0) {
+        return { total: 0, inserted: 0, updated: 0, skipped: 0 };
+    }
+
+    // Campos a preservar durante upsert (estados manuales del frontend)
+    const FIELDS_TO_PRESERVE = [
+        'modulo_asignado', 'clasificado_at', 'clasificado_por'
+    ];
+
+    // Transformar filas
+    const records = [];
+    for (const r of result.recordset) {
+        const idVisita = r.idvisita ? String(r.idvisita).trim() : null;
+        if (!idVisita) continue;
+
+        const fechaRaw = r['Fecha visita'];
+        const fecha = formatDate(fechaRaw);
+        if (!fecha) continue;
+
+        records.push({
+            id_visita: idVisita,
+            fecha_visita: fecha,
+            paciente: r.Paciente?.trim() || null,
+            dni: r.NIF ? String(r.NIF).trim() : null,
+            cliente: r.Cliente?.trim() || null,
+            laboratorio: r.Laboratorio?.trim() || null,
+            biopsia_congelacion: r['Biopsia por congelación']?.trim() || null,
+            biopsia_simple: r['Biopsia simple']?.trim() || null,
+            material_biopsia_simple: r['Material Remitido (Biopsia simple)']?.trim() || null,
+            biopsia_ampliada: r['Biopsia ampliada']?.trim() || null,
+            material_biopsia_ampliada: r['Material remitido (Biopsia ampliada)']?.trim() || null,
+        });
+    }
+
+    // Deduplicar (último gana por key: id_visita)
+    const deduped = new Map();
+    for (const row of records) {
+        deduped.set(row.id_visita, row);
+    }
+    const uniqueRecords = [...deduped.values()];
+    console.log(`   📦 ${uniqueRecords.length} registros únicos`);
+
+    // Obtener estados existentes para preservarlos
+    const existingMap = new Map();
+    const FETCH_BATCH_SIZE = 200;
+
+    const ids = uniqueRecords.map(r => r.id_visita);
+    for (let i = 0; i < ids.length; i += FETCH_BATCH_SIZE) {
+        const batchIds = ids.slice(i, i + FETCH_BATCH_SIZE);
+        const { data: existing } = await supabase
+            .from('laboratorios_anatomia_patologica')
+            .select(`id_visita, ${FIELDS_TO_PRESERVE.join(', ')}`)
+            .in('id_visita', batchIds);
+
+        if (existing) {
+            for (const row of existing) {
+                const preserved = {};
+                for (const f of FIELDS_TO_PRESERVE) {
+                    if (row[f] != null) preserved[f] = row[f];
+                }
+                if (Object.keys(preserved).length > 0) existingMap.set(row.id_visita, preserved);
+            }
+        }
+    }
+    console.log(`   🔒 ${existingMap.size} registros con estados a preservar`);
+
+    // Upsert en lotes
+    let inserted = 0, updated = 0, skipped = 0;
+    const BATCH = 50;
+
+    for (let i = 0; i < uniqueRecords.length; i += BATCH) {
+        const batch = uniqueRecords.slice(i, i + BATCH).map(row => {
+            const preserved = existingMap.get(row.id_visita);
+            return preserved ? { ...row, ...preserved } : row;
+        });
+
+        const { data, error } = await supabase
+            .from('laboratorios_anatomia_patologica')
+            .upsert(batch, {
+                onConflict: 'id_visita',
+                ignoreDuplicates: false,
+            })
+            .select('id, created_at, updated_at');
+
+        if (error) {
+            console.error('   ❌ Batch error:', error.message);
+            skipped += batch.length;
+        } else if (data) {
+            data.forEach(d => {
+                d.created_at === d.updated_at ? inserted++ : updated++;
+            });
+        }
+    }
+
+    const summary = { total: result.recordset.length, inserted, updated, skipped };
+    console.log(`   ✅ Laboratorios: ${inserted} nuevos, ${updated} actualizados, ${skipped} errores`);
+    return summary;
+}
+
 // ENDPOINT PRINCIPAL: SYNC TODO
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 let syncInProgress = false;
@@ -1222,6 +1348,13 @@ app.get('/api/salus/sync-all', async (req, res) => {
         } catch (err) {
             console.error('Error en asociaciones:', err.message);
             results.asociaciones = { error: err.message };
+        }
+
+        try {
+            results.laboratorios = await syncLaboratorios(db);
+        } catch (err) {
+            console.error('Error en laboratorios:', err.message);
+            results.laboratorios = { error: err.message };
         }
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -1294,6 +1427,11 @@ app.get('/api/salus/sync/asociaciones', async (req, res) => {
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+app.get('/api/salus/sync/laboratorios', async (req, res) => {
+    try { const db = await getPool(); res.json({ success: true, results: await syncLaboratorios(db) }); }
+    catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
 // â”€â”€ Health check â”€â”€
 app.get('/api/salus/health', async (req, res) => {
     try {
@@ -1320,6 +1458,7 @@ app.listen(PORT, '0.0.0.0', () => {
 â•‘    GET /api/salus/sync/presupuestos                 â•‘
 â•‘    GET /api/salus/sync/deudas                       â•‘
 â•‘    GET /api/salus/sync/asociaciones                     â•‘
+â•‘    GET /api/salus/sync/laboratorios                     â•‘
 â•‘    GET /api/salus/health                            â•‘
 â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     `);
