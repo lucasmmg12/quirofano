@@ -4,6 +4,7 @@ import { Microscope, Search, Filter, RefreshCw, Check, Clock, FileText, Download
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { getEstadoFacturacion } from '../utils/facturacionRules';
 
 export default function LaboratoriosPanel({ addToast, currentUser }) {
     const [loading, setLoading] = useState(true);
@@ -77,7 +78,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
         doc.setFontSize(10);
         doc.text(`Filtros: Lab: ${filterLaboratorio !== 'all' ? filterLaboratorio : 'Todos'} | Modulo: ${filterModulo !== 'all' ? filterModulo : 'Todos'}`, 14, 28);
 
-        const tableColumn = ["Fecha", "Paciente", "DNI", "Laboratorio", "Muestras / Biopsias", "Módulo"];
+        const tableColumn = ["Fecha", "Paciente", "DNI", "Obra Social", "Laboratorio", "Muestras / Biopsias", "Módulo", "Acción"];
         const tableRows = [];
 
         filteredRecords.forEach(r => {
@@ -87,13 +88,17 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
             if (r.biopsia_simple) biopsias.push(`S: ${r.biopsia_simple}`);
             if (r.biopsia_ampliada) biopsias.push(`A: ${r.biopsia_ampliada}`);
 
+            const estado = getEstadoFacturacion(r.cliente, r.laboratorio);
+
             tableRows.push([
                 date,
                 r.paciente || 'S/D',
                 r.dni || 'S/D',
+                r.cliente || '-',
                 r.laboratorio || '-',
                 biopsias.length > 0 ? biopsias.join('\n') : '-',
-                r.modulo_asignado || 'Sin asignar'
+                r.modulo_asignado || 'Sin asignar',
+                estado
             ]);
         });
 
@@ -118,9 +123,11 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 Fecha: r.fecha_visita ? new Date(r.fecha_visita).toLocaleDateString('es-AR') : '',
                 Paciente: r.paciente || '',
                 DNI: r.dni || '',
+                ObraSocial: r.cliente || '',
                 Laboratorio: r.laboratorio || '',
                 Muestras: biopsias.join(' | '),
-                Modulo_Asignado: r.modulo_asignado || 'Sin asignar'
+                Modulo_Asignado: r.modulo_asignado || 'Sin asignar',
+                Accion_Facturacion: getEstadoFacturacion(r.cliente, r.laboratorio)
             };
         });
 
@@ -265,26 +272,30 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                             <tr style={{ background: '#F1F5F9' }}>
                                 <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)' }}>Fecha</th>
                                 <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)' }}>Paciente</th>
+                                <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)' }}>Obra Social</th>
                                 <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)' }}>Laboratorio</th>
                                 <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)' }}>Muestra / Biopsia</th>
                                 <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)', textAlign: 'center' }}>Módulo Asignado</th>
+                                <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)', textAlign: 'center' }}>Acción</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
                                 <tr>
-                                    <td colSpan={5} style={{ padding: '32px', textAlign: 'center', color: 'var(--neutral-400)' }}>
+                                    <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: 'var(--neutral-400)' }}>
                                         <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 12px' }} />
                                         Cargando laboratorios...
                                     </td>
                                 </tr>
                             ) : filteredRecords.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} style={{ padding: '32px', textAlign: 'center', color: 'var(--neutral-400)' }}>
+                                    <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: 'var(--neutral-400)' }}>
                                         Ningún registro coincide con los filtros.
                                     </td>
                                 </tr>
-                            ) : filteredRecords.map((r) => (
+                            ) : filteredRecords.map((r) => {
+                                const estadoAccion = getEstadoFacturacion(r.cliente, r.laboratorio);
+                                return (
                                 <tr key={r.id_visita} style={{ borderBottom: '1px solid var(--neutral-100)', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#F8FAFC'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
                                     <td style={{ padding: '12px 16px', fontSize: '0.85rem', color: 'var(--neutral-600)', whiteSpace: 'nowrap' }}>
                                         {r.fecha_visita && new Date(r.fecha_visita).toLocaleDateString('es-AR')}
@@ -292,6 +303,9 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                     <td style={{ padding: '12px 16px' }}>
                                         <div style={{ fontWeight: 600, color: 'var(--neutral-800)', fontSize: '0.85rem' }}>{r.paciente}</div>
                                         <div style={{ fontSize: '0.75rem', color: 'var(--neutral-400)' }}>DNI: {r.dni || 'S/D'}</div>
+                                    </td>
+                                    <td style={{ padding: '12px 16px', fontSize: '0.8rem', color: 'var(--neutral-600)', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.cliente}>
+                                        {r.cliente || '-'}
                                     </td>
                                     <td style={{ padding: '12px 16px', fontSize: '0.85rem', color: 'var(--neutral-600)' }}>
                                         {r.laboratorio || '-'}
@@ -335,9 +349,20 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                 ))}
                                             </select>
                                         )}
+                                    <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                        <div style={{ 
+                                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                            padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700,
+                                            background: estadoAccion === 'FACTURAR' ? '#FEF2F2' : estadoAccion === 'ENTREGAR' ? '#F0FDF4' : '#F8FAFC',
+                                            color: estadoAccion === 'FACTURAR' ? '#DC2626' : estadoAccion === 'ENTREGAR' ? '#16A34A' : '#94A3B8',
+                                            border: `1px solid ${estadoAccion === 'FACTURAR' ? '#FECACA' : estadoAccion === 'ENTREGAR' ? '#BBF7D0' : '#E2E8F0'}`
+                                        }}>
+                                            {estadoAccion}
+                                        </div>
                                     </td>
                                 </tr>
-                            ))}
+                            );
+                        })}
                         </tbody>
                     </table>
                 </div>
