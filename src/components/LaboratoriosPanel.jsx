@@ -5,6 +5,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import ModulosQuantity from './ModulosQuantity';
+import MuestrasEditor from './MuestrasEditor';
 import { getEstadoFacturacion } from '../utils/facturacionRules';
 
 export default function LaboratoriosPanel({ addToast, currentUser }) {
@@ -96,6 +97,27 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
         } catch (err) {
             console.error('Error updating modulo:', err);
             addToast('Error al asignar módulo', 'error');
+        }
+    };
+
+    const handleAssignMuestras = async (id_visita, updates) => {
+        try {
+            const { error } = await supabase
+                .from('laboratorios_anatomia_patologica')
+                .update(updates)
+                .eq('id_visita', id_visita);
+
+            if (error) throw error;
+
+            setRecords(prev => prev.map(r => 
+                r.id_visita === id_visita 
+                    ? { ...r, ...updates } 
+                    : r
+            ));
+            addToast(`Muestras actualizadas correctamente`, 'success');
+        } catch (err) {
+            console.error('Error updating muestras:', err);
+            addToast('Error al actualizar muestras', 'error');
         }
     };
 
@@ -423,15 +445,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                             <div style={{ background: '#fff', border: '1px solid var(--neutral-200)', borderRadius: '8px', padding: '16px', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
                                                 <div style={{ flex: '1', minWidth: '250px' }}>
                                                     <h4 style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', marginBottom: '8px', borderBottom: '1px solid var(--neutral-100)', paddingBottom: '4px' }}>Detalles de Muestras</h4>
-                                                    <div style={{ fontSize: '0.85rem', color: 'var(--neutral-700)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                                        {r.biopsia_congelacion ? <div><span style={{ background: '#E0F2FE', color: '#0369A1', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, fontSize: '0.75rem', marginRight: '6px', border: '1px solid #BAE6FD' }}>❄️ Congelación</span> <span style={{marginLeft: '4px', fontSize: '0.85rem'}}><strong style={{color: 'var(--neutral-600)'}}>Cant:</strong> {r.biopsia_congelacion}</span></div> : null}
-                                                        
-                                                        {r.biopsia_simple ? <div><span style={{ background: '#DCFCE7', color: '#15803D', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, fontSize: '0.75rem', marginRight: '6px', border: '1px solid #BBF7D0' }}>Simple</span> <span style={{marginLeft: '4px', fontSize: '0.85rem'}}><strong style={{color: 'var(--neutral-600)'}}>Cant:</strong> {r.biopsia_simple}</span> <div style={{ color: 'var(--neutral-500)', marginLeft: '12px', marginTop: '4px', fontSize: '0.8rem', display: 'flex', gap: '4px' }}><span style={{color: 'var(--neutral-300)'}}>↳</span> <span style={{fontStyle: 'italic'}}>{r.material_biopsia_simple || 'Material no especificado'}</span></div></div> : null}
-                                                        
-                                                        {r.biopsia_ampliada ? <div><span style={{ background: '#FFEDD5', color: '#C2410C', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, fontSize: '0.75rem', marginRight: '6px', border: '1px solid #FED7AA' }}>Ampliada</span> <span style={{marginLeft: '4px', fontSize: '0.85rem'}}><strong style={{color: 'var(--neutral-600)'}}>Cant:</strong> {r.biopsia_ampliada}</span> <div style={{ color: 'var(--neutral-500)', marginLeft: '12px', marginTop: '4px', fontSize: '0.8rem', display: 'flex', gap: '4px' }}><span style={{color: 'var(--neutral-300)'}}>↳</span> <span style={{fontStyle: 'italic'}}>{r.material_biopsia_ampliada || 'Material no especificado'}</span></div></div> : null}
-                                                        
-                                                        {!r.biopsia_congelacion && !r.biopsia_simple && !r.biopsia_ampliada && <span style={{ color: 'var(--neutral-400)' }}>Sin muestras registradas.</span>}
-                                                    </div>
+                                                    <MuestrasEditor record={r} onSave={handleAssignMuestras} />
                                                 </div>
                                                 <div style={{ flex: '1', minWidth: '350px', borderLeft: '1px solid var(--neutral-100)', paddingLeft: '24px' }}>
                                                     <h4 style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', marginBottom: '8px', borderBottom: '1px solid var(--neutral-100)', paddingBottom: '4px' }}>Gestión de Módulo</h4>
