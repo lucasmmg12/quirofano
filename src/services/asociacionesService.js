@@ -33,7 +33,7 @@ export const ASOCIACION_LIST = Object.values(ASOCIACION_MAP);
 /**
  * Fetches all synced surgeries, optionally filtered.
  */
-export async function fetchAsociacionesCirugias({ asociacion, fechaDesde, fechaHasta, search, soloSinConstancia = true } = {}) {
+export async function fetchAsociacionesCirugias({ asociacion, fechaDesde, fechaHasta, search, soloSinConstancia = true, soloSinCarrito = false } = {}) {
     let query = supabase
         .from('asociaciones_cirugias')
         .select('*')
@@ -42,6 +42,9 @@ export async function fetchAsociacionesCirugias({ asociacion, fechaDesde, fechaH
 
     if (soloSinConstancia) {
         query = query.is('constancia_id', null);
+    }
+    if (soloSinCarrito) {
+        query = query.eq('en_carrito', false);
     }
     if (asociacion) {
         query = query.eq('asociacion', asociacion);

@@ -153,6 +153,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                     asociacion: filtroAsociacion,
                     search: searchTerm || undefined,
                     soloSinConstancia: true,
+                    soloSinCarrito: true,  // ✅ FIX: exclude items already in cart
                 }),
                 fetchResumenAsociaciones(),
             ]);
@@ -187,7 +188,11 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     }, [addToast]);
 
     useEffect(() => {
-        if (activeTab === 'pendientes') loadPendientes();
+        if (activeTab === 'pendientes') {
+            // ✅ FIX: load carrito in parallel so badge count is accurate from the start
+            loadPendientes();
+            loadCarrito();
+        }
         else if (activeTab === 'carrito') loadCarrito();
         else if (activeTab === 'historial') loadHistorial();
     }, [activeTab, loadPendientes, loadCarrito, loadHistorial]);
@@ -213,7 +218,8 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
         try {
             await enviarAlCarrito(conDocs.map(c => c.id));
             addToast?.(`${conDocs.length} expediente(s) enviados al carrito`, 'success');
-            loadPendientes();
+            // ✅ FIX: reload both pendientes AND carrito so badge + tab update instantly
+            await Promise.all([loadPendientes(), loadCarrito()]);
         } catch (err) {
             addToast?.('Error al enviar al carrito: ' + err.message, 'error');
         }
@@ -223,7 +229,8 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
         try {
             await quitarDelCarrito(id);
             addToast?.('Expediente removido del carrito', 'info');
-            loadCarrito();
+            // ✅ FIX: also refresh pendientes so item reappears there
+            await Promise.all([loadCarrito(), loadPendientes()]);
         } catch (err) {
             addToast?.('Error: ' + err.message, 'error');
         }
@@ -550,8 +557,9 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     };
 
     // ─── Filter display data ───
-    const pendientesCirugias = cirugias.filter(c => !c.en_carrito);
-    const enCarritoCirugias = cirugias.filter(c => c.en_carrito);
+    // Server-side query already excludes en_carrito items, so cirugias = only pendientes
+    const pendientesCirugias = cirugias; // all items returned are already pending (not in cart)
+    const enCarritoCount = Object.values(carrito).flat().length; // from carrito state
 
     // ─── Column-filtered data ───
     const filteredPendientes = useMemo(() => {
@@ -983,8 +991,8 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                         </div>
                     )}
 
-                    {/* En carrito banner */}
-                    {enCarritoCirugias.length > 0 && (
+                    {/* En carrito banner — uses server state */}
+                    {enCarritoCount > 0 && (
                         <div style={{
                             marginTop: '12px', padding: '10px 16px', borderRadius: '10px',
                             background: '#FFFBEB', border: '1px solid #FDE68A',
@@ -992,7 +1000,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                             fontSize: '0.8rem', color: '#92400E',
                         }}>
                             <ShoppingCart size={16} />
-                            <strong>{enCarritoCirugias.length}</strong> expediente(s) ya en el carrito esperando entrega
+                            <strong>{enCarritoCount}</strong> expediente(s) ya en el carrito esperando entrega
                         </div>
                     )}
                 </div>
