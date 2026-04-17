@@ -315,6 +315,8 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
             });
             addToast?.(`✅ Constancia ${constancia.codigo} generada (${items.length} registros)`, 'success');
             setShowEntregaModal(false);
+            // Auto-print
+            await handlePrintConstancia(constancia, items);
             await Promise.all([loadCarrito(), loadHistorial(), loadPendientes()]);
         } catch (err) {
             addToast?.('Error al generar constancia: ' + err.message, 'error');
@@ -366,62 +368,267 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
             if (!printItems) {
                 printItems = await fetchConstanciaDetalleLab(constancia.id);
             }
+
+            const { default: jsPDF } = await import('jspdf');
+            const { default: autoTable } = await import('jspdf-autotable');
             const doc = new jsPDF();
             const pageW = doc.internal.pageSize.getWidth();
+            const pageH = doc.internal.pageSize.getHeight();
+            const margin = 14;
+            const colW = pageW - margin * 2;
+            let y = 0;
 
-            // Header
-            doc.setFontSize(14);
-            doc.setFont(undefined, 'bold');
-            doc.text('CONSTANCIA DE ENTREGA — ANATOMÍA PATOLÓGICA', pageW / 2, 20, { align: 'center' });
-            doc.setFontSize(9);
-            doc.setFont(undefined, 'normal');
-            doc.text(`Código: ${constancia.codigo}`, 14, 32);
-            doc.text(`Laboratorio: ${constancia.laboratorio}`, 14, 38);
-            doc.text(`Fecha: ${fmtFecha(constancia.fecha_entrega)}`, pageW - 14, 32, { align: 'right' });
-            doc.text(`Responsable: ${constancia.responsable_entrega}`, pageW - 14, 38, { align: 'right' });
-            if (constancia.nombre_cadete) {
-                doc.text(`Cadete: ${constancia.nombre_cadete}`, 14, 44);
+            // Load logo
+            let logoCircleBase64 = null;
+            try {
+                const logoImg = new Image();
+                logoImg.crossOrigin = 'anonymous';
+                logoImg.src = '/logosanatorio.png';
+                await new Promise((resolve, reject) => {
+                    logoImg.onload = resolve;
+                    logoImg.onerror = reject;
+                });
+                const canvasSize = 200;
+                const canvas = document.createElement('canvas');
+                canvas.width = canvasSize;
+                canvas.height = canvasSize;
+                const ctx = canvas.getContext('2d');
+                ctx.beginPath();
+                ctx.arc(canvasSize / 2, canvasSize / 2, canvasSize / 2, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.clip();
+                ctx.drawImage(logoImg, 0, 0, canvasSize, canvasSize);
+                logoCircleBase64 = canvas.toDataURL('image/png');
+            } catch (e) { /* logo optional */ }
+
+            // ═══════ HEADER — Barra institucional ═══════
+            doc.setFillColor(13, 59, 102); // #0D3B66
+            doc.rect(0, 0, pageW, 34, 'F');
+
+            const logoX = margin + 1;
+            const logoY = 10;
+            const logoSize = 14;
+            if (logoCircleBase64) {
+                doc.setFillColor(255, 255, 255);
+                doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2 + 1.2, 'F');
+                doc.addImage(logoCircleBase64, 'PNG', logoX, logoY, logoSize, logoSize);
+            } else {
+                doc.setFillColor(255, 255, 255);
+                doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 'F');
+                doc.setFontSize(6);
+                doc.setTextColor(13, 59, 102);
+                doc.text('SA', logoX + 3.5, logoY + logoSize / 2 + 1.5);
             }
 
-            // Table
-            doc.autoTable({
-                startY: constancia.nombre_cadete ? 50 : 44,
-                head: [['#', 'Fecha', 'Paciente', 'DNI', 'Obra Social', 'Biopsias', 'Módulo']],
-                body: printItems.map((item, idx) => {
-                    let biopsias = [];
-                    if (item.biopsia_congelacion) biopsias.push(`C: ${item.biopsia_congelacion}`);
-                    if (item.biopsia_simple) biopsias.push(`S: ${item.biopsia_simple}`);
-                    if (item.biopsia_ampliada) biopsias.push(`A: ${item.biopsia_ampliada}`);
-                    let modText = [];
-                    if (item.modulo_a_qty > 0) modText.push(`A:${item.modulo_a_qty}`);
-                    if (item.modulo_b_qty > 0) modText.push(`B:${item.modulo_b_qty}`);
-                    if (item.modulo_c_qty > 0) modText.push(`C:${item.modulo_c_qty}`);
-                    return [
-                        idx + 1,
-                        fmtFecha(item.fecha_visita),
-                        item.paciente || 'S/D',
-                        item.dni || 'S/D',
-                        item.cliente || '—',
-                        biopsias.join(', ') || '—',
-                        modText.join(', ') || '—',
-                    ];
-                }),
-                styles: { fontSize: 8, cellPadding: 3 },
-                headStyles: { fillColor: [139, 92, 246] },
+            doc.setFontSize(16);
+            doc.setTextColor(255, 255, 255);
+            doc.setFont('helvetica', 'bold');
+            doc.text('SANATORIO ARGENTINO', margin + 18, 14);
+
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(180, 200, 220);
+            doc.text('Administración · Anatomía Patológica', margin + 18, 21);
+
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(255, 255, 255);
+            doc.text('CONSTANCIA DE ENTREGA', pageW - margin, 14, { align: 'right' });
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(180, 200, 220);
+            doc.text('Sistema ADM-QUI', pageW - margin, 21, { align: 'right' });
+
+            // Accent line
+            doc.setFillColor(139, 92, 246); // Purple accent for labs
+            doc.rect(0, 34, pageW, 2, 'F');
+            y = 44;
+
+            // ═══════ INFO BAR ═══════
+            const labShort = LAB_SHORT_NAMES[constancia.laboratorio] || constancia.laboratorio;
+            const fechaHora = new Date(constancia.fecha_entrega).toLocaleString('es-AR', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit',
             });
 
-            // Footer
-            const finalY = doc.lastAutoTable?.finalY || 120;
-            doc.setFontSize(8);
-            doc.text('Firma Responsable: ________________________', 14, finalY + 20);
-            doc.text('Firma Recepción: ________________________', pageW - 14, finalY + 20, { align: 'right' });
+            doc.setFillColor(241, 245, 249);
+            doc.roundedRect(margin, y, colW, 18, 3, 3, 'F');
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(margin, y, colW, 18, 3, 3, 'S');
 
-            doc.save(`Constancia_${constancia.codigo}.pdf`);
-            addToast?.(`📄 PDF generado: ${constancia.codigo}`, 'success');
+            const infoItems = [
+                { label: 'CÓDIGO', value: constancia.codigo },
+                { label: 'FECHA Y HORA', value: fechaHora },
+                { label: 'LABORATORIO', value: labShort },
+                { label: 'REGISTROS', value: String(printItems.length) },
+            ];
+            const cellW = colW / 4;
+            infoItems.forEach((item, i) => {
+                const x = margin + cellW * i + 6;
+                doc.setFontSize(6);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(148, 163, 184);
+                doc.text(item.label, x, y + 6);
+                doc.setFontSize(i === 0 || i === 3 ? 11 : 9);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(13, 59, 102);
+                doc.text(item.value || '—', x, y + 13);
+            });
+            y += 26;
+
+            // ═══════ SECTION TITLE ═══════
+            doc.setFillColor(139, 92, 246);
+            doc.rect(margin, y, 3, 7, 'F');
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(13, 59, 102);
+            doc.text('DETALLE DE MUESTRAS ENTREGADAS', margin + 6, y + 5.5);
+            y += 12;
+
+            // ═══════ TABLE ═══════
+            const tableBody = printItems.map((item, idx) => {
+                const fecha = item.fecha_visita
+                    ? new Date(item.fecha_visita + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+                    : '—';
+                let biopsias = [];
+                if (item.biopsia_congelacion) biopsias.push(`C: ${item.biopsia_congelacion}`);
+                if (item.biopsia_simple) biopsias.push(`S: ${item.biopsia_simple}`);
+                if (item.biopsia_ampliada) biopsias.push(`A: ${item.biopsia_ampliada}`);
+                let modText = [];
+                if (item.modulo_a_qty > 0) modText.push(`A:${item.modulo_a_qty}`);
+                if (item.modulo_b_qty > 0) modText.push(`B:${item.modulo_b_qty}`);
+                if (item.modulo_c_qty > 0) modText.push(`C:${item.modulo_c_qty}`);
+                return [
+                    String(idx + 1),
+                    fecha,
+                    item.paciente || '—',
+                    item.dni || '—',
+                    item.cliente || '—',
+                    biopsias.join(', ') || '—',
+                    modText.join(', ') || '—',
+                ];
+            });
+
+            autoTable(doc, {
+                startY: y,
+                head: [['#', 'Fecha', 'Paciente', 'DNI', 'Obra Social', 'Biopsias', 'Módulo']],
+                body: tableBody,
+                theme: 'grid',
+                headStyles: {
+                    fillColor: [13, 59, 102],
+                    textColor: [255, 255, 255],
+                    fontSize: 7.5, fontStyle: 'bold', halign: 'left', cellPadding: 3,
+                },
+                bodyStyles: { fontSize: 7.5, cellPadding: 2.5, textColor: [30, 30, 30] },
+                alternateRowStyles: { fillColor: [248, 250, 252] },
+                columnStyles: {
+                    0: { cellWidth: 8, halign: 'center', fontStyle: 'bold', textColor: [148, 163, 184] },
+                    1: { cellWidth: 18 },
+                    2: { fontStyle: 'bold', cellWidth: 36 },
+                    3: { cellWidth: 22, font: 'courier' },
+                    4: { cellWidth: 30 },
+                    5: { cellWidth: 42 },
+                    6: { cellWidth: 26 },
+                },
+                margin: { left: margin, right: margin },
+                didDrawPage: () => {
+                    doc.setFillColor(13, 59, 102);
+                    doc.rect(0, 0, pageW, 8, 'F');
+                    doc.setFillColor(139, 92, 246);
+                    doc.rect(0, 8, pageW, 1, 'F');
+                },
+            });
+
+            y = doc.lastAutoTable.finalY + 6;
+
+            // ═══════ OBSERVACIONES ═══════
+            if (constancia.notas) {
+                doc.setFillColor(255, 251, 235);
+                doc.setDrawColor(253, 230, 138);
+                doc.roundedRect(margin, y, colW, 14, 2, 2, 'FD');
+                doc.setFontSize(7.5);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(146, 64, 14);
+                doc.text('OBSERVACIONES:', margin + 4, y + 5);
+                doc.setFont('helvetica', 'normal');
+                doc.text((constancia.notas || '').substring(0, 120), margin + 32, y + 5);
+                y += 18;
+            }
+
+            // ═══════ FIRMAS ═══════
+            if (y > pageH - 65) { doc.addPage(); y = 20; }
+            y += 8;
+            const sigBoxW = (colW - 20) / 2;
+
+            // Firma Entrega
+            const sig1X = margin;
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(sig1X, y, sigBoxW, 42, 3, 3, 'S');
+            doc.setFontSize(6.5);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(148, 163, 184);
+            doc.text('ENTREGA', sig1X + sigBoxW / 2, y + 6, { align: 'center' });
+            doc.setDrawColor(13, 59, 102);
+            doc.setLineWidth(0.5);
+            doc.line(sig1X + 12, y + 30, sig1X + sigBoxW - 12, y + 30);
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(13, 59, 102);
+            doc.text(constancia.responsable_entrega || '________________________', sig1X + sigBoxW / 2, y + 35, { align: 'center' });
+            doc.setFontSize(7);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100, 116, 139);
+            doc.text('Sanatorio Argentino — Administración', sig1X + sigBoxW / 2, y + 40, { align: 'center' });
+
+            // Firma Recibe
+            const sig2X = margin + sigBoxW + 20;
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(sig2X, y, sigBoxW, 42, 3, 3, 'S');
+            doc.setFontSize(6.5);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(148, 163, 184);
+            doc.text('RECIBE', sig2X + sigBoxW / 2, y + 6, { align: 'center' });
+            doc.setDrawColor(13, 59, 102);
+            doc.line(sig2X + 12, y + 30, sig2X + sigBoxW - 12, y + 30);
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(13, 59, 102);
+            doc.text(constancia.nombre_cadete || '________________________', sig2X + sigBoxW / 2, y + 35, { align: 'center' });
+            doc.setFontSize(7);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100, 116, 139);
+            doc.text(labShort, sig2X + sigBoxW / 2, y + 40, { align: 'center' });
+
+            // ═══════ FOOTER — Todas las páginas ═══════
+            const totalPages = doc.internal.getNumberOfPages();
+            for (let p = 1; p <= totalPages; p++) {
+                doc.setPage(p);
+                doc.setDrawColor(226, 232, 240);
+                doc.setLineWidth(0.3);
+                doc.line(margin, pageH - 12, pageW - margin, pageH - 12);
+                doc.setFontSize(6.5);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(170, 170, 170);
+                doc.text(
+                    'Esta constancia acredita la entrega de muestras de anatomía patológica. Conserve como comprobante.',
+                    margin, pageH - 8
+                );
+                doc.text(
+                    `Sistema ADM-QUI — Sanatorio Argentino · Pág. ${p}/${totalPages}`,
+                    pageW - margin, pageH - 8, { align: 'right' }
+                );
+            }
+
+            // ═══════ SAVE ═══════
+            const fileName = `Constancia_${constancia.codigo}_${labShort.replace(/\s+/g, '_')}.pdf`;
+            doc.save(fileName);
+            addToast?.(`📄 PDF "${fileName}" descargado`, 'success');
         } catch (err) {
-            addToast?.('Error al generar PDF', 'error');
+            console.error('Error generating PDF:', err);
+            addToast?.('Error al generar PDF: ' + err.message, 'error');
         }
     };
+
 
     // ═══════════════════════════════════════
     // Export helpers (replicated from original)
