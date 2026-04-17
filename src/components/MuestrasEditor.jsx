@@ -5,18 +5,14 @@ export default function MuestrasEditor({ record, onSave }) {
     const [isEditing, setIsEditing] = useState(false);
     const [bCongelacion, setBCongelacion] = useState(record.biopsia_congelacion || '');
     const [bSimple, setBSimple] = useState(record.biopsia_simple || '');
-    const [matSimple, setMatSimple] = useState(record.material_biopsia_simple || '');
     const [bAmpliada, setBAmpliada] = useState(record.biopsia_ampliada || '');
-    const [matAmpliada, setMatAmpliada] = useState(record.material_biopsia_ampliada || '');
 
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
         setBCongelacion(record.biopsia_congelacion || '');
         setBSimple(record.biopsia_simple || '');
-        setMatSimple(record.material_biopsia_simple || '');
         setBAmpliada(record.biopsia_ampliada || '');
-        setMatAmpliada(record.material_biopsia_ampliada || '');
     }, [record]);
 
     const handleSave = async () => {
@@ -24,9 +20,7 @@ export default function MuestrasEditor({ record, onSave }) {
         await onSave(record.id_visita, {
             biopsia_congelacion: bCongelacion,
             biopsia_simple: bSimple,
-            material_biopsia_simple: matSimple,
-            biopsia_ampliada: bAmpliada,
-            material_biopsia_ampliada: matAmpliada
+            biopsia_ampliada: bAmpliada
         });
         setSaving(false);
         setIsEditing(false);
@@ -83,13 +77,7 @@ export default function MuestrasEditor({ record, onSave }) {
                         style={{...inputStyle, textAlign: 'center'}} 
                     />
                 </div>
-                <input 
-                    type="text" 
-                    placeholder="Material remitido simple..."
-                    value={matSimple} 
-                    onChange={e => setMatSimple(e.target.value)} 
-                    style={inputStyle} 
-                />
+                <div style={{ color: 'var(--neutral-500, #64748B)', marginLeft: '12px', fontSize: '0.8rem', display: 'flex', gap: '4px' }}><span style={{color: 'var(--neutral-300, #CBD5E1)'}}>↳</span> <span style={{fontStyle: 'italic'}}>{record.material_biopsia_simple || 'Material no especificado'}</span></div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -102,13 +90,7 @@ export default function MuestrasEditor({ record, onSave }) {
                         style={{...inputStyle, textAlign: 'center'}} 
                     />
                 </div>
-                <input 
-                    type="text" 
-                    placeholder="Material remitido ampliada..."
-                    value={matAmpliada} 
-                    onChange={e => setMatAmpliada(e.target.value)} 
-                    style={inputStyle} 
-                />
+                <div style={{ color: 'var(--neutral-500, #64748B)', marginLeft: '12px', fontSize: '0.8rem', display: 'flex', gap: '4px' }}><span style={{color: 'var(--neutral-300, #CBD5E1)'}}>↳</span> <span style={{fontStyle: 'italic'}}>{record.material_biopsia_ampliada || 'Material no especificado'}</span></div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
