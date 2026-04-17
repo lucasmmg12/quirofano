@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     Package, CheckCircle2, ShoppingCart, History, Search,
     Filter, ChevronDown, ChevronRight, Printer, FileCheck,
-    AlertCircle, RefreshCw, Loader2, X, PackageCheck,
+    AlertCircle, RefreshCw, Loader2, X, PackageCheck, RotateCcw,
 } from 'lucide-react';
 import {
     fetchAsociacionesCirugias,
@@ -22,6 +22,7 @@ import {
     fetchConstancias,
     fetchConstanciaDetalle,
     fetchResumenAsociaciones,
+    revertirConstancia,
     ASOCIACION_COLORS,
     ASOCIACION_LIST,
 } from '../services/asociacionesService';
@@ -128,6 +129,8 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     const [constancias, setConstancias] = useState([]);
     const [expandedConstancia, setExpandedConstancia] = useState(null);
     const [constanciaDetalle, setConstanciaDetalle] = useState({});
+    const [confirmRevertir, setConfirmRevertir] = useState(null);   // constancia.id pendiente de confirmar
+    const [revertirLoading, setRevertirLoading] = useState(null);   // constancia.id en proceso
 
 
     // Column filters state
@@ -250,6 +253,24 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
             } catch (err) {
                 addToast?.('Error al cargar detalle', 'error');
             }
+        }
+    };
+
+    const handleRevertirConstancia = async (cons) => {
+        setRevertirLoading(cons.id);
+        try {
+            await revertirConstancia(cons.id);
+            addToast?.(
+                `↩️ Constancia ${cons.codigo} revertida — ${cons.cantidad_expedientes} expediente(s) volvieron al carrito`,
+                'success'
+            );
+            setConfirmRevertir(null);
+            setExpandedConstancia(null);
+            await Promise.all([loadHistorial(), loadCarrito(), loadPendientes()]);
+        } catch (err) {
+            addToast?.('Error al revertir: ' + err.message, 'error');
+        } finally {
+            setRevertirLoading(null);
         }
     };
 
@@ -1349,24 +1370,77 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                     <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700 }}>
                                                         {cons.cantidad_expedientes}
                                                     </td>
-                                                    <td style={{ ...tdStyle, textAlign: 'center' }}>
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handlePrintConstancia(cons, detalle);
-                                                            }}
-                                                            style={{
-                                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                                padding: '4px 10px', fontSize: '0.72rem', fontWeight: 600,
-                                                                borderRadius: '6px', border: '1px solid #93C5FD',
-                                                                background: '#EFF6FF', color: '#2563EB',
-                                                                cursor: 'pointer', transition: 'all 0.2s',
-                                                            }}
-                                                            onMouseOver={e => { e.currentTarget.style.background = '#DBEAFE'; }}
-                                                            onMouseOut={e => { e.currentTarget.style.background = '#EFF6FF'; }}
-                                                        >
-                                                            <Printer size={12} /> Reimprimir
-                                                        </button>
+                                                    <td style={{ ...tdStyle, textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                                                        {confirmRevertir === cons.id ? (
+                                                            <div style={{
+                                                                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                                                padding: '4px 8px', borderRadius: '8px',
+                                                                background: '#FEF2F2', border: '1px solid #FECACA',
+                                                            }}>
+                                                                <span style={{ fontSize: '0.7rem', color: '#DC2626', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                                                    ¿Revertir {cons.cantidad_expedientes} exp.?
+                                                                </span>
+                                                                <button
+                                                                    onClick={() => handleRevertirConstancia(cons)}
+                                                                    disabled={revertirLoading === cons.id}
+                                                                    style={{
+                                                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                                        padding: '3px 8px', fontSize: '0.7rem', fontWeight: 700,
+                                                                        borderRadius: '5px', border: 'none',
+                                                                        background: '#DC2626', color: '#fff',
+                                                                        cursor: revertirLoading === cons.id ? 'wait' : 'pointer',
+                                                                    }}
+                                                                >
+                                                                    {revertirLoading === cons.id
+                                                                        ? <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} />
+                                                                        : <RotateCcw size={10} />
+                                                                    }
+                                                                    Sí, revertir
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setConfirmRevertir(null)}
+                                                                    style={{
+                                                                        padding: '3px 8px', fontSize: '0.7rem', fontWeight: 600,
+                                                                        borderRadius: '5px', border: '1px solid #FCA5A5',
+                                                                        background: '#fff', color: '#6B7280', cursor: 'pointer',
+                                                                    }}
+                                                                >
+                                                                    Cancelar
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
+                                                                <button
+                                                                    onClick={() => handlePrintConstancia(cons, detalle)}
+                                                                    style={{
+                                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                                        padding: '4px 10px', fontSize: '0.72rem', fontWeight: 600,
+                                                                        borderRadius: '6px', border: '1px solid #93C5FD',
+                                                                        background: '#EFF6FF', color: '#2563EB',
+                                                                        cursor: 'pointer', transition: 'all 0.2s',
+                                                                    }}
+                                                                    onMouseOver={e => { e.currentTarget.style.background = '#DBEAFE'; }}
+                                                                    onMouseOut={e => { e.currentTarget.style.background = '#EFF6FF'; }}
+                                                                >
+                                                                    <Printer size={12} /> Reimprimir
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setConfirmRevertir(cons.id)}
+                                                                    title="Revertir esta entrega — los expedientes vuelven al carrito"
+                                                                    style={{
+                                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                                        padding: '4px 10px', fontSize: '0.72rem', fontWeight: 600,
+                                                                        borderRadius: '6px', border: '1px solid #FCA5A5',
+                                                                        background: '#FFF5F5', color: '#DC2626',
+                                                                        cursor: 'pointer', transition: 'all 0.2s',
+                                                                    }}
+                                                                    onMouseOver={e => { e.currentTarget.style.background = '#FEE2E2'; }}
+                                                                    onMouseOut={e => { e.currentTarget.style.background = '#FFF5F5'; }}
+                                                                >
+                                                                    <RotateCcw size={12} /> Revertir
+                                                                </button>
+                                                            </div>
+                                                        )}
                                                     </td>
                                                 </tr>
 

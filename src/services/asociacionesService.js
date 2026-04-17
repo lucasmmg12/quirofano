@@ -310,3 +310,30 @@ export async function fetchResumenAsociaciones() {
 
     return resumen;
 }
+
+/**
+ * Revert a delivered constancia back to the cart.
+ * - All linked surgeries get constancia_id = null, en_carrito = true
+ * - The constancia record is deleted from history
+ */
+export async function revertirConstancia(constanciaId) {
+    // 1. Unlink all surgeries from this constancia and put them back in the cart
+    const { error: unlinkErr } = await supabase
+        .from('asociaciones_cirugias')
+        .update({
+            constancia_id: null,
+            entregado_at: null,
+            en_carrito: true,
+        })
+        .eq('constancia_id', constanciaId);
+
+    if (unlinkErr) throw unlinkErr;
+
+    // 2. Delete the constancia record
+    const { error: deleteErr } = await supabase
+        .from('asociaciones_constancias')
+        .delete()
+        .eq('id', constanciaId);
+
+    if (deleteErr) throw deleteErr;
+}
