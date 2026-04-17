@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
-import { Microscope, Search, Filter, RefreshCw, Check, Clock, FileText, Download, Link, Copy } from 'lucide-react';
+import { Microscope, Search, Filter, RefreshCw, Check, Clock, FileText, Download, Link, Copy, ChevronDown, ChevronUp } from 'lucide-react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -13,6 +13,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterModulo, setFilterModulo] = useState('all');
     const [filterLaboratorio, setFilterLaboratorio] = useState('all');
+    const [expandedRow, setExpandedRow] = useState(null);
 
     const laboratoriosUnicos = useMemo(() => {
         const unique = new Set(records.map(r => r.laboratorio).filter(Boolean));
@@ -350,6 +351,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                 <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)' }}>Muestra / Biopsia</th>
                                 <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)', textAlign: 'center' }}>Módulo Asignado</th>
                                 <th style={{ padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', borderBottom: '1px solid var(--neutral-200)', textAlign: 'center' }}>Acción</th>
+                                <th style={{ padding: '12px 16px', borderBottom: '1px solid var(--neutral-200)' }}></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -368,8 +370,11 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                 </tr>
                             ) : filteredRecords.map((r) => {
                                 const estadoAccion = getEstadoFacturacion(r.cliente, r.laboratorio);
+                                const isExpanded = expandedRow === r.id_visita;
+                                
                                 return (
-                                <tr key={r.id_visita} style={{ borderBottom: '1px solid var(--neutral-100)', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#F8FAFC'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                                <React.Fragment key={r.id_visita}>
+                                <tr style={{ borderBottom: isExpanded ? 'none' : '1px solid var(--neutral-100)', transition: 'background 0.2s', cursor: 'pointer', background: isExpanded ? '#F8FAFC' : 'transparent' }} onMouseOver={e => { if(!isExpanded) e.currentTarget.style.background = '#F8FAFC' }} onMouseOut={e => { if(!isExpanded) e.currentTarget.style.background = 'transparent' }} onClick={() => setExpandedRow(isExpanded ? null : r.id_visita)}>
                                     <td style={{ padding: '12px 16px', fontSize: '0.85rem', color: 'var(--neutral-600)', whiteSpace: 'nowrap' }}>
                                         {r.fecha_visita && new Date(r.fecha_visita).toLocaleDateString('es-AR')}
                                     </td>
@@ -395,7 +400,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                         </div>
                                     </td>
                                         <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                                            <ModulosQuantity record={r} onSave={handleAssignModulo} onDelete={handleDeleteModulo} readonly={true} />
+                                            <ModulosQuantity record={r} displayMode="badge" />
                                         </td>
                                     <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                                         <div style={{ 
@@ -408,7 +413,33 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                             {estadoAccion}
                                         </div>
                                     </td>
+                                    <td style={{ padding: '12px 16px', textAlign: 'center', color: 'var(--neutral-400)' }}>
+                                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                    </td>
                                 </tr>
+                                {isExpanded && (
+                                    <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--neutral-200)' }}>
+                                        <td colSpan={9} style={{ padding: '0 24px 24px 24px' }}>
+                                            <div style={{ background: '#fff', border: '1px solid var(--neutral-200)', borderRadius: '8px', padding: '16px', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+                                                <div style={{ flex: '1', minWidth: '250px' }}>
+                                                    <h4 style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', marginBottom: '8px', borderBottom: '1px solid var(--neutral-100)', paddingBottom: '4px' }}>Material Remitido</h4>
+                                                    <div style={{ fontSize: '0.85rem', color: 'var(--neutral-700)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                        {r.biopsia_simple ? <div><strong>Biopsia Simple:</strong> <span style={{ color: 'var(--neutral-600)' }}>{r.material_biopsia_simple || 'No especificado'}</span></div> : null}
+                                                        {r.biopsia_ampliada ? <div><strong>Biopsia Ampliada:</strong> <span style={{ color: 'var(--neutral-600)' }}>{r.material_biopsia_ampliada || 'No especificado'}</span></div> : null}
+                                                        {!r.biopsia_simple && !r.biopsia_ampliada && <span style={{ color: 'var(--neutral-400)' }}>Sin material remitido en el sistema.</span>}
+                                                    </div>
+                                                </div>
+                                                <div style={{ flex: '1', minWidth: '350px', borderLeft: '1px solid var(--neutral-100)', paddingLeft: '24px' }}>
+                                                    <h4 style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', marginBottom: '8px', borderBottom: '1px solid var(--neutral-100)', paddingBottom: '4px' }}>Gestión de Módulo</h4>
+                                                    <div style={{ marginTop: '12px' }}>
+                                                        <ModulosQuantity record={r} onSave={handleAssignModulo} onDelete={handleDeleteModulo} displayMode="editor" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                                </React.Fragment>
                             );
                         })}
                         </tbody>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Save, Check, Edit2, Trash2, X } from 'lucide-react';
 
-export default function ModulosQuantity({ record, onSave, onDelete, readonly = false }) {
+export default function ModulosQuantity({ record, onSave, onDelete, displayMode = 'editor' }) {
     const [modA, setModA] = useState(record.modulo_a_qty || 0);
     const [modB, setModB] = useState(record.modulo_b_qty || 0);
     const [modC, setModC] = useState(record.modulo_c_qty || 0);
@@ -13,12 +13,36 @@ export default function ModulosQuantity({ record, onSave, onDelete, readonly = f
         setModB(record.modulo_b_qty || 0);
         setModC(record.modulo_c_qty || 0);
         setIsEditing(false);
-    }, [record.modulo_a_qty, record.modulo_b_qty, record.modulo_c_qty]);
+    }, [record.modulo_a_qty, record.modulo_b_qty, record.modulo_c_qty, record.modulo_asignado]);
 
     const isAssigned = record.modulo_a_qty > 0 || record.modulo_b_qty > 0 || record.modulo_c_qty > 0 || record.modulo_asignado;
 
-    // View mode for LaboratoriosPanel if readonly and assigned
-    if (readonly && isAssigned && !isEditing) {
+    // View mode ONLY (for table cell)
+    if (displayMode === 'badge') {
+        if (!isAssigned) return <span style={{ color: 'var(--neutral-400)', fontSize: '0.75rem' }}>-</span>;
+        
+        return (
+             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                 {record.modulo_asignado && !record.modulo_a_qty && !record.modulo_b_qty && !record.modulo_c_qty ? (
+                    <div style={{ padding: '4px 10px', background: '#F5F3FF', color: '#7C3AED', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, border: '1px solid #DDD6FE', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <Check size={12} /> {record.modulo_asignado}
+                    </div>
+                 ) : (
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                         {record.modulo_a_qty > 0 && <span style={{ background: '#EEF2FF', color: '#4F46E5', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>A: {record.modulo_a_qty}</span>}
+                         {record.modulo_b_qty > 0 && <span style={{ background: '#ECFEFF', color: '#0891B2', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>B: {record.modulo_b_qty}</span>}
+                         {record.modulo_c_qty > 0 && <span style={{ background: '#FDF4FF', color: '#C026D3', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>C: {record.modulo_c_qty}</span>}
+                     </div>
+                 )}
+                 <div style={{ fontSize: '0.65rem', color: 'var(--neutral-400)', marginTop: '2px' }}>
+                    {record.clasificado_por} • {new Date(record.clasificado_at).toLocaleDateString('es-AR')}
+                </div>
+             </div>
+        );
+    }
+
+    // Editable Mode (for expanded row)
+    if (isAssigned && !isEditing) {
          return (
              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
