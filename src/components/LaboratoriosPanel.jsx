@@ -78,6 +78,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                     modulo_a_qty: modA,
                     modulo_b_qty: modB,
                     modulo_c_qty: modC,
+                    modulo_asignado: null,
                     clasificado_at: timestamp,
                     clasificado_por: username
                 })
@@ -87,13 +88,41 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
 
             setRecords(prev => prev.map(r => 
                 r.id_visita === id_visita 
-                    ? { ...r, modulo_a_qty: modA, modulo_b_qty: modB, modulo_c_qty: modC, clasificado_at: timestamp, clasificado_por: username } 
+                    ? { ...r, modulo_a_qty: modA, modulo_b_qty: modB, modulo_c_qty: modC, modulo_asignado: null, clasificado_at: timestamp, clasificado_por: username } 
                     : r
             ));
             addToast(`Módulo actualizado`, 'success');
         } catch (err) {
             console.error('Error updating modulo:', err);
             addToast('Error al asignar módulo', 'error');
+        }
+    };
+
+    const handleDeleteModulo = async (id_visita) => {
+        try {
+            const { error } = await supabase
+                .from('laboratorios_anatomia_patologica')
+                .update({
+                    modulo_a_qty: 0,
+                    modulo_b_qty: 0,
+                    modulo_c_qty: 0,
+                    modulo_asignado: null,
+                    clasificado_at: null,
+                    clasificado_por: null
+                })
+                .eq('id_visita', id_visita);
+
+            if (error) throw error;
+
+            setRecords(prev => prev.map(r => 
+                r.id_visita === id_visita 
+                    ? { ...r, modulo_a_qty: 0, modulo_b_qty: 0, modulo_c_qty: 0, modulo_asignado: null, clasificado_at: null, clasificado_por: null } 
+                    : r
+            ));
+            addToast(`Módulo eliminado`, 'success');
+        } catch (err) {
+            console.error('Error deleting modulo:', err);
+            addToast('Error al eliminar módulo', 'error');
         }
     };
 
@@ -366,7 +395,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                         </div>
                                     </td>
                                         <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                                            <ModulosQuantity record={r} onSave={handleAssignModulo} readonly={true} />
+                                            <ModulosQuantity record={r} onSave={handleAssignModulo} onDelete={handleDeleteModulo} readonly={true} />
                                         </td>
                                     <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                                         <div style={{ 
