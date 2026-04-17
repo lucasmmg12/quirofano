@@ -52,6 +52,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
     const [phoneInput, setPhoneInput] = useState('');
     const [newNote, setNewNote] = useState('');
     const [noteType, setNoteType] = useState('nota');
+    const [montoPago, setMontoPago] = useState('');
 
     // ─── Chat ───
     const [chatOpen, setChatOpen] = useState(false);
@@ -253,20 +254,27 @@ export default function DeudasPanel({ addToast, currentUser }) {
     // ─── Nota ───
     const handleAddNote = useCallback(async () => {
         if (!newNote.trim() || !selectedDeudor) return;
+        if (noteType === 'pago' && (!montoPago || isNaN(montoPago))) {
+            addToast?.('Debe ingresar un monto válido para el pago', 'warning');
+            return;
+        }
+
         try {
             await addSeguimiento(selectedDeudor.id, {
                 tipo: noteType,
                 descripcion: newNote.trim(),
+                monto: noteType === 'pago' ? Number(montoPago) : undefined,
                 usuario: empleadoNombre,
             });
             setNewNote('');
+            setMontoPago('');
             const segs = await fetchSeguimiento(selectedDeudor.id);
             setSeguimiento(segs);
-            addToast?.('Nota agregada', 'success');
+            addToast?.('Registro agregado', 'success');
         } catch (err) {
             addToast?.('Error al agregar nota', 'error');
         }
-    }, [selectedDeudor, newNote, noteType, empleadoNombre, addToast]);
+    }, [selectedDeudor, newNote, noteType, montoPago, empleadoNombre, addToast]);
 
     // ─── Helpers ───
     const formatMoney = (n) => {
@@ -1020,19 +1028,28 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                 ))}
                             </div>
                             <div style={{ display: 'flex', gap: '8px' }}>
+                                {noteType === 'pago' && (
+                                    <input
+                                        type="number"
+                                        value={montoPago}
+                                        onChange={e => setMontoPago(e.target.value)}
+                                        placeholder="Monto $"
+                                        style={{ ...st.input, width: '110px', color: '#16A34A', fontWeight: 800 }}
+                                    />
+                                )}
                                 <input
                                     type="text"
                                     value={newNote}
                                     onChange={e => setNewNote(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleAddNote()}
-                                    placeholder={noteType === 'pago' ? 'Detalle del pago registrado...' : 'Descripción del seguimiento...'}
+                                    placeholder={noteType === 'pago' ? 'Nro de comprobante o detalle...' : 'Descripción del seguimiento...'}
                                     style={{ ...st.input, flex: 1 }}
                                 />
-                                <button onClick={handleAddNote} disabled={!newNote.trim()}
+                                <button onClick={handleAddNote} disabled={!newNote.trim() || (noteType === 'pago' && !montoPago)}
                                     style={{
                                         ...st.btnSmall,
-                                        background: newNote.trim() ? '#3B82F6' : '#E2E8F0',
-                                        color: newNote.trim() ? '#fff' : '#94A3B8',
+                                        background: (newNote.trim() && (noteType !== 'pago' || montoPago)) ? '#3B82F6' : '#E2E8F0',
+                                        color: (newNote.trim() && (noteType !== 'pago' || montoPago)) ? '#fff' : '#94A3B8',
                                         border: 'none',
                                     }}>
                                     <Send size={14} />
@@ -1059,7 +1076,14 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                             <div key={s.id} style={st.timelineItem}>
                                                 <span style={st.timelineIcon}>{icons[s.tipo] || '📌'}</span>
                                                 <div style={{ flex: 1 }}>
-                                                    <p style={{ margin: 0, fontSize: '0.82rem', color: '#0D3B66' }}>{s.descripcion}</p>
+                                                    <p style={{ margin: 0, fontSize: '0.82rem', color: '#0D3B66' }}>
+                                                        {s.tipo === 'pago' && s.monto && (
+                                                            <strong style={{ color: '#16A34A', display: 'block', marginBottom: '2px' }}>
+                                                                Pago cobrado: {formatMoney(s.monto)}
+                                                            </strong>
+                                                        )}
+                                                        {s.descripcion}
+                                                    </p>
                                                     <div style={{ display: 'flex', gap: '8px', marginTop: '2px' }}>
                                                         <span style={{ fontSize: '0.68rem', color: '#94A3B8' }}>{formatDateTime(s.created_at)}</span>
                                                         <span style={{ fontSize: '0.68rem', color: '#8B5CF6', fontWeight: 600 }}>{s.usuario}</span>
