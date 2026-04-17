@@ -234,7 +234,7 @@ export async function generarConstancia({ asociacion, responsable, nombreCadete,
 /**
  * Fetch delivery history (constancias).
  */
-export async function fetchConstancias({ asociacion, limit = 50 } = {}) {
+export async function fetchConstancias({ asociacion, limit = 1000 } = {}) {
     let query = supabase
         .from('asociaciones_constancias')
         .select('*')

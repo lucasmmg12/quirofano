@@ -36,7 +36,7 @@ export async function fetchLabRecords({ soloSinCarrito = false, soloCarrito = fa
         .select('*')
         .is('constancia_id', null)
         .order('fecha_visita', { ascending: false })
-        .limit(2000);
+        .limit(1000);
 
     if (soloSinCarrito) {
         query = query.or('en_carrito.is.null,en_carrito.eq.false');
@@ -129,7 +129,7 @@ export async function fetchConstanciasLab({ laboratorio } = {}) {
         .from('laboratorios_constancias')
         .select('*')
         .order('fecha_entrega', { ascending: false })
-        .limit(200);
+        .limit(1000);
 
     if (laboratorio) {
         query = query.eq('laboratorio', laboratorio);
