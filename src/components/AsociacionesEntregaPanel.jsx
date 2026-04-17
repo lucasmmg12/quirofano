@@ -122,6 +122,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     // Carrito state
     const [carrito, setCarrito] = useState({});
     const [carritoLoading, setCarritoLoading] = useState(false);
+    const [filtroCarrito, setFiltroCarrito] = useState(null); // null = todas las asociaciones
 
     // Historial state
     const [constancias, setConstancias] = useState([]);
@@ -1028,108 +1029,237 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                 Carrito vacío
                             </h3>
                             <p style={{ fontSize: '0.82rem' }}>
-                                Marque la documentación como completa en la pestaña "Cirugías Pendientes" y envíe al carrito.
+                                Marque la documentación como completa en la pestaña &quot;Cirugías Pendientes&quot; y envíe al carrito.
                             </p>
                         </div>
-                    ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            {Object.entries(carrito).map(([asociacion, items]) => {
-                                const color = ASOCIACION_COLORS[asociacion] || '#6B7280';
-                                return (
-                                    <div key={asociacion} style={{
-                                        background: '#fff', borderRadius: '12px',
-                                        border: '1px solid #E5E7EB', overflow: 'hidden',
-                                    }}>
-                                        {/* Group Header */}
-                                        <div style={{
-                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                            padding: '14px 18px',
-                                            background: `linear-gradient(135deg, ${color}08, ${color}15)`,
-                                            borderBottom: `2px solid ${color}30`,
-                                        }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                <div style={{
-                                                    width: '10px', height: '10px', borderRadius: '50%',
-                                                    background: color,
-                                                }} />
-                                                <span style={{
-                                                    fontWeight: 700, fontSize: '0.9rem', color: '#1F2937',
-                                                }}>
-                                                    {asociacion}
-                                                </span>
-                                                <span style={{
-                                                    padding: '2px 10px', borderRadius: '10px',
-                                                    background: `${color}20`, color: color,
-                                                    fontSize: '0.72rem', fontWeight: 700,
-                                                }}>
-                                                    {items.length} expediente{items.length !== 1 ? 's' : ''}
-                                                </span>
-                                            </div>
+                    ) : (() => {
+                        // ─── Compute stats ───
+                        const totalItems = Object.values(carrito).flat().length;
+                        const allItems = Object.values(carrito).flat();
+                        // Unique days when items were added (use fecha_realizacion as proxy, or checked_at if available)
+                        const uniqueDias = new Set(allItems.map(i => i.checked_at?.substring(0, 10) || i.fecha_realizacion?.substring(0, 10))).size;
+                        // Filter carrito entries by selected association
+                        const carritoEntries = Object.entries(carrito).filter(([asoc]) =>
+                            filtroCarrito === null || asoc === filtroCarrito
+                        );
 
+                        return (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+                                {/* ─── Stat bar ─── */}
+                                <div style={{
+                                    display: 'flex', gap: '10px', alignItems: 'center',
+                                    padding: '10px 14px', borderRadius: '10px',
+                                    background: 'linear-gradient(135deg, #EFF6FF, #DBEAFE)',
+                                    border: '1px solid #BFDBFE', marginBottom: '4px',
+                                }}>
+                                    <ShoppingCart size={15} color="#1D4ED8" />
+                                    <span style={{ fontSize: '0.8rem', color: '#1E40AF', fontWeight: 700 }}>
+                                        {totalItems} expediente{totalItems !== 1 ? 's' : ''} acumulado{totalItems !== 1 ? 's' : ''}
+                                    </span>
+                                    <span style={{ color: '#93C5FD', fontWeight: 400 }}>·</span>
+                                    <span style={{ fontSize: '0.78rem', color: '#3B82F6' }}>
+                                        {Object.keys(carrito).length} asociación{Object.keys(carrito).length !== 1 ? 'es' : ''}
+                                    </span>
+                                    {uniqueDias > 1 && (
+                                        <>
+                                            <span style={{ color: '#93C5FD' }}>·</span>
+                                            <span style={{ fontSize: '0.78rem', color: '#6366F1', fontWeight: 600 }}>
+                                                📅 Cargado en {uniqueDias} días distintos
+                                            </span>
+                                        </>
+                                    )}
+                                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: '#60A5FA' }}>
+                                        Podés seguir agregando expedientes y generar la constancia cuando quieras
+                                    </span>
+                                </div>
+
+                                {/* ─── Association filter badges ─── */}
+                                <div style={{
+                                    display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '4px',
+                                }}>
+                                    {/* "Todas" badge */}
+                                    <button
+                                        onClick={() => setFiltroCarrito(null)}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '6px',
+                                            padding: '6px 14px', borderRadius: '20px',
+                                            border: filtroCarrito === null ? '2px solid #374151' : '1px solid #E5E7EB',
+                                            background: filtroCarrito === null ? '#F9FAFB' : '#fff',
+                                            fontWeight: filtroCarrito === null ? 700 : 500,
+                                            fontSize: '0.78rem', cursor: 'pointer', transition: 'all 0.2s',
+                                            color: '#374151',
+                                        }}
+                                    >
+                                        Todas
+                                        <span style={{
+                                            background: '#F3F4F6', padding: '1px 8px', borderRadius: '10px',
+                                            fontSize: '0.7rem', fontWeight: 700, color: '#6B7280',
+                                        }}>
+                                            {totalItems}
+                                        </span>
+                                    </button>
+
+                                    {Object.entries(carrito).map(([asoc, items]) => {
+                                        const color = ASOCIACION_COLORS[asoc] || '#6B7280';
+                                        const isActive = filtroCarrito === asoc;
+                                        const shortName = asoc.replace('Asociación de ', '').replace(' (Particular)', '');
+                                        return (
                                             <button
-                                                onClick={() => setShowConstanciaModal(asociacion)}
+                                                key={asoc}
+                                                onClick={() => setFiltroCarrito(isActive ? null : asoc)}
                                                 style={{
                                                     display: 'flex', alignItems: 'center', gap: '6px',
-                                                    padding: '8px 16px', borderRadius: '8px',
-                                                    background: color, color: '#fff', border: 'none',
-                                                    fontWeight: 700, fontSize: '0.78rem',
-                                                    cursor: 'pointer', transition: 'all 0.2s',
-                                                    boxShadow: `0 2px 8px ${color}40`,
+                                                    padding: '6px 14px', borderRadius: '20px',
+                                                    border: isActive ? `2px solid ${color}` : '1px solid #E5E7EB',
+                                                    background: isActive ? `${color}10` : '#fff',
+                                                    fontWeight: isActive ? 700 : 500,
+                                                    fontSize: '0.78rem', cursor: 'pointer', transition: 'all 0.2s',
+                                                    color: isActive ? color : '#6B7280',
                                                 }}
                                             >
-                                                <Printer size={14} />
-                                                Generar Constancia
+                                                <div style={{
+                                                    width: '8px', height: '8px', borderRadius: '50%',
+                                                    background: color, flexShrink: 0,
+                                                }} />
+                                                {shortName}
+                                                <span style={{
+                                                    background: isActive ? `${color}20` : '#F3F4F6',
+                                                    padding: '1px 8px', borderRadius: '10px',
+                                                    fontSize: '0.7rem', fontWeight: 700,
+                                                    color: isActive ? color : '#9CA3AF',
+                                                }}>
+                                                    {items.length}
+                                                </span>
                                             </button>
-                                        </div>
+                                        );
+                                    })}
+                                </div>
 
-                                        {/* Items Table */}
-                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                                            <thead>
-                                                <tr style={{ background: '#F9FAFB' }}>
-                                                    <th style={thStyle}>Fecha</th>
-                                                    <th style={thStyle}>Paciente</th>
-                                                    <th style={thStyle}>DNI</th>
-                                                    <th style={thStyle}>OS</th>
-                                                    <th style={thStyle}>Cirugía</th>
-                                                    <th style={thStyle}>Cirujano</th>
-                                                    <th style={{ ...thStyle, width: '60px', textAlign: 'center' }}></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {items.map(c => (
-                                                    <tr key={c.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                                                        <td style={tdStyle}>
-                                                            {fmtFecha(c.fecha_realizacion)}
-                                                        </td>
-                                                        <td style={{ ...tdStyle, fontWeight: 600 }}>{c.nombre_paciente}</td>
-                                                        <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '0.76rem' }}>{c.dni || '—'}</td>
-                                                        <td style={tdStyle}>{c.cliente || '—'}</td>
-                                                        <td style={tdStyle}>{c.nombre_cirugia || '—'}</td>
-                                                        <td style={tdStyle}>{c.cirujano || '—'}</td>
-                                                        <td style={{ ...tdStyle, textAlign: 'center' }}>
-                                                            <button
-                                                                onClick={() => handleQuitarDelCarrito(c.id)}
-                                                                title="Quitar del carrito"
-                                                                style={{
-                                                                    background: 'none', border: 'none', cursor: 'pointer',
-                                                                    color: '#DC2626', padding: '4px',
-                                                                    borderRadius: '4px', transition: 'background 0.2s',
-                                                                }}
-                                                                onMouseOver={e => e.currentTarget.style.background = '#FEE2E2'}
-                                                                onMouseOut={e => e.currentTarget.style.background = 'none'}
-                                                            >
-                                                                <X size={14} />
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                {/* ─── Carrito groups (filtered) ─── */}
+                                {carritoEntries.length === 0 ? (
+                                    <div style={{
+                                        textAlign: 'center', padding: '40px 20px', color: '#9CA3AF',
+                                        background: '#F9FAFB', borderRadius: '12px', border: '1px solid #E5E7EB',
+                                    }}>
+                                        <ShoppingCart size={32} strokeWidth={1.2} style={{ margin: '0 auto 8px', display: 'block' }} />
+                                        <p style={{ fontSize: '0.82rem', margin: 0 }}>
+                                            No hay expedientes de <strong>{filtroCarrito}</strong> en el carrito.
+                                        </p>
                                     </div>
-                                );
-                            })}
-                        </div>
-                    )}
+                                ) : (
+                                    carritoEntries.map(([asociacion, items]) => {
+                                        const color = ASOCIACION_COLORS[asociacion] || '#6B7280';
+                                        return (
+                                            <div key={asociacion} style={{
+                                                background: '#fff', borderRadius: '12px',
+                                                border: '1px solid #E5E7EB', overflow: 'hidden',
+                                            }}>
+                                                {/* Group Header */}
+                                                <div style={{
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                    padding: '14px 18px',
+                                                    background: `linear-gradient(135deg, ${color}08, ${color}15)`,
+                                                    borderBottom: `2px solid ${color}30`,
+                                                }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                        <div style={{
+                                                            width: '10px', height: '10px', borderRadius: '50%',
+                                                            background: color,
+                                                        }} />
+                                                        <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1F2937' }}>
+                                                            {asociacion}
+                                                        </span>
+                                                        <span style={{
+                                                            padding: '2px 10px', borderRadius: '10px',
+                                                            background: `${color}20`, color: color,
+                                                            fontSize: '0.72rem', fontWeight: 700,
+                                                        }}>
+                                                            {items.length} expediente{items.length !== 1 ? 's' : ''}
+                                                        </span>
+                                                        {/* Date range badge */}
+                                                        {items.length > 0 && (() => {
+                                                            const fechas = items.map(i => i.fecha_realizacion).filter(Boolean).sort();
+                                                            if (fechas.length === 0) return null;
+                                                            const desde = fmtFecha(fechas[0]);
+                                                            const hasta = fmtFecha(fechas[fechas.length - 1]);
+                                                            return (
+                                                                <span style={{
+                                                                    fontSize: '0.7rem', color: '#6B7280',
+                                                                    fontWeight: 500,
+                                                                }}>
+                                                                    {desde === hasta ? desde : `${desde} — ${hasta}`}
+                                                                </span>
+                                                            );
+                                                        })()}
+                                                    </div>
+
+                                                    <button
+                                                        onClick={() => setShowConstanciaModal(asociacion)}
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: '6px',
+                                                            padding: '8px 16px', borderRadius: '8px',
+                                                            background: color, color: '#fff', border: 'none',
+                                                            fontWeight: 700, fontSize: '0.78rem',
+                                                            cursor: 'pointer', transition: 'all 0.2s',
+                                                            boxShadow: `0 2px 8px ${color}40`,
+                                                        }}
+                                                    >
+                                                        <Printer size={14} />
+                                                        Generar Constancia
+                                                    </button>
+                                                </div>
+
+                                                {/* Items Table */}
+                                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                                    <thead>
+                                                        <tr style={{ background: '#F9FAFB' }}>
+                                                            <th style={thStyle}>Fecha</th>
+                                                            <th style={thStyle}>Paciente</th>
+                                                            <th style={thStyle}>DNI</th>
+                                                            <th style={thStyle}>OS</th>
+                                                            <th style={thStyle}>Cirugía</th>
+                                                            <th style={thStyle}>Cirujano</th>
+                                                            <th style={{ ...thStyle, width: '60px', textAlign: 'center' }}></th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {items.map(c => (
+                                                            <tr key={c.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                                                                <td style={tdStyle}>
+                                                                    {fmtFecha(c.fecha_realizacion)}
+                                                                </td>
+                                                                <td style={{ ...tdStyle, fontWeight: 600 }}>{c.nombre_paciente}</td>
+                                                                <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '0.76rem' }}>{c.dni || '—'}</td>
+                                                                <td style={tdStyle}>{c.cliente || '—'}</td>
+                                                                <td style={tdStyle}>{c.nombre_cirugia || '—'}</td>
+                                                                <td style={tdStyle}>{c.cirujano || '—'}</td>
+                                                                <td style={{ ...tdStyle, textAlign: 'center' }}>
+                                                                    <button
+                                                                        onClick={() => handleQuitarDelCarrito(c.id)}
+                                                                        title="Quitar del carrito"
+                                                                        style={{
+                                                                            background: 'none', border: 'none', cursor: 'pointer',
+                                                                            color: '#DC2626', padding: '4px',
+                                                                            borderRadius: '4px', transition: 'background 0.2s',
+                                                                        }}
+                                                                        onMouseOver={e => e.currentTarget.style.background = '#FEE2E2'}
+                                                                        onMouseOut={e => e.currentTarget.style.background = 'none'}
+                                                                    >
+                                                                        <X size={14} />
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        );
+                    })()}
                 </div>
             )}
 
