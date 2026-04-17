@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
-import { Microscope, Search, RefreshCw, FileText, Download } from 'lucide-react';
+import { Microscope, Search, RefreshCw, FileText, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -10,6 +10,7 @@ export default function PublicLabView({ labName }) {
     const [loading, setLoading] = useState(true);
     const [records, setRecords] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
+    const [expandedRow, setExpandedRow] = useState(null);
 
     useEffect(() => {
         const loadData = async () => {
@@ -73,6 +74,7 @@ export default function PublicLabView({ labName }) {
                     modulo_a_qty: modA,
                     modulo_b_qty: modB,
                     modulo_c_qty: modC,
+                    modulo_asignado: null,
                     clasificado_at: timestamp,
                     clasificado_por: username
                 })
@@ -82,12 +84,39 @@ export default function PublicLabView({ labName }) {
 
             setRecords(prev => prev.map(r => 
                 r.id_visita === id_visita 
-                    ? { ...r, modulo_a_qty: modA, modulo_b_qty: modB, modulo_c_qty: modC, clasificado_at: timestamp, clasificado_por: username } 
+                    ? { ...r, modulo_a_qty: modA, modulo_b_qty: modB, modulo_c_qty: modC, modulo_asignado: null, clasificado_at: timestamp, clasificado_por: username } 
                     : r
             ));
         } catch (err) {
             console.error('Error updating modulo:', err);
             alert('Error al asignar módulo en la base de datos');
+        }
+    };
+
+    const deleteModulo = async (id_visita) => {
+        try {
+            const { error } = await supabase
+                .from('laboratorios_anatomia_patologica')
+                .update({ 
+                    modulo_a_qty: 0,
+                    modulo_b_qty: 0,
+                    modulo_c_qty: 0,
+                    modulo_asignado: null,
+                    clasificado_at: null,
+                    clasificado_por: null
+                })
+                .eq('id_visita', id_visita);
+
+            if (error) throw error;
+
+            setRecords(prev => prev.map(r => 
+                r.id_visita === id_visita 
+                    ? { ...r, modulo_a_qty: 0, modulo_b_qty: 0, modulo_c_qty: 0, modulo_asignado: null, clasificado_at: null, clasificado_por: null } 
+                    : r
+            ));
+        } catch (err) {
+            console.error('Error deleting modulo:', err);
+            alert('Error al eliminar asignación en la base de datos');
         }
     };
 
@@ -257,7 +286,8 @@ export default function PublicLabView({ labName }) {
                                     <th style={{ padding: '16px', color: '#64748B', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid #E2E8F0' }}>Paciente</th>
                                     <th style={{ padding: '16px', color: '#64748B', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid #E2E8F0' }}>Cobertura</th>
                                     <th style={{ padding: '16px', color: '#64748B', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid #E2E8F0' }}>Muestras / Biopsias</th>
-                                    <th style={{ padding: '16px', color: '#64748B', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid #E2E8F0' }}>Módulo</th>
+                                    <th style={{ padding: '16px', color: '#64748B', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid #E2E8F0' }}>Módulo Asignado</th>
+                                    <th style={{ padding: '16px', borderBottom: '1px solid #E2E8F0' }}></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -276,8 +306,11 @@ export default function PublicLabView({ labName }) {
                                         </td>
                                     </tr>
                                 )}
-                                {!loading && filteredRecords.map(r => (
-                                    <tr key={r.id_visita} style={{ borderBottom: '1px solid #E2E8F0' }}>
+                                {!loading && filteredRecords.map(r => {
+                                    const isExpanded = expandedRow === r.id_visita;
+                                    return (
+                                    <React.Fragment key={r.id_visita}>
+                                    <tr style={{ borderBottom: isExpanded ? 'none' : '1px solid #E2E8F0', cursor: 'pointer', transition: 'background 0.2s', background: isExpanded ? '#F8FAFC' : 'transparent' }} onMouseOver={e => { if(!isExpanded) e.currentTarget.style.background = '#F8FAFC' }} onMouseOut={e => { if(!isExpanded) e.currentTarget.style.background = 'transparent' }} onClick={() => setExpandedRow(isExpanded ? null : r.id_visita)}>
                                         <td style={{ padding: '16px', fontSize: '0.9rem', color: '#334155' }}>
                                             {r.fecha_visita && new Date(r.fecha_visita).toLocaleDateString('es-AR')}
                                         </td>
@@ -293,10 +326,37 @@ export default function PublicLabView({ labName }) {
                                             {renderBiopsies(r)}
                                         </td>
                                         <td style={{ padding: '16px' }}>
-                                            <ModulosQuantity record={r} onSave={updateModulo} readonly={false} />
+                                            <ModulosQuantity record={r} displayMode="badge" />
+                                        </td>
+                                        <td style={{ padding: '16px', textAlign: 'center', color: '#94A3B8' }}>
+                                            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                         </td>
                                     </tr>
-                                ))}
+                                    {isExpanded && (
+                                        <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                                            <td colSpan={6} style={{ padding: '0 24px 24px 24px' }}>
+                                                <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '16px', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+                                                    <div style={{ flex: '1', minWidth: '250px' }}>
+                                                        <h4 style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', marginBottom: '8px', borderBottom: '1px solid #F1F5F9', paddingBottom: '4px' }}>Material Remitido</h4>
+                                                        <div style={{ fontSize: '0.85rem', color: '#334155', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                            {r.biopsia_simple ? <div><strong>Biopsia Simple:</strong> <span style={{ color: '#475569' }}>{r.material_biopsia_simple || 'No especificado'}</span></div> : null}
+                                                            {r.biopsia_ampliada ? <div><strong>Biopsia Ampliada:</strong> <span style={{ color: '#475569' }}>{r.material_biopsia_ampliada || 'No especificado'}</span></div> : null}
+                                                            {!r.biopsia_simple && !r.biopsia_ampliada && <span style={{ color: '#94A3B8' }}>Sin material remitido en el sistema.</span>}
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ flex: '1', minWidth: '350px', borderLeft: '1px solid #F1F5F9', paddingLeft: '24px' }}>
+                                                        <h4 style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', marginBottom: '8px', borderBottom: '1px solid #F1F5F9', paddingBottom: '4px' }}>Gestión de Módulo</h4>
+                                                        <div style={{ marginTop: '12px' }}>
+                                                            <ModulosQuantity record={r} onSave={updateModulo} onDelete={deleteModulo} displayMode="editor" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                    </React.Fragment>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
