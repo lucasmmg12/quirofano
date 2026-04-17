@@ -260,24 +260,35 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
     // Handlers — Carrito
     // ═══════════════════════════════════════
     const handleEnviarAlCarrito = async (record) => {
+        // Optimista: quitar de pendientes y agregar al carrito sin recargar
+        setRecords(prev => prev.filter(r => r.id_visita !== record.id_visita));
+        setCarrito(prev => [...prev, { ...record, en_carrito: true }]);
         try {
             await enviarAlCarritoLab(record.id_visita);
             addToast?.(`🛒 ${record.paciente} enviado al carrito`, 'success');
-            await Promise.all([loadPendientes(), loadCarrito()]);
         } catch (err) {
+            // Rollback en caso de error
+            setRecords(prev => [...prev, record]);
+            setCarrito(prev => prev.filter(r => r.id_visita !== record.id_visita));
             addToast?.('Error al enviar al carrito', 'error');
         }
     };
 
     const handleQuitarDelCarrito = async (record) => {
+        // Optimista: quitar del carrito y devolver a pendientes sin recargar
+        setCarrito(prev => prev.filter(r => r.id_visita !== record.id_visita));
+        setRecords(prev => [{ ...record, en_carrito: false }, ...prev]);
         try {
             await quitarDelCarritoLab(record.id_visita);
             addToast?.(`↩️ ${record.paciente} devuelto a pendientes`, 'success');
-            await Promise.all([loadPendientes(), loadCarrito()]);
         } catch (err) {
+            // Rollback
+            setCarrito(prev => [...prev, record]);
+            setRecords(prev => prev.filter(r => r.id_visita !== record.id_visita));
             addToast?.('Error al quitar del carrito', 'error');
         }
     };
+
 
     const handleAbrirEntrega = (lab) => {
         setEntregaLab(lab);
