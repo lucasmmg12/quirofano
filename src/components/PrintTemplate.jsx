@@ -104,7 +104,7 @@ function SinglePage({ item, patientData }) {
             </div>
 
             {/* === SOLICITO + Título del estudio === */}
-            <div className="print-solicito-label">SOLICITO</div>
+            {item.category !== 'anestesia' && <div className="print-solicito-label">SOLICITO</div>}
             <div className="print-study-title">
                 {item.displayName || item.name}
             </div>
@@ -177,7 +177,7 @@ function GroupedPage({ items, patientData }) {
             </div>
 
             {/* === SOLICITO + Lista de estudios === */}
-            <div className="print-solicito-label">SOLICITO</div>
+            {items[0]?.category !== 'anestesia' && <div className="print-solicito-label">SOLICITO</div>}
             <div className="print-study-group">
                 {studyNames.map((name, i) => (
                     <div key={i} className="print-study-group__item">
