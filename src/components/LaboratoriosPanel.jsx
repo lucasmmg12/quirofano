@@ -440,7 +440,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
             doc.text('Sistema ADM-QUI', pageW - margin, 21, { align: 'right' });
 
             // Accent line
-            doc.setFillColor(139, 92, 246); // Purple accent for labs
+            doc.setFillColor(30, 90, 142); // Institutional blue accent
             doc.rect(0, 34, pageW, 2, 'F');
             y = 44;
 
@@ -477,7 +477,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
             y += 26;
 
             // ═══════ SECTION TITLE ═══════
-            doc.setFillColor(139, 92, 246);
+            doc.setFillColor(13, 59, 102);
             doc.rect(margin, y, 3, 7, 'F');
             doc.setFontSize(10);
             doc.setFont('helvetica', 'bold');
@@ -534,7 +534,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 didDrawPage: () => {
                     doc.setFillColor(13, 59, 102);
                     doc.rect(0, 0, pageW, 8, 'F');
-                    doc.setFillColor(139, 92, 246);
+                    doc.setFillColor(30, 90, 142);
                     doc.rect(0, 8, pageW, 1, 'F');
                 },
             });
@@ -658,7 +658,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 getEstadoFacturacion(r.cliente, r.laboratorio),
             ];
         });
-        doc.autoTable({ head: [tableColumn], body: tableRows, startY: 35, theme: 'striped', headStyles: { fillColor: [139, 92, 246] } });
+        doc.autoTable({ head: [tableColumn], body: tableRows, startY: 35, theme: 'striped', headStyles: { fillColor: [13, 59, 102] } });
         doc.save(`Patologica_${new Date().toISOString().slice(0, 10)}.pdf`);
     };
 
@@ -713,7 +713,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
                 <div>
                     <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--neutral-800)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Microscope size={24} style={{ color: '#8B5CF6' }} />
+                        <Microscope size={24} style={{ color: '#0D3B66' }} />
                         Anatomía Patológica
                     </h2>
                     <p style={{ margin: '4px 0 0', color: 'var(--neutral-500)', fontSize: '0.9rem' }}>
@@ -721,13 +721,13 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                     </p>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <button onClick={() => copyPublicLinkLab('LDA - Dra. Aguero o Dra Rios', 'Agüero')} style={{ padding: '6px 12px', borderRadius: '8px', background: '#F5F3FF', color: '#7C3AED', fontWeight: 600, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #DDD6FE', cursor: 'pointer' }}>
+                    <button onClick={() => copyPublicLinkLab('LDA - Dra. Aguero o Dra Rios', 'Agüero')} style={{ padding: '6px 12px', borderRadius: '8px', background: '#EBF5FF', color: '#0D3B66', fontWeight: 600, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #B5D3E8', cursor: 'pointer' }}>
                         <Link size={14} /> Agüero
                     </button>
-                    <button onClick={() => copyPublicLinkLab('LAB. CEDAP', 'CEDAP')} style={{ padding: '6px 12px', borderRadius: '8px', background: '#F5F3FF', color: '#7C3AED', fontWeight: 600, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #DDD6FE', cursor: 'pointer' }}>
+                    <button onClick={() => copyPublicLinkLab('LAB. CEDAP', 'CEDAP')} style={{ padding: '6px 12px', borderRadius: '8px', background: '#EBF5FF', color: '#0D3B66', fontWeight: 600, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #B5D3E8', cursor: 'pointer' }}>
                         <Link size={14} /> CEDAP
                     </button>
-                    <button onClick={() => copyPublicLinkLab('LAB.INST.PATOLOG.CUYO', 'Cuyo')} style={{ padding: '6px 12px', borderRadius: '8px', background: '#F5F3FF', color: '#7C3AED', fontWeight: 600, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #DDD6FE', cursor: 'pointer' }}>
+                    <button onClick={() => copyPublicLinkLab('LAB.INST.PATOLOG.CUYO', 'Cuyo')} style={{ padding: '6px 12px', borderRadius: '8px', background: '#EBF5FF', color: '#0D3B66', fontWeight: 600, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #B5D3E8', cursor: 'pointer' }}>
                         <Link size={14} /> Cuyo
                     </button>
                 </div>
@@ -749,9 +749,9 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                             style={{
                                 flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                                 padding: '14px 20px', fontSize: '0.88rem', fontWeight: isActive ? 700 : 500,
-                                color: isActive ? '#7C3AED' : '#64748B',
-                                background: isActive ? '#FAF5FF' : 'transparent',
-                                border: 'none', borderBottom: isActive ? '3px solid #8B5CF6' : '3px solid transparent',
+                                color: isActive ? '#0D3B66' : '#64748B',
+                                background: isActive ? '#EBF5FF' : 'transparent',
+                                border: 'none', borderBottom: isActive ? '3px solid #1E5A8E' : '3px solid transparent',
                                 cursor: 'pointer', transition: 'all 0.2s',
                             }}
                         >
@@ -759,7 +759,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                             {tab.label}
                             {tab.count > 0 && (
                                 <span style={{
-                                    background: isActive ? '#8B5CF6' : '#E2E8F0',
+                                    background: isActive ? '#0D3B66' : '#E2E8F0',
                                     color: isActive ? '#fff' : '#64748B',
                                     padding: '1px 8px', borderRadius: '10px',
                                     fontSize: '0.72rem', fontWeight: 700, minWidth: '20px', textAlign: 'center',
