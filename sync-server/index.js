@@ -1047,7 +1047,15 @@ async function syncAsociacionesCirugias(db) {
             AND [Estado] IN (
                 'Presente', 
                 'NO PROGRAMADA', 
-                'URGENCIA'
+                'URGENCIA',
+                'Realizada',
+                'REALIZADA',
+                'REALIZADO',
+                'Realizado',
+                'FINALIZADA',
+                'FINALIZADO',
+                'Finalizada',
+                'Finalizado'
             )
         ORDER BY RIGHT(LEFT([Fecha realización], 10), 4) + SUBSTRING(LEFT([Fecha realización], 10), 4, 2) + LEFT([Fecha realización], 2) ASC
     `);
