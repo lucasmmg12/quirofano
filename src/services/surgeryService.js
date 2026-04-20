@@ -69,7 +69,8 @@ export async function fetchSurgeries({ status, fromDate, toDate, limit, ausenteF
         .from('surgeries')
         .select('*, surgery_events(*)')
         .eq('excluido', false)
-        .order('fecha_cirugia', { ascending: true });
+        .order('fecha_cirugia', { ascending: true })
+        .order('nombre', { ascending: true });
 
     // Filtro por columna ausente
     // NULL/vacío = pendiente, '0' = realizada, '1' = suspendida

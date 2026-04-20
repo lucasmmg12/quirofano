@@ -33,6 +33,7 @@ export async function fetchAsociacionesCirugias({ asociacion, fechaDesde, fechaH
     let query = supabase
         .from('asociaciones_cirugias')
         .select('*')
+        .order('nombre_paciente', { ascending: true })
         .order('fecha_realizacion', { ascending: false });
 
     if (soloSinConstancia) {
