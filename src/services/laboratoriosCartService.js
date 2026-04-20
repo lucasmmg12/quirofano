@@ -35,8 +35,7 @@ export async function fetchLabRecords({ soloSinCarrito = false, soloCarrito = fa
         .from('laboratorios_anatomia_patologica')
         .select('*')
         .is('constancia_id', null)
-        .order('fecha_visita', { ascending: false })
-        .limit(1000);
+        .order('fecha_visita', { ascending: false });
 
     if (soloSinCarrito) {
         query = query.or('en_carrito.is.null,en_carrito.eq.false');
@@ -45,9 +44,20 @@ export async function fetchLabRecords({ soloSinCarrito = false, soloCarrito = fa
         query = query.eq('en_carrito', true);
     }
 
-    const { data, error } = await query;
-    if (error) throw error;
-    return data || [];
+    const PAGE_SIZE = 1000;
+    let allData = [];
+    let from = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+        const { data, error } = await query.range(from, from + PAGE_SIZE - 1);
+        if (error) throw error;
+        allData = allData.concat(data || []);
+        hasMore = (data || []).length === PAGE_SIZE;
+        from += PAGE_SIZE;
+    }
+
+    return allData;
 }
 
 // ═══════════════════════════════════════════

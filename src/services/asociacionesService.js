@@ -33,8 +33,7 @@ export async function fetchAsociacionesCirugias({ asociacion, fechaDesde, fechaH
     let query = supabase
         .from('asociaciones_cirugias')
         .select('*')
-        .order('fecha_realizacion', { ascending: false })
-        .limit(10000);
+        .order('fecha_realizacion', { ascending: false });
 
     if (soloSinConstancia) {
         query = query.is('constancia_id', null);
@@ -59,9 +58,20 @@ export async function fetchAsociacionesCirugias({ asociacion, fechaDesde, fechaH
         query = query.or(`nombre_paciente.ilike.%${safeSearch}%,dni.ilike.%${safeSearch}%,cirujano.ilike.%${safeSearch}%`);
     }
 
-    const { data, error } = await query;
-    if (error) throw error;
-    return data || [];
+    const PAGE_SIZE = 1000;
+    let allData = [];
+    let from = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+        const { data, error } = await query.range(from, from + PAGE_SIZE - 1);
+        if (error) throw error;
+        allData = allData.concat(data || []);
+        hasMore = (data || []).length === PAGE_SIZE;
+        from += PAGE_SIZE;
+    }
+
+    return allData;
 }
 
 /**
@@ -133,20 +143,30 @@ export async function quitarDelCarrito(id) {
  * Get all items currently in the cart, grouped by asociacion.
  */
 export async function fetchCarrito() {
-    const { data, error } = await supabase
+    let query = supabase
         .from('asociaciones_cirugias')
         .select('*')
         .eq('en_carrito', true)
         .is('constancia_id', null)
         .order('asociacion')
-        .order('fecha_realizacion', { ascending: true })
-        .limit(10000);
+        .order('fecha_realizacion', { ascending: true });
 
-    if (error) throw error;
+    const PAGE_SIZE = 1000;
+    let allData = [];
+    let from = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+        const { data, error } = await query.range(from, from + PAGE_SIZE - 1);
+        if (error) throw error;
+        allData = allData.concat(data || []);
+        hasMore = (data || []).length === PAGE_SIZE;
+        from += PAGE_SIZE;
+    }
 
     // Group by asociacion
     const grouped = {};
-    for (const item of (data || [])) {
+    for (const item of allData) {
         if (!grouped[item.asociacion]) grouped[item.asociacion] = [];
         grouped[item.asociacion].push(item);
     }
@@ -281,19 +301,29 @@ export async function fetchConstanciaParaImpresion(constanciaId) {
  * Get summary counts per association (for dashboard badges).
  */
 export async function fetchResumenAsociaciones() {
-    const { data, error } = await supabase
+    let query = supabase
         .from('asociaciones_cirugias')
-        .select('asociacion, docs_completos, en_carrito, constancia_id')
-        .limit(10000);
+        .select('asociacion, docs_completos, en_carrito, constancia_id');
 
-    if (error) throw error;
+    const PAGE_SIZE = 1000;
+    let allData = [];
+    let from = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+        const { data, error } = await query.range(from, from + PAGE_SIZE - 1);
+        if (error) throw error;
+        allData = allData.concat(data || []);
+        hasMore = (data || []).length === PAGE_SIZE;
+        from += PAGE_SIZE;
+    }
 
     const resumen = {};
     for (const asoc of ASOCIACION_LIST) {
         resumen[asoc] = { total: 0, sinDocs: 0, conDocs: 0, enCarrito: 0, entregadas: 0 };
     }
 
-    for (const item of (data || [])) {
+    for (const item of allData) {
         const r = resumen[item.asociacion];
         if (!r) continue;
         r.total++;
