@@ -3,11 +3,7 @@
  * 
  * Gestiona cirugías sincronizadas, carrito de entrega y constancias.
  */
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { supabase } from '../lib/supabase';
 
 // ─── Mapeo Especialidad → Asociación ───
 export const ASOCIACION_MAP = {
@@ -56,7 +52,11 @@ export async function fetchAsociacionesCirugias({ asociacion, fechaDesde, fechaH
         query = query.lte('fecha_realizacion', fechaHasta);
     }
     if (search) {
-        query = query.or(`nombre_paciente.ilike.%${search}%,dni.ilike.%${search}%,cirujano.ilike.%${search}%`);
+        // En Supabase/PostgREST, las comas dentro del string de un .or() se interpretan como separadores de condiciones.
+        // Si el usuario busca "Morales, Ma", la coma rompe la consulta y da error 400.
+        // Reemplazamos la coma por un comodín "%" o un espacio para evitar el error.
+        const safeSearch = search.replace(/,/g, ' ').trim();
+        query = query.or(`nombre_paciente.ilike.%${safeSearch}%,dni.ilike.%${safeSearch}%,cirujano.ilike.%${safeSearch}%`);
     }
 
     const { data, error } = await query;
