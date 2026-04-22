@@ -199,6 +199,63 @@ async function syncCirugias(db) {
         });
     }
 
+    // ── ENRIQUECER CON DNI DESDE SUPABASE ──
+    // Fuente 1: asociaciones_cirugias (match por nombre normalizado)
+    const dniByName = new Map();
+    let dniOffset = 0;
+    let hasMoreDni = true;
+    while (hasMoreDni) {
+        const { data: asocRows } = await supabase
+            .from('asociaciones_cirugias')
+            .select('nombre_paciente, dni')
+            .not('dni', 'is', null)
+            .range(dniOffset, dniOffset + 499);
+
+        if (asocRows && asocRows.length > 0) {
+            for (const row of asocRows) {
+                if (row.dni && row.nombre_paciente) {
+                    const key = normalizeNameForUpsert(row.nombre_paciente);
+                    if (!dniByName.has(key)) dniByName.set(key, String(row.dni).trim());
+                }
+            }
+            dniOffset += 500;
+            hasMoreDni = asocRows.length === 500;
+        } else {
+            hasMoreDni = false;
+        }
+    }
+
+    // Fuente 2: deudas_pacientes (match exacto por id_paciente_salus)
+    const dniById = new Map();
+    const uniqueIds = [...new Set(records.map(r => r.id_paciente))];
+    const DNI_BATCH = 200;
+    for (let i = 0; i < uniqueIds.length; i += DNI_BATCH) {
+        const batch = uniqueIds.slice(i, i + DNI_BATCH);
+        const { data: deudasRows } = await supabase
+            .from('deudas_pacientes')
+            .select('id_paciente_salus, dni')
+            .in('id_paciente_salus', batch)
+            .not('dni', 'is', null);
+
+        if (deudasRows) {
+            for (const row of deudasRows) {
+                if (row.dni && row.id_paciente_salus) {
+                    dniById.set(row.id_paciente_salus, String(row.dni).trim());
+                }
+            }
+        }
+    }
+
+    // Aplicar DNI: prioridad id_paciente (exacto) > nombre (fuzzy)
+    let dniMatched = 0;
+    for (const record of records) {
+        const dniExacto = dniById.get(record.id_paciente);
+        const dniPorNombre = dniByName.get(record.nombre);
+        record.dni = dniExacto || dniPorNombre || null;
+        if (record.dni) dniMatched++;
+    }
+    console.log(`   🪪 ${dniMatched}/${records.length} cirugías enriquecidas con DNI (${dniByName.size} por nombre, ${dniById.size} por id)`);
+
     // Filtrar registros con datos completos para upsert
     const validRecords = records.filter(r => r.id_paciente && r.nombre && r.fecha_cirugia);
     
