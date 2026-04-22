@@ -1052,7 +1052,7 @@ async function syncAsociacionesCirugias(db) {
                 'REALIZADA',
                 'REALIZADO',
                 'Realizado',
-                'FINALIZADA',
+                'URGENCIA',
                 'FINALIZADO',
                 'Finalizada',
                 'Finalizado'
