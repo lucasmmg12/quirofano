@@ -1104,12 +1104,13 @@ async function syncAsociacionesCirugias(db) {
             AND [Estado] IN (
                 'Presente', 
                 'NO PROGRAMADA', 
+                'No Programada',
                 'URGENCIA',
+                'Urgencia',
                 'Realizada',
                 'REALIZADA',
                 'REALIZADO',
                 'Realizado',
-                'URGENCIA',
                 'FINALIZADO',
                 'Finalizada',
                 'Finalizado'
