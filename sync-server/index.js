@@ -1156,10 +1156,12 @@ async function syncAsociacionesCirugias(db) {
         });
     }
 
-    // Deduplicar (último gana por key: fecha+dni+cirugia)
+    // Deduplicar (último gana por key: fecha+nombre_paciente+cirugia)
+    // IMPORTANTE: usar nombre_paciente en vez de dni porque dni puede ser NULL
+    // y en PostgreSQL NULL != NULL en constraints UNIQUE
     const deduped = new Map();
     for (const row of records) {
-        const key = `${row.fecha_realizacion}|${row.dni}|${row.nombre_cirugia}`;
+        const key = `${row.fecha_realizacion}|${row.nombre_paciente}|${row.nombre_cirugia}`;
         deduped.set(key, row);
     }
     const uniqueRecords = [...deduped.values()];
@@ -1174,12 +1176,12 @@ async function syncAsociacionesCirugias(db) {
         const batchFechas = fechas.slice(i, i + FETCH_BATCH_SIZE);
         const { data: existing } = await supabase
             .from('asociaciones_cirugias')
-            .select(`fecha_realizacion, dni, nombre_cirugia, ${FIELDS_TO_PRESERVE.join(', ')}`)
+            .select(`fecha_realizacion, nombre_paciente, nombre_cirugia, ${FIELDS_TO_PRESERVE.join(', ')}`)
             .in('fecha_realizacion', batchFechas);
 
         if (existing) {
             for (const row of existing) {
-                const key = `${row.fecha_realizacion}|${row.dni}|${row.nombre_cirugia}`;
+                const key = `${row.fecha_realizacion}|${row.nombre_paciente}|${row.nombre_cirugia}`;
                 const preserved = {};
                 for (const f of FIELDS_TO_PRESERVE) {
                     if (row[f] != null) preserved[f] = row[f];
@@ -1196,7 +1198,7 @@ async function syncAsociacionesCirugias(db) {
 
     for (let i = 0; i < uniqueRecords.length; i += BATCH) {
         const batch = uniqueRecords.slice(i, i + BATCH).map(row => {
-            const key = `${row.fecha_realizacion}|${row.dni}|${row.nombre_cirugia}`;
+            const key = `${row.fecha_realizacion}|${row.nombre_paciente}|${row.nombre_cirugia}`;
             const preserved = existingMap.get(key);
             return preserved ? { ...row, ...preserved } : row;
         });
@@ -1204,7 +1206,7 @@ async function syncAsociacionesCirugias(db) {
         const { data, error } = await supabase
             .from('asociaciones_cirugias')
             .upsert(batch, {
-                onConflict: 'fecha_realizacion,dni,nombre_cirugia',
+                onConflict: 'fecha_realizacion,nombre_paciente,nombre_cirugia',
                 ignoreDuplicates: false,
             })
             .select('id, created_at, updated_at');
