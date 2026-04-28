@@ -1131,17 +1131,24 @@ async function syncAsociacionesCirugias(db) {
 
     // Transformar filas
     const records = [];
+    let skippedSinNombre = 0;
+    let skippedFecha = 0;
+    const skippedEspecialidades = new Map(); // especialidad → count
+
     for (const r of result.recordset) {
         const nombre = r['Nombre Paciente']?.trim();
         const especialidad = r.Especialidad?.trim();
-        if (!nombre || !especialidad) continue;
+        if (!nombre || !especialidad) { skippedSinNombre++; continue; }
 
         const asociacion = ESPECIALIDAD_ASOCIACION[especialidad];
-        if (!asociacion) continue;
+        if (!asociacion) {
+            skippedEspecialidades.set(especialidad, (skippedEspecialidades.get(especialidad) || 0) + 1);
+            continue;
+        }
 
         const fechaRaw = r['Fecha realización'];
         const fecha = formatDate(fechaRaw);
-        if (!fecha) continue;
+        if (!fecha) { skippedFecha++; continue; }
 
         records.push({
             fecha_realizacion: fecha,
@@ -1154,6 +1161,20 @@ async function syncAsociacionesCirugias(db) {
             cirujano: r.Cirujano?.trim() || null,
             asociacion,
         });
+    }
+
+    // Log de exclusiones
+    const totalExcluidos = skippedSinNombre + skippedFecha + [...skippedEspecialidades.values()].reduce((a, b) => a + b, 0);
+    if (totalExcluidos > 0) {
+        console.log(`   ⚠️  ${totalExcluidos} registros excluidos:`);
+        if (skippedSinNombre > 0) console.log(`      - Sin nombre/especialidad: ${skippedSinNombre}`);
+        if (skippedFecha > 0) console.log(`      - Fecha inválida: ${skippedFecha}`);
+        if (skippedEspecialidades.size > 0) {
+            console.log(`      - Especialidad no mapeada:`);
+            for (const [esp, cnt] of skippedEspecialidades.entries()) {
+                console.log(`        • "${esp}": ${cnt} registros`);
+            }
+        }
     }
 
     // Deduplicar (último gana por key: fecha+nombre_paciente+cirugia)
