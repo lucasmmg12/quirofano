@@ -989,7 +989,7 @@ async function syncVisitasSede(db) {
             [Tipo Visita],
             [Centro],
             [Visita_Especialidad],
-            [Usuario Creacion Nombre]
+            [UsuarioCita]
         FROM [SALUS].[dbo].[VLISE_Visitas]
         WHERE 
             CAST([Fecha Visita] AS DATE) >= '${primerDiaMes}'
@@ -1006,7 +1006,23 @@ async function syncVisitasSede(db) {
     // Transformar filas
     const records = [];
     for (const r of result.recordset) {
-        const usuario = r['Usuario Creacion Nombre']?.trim();
+        const rawCita = r['UsuarioCita']?.trim();
+        if (!rawCita) continue;
+
+        // Parsear: el usuario real está después del último ">|" y antes del primer "("
+        let usuario = rawCita;
+        if (rawCita.includes('>|')) {
+            const parts = rawCita.split('>|').filter(p => p.trim() !== '');
+            usuario = parts[parts.length - 1];
+        } else if (rawCita.includes('|')) {
+            const parts = rawCita.split('|').filter(p => p.trim() !== '');
+            usuario = parts[parts.length - 1];
+        }
+        if (usuario.includes('(')) {
+            usuario = usuario.split('(')[0];
+        }
+        usuario = usuario.trim();
+
         if (!usuario) continue;
 
         const fecha = formatDate(r.Fecha);
@@ -1021,7 +1037,7 @@ async function syncVisitasSede(db) {
             responsable: r.Responsable?.trim() || null,
             tipo_visita: r['Tipo Visita']?.trim() || null,
             especialidad: r.Visita_Especialidad?.trim() || null,
-            usuario_creacion: usuario,
+            usuario_creacion: usuario, // Guardamos el usuario extraído
             centro: 'SANTA FE',
         });
     }
