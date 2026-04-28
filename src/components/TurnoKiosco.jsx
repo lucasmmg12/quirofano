@@ -195,6 +195,17 @@ export default function TurnoKiosco() {
         }
     }, [step, handleReset]);
 
+    // Auto-imprimir el ticket apenas se genera
+    useEffect(() => {
+        if (step === STEPS.TICKET) {
+            // Pequeño delay para asegurar que React termine de renderizar el DOM del ticket
+            const timer = setTimeout(() => {
+                window.print();
+            }, 300);
+            return () => clearTimeout(timer);
+        }
+    }, [step]);
+
     // Intentar imprimir ticket
     const handlePrint = () => {
         window.print();
