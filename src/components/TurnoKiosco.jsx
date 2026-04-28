@@ -593,11 +593,21 @@ export default function TurnoKiosco() {
                 }
                 @media print {
                     .no-print { display: none !important; }
-                    .print-only { display: block !important; }
+                    .print-only { 
+                        display: block !important; 
+                        visibility: visible !important;
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                        width: 57mm;
+                    }
+                    .print-only * {
+                        visibility: visible !important;
+                    }
                     body { margin: 0; padding: 0; }
                     @page {
-                        size: 80mm auto;
-                        margin: 2mm;
+                        size: 57mm auto;
+                        margin: 0;
                     }
                 }
                 .print-only { display: none; }
@@ -895,6 +905,6 @@ const styles = {
         fontFamily: 'monospace',
     },
     thermalTicket: {
-        width: '72mm', padding: '4mm', fontSize: '12px',
+        width: '57mm', padding: '2mm', fontSize: '11px', boxSizing: 'border-box', margin: '0 auto',
     },
 };
