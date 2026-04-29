@@ -276,13 +276,8 @@ a {
   color: var(--neutral-700);
 }
 
-/* ===== PRINT STYLES — Ticket térmico 57mm ===== */
+/* ===== PRINT STYLES ===== */
 @media print {
-  @page {
-    size: 57mm auto;
-    margin: 0;
-  }
-
   body * {
     visibility: hidden;
   }
@@ -296,24 +291,27 @@ a {
     position: absolute;
     left: 0;
     top: 0;
-    width: 57mm;
+    width: 100%;
   }
 
   .print-page {
-    width: 57mm;
-    padding: 2mm 2.5mm 3mm 2.5mm;
-    margin: 0;
+    width: 148mm;
+    height: 210mm;
+    padding: 64mm 16mm 22mm 16mm;
+    margin: 0 auto;
     page-break-after: always;
-    font-size: 7pt;
-    font-family: 'Arial Narrow', Arial, sans-serif;
+    font-size: 11pt;
     background: white !important;
     box-sizing: border-box;
-    line-height: 1.3;
-    color: #000;
   }
 
   .print-page:last-child {
     page-break-after: auto;
+  }
+
+  @page {
+    size: A5 portrait;
+    margin: 0;
   }
 
   .no-print {
@@ -322,70 +320,70 @@ a {
 
   /* ── Nombre del paciente ── */
   .print-patient-name {
-    font-size: 8pt;
+    font-size: 14pt;
     font-weight: 800;
     text-align: center;
     text-transform: uppercase;
-    padding-bottom: 1.5mm;
-    border-bottom: 1px dashed #000;
-    margin-bottom: 1.5mm;
+    padding-bottom: 4px;
+    border-bottom: 2px solid #000;
+    margin-bottom: 8px;
     word-wrap: break-word;
   }
 
   /* ── Obra social + afiliado ── */
   .print-os-line {
-    font-size: 6.5pt;
+    font-size: 11pt;
     text-align: center;
-    margin-bottom: 2mm;
+    margin-bottom: 16px;
     color: #333;
   }
 
   /* ── SOLICITO label ── */
   .print-solicito-label {
-    font-size: 7pt;
+    font-size: 12pt;
     font-weight: 800;
     text-align: center;
-    letter-spacing: 1.5px;
+    letter-spacing: 2px;
     text-transform: uppercase;
-    margin: 1.5mm 0 0.5mm;
+    margin: 16px 0 8px;
   }
 
   /* ── Título del estudio ── */
   .print-study-title {
-    font-size: 7.5pt;
+    font-size: 13pt;
     font-weight: 700;
     text-align: center;
-    margin-bottom: 2mm;
-    padding-bottom: 1.5mm;
-    border-bottom: 1px dashed #000;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #000;
     word-wrap: break-word;
   }
 
   /* ── Grupo de estudios (múltiples) ── */
   .print-study-group {
-    margin-bottom: 2mm;
-    padding-bottom: 1.5mm;
-    border-bottom: 1px dashed #000;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #000;
   }
 
   .print-study-group__item {
-    font-size: 7pt;
+    font-size: 12pt;
     font-weight: 600;
     text-align: center;
-    padding: 0.3mm 0;
+    padding: 4px 0;
   }
 
   /* ── Campos (Diag., Trat., Cod.) ── */
   .print-fields {
-    margin-bottom: 1.5mm;
+    margin-bottom: 16px;
   }
 
   .print-field-row {
     display: flex;
-    gap: 1mm;
-    margin-bottom: 0.5mm;
-    font-size: 6.5pt;
-    line-height: 1.4;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 11pt;
+    line-height: 1.5;
   }
 
   .print-field-label {
@@ -402,9 +400,9 @@ a {
 
   /* ── Sección inferior — fecha ── */
   .print-bottom-section {
-    margin-top: 2mm;
-    padding-top: 1mm;
-    border-top: 1px dashed #000;
+    margin-top: 16px;
+    padding-top: 8px;
+    border-top: 2px dashed #000;
   }
 
   .print-date-block {
@@ -412,7 +410,7 @@ a {
   }
 
   .print-date-value {
-    font-size: 6.5pt;
+    font-size: 11pt;
     font-weight: 600;
   }
 }
