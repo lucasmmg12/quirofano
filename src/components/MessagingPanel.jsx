@@ -103,19 +103,15 @@ export default function MessagingPanel({ addToast }) {
     // === Load Surgeries for Conversations ===
     useEffect(() => {
         async function fetchConvSurgeries() {
-            // Get unique patient IDs from conversations
-            const idPacientes = conversations
-                .map(c => crmContacts[c.phone]?.id_paciente)
-                .filter(id => id); // filter out null/undefined
-            
-            const uniqueIds = [...new Set(idPacientes)];
-            if (uniqueIds.length === 0) return;
+            // Get unique phones from conversations
+            const uniquePhones = [...new Set(conversations.map(c => c.phone))];
+            if (uniquePhones.length === 0) return;
 
             try {
                 // Chunk to avoid URL length limits
                 const chunked = [];
-                for (let i = 0; i < uniqueIds.length; i += 200) {
-                    chunked.push(uniqueIds.slice(i, i + 200));
+                for (let i = 0; i < uniquePhones.length; i += 200) {
+                    chunked.push(uniquePhones.slice(i, i + 200));
                 }
 
                 const newMap = {};
@@ -123,15 +119,15 @@ export default function MessagingPanel({ addToast }) {
                 for (const chunk of chunked) {
                     const { data, error } = await supabase
                         .from('surgeries')
-                        .select('id_paciente, fecha_cirugia, status')
-                        .in('id_paciente', chunk)
+                        .select('telefono, fecha_cirugia, status')
+                        .in('telefono', chunk)
                         .gte('fecha_cirugia', today)
                         .order('fecha_cirugia', { ascending: true });
                     
                     if (!error && data) {
                         data.forEach(s => {
-                            if (!newMap[s.id_paciente]) {
-                                newMap[s.id_paciente] = s; // Keeps the closest future date
+                            if (!newMap[s.telefono]) {
+                                newMap[s.telefono] = s; // Keeps the closest future date
                             }
                         });
                     }
@@ -142,10 +138,10 @@ export default function MessagingPanel({ addToast }) {
             }
         }
         
-        if (conversations.length > 0 && Object.keys(crmContacts).length > 0) {
+        if (conversations.length > 0) {
             fetchConvSurgeries();
         }
-    }, [conversations, crmContacts]);
+    }, [conversations]);
 
     // === LOAD CONVERSATIONS ===
     const loadConversations = useCallback(async (silent = false) => {
@@ -953,9 +949,7 @@ export default function MessagingPanel({ addToast }) {
                                         </div>
                                         {/* Estado de Cirugía */}
                                         {(() => {
-                                            const contact = crmContacts[conv.phone];
-                                            if (!contact || !contact.id_paciente) return null;
-                                            const surgery = surgeriesMap[contact.id_paciente];
+                                            const surgery = surgeriesMap[conv.phone];
                                             if (!surgery || !surgery.fecha_cirugia) return null;
 
                                             // Formatear la fecha
