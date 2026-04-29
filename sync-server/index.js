@@ -258,7 +258,7 @@ async function syncCirugias(db) {
 
     // Filtrar registros con datos completos para upsert
     const validRecords = records.filter(r => r.id_paciente && r.nombre && r.fecha_cirugia);
-    
+
     // Deduplicar (último gana)
     const deduped = new Map();
     for (const row of validRecords) {
@@ -466,7 +466,7 @@ async function syncPresupuestos(db) {
     // Upsert ítems: limpiar y reinsertar
     let insertedItems = 0;
     const budgetIds = presupuestos.map(p => p.id_presupuesto);
-    
+
     if (budgetIds.length > 0) {
         // Borrar ítems existentes para los presupuestos que se actualizan
         for (let i = 0; i < budgetIds.length; i += BATCH) {
@@ -793,7 +793,7 @@ async function syncAltasAdministrativas(db) {
             // â”€â”€ Detectar transición a "Alta Adm" para setear timestamp â”€â”€
             const prevControl = preserved?._prev_control_adm;
             const newControl = row.control_adm_finalizado;
-            
+
             if (newControl === 'Sí' && !merged.fecha_alta_adm) {
                 // Primera vez que control_adm_finalizado pasa a 'Sí' â†’ marcar timestamp
                 merged.fecha_alta_adm = new Date().toISOString();
@@ -886,7 +886,7 @@ async function syncFacturacionSede(db) {
                 const h = r.Hora.getUTCHours();
                 const mn = r.Hora.getUTCMinutes();
                 const s = r.Hora.getUTCSeconds();
-                hora = `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+                hora = `${String(h).padStart(2, '0')}:${String(mn).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
                 turno = h < 15 ? 'mañana' : 'tarde';
             } else {
                 const timeStr = String(r.Hora);
@@ -952,7 +952,7 @@ async function syncFacturacionSede(db) {
             .select('id');
 
         if (error) {
-            console.error(`   âŒ Batch ${Math.floor(i/BATCH)+1} error:`, error.message);
+            console.error(`   âŒ Batch ${Math.floor(i / BATCH) + 1} error:`, error.message);
             skipped += batch.length;
         } else if (data) {
             inserted += data.length;
@@ -980,22 +980,54 @@ async function syncVisitasSede(db) {
 
     const result = await db.request().query(`
         SELECT 
-            [idVisita],
-            CAST([Fecha Visita] AS DATE) AS [Fecha],
-            [IdPaciente],
-            [Paciente],
-            [Cliente],
-            [Responsable],
-            [Tipo Visita],
-            [Centro],
-            [Visita_Especialidad],
-            [UsuarioCita]
-        FROM [SALUS].[dbo].[VLISE_Visitas]
-        WHERE 
-            CAST([Fecha Visita] AS DATE) >= '${primerDiaMes}'
-            AND [Asistencia] = 'Presente'
-            AND [Centro] = 'SANTA FE'
-        ORDER BY [Fecha Visita] DESC
+    v.[idVisita],
+    CAST(v.[Fecha Visita] AS DATE) AS [Fecha],
+    v.[IdPaciente],
+    v.[Paciente],
+    v.[Cliente],
+    v.[Responsable],
+    v.[Tipo Visita],
+    v.[Centro],
+    v.[Visita_Especialidad],
+    v.[UsuarioCita] AS [UsuarioCita_Original], -- Mantuve la original por si necesitas comparar
+    LimpiezaUsuario.[UsuarioReal]              -- Aquí está el usuario definitivo extraído
+FROM [SALUS].[dbo].[VLISE_Visitas] v
+-- 1. Transformamos el texto sucio a un formato XML seguro
+OUTER APPLY (
+    SELECT CAST('<x>' + 
+        REPLACE(
+            REPLACE(
+                REPLACE(ISNULL(v.[UsuarioCita], ''), '<', '&lt;'), 
+            '>', '&gt;'), 
+        '|', '</x><x>') 
+    + '</x>' AS XML) AS xmlData
+) AS XmlConv
+-- 2. Leemos cada "pedacito" del XML y extraemos al usuario con la fecha más alta
+OUTER APPLY (
+    SELECT TOP 1 
+        -- Extraemos el nombre antes del primer paréntesis
+        LTRIM(RTRIM(SUBSTRING(Node.Valor, 1, CHARINDEX('(', Node.Valor) - 1))) AS [UsuarioReal]
+    FROM (
+        -- Extraemos los valores como texto desde los nodos XML
+        SELECT Split.a.value('.', 'VARCHAR(MAX)') AS Valor
+        FROM XmlConv.xmlData.nodes('/x') AS Split(a)
+    ) AS Node
+    WHERE 
+        CHARINDEX('(', Node.Valor) > 0 
+        AND LEN(Node.Valor) >= CHARINDEX('(', Node.Valor) + 19 
+    ORDER BY 
+        -- Validamos si la fecha entre paréntesis es real y la ordenamos de mayor a menor
+        CASE 
+            WHEN ISDATE(SUBSTRING(Node.Valor, CHARINDEX('(', Node.Valor) + 1, 19)) = 1 
+            THEN CONVERT(DATETIME, SUBSTRING(Node.Valor, CHARINDEX('(', Node.Valor) + 1, 19), 103)
+            ELSE CAST('1900-01-01' AS DATETIME) 
+        END DESC
+) AS LimpiezaUsuario
+WHERE 
+    CAST(v.[Fecha Visita] AS DATE) >= '${primerDiaMes}'
+    AND v.[Asistencia] = 'Presente'
+    AND v.[Centro] = 'SANTA FE'
+ORDER BY v.[Fecha Visita] DESC
     `);
     console.log(`   📥 ${result.recordset.length} visitas extraídas (desde ${primerDiaMesFmt})`);
 
@@ -1003,26 +1035,10 @@ async function syncVisitasSede(db) {
         return { total: 0, deleted: 0, inserted: 0, skipped: 0 };
     }
 
-    // Transformar filas
+    // Transformar filas — el SQL ya devuelve UsuarioReal limpio via XML splitting
     const records = [];
     for (const r of result.recordset) {
-        const rawCita = r['UsuarioCita']?.trim();
-        if (!rawCita) continue;
-
-        // Parsear: el usuario real está después del último ">|" y antes del primer "("
-        let usuario = rawCita;
-        if (rawCita.includes('>|')) {
-            const parts = rawCita.split('>|').filter(p => p.trim() !== '');
-            usuario = parts[parts.length - 1];
-        } else if (rawCita.includes('|')) {
-            const parts = rawCita.split('|').filter(p => p.trim() !== '');
-            usuario = parts[parts.length - 1];
-        }
-        if (usuario.includes('(')) {
-            usuario = usuario.split('(')[0];
-        }
-        usuario = usuario.trim();
-
+        const usuario = r.UsuarioReal?.trim();
         if (!usuario) continue;
 
         const fecha = formatDate(r.Fecha);
@@ -1037,7 +1053,7 @@ async function syncVisitasSede(db) {
             responsable: r.Responsable?.trim() || null,
             tipo_visita: r['Tipo Visita']?.trim() || null,
             especialidad: r.Visita_Especialidad?.trim() || null,
-            usuario_cita: usuario, // Cambiado de usuario_creacion a usuario_cita
+            usuario_cita: usuario,
             centro: 'SANTA FE',
         });
     }
@@ -1068,7 +1084,7 @@ async function syncVisitasSede(db) {
             .select('id');
 
         if (error) {
-            console.error(`   âŒ Batch ${Math.floor(i/BATCH)+1} error:`, error.message);
+            console.error(`   âŒ Batch ${Math.floor(i / BATCH) + 1} error:`, error.message);
             skipped += batch.length;
         } else if (data) {
             inserted += data.length;
