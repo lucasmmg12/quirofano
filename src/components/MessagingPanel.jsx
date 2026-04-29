@@ -101,43 +101,42 @@ export default function MessagingPanel({ addToast }) {
     }, []);
 
     // === Load Surgeries for Conversations ===
+    // Fetches ALL future surgeries and normalizes phones client-side
+    // to guarantee matching regardless of stored format (e.g. 154XXXXXX vs 549264XXXXXXX)
     useEffect(() => {
         async function fetchConvSurgeries() {
-            // Get unique phones from conversations
-            const uniquePhones = [...new Set(conversations.map(c => c.phone))];
-            if (uniquePhones.length === 0) return;
+            const convPhones = new Set(conversations.map(c => c.phone));
+            if (convPhones.size === 0) return;
 
             try {
-                // Chunk to avoid URL length limits
-                const chunked = [];
-                for (let i = 0; i < uniquePhones.length; i += 200) {
-                    chunked.push(uniquePhones.slice(i, i + 200));
+                const today = new Date().toISOString().split('T')[0];
+                const { data, error } = await supabase
+                    .from('surgeries')
+                    .select('telefono, fecha_cirugia, status')
+                    .not('telefono', 'is', null)
+                    .gte('fecha_cirugia', today)
+                    .order('fecha_cirugia', { ascending: true });
+
+                if (error) {
+                    console.error("Error fetching surgeries:", error);
+                    return;
                 }
 
+                // Normalize each surgery phone and map by normalized key
                 const newMap = {};
-                const today = new Date().toISOString().split('T')[0];
-                for (const chunk of chunked) {
-                    const { data, error } = await supabase
-                        .from('surgeries')
-                        .select('telefono, fecha_cirugia, status')
-                        .in('telefono', chunk)
-                        .gte('fecha_cirugia', today)
-                        .order('fecha_cirugia', { ascending: true });
-                    
-                    if (!error && data) {
-                        data.forEach(s => {
-                            if (!newMap[s.telefono]) {
-                                newMap[s.telefono] = s; // Keeps the closest future date
-                            }
-                        });
+                (data || []).forEach(s => {
+                    const normalizedTel = normalizeArgentinePhone(s.telefono);
+                    // Only include if this phone has a conversation, and keep the closest future date
+                    if (normalizedTel && convPhones.has(normalizedTel) && !newMap[normalizedTel]) {
+                        newMap[normalizedTel] = { ...s, _normalizedPhone: normalizedTel };
                     }
-                }
+                });
                 setSurgeriesMap(newMap);
             } catch (err) {
                 console.error("Error fetching surgeries for list:", err);
             }
         }
-        
+
         if (conversations.length > 0) {
             fetchConvSurgeries();
         }
