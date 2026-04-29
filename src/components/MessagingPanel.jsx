@@ -66,6 +66,8 @@ export default function MessagingPanel({ addToast }) {
     // Patient context (surgery + budget)
     const [patientContext, setPatientContext] = useState(null);
     const [showBudgetDetail, setShowBudgetDetail] = useState(false);
+    // Surgery Context for the Conversation List
+    const [surgeriesMap, setSurgeriesMap] = useState({});
     // Dual WhatsApp line state
     const [whatsappLines, setWhatsappLines] = useState([]);
     const [assignedLineId, setAssignedLineId] = useState(null);
@@ -97,6 +99,51 @@ export default function MessagingPanel({ addToast }) {
         }
         loadContacts();
     }, []);
+
+    // === Load Surgeries for Conversations ===
+    useEffect(() => {
+        async function fetchConvSurgeries() {
+            // Get unique patient IDs from conversations
+            const idPacientes = conversations
+                .map(c => crmContacts[c.phone]?.id_paciente)
+                .filter(id => id); // filter out null/undefined
+            
+            const uniqueIds = [...new Set(idPacientes)];
+            if (uniqueIds.length === 0) return;
+
+            try {
+                // Chunk to avoid URL length limits
+                const chunked = [];
+                for (let i = 0; i < uniqueIds.length; i += 200) {
+                    chunked.push(uniqueIds.slice(i, i + 200));
+                }
+
+                const newMap = {};
+                for (const chunk of chunked) {
+                    const { data, error } = await supabase
+                        .from('surgeries')
+                        .select('id_paciente, fecha_cirugia, status')
+                        .in('id_paciente', chunk)
+                        .order('fecha_cirugia', { ascending: false });
+                    
+                    if (!error && data) {
+                        data.forEach(s => {
+                            if (!newMap[s.id_paciente]) {
+                                newMap[s.id_paciente] = s; // Keeps the most recent
+                            }
+                        });
+                    }
+                }
+                setSurgeriesMap(newMap);
+            } catch (err) {
+                console.error("Error fetching surgeries for list:", err);
+            }
+        }
+        
+        if (conversations.length > 0 && Object.keys(crmContacts).length > 0) {
+            fetchConvSurgeries();
+        }
+    }, [conversations, crmContacts]);
 
     // === LOAD CONVERSATIONS ===
     const loadConversations = useCallback(async (silent = false) => {
@@ -902,31 +949,73 @@ export default function MessagingPanel({ addToast }) {
                                                 </>
                                             )}
                                         </div>
-                                        {/* Líneas usadas con este paciente */}
-                                        {conv.usedLines && conv.usedLines.length > 0 && (
-                                            <div className="msg-panel__conv-lines">
-                                                {conv.usedLines.map(lid => {
-                                                    const line = whatsappLines.find(l => l.id === lid);
-                                                    return (
+                                        {/* Estado de Cirugía */}
+                                        {(() => {
+                                            const contact = crmContacts[conv.phone];
+                                            if (!contact || !contact.id_paciente) return null;
+                                            const surgery = surgeriesMap[contact.id_paciente];
+                                            if (!surgery || !surgery.fecha_cirugia) return null;
+
+                                            // Formatear la fecha
+                                            const d = new Date(surgery.fecha_cirugia + 'T12:00:00');
+                                            const formattedDate = d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+
+                                            // Estilos por estado
+                                            const statusLower = (surgery.status || '').toLowerCase();
+                                            const isConfirmed = statusLower.includes('confirmad');
+                                            const isPending = statusLower.includes('pendient') || statusLower.includes('asignad');
+                                            const isSuspended = statusLower.includes('suspendid');
+
+                                            let bgColor = '#F1F5F9'; // neutral
+                                            let textColor = '#64748B';
+                                            let dotColor = '#94A3B8';
+
+                                            if (isConfirmed) {
+                                                bgColor = '#F0FDF4';
+                                                textColor = '#16A34A';
+                                                dotColor = '#22C55E';
+                                            } else if (isPending) {
+                                                bgColor = '#FFFBEB';
+                                                textColor = '#D97706';
+                                                dotColor = '#F59E0B';
+                                            } else if (isSuspended) {
+                                                bgColor = '#FEF2F2';
+                                                textColor = '#DC2626';
+                                                dotColor = '#EF4444';
+                                            }
+
+                                            return (
+                                                <div className="msg-panel__conv-lines" style={{ marginTop: '4px' }}>
+                                                    <span
+                                                        className="msg-panel__conv-line-tag"
+                                                        style={{
+                                                            background: bgColor,
+                                                            color: textColor,
+                                                            borderColor: `${dotColor}30`,
+                                                            padding: '2px 8px',
+                                                            borderRadius: '12px',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px',
+                                                            fontSize: '0.7rem',
+                                                            fontWeight: 600
+                                                        }}
+                                                    >
                                                         <span
-                                                            key={lid}
-                                                            className="msg-panel__conv-line-tag"
-                                                            style={{
-                                                                background: `${line?.color || '#94A3B8'}18`,
-                                                                color: line?.color || '#94A3B8',
-                                                                borderColor: `${line?.color || '#94A3B8'}30`,
+                                                            className="msg-panel__conv-line-dot"
+                                                            style={{ 
+                                                                background: dotColor,
+                                                                width: '6px',
+                                                                height: '6px',
+                                                                borderRadius: '50%',
+                                                                display: 'inline-block'
                                                             }}
-                                                        >
-                                                            <span
-                                                                className="msg-panel__conv-line-dot"
-                                                                style={{ background: line?.color || '#94A3B8' }}
-                                                            />
-                                                            {line?.label?.replace('WhatsApp ', '') || lid}
-                                                        </span>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
+                                                        />
+                                                        {formattedDate} - {surgery.status}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 </button>
                             );
