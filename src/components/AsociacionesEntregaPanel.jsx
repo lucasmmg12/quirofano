@@ -156,8 +156,8 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                 fetchAsociacionesCirugias({
                     asociacion: filtroAsociacion,
                     search: searchTerm || undefined,
-                    soloSinConstancia: true,
-                    soloSinCarrito: true,  // ✅ FIX: exclude items already in cart
+                    soloSinConstancia: false,
+                    soloSinCarrito: false,
                 }),
                 fetchResumenAsociaciones(),
             ]);
@@ -959,13 +959,18 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                 <tbody>
                                     {filteredPendientes.map(c => {
                                         const color = ASOCIACION_COLORS[c.asociacion] || '#6B7280';
+                                        const isExcluded = !!(c.constancia_id || c.en_carrito);
+                                        const rowOpacity = isExcluded ? 0.4 : 1;
+                                        const excludedLabel = c.constancia_id ? '📦 Entregada' : c.en_carrito ? '🛒 En carrito' : null;
                                         return (
                                             <tr key={c.id} style={{
                                                 borderBottom: '1px solid #F3F4F6',
                                                 transition: 'background 0.15s',
+                                                opacity: rowOpacity,
+                                                pointerEvents: isExcluded ? 'none' : 'auto',
                                             }}
-                                                onMouseOver={e => e.currentTarget.style.background = '#FAFBFF'}
-                                                onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                                                onMouseOver={e => { if (!isExcluded) e.currentTarget.style.background = '#FAFBFF'; }}
+                                                onMouseOut={e => { if (!isExcluded) e.currentTarget.style.background = 'transparent'; }}
                                             >
                                                 <td style={tdStyle}>
                                                     {fmtFecha(c.fecha_realizacion)}
@@ -989,21 +994,30 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                     </span>
                                                 </td>
                                                 <td style={{ ...tdStyle, textAlign: 'center' }}>
-                                                    <button
-                                                        onClick={() => handleToggleDocs(c.id)}
-                                                        style={{
-                                                            width: '32px', height: '32px', borderRadius: '8px',
-                                                            border: c.docs_completos ? '2px solid #10B981' : '2px solid #D1D5DB',
-                                                            background: c.docs_completos ? '#ECFDF5' : '#fff',
-                                                            cursor: 'pointer', display: 'flex',
-                                                            alignItems: 'center', justifyContent: 'center',
-                                                            transition: 'all 0.2s',
-                                                            margin: '0 auto',
-                                                        }}
-                                                        title={c.docs_completos ? `Marcado por ${c.operador}` : 'Marcar documentación completa'}
-                                                    >
-                                                        {c.docs_completos && <CheckCircle2 size={18} color="#10B981" />}
-                                                    </button>
+                                                    {isExcluded ? (
+                                                        <span style={{
+                                                            fontSize: '0.68rem', color: '#9CA3AF',
+                                                            fontWeight: 600, whiteSpace: 'nowrap',
+                                                        }}>
+                                                            {excludedLabel}
+                                                        </span>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => handleToggleDocs(c.id)}
+                                                            style={{
+                                                                width: '32px', height: '32px', borderRadius: '8px',
+                                                                border: c.docs_completos ? '2px solid #10B981' : '2px solid #D1D5DB',
+                                                                background: c.docs_completos ? '#ECFDF5' : '#fff',
+                                                                cursor: 'pointer', display: 'flex',
+                                                                alignItems: 'center', justifyContent: 'center',
+                                                                transition: 'all 0.2s',
+                                                                margin: '0 auto',
+                                                            }}
+                                                            title={c.docs_completos ? `Marcado por ${c.operador}` : 'Marcar documentación completa'}
+                                                        >
+                                                            {c.docs_completos && <CheckCircle2 size={18} color="#10B981" />}
+                                                        </button>
+                                                    )}
                                                 </td>
                                             </tr>
                                         );
