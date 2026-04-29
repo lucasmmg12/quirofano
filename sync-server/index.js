@@ -1037,7 +1037,7 @@ async function syncVisitasSede(db) {
             responsable: r.Responsable?.trim() || null,
             tipo_visita: r['Tipo Visita']?.trim() || null,
             especialidad: r.Visita_Especialidad?.trim() || null,
-            usuario_creacion: usuario, // Guardamos el usuario extraído
+            usuario_cita: usuario, // Cambiado de usuario_creacion a usuario_cita
             centro: 'SANTA FE',
         });
     }
