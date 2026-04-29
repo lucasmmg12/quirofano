@@ -119,17 +119,19 @@ export default function MessagingPanel({ addToast }) {
                 }
 
                 const newMap = {};
+                const today = new Date().toISOString().split('T')[0];
                 for (const chunk of chunked) {
                     const { data, error } = await supabase
                         .from('surgeries')
                         .select('id_paciente, fecha_cirugia, status')
                         .in('id_paciente', chunk)
-                        .order('fecha_cirugia', { ascending: false });
+                        .gte('fecha_cirugia', today)
+                        .order('fecha_cirugia', { ascending: true });
                     
                     if (!error && data) {
                         data.forEach(s => {
                             if (!newMap[s.id_paciente]) {
-                                newMap[s.id_paciente] = s; // Keeps the most recent
+                                newMap[s.id_paciente] = s; // Keeps the closest future date
                             }
                         });
                     }
