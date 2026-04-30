@@ -16,7 +16,7 @@ export async function fetchConversations() {
         .from('whatsapp_messages')
         .select('phone, content, direction, sender_name, is_read, created_at, media_type, line_id')
         .order('created_at', { ascending: false })
-        .limit(10000);
+        .limit(50000);
 
     if (error) {
         console.error('Error fetching conversations:', error);
