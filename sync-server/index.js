@@ -980,54 +980,48 @@ async function syncVisitasSede(db) {
 
     const result = await db.request().query(`
         SELECT 
-    v.[idVisita],
-    CAST(v.[Fecha Visita] AS DATE) AS [Fecha],
-    v.[IdPaciente],
-    v.[Paciente],
-    v.[Cliente],
-    v.[Responsable],
-    v.[Tipo Visita],
-    v.[Centro],
-    v.[Visita_Especialidad],
-    v.[UsuarioCita] AS [UsuarioCita_Original], -- Mantuve la original por si necesitas comparar
-    LimpiezaUsuario.[UsuarioReal]              -- Aquí está el usuario definitivo extraído
-FROM [SALUS].[dbo].[VLISE_Visitas] v
--- 1. Transformamos el texto sucio a un formato XML seguro
-OUTER APPLY (
-    SELECT CAST('<x>' + 
-        REPLACE(
-            REPLACE(
-                REPLACE(ISNULL(v.[UsuarioCita], ''), '<', '&lt;'), 
-            '>', '&gt;'), 
-        '|', '</x><x>') 
-    + '</x>' AS XML) AS xmlData
-) AS XmlConv
--- 2. Leemos cada "pedacito" del XML y extraemos al usuario con la fecha más alta
-OUTER APPLY (
-    SELECT TOP 1 
-        -- Extraemos el nombre antes del primer paréntesis
-        LTRIM(RTRIM(SUBSTRING(Node.Valor, 1, CHARINDEX('(', Node.Valor) - 1))) AS [UsuarioReal]
-    FROM (
-        -- Extraemos los valores como texto desde los nodos XML
-        SELECT Split.a.value('.', 'VARCHAR(MAX)') AS Valor
-        FROM XmlConv.xmlData.nodes('/x') AS Split(a)
-    ) AS Node
-    WHERE 
-        CHARINDEX('(', Node.Valor) > 0 
-        AND LEN(Node.Valor) >= CHARINDEX('(', Node.Valor) + 19 
-    ORDER BY 
-        -- Validamos si la fecha entre paréntesis es real y la ordenamos de mayor a menor
-        CASE 
-            WHEN ISDATE(SUBSTRING(Node.Valor, CHARINDEX('(', Node.Valor) + 1, 19)) = 1 
-            THEN CONVERT(DATETIME, SUBSTRING(Node.Valor, CHARINDEX('(', Node.Valor) + 1, 19), 103)
-            ELSE CAST('1900-01-01' AS DATETIME) 
-        END DESC
-) AS LimpiezaUsuario
-WHERE 
-    CAST(v.[Fecha Visita] AS DATE) >= '${primerDiaMes}'
-    AND v.[Asistencia] = 'Presente'
-    AND v.[Centro] = 'SANTA FE'
-ORDER BY v.[Fecha Visita] DESC
+            v.[idVisita],
+            CAST(v.[Fecha Visita] AS DATE) AS [Fecha],
+            v.[IdPaciente],
+            v.[Paciente],
+            v.[Cliente],
+            v.[Responsable],
+            v.[Tipo Visita],
+            v.[Centro],
+            v.[Visita_Especialidad],
+            LimpiezaUsuario.[UsuarioReal]
+        FROM [SALUS].[dbo].[VLISE_Visitas] v
+        OUTER APPLY (
+            SELECT CAST('<x>' + 
+                REPLACE(
+                    REPLACE(
+                        REPLACE(ISNULL(v.[UsuarioCita], ''), '<', '&lt;'), 
+                    '>', '&gt;'), 
+                '|', '</x><x>') 
+            + '</x>' AS XML) AS xmlData
+        ) AS XmlConv
+        OUTER APPLY (
+            SELECT TOP 1 
+                LTRIM(RTRIM(SUBSTRING(Node.Valor, 1, CHARINDEX('(', Node.Valor) - 1))) AS [UsuarioReal]
+            FROM (
+                SELECT Split.a.value('.', 'VARCHAR(MAX)') AS Valor
+                FROM XmlConv.xmlData.nodes('/x') AS Split(a)
+            ) AS Node
+            WHERE 
+                CHARINDEX('(', Node.Valor) > 0 
+                AND LEN(Node.Valor) >= CHARINDEX('(', Node.Valor) + 19 
+            ORDER BY 
+                CASE 
+                    WHEN ISDATE(SUBSTRING(Node.Valor, CHARINDEX('(', Node.Valor) + 1, 19)) = 1 
+                    THEN CONVERT(DATETIME, SUBSTRING(Node.Valor, CHARINDEX('(', Node.Valor) + 1, 19), 103)
+                    ELSE CAST('1900-01-01' AS DATETIME) 
+                END DESC
+        ) AS LimpiezaUsuario
+        WHERE 
+            CAST(v.[Fecha Visita] AS DATE) >= '${primerDiaMes}'
+            AND v.[Asistencia] = 'Presente'
+            AND v.[Centro] = 'SANTA FE'
+        ORDER BY v.[Fecha Visita] DESC
     `);
     console.log(`   📥 ${result.recordset.length} visitas extraídas (desde ${primerDiaMesFmt})`);
 
@@ -1053,7 +1047,7 @@ ORDER BY v.[Fecha Visita] DESC
             responsable: r.Responsable?.trim() || null,
             tipo_visita: r['Tipo Visita']?.trim() || null,
             especialidad: r.Visita_Especialidad?.trim() || null,
-            usuario_cita: usuario,
+            usuario_creacion: usuario,
             centro: 'SANTA FE',
         });
     }
