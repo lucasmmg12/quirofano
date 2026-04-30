@@ -115,6 +115,28 @@ export default function TemplateManager({ addToast }) {
             addToast?.('Completá comando, nombre y mensaje', 'error');
             return;
         }
+        // Validar formato del comando
+        const cmd = form.shortcut.trim();
+        if (!cmd.startsWith('/')) {
+            addToast?.('⚠️ El comando debe empezar con "/" (ej: /saludo)', 'error');
+            return;
+        }
+        if (cmd.length < 2) {
+            addToast?.('⚠️ El comando debe tener al menos 2 caracteres (ej: /saludo)', 'error');
+            return;
+        }
+        if (cmd.includes(' ')) {
+            addToast?.('⚠️ El comando no puede tener espacios. Usá guiones o todo junto (ej: /obra_social)', 'error');
+            return;
+        }
+        // Si es nuevo, verificar que no exista ya
+        if (editingId === 'new') {
+            const exists = shortcuts.find(s => s.shortcut.toLowerCase() === cmd.toLowerCase());
+            if (exists) {
+                addToast?.(`⚠️ Ya existe una plantilla con el comando "${exists.shortcut}" ("${exists.label}"). Elegí otro comando.`, 'error');
+                return;
+            }
+        }
         setSaving(true);
         try {
             if (editingId === 'new') {
@@ -127,7 +149,12 @@ export default function TemplateManager({ addToast }) {
             resetForm();
             await loadShortcuts();
         } catch (e) {
-            addToast?.('Error: ' + e.message, 'error');
+            // Manejar error de duplicado desde la BD
+            if (e.message?.includes('duplicate') || e.message?.includes('unique')) {
+                addToast?.(`⚠️ El comando "${cmd}" ya está en uso por otra plantilla. Cambiá el comando e intentá de nuevo.`, 'error');
+            } else {
+                addToast?.('Error al guardar: ' + e.message, 'error');
+            }
         } finally {
             setSaving(false);
         }
