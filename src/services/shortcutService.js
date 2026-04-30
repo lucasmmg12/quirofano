@@ -26,6 +26,7 @@ export async function fetchShortcuts(forceRefresh = false) {
         .from('whatsapp_shortcuts')
         .select('*')
         .eq('is_active', true)
+        .eq('sistema', 'admqui')
         .order('sort_order', { ascending: true })
         .order('label', { ascending: true });
 
@@ -56,6 +57,7 @@ export async function fetchAllShortcuts() {
     const { data, error } = await supabase
         .from('whatsapp_shortcuts')
         .select('*')
+        .eq('sistema', 'admqui')
         .order('sort_order', { ascending: true })
         .order('label', { ascending: true });
 
@@ -72,7 +74,7 @@ export async function fetchAllShortcuts() {
 export async function createShortcut({ shortcut, label, message, category }) {
     const { data, error } = await supabase
         .from('whatsapp_shortcuts')
-        .insert([{ shortcut, label, message, category, is_active: true }])
+        .insert([{ shortcut, label, message, category, is_active: true, sistema: 'admqui' }])
         .select()
         .single();
 
