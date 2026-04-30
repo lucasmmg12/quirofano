@@ -32,6 +32,19 @@ const EMOJI_LIST = [
     '🙏', '💯', '🎉', '🎊', '👋', '👌', '🤙', '📌', '⏰', '🗓️',
 ];
 
+// Status config matching SurgeryPanel's color system
+const STATUS_CONFIG = {
+    lila: { label: 'Sin Mensaje', color: '#6B7280', bg: '#F3F4F6' },
+    amarillo: { label: 'En Revisión', color: '#EC4899', bg: '#FDF2F8' },
+    verde: { label: 'Autorizado', color: '#22C55E', bg: '#F0FDF4' },
+    azul: { label: 'Confirmado', color: '#3B82F6', bg: '#EFF6FF' },
+    rojo: { label: 'Problema', color: '#EF4444', bg: '#FEF2F2' },
+    precaucion: { label: 'Precaución', color: '#EAB308', bg: '#FEFCE8' },
+    fertilidad: { label: 'Fertilidad', color: '#A855F7', bg: '#FAF5FF' },
+    realizada: { label: 'Realizada', color: '#059669', bg: '#ECFDF5' },
+    suspendida: { label: 'Suspendida', color: '#6B7280', bg: '#F3F4F6' },
+};
+
 export default function MessagingPanel({ addToast }) {
     // === STATE ===
     const [conversations, setConversations] = useState([]);
@@ -687,7 +700,18 @@ export default function MessagingPanel({ addToast }) {
             const q = searchQuery.toLowerCase();
             list = list.filter(c => {
                 const name = contactNames[c.phone] || c.senderName || '';
-                return c.phone.includes(q) || name.toLowerCase().includes(q) || c.lastMessage.toLowerCase().includes(q);
+                // Buscar por nombre, teléfono o último mensaje
+                const matchText = c.phone.includes(q) || name.toLowerCase().includes(q) || c.lastMessage.toLowerCase().includes(q);
+                if (matchText) return true;
+                // Buscar por fecha de cirugía (ej: "6/5", "06/05")
+                const surgery = surgeriesMap[c.phone];
+                if (surgery?.fecha_cirugia) {
+                    const d = new Date(surgery.fecha_cirugia + 'T12:00:00');
+                    const dateStr = `${d.getDate()}/${d.getMonth() + 1}`;
+                    const dateStrPadded = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+                    if (dateStr.includes(q) || dateStrPadded.includes(q) || q.includes(dateStr) || q.includes(dateStrPadded)) return true;
+                }
+                return false;
             });
         }
         // Sort: unread first, then by date
@@ -696,7 +720,7 @@ export default function MessagingPanel({ addToast }) {
             if (b.unreadCount > 0 && a.unreadCount === 0) return 1;
             return new Date(b.lastDate) - new Date(a.lastDate);
         });
-    }, [conversations, searchQuery, contactNames]);
+    }, [conversations, searchQuery, contactNames, surgeriesMap]);
 
     // Total unread count
     const totalUnread = useMemo(() => conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0), [conversations]);
@@ -955,38 +979,18 @@ export default function MessagingPanel({ addToast }) {
                                             const d = new Date(surgery.fecha_cirugia + 'T12:00:00');
                                             const formattedDate = d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
 
-                                            // Estilos por estado
-                                            const statusLower = (surgery.status || '').toLowerCase();
-                                            const isConfirmed = statusLower.includes('confirmad');
-                                            const isPending = statusLower.includes('pendient') || statusLower.includes('asignad');
-                                            const isSuspended = statusLower.includes('suspendid');
-
-                                            let bgColor = '#F1F5F9'; // neutral
-                                            let textColor = '#64748B';
-                                            let dotColor = '#94A3B8';
-
-                                            if (isConfirmed) {
-                                                bgColor = '#F0FDF4';
-                                                textColor = '#16A34A';
-                                                dotColor = '#22C55E';
-                                            } else if (isPending) {
-                                                bgColor = '#FFFBEB';
-                                                textColor = '#D97706';
-                                                dotColor = '#F59E0B';
-                                            } else if (isSuspended) {
-                                                bgColor = '#FEF2F2';
-                                                textColor = '#DC2626';
-                                                dotColor = '#EF4444';
-                                            }
+                                            // Obtener configuración de color del STATUS_CONFIG
+                                            const statusKey = (surgery.status || 'lila').toLowerCase();
+                                            const cfg = STATUS_CONFIG[statusKey] || STATUS_CONFIG.lila;
 
                                             return (
                                                 <div className="msg-panel__conv-lines" style={{ marginTop: '4px' }}>
                                                     <span
                                                         className="msg-panel__conv-line-tag"
                                                         style={{
-                                                            background: bgColor,
-                                                            color: textColor,
-                                                            borderColor: `${dotColor}30`,
+                                                            background: cfg.bg,
+                                                            color: cfg.color,
+                                                            border: `1px solid ${cfg.color}25`,
                                                             padding: '2px 8px',
                                                             borderRadius: '12px',
                                                             display: 'inline-flex',
@@ -999,14 +1003,14 @@ export default function MessagingPanel({ addToast }) {
                                                         <span
                                                             className="msg-panel__conv-line-dot"
                                                             style={{ 
-                                                                background: dotColor,
+                                                                background: cfg.color,
                                                                 width: '6px',
                                                                 height: '6px',
                                                                 borderRadius: '50%',
                                                                 display: 'inline-block'
                                                             }}
                                                         />
-                                                        {formattedDate} - {surgery.status}
+                                                        {formattedDate} · {cfg.label}
                                                     </span>
                                                 </div>
                                             );
