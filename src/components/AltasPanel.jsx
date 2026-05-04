@@ -255,12 +255,13 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     // ── Exportar a Excel (CSV con BOM para UTF-8) ──
     const exportToExcel = () => {
-        const headers = ['Estado', 'Paciente', 'Obra Social', 'Especialidad', 'Médico', 'Ingreso', 'Alta', 'Responsable', 'Proceso', 'Notas'];
+        const headers = ['Estado', 'Paciente', 'N° Admisión', 'Obra Social', 'Especialidad', 'Médico', 'Ingreso', 'Alta', 'Responsable', 'Proceso', 'Notas'];
         const rows = sortedAltas.map(a => {
             const ecfg = ALTA_ESTADOS[a._effectiveEstado];
             return [
                 ecfg?.label || '—',
                 a.paciente || '',
+                a.numero_admision || '',
                 a.cliente || '',
                 a.especialidad || '',
                 a.doctor || '',

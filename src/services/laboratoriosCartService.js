@@ -30,12 +30,15 @@ export const LAB_LIST = Object.keys(LAB_COLORS);
  * @param {boolean} opts.soloSinCarrito - If true, exclude items already in cart
  * @param {boolean} opts.soloCarrito    - If true, only fetch cart items
  */
-export async function fetchLabRecords({ soloSinCarrito = false, soloCarrito = false } = {}) {
+export async function fetchLabRecords({ soloSinCarrito = false, soloCarrito = false, fromDate = null, toDate = null } = {}) {
     let query = supabase
         .from('laboratorios_anatomia_patologica')
         .select('*')
         .is('constancia_id', null)
         .order('fecha_visita', { ascending: false });
+
+    if (fromDate) query = query.gte('fecha_visita', fromDate);
+    if (toDate) query = query.lte('fecha_visita', toDate);
 
     if (soloSinCarrito) {
         query = query.or('en_carrito.is.null,en_carrito.eq.false');
