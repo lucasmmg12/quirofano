@@ -318,6 +318,7 @@ export async function fetchWhatsAppLines() {
         .from('whatsapp_lines')
         .select('id, label, phone, is_active, color, icon')
         .eq('is_active', true)
+        .in('id', ['line_a', 'line_b', 'line_c'])
         .order('id', { ascending: true });
 
     if (error) {

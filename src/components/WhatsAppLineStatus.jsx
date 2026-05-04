@@ -49,10 +49,11 @@ export default function WhatsAppLineStatus() {
 
     const loadData = async () => {
         try {
-            // Fetch ALL lines (including inactive ones — we want to show their status)
+            // Fetch only ADM-QUI lines (excluir line_recepciones del sistema Recepciones)
             const { data: linesData } = await supabase
                 .from('whatsapp_lines')
                 .select('id, label, phone, color, is_active, updated_at')
+                .in('id', ['line_a', 'line_b', 'line_c'])
                 .order('id');
 
             if (!linesData) return;
