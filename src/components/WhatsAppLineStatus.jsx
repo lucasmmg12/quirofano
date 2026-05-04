@@ -67,6 +67,7 @@ export default function WhatsAppLineStatus() {
                 .from('whatsapp_messages')
                 .select('line_id, phone, direction, created_at')
                 .gte('created_at', since24h.toISOString())
+                .or('line_id.in.(line_a,line_b,line_c),line_id.is.null')
                 .order('created_at', { ascending: true })
                 .limit(10000);
 
