@@ -6,11 +6,14 @@ import { supabase } from '../lib/supabase';
 
 // ─── Categorías de deudor ───
 export const CATEGORIAS_DEUDOR = {
-    sin_gestionar: { label: 'Sin gestionar', color: '#F59E0B', bg: '#FEF3C7', icon: '🟡' },
-    en_gestion: { label: 'En gestión', color: '#3B82F6', bg: '#DBEAFE', icon: '🔵' },
-    comprometido: { label: 'Comprometido', color: '#16A34A', bg: '#DCFCE7', icon: '🟢' },
-    incobrable: { label: 'Incobrable', color: '#EF4444', bg: '#FEE2E2', icon: '🔴' },
+    sin_gestionar:    { label: 'Sin gestionar',    color: '#F59E0B', bg: '#FEF3C7', icon: '🟡' },
+    en_gestion:       { label: 'En gestión',       color: '#3B82F6', bg: '#DBEAFE', icon: '🔵' },
+    comprometido:     { label: 'Comprometido',     color: '#16A34A', bg: '#DCFCE7', icon: '🟢' },
+    cuenta_corriente: { label: 'Cuenta Corriente', color: '#8B5CF6', bg: '#F3E8FF', icon: '🟣' },
+    incobrable:       { label: 'Incobrable',       color: '#EF4444', bg: '#FEE2E2', icon: '🔴' },
 };
+
+export const MIN_DEUDA = 50000;
 
 // ─── Pacientes Deudores ───
 
@@ -20,7 +23,7 @@ export async function fetchDeudores(filters = {}) {
     let query = supabase
         .from('deudas_pacientes')
         .select('*')
-        .gt('deuda_total', 0)
+        .gte('deuda_total', MIN_DEUDA)
         .order(sortBy, { ascending });
 
     if (filters.categoria) {
@@ -354,7 +357,7 @@ export async function fetchMetricasDeudas() {
     const { data: pacientes } = await supabase
         .from('deudas_pacientes')
         .select('id, nombre, nhc, deuda_total, categoria, telefono, telefono_invalido, ultimo_contacto_at, ultima_respuesta_at, cantidad_facturas')
-        .gt('deuda_total', 0)
+        .gte('deuda_total', MIN_DEUDA)
         .order('deuda_total', { ascending: false });
 
     const all = pacientes || [];
@@ -400,4 +403,105 @@ export async function fetchMetricasDeudas() {
         tasaContactabilidad,
         tasaRespuesta,
     };
+}
+
+// ─── Altas vinculadas por N° Admisión ───
+
+export async function fetchAltasPorAdmisiones(admisiones) {
+    if (!admisiones?.length) return [];
+    const cleaned = admisiones.filter(a => a && String(a).trim()).map(a => String(a).trim());
+    if (!cleaned.length) return [];
+    const { data, error } = await supabase
+        .from('altas_administrativas')
+        .select('numero_admision, paciente, fecha_ingreso, fecha_alta, estado, operador, cliente, control_adm_finalizado')
+        .in('numero_admision', cleaned)
+        .order('fecha_ingreso', { ascending: false });
+    if (error) throw error;
+    return data || [];
+}
+
+// ─── Planes de Pago ───
+
+export async function fetchPlanesPago(pacienteId) {
+    const { data, error } = await supabase
+        .from('deudas_planes_pago')
+        .select('*')
+        .eq('paciente_id', pacienteId)
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    const plans = data || [];
+    for (const plan of plans) {
+        const { data: cuotas } = await supabase
+            .from('deudas_cuotas')
+            .select('*')
+            .eq('plan_id', plan.id)
+            .order('numero_cuota', { ascending: true });
+        plan.cuotas = cuotas || [];
+    }
+    return plans;
+}
+
+export async function createPlanPago(pacienteId, { montoOriginal, tipoInteres, tasaInteres, cantidadCuotas, fechaInicio, notas, usuario }) {
+    let montoCuota, montoTotalFinanciado;
+    if (tipoInteres === 'fijo') {
+        montoCuota = (montoOriginal / cantidadCuotas) + Number(tasaInteres);
+        montoTotalFinanciado = montoCuota * cantidadCuotas;
+    } else {
+        const r = Number(tasaInteres) / 100;
+        if (r > 0) {
+            montoCuota = montoOriginal * (r * Math.pow(1 + r, cantidadCuotas)) / (Math.pow(1 + r, cantidadCuotas) - 1);
+        } else {
+            montoCuota = montoOriginal / cantidadCuotas;
+        }
+        montoTotalFinanciado = montoCuota * cantidadCuotas;
+    }
+    montoCuota = Math.round(montoCuota * 100) / 100;
+    montoTotalFinanciado = Math.round(montoTotalFinanciado * 100) / 100;
+
+    const { data: plan, error: planError } = await supabase
+        .from('deudas_planes_pago')
+        .insert({
+            paciente_id: pacienteId,
+            monto_original: montoOriginal,
+            tipo_interes: tipoInteres,
+            tasa_interes: tasaInteres,
+            cantidad_cuotas: cantidadCuotas,
+            monto_cuota: montoCuota,
+            monto_total_financiado: montoTotalFinanciado,
+            notas, usuario,
+        })
+        .select().single();
+    if (planError) throw planError;
+
+    const inicio = new Date(fechaInicio || new Date());
+    const cuotas = [];
+    for (let i = 0; i < cantidadCuotas; i++) {
+        const venc = new Date(inicio);
+        venc.setMonth(venc.getMonth() + i + 1);
+        cuotas.push({
+            plan_id: plan.id,
+            numero_cuota: i + 1,
+            monto: montoCuota,
+            fecha_vencimiento: venc.toISOString().split('T')[0],
+        });
+    }
+    const { error: cuotasError } = await supabase.from('deudas_cuotas').insert(cuotas);
+    if (cuotasError) throw cuotasError;
+    return plan;
+}
+
+export async function marcarCuotaPagada(cuotaId, { fechaPago, comprobante }) {
+    const { error } = await supabase
+        .from('deudas_cuotas')
+        .update({ pagada: true, fecha_pago: fechaPago || new Date().toISOString().split('T')[0], comprobante: comprobante || null })
+        .eq('id', cuotaId);
+    if (error) throw error;
+}
+
+export async function cancelarPlan(planId) {
+    const { error } = await supabase
+        .from('deudas_planes_pago')
+        .update({ estado: 'cancelado', updated_at: new Date().toISOString() })
+        .eq('id', planId);
+    if (error) throw error;
 }

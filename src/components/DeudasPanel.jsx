@@ -10,12 +10,15 @@ import {
     TrendingUp, Users, PhoneOff, Send, Clock, CheckCircle,
     XCircle, Edit3, Plus, ArrowLeft, RefreshCw, BarChart3,
     Eye, Banknote, UserCheck, UserX, History, Activity, Percent,
+    Download, CreditCard, Calendar,
 } from 'lucide-react';
 import {
     fetchDeudores, fetchFacturas, fetchSeguimiento, addSeguimiento,
     updateDeudorTelefono, updateDeudorCategoria, importarDeudas,
     fetchMetricasDeudas, fetchWhatsAppTracking, CATEGORIAS_DEUDOR,
-    updateDeudor, fetchPresupuestosPorNhc,
+    updateDeudor, fetchPresupuestosPorNhc, MIN_DEUDA,
+    fetchAltasPorAdmisiones, fetchPlanesPago, createPlanPago,
+    marcarCuotaPagada, cancelarPlan,
 } from '../services/deudaService';
 import { parseDeudaExcel } from '../utils/deudaExcelParser';
 import { subscribeToAllIncoming } from '../services/chatService';
@@ -31,7 +34,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
     const [search, setSearch] = useState('');
     const [catFilter, setCatFilter] = useState(null);
     const [telFilter, setTelFilter] = useState(null); // null=todos, true=con, false=sin
-    const [sortBy, setSortBy] = useState('fecha_ultima_factura');
+    const [sortBy, setSortBy] = useState('deuda_total');
     const [sortDir, setSortDir] = useState('desc');
     const [metricas, setMetricas] = useState(null);
     const [showMetricas, setShowMetricas] = useState(false);
@@ -53,6 +56,18 @@ export default function DeudasPanel({ addToast, currentUser }) {
     const [newNote, setNewNote] = useState('');
     const [noteType, setNoteType] = useState('nota');
     const [montoPago, setMontoPago] = useState('');
+
+    // ─── Altas vinculadas ───
+    const [altasVinculadas, setAltasVinculadas] = useState([]);
+
+    // ─── Planes de pago ───
+    const [planes, setPlanes] = useState([]);
+    const [showPlanForm, setShowPlanForm] = useState(false);
+    const [planForm, setPlanForm] = useState({
+        montoOriginal: '', tipoInteres: 'porcentaje', tasaInteres: '',
+        cantidadCuotas: '', fechaInicio: new Date().toISOString().split('T')[0],
+        notas: '',
+    });
 
     // ─── Chat ───
     const [chatOpen, setChatOpen] = useState(false);
@@ -136,13 +151,32 @@ export default function DeudasPanel({ addToast, currentUser }) {
         setDetailLoading(true);
         setEditingPhone(false);
         setPhoneInput(deudor.telefono || '');
+        setShowPlanForm(false);
+        setPlanForm(p => ({ ...p, montoOriginal: deudor.deuda_total || '' }));
         try {
-            const [facts, segs] = await Promise.all([
+            const [facts, segs, planesData] = await Promise.all([
                 fetchFacturas(deudor.id),
                 fetchSeguimiento(deudor.id),
+                fetchPlanesPago(deudor.id),
             ]);
             setFacturas(facts);
             setSeguimiento(segs);
+            setPlanes(planesData);
+
+            // Cruzar con altas administrativas vía n_admision
+            const admisiones = [...new Set(facts.map(f => f.n_admision).filter(Boolean))];
+            if (admisiones.length > 0) {
+                try {
+                    const altas = await fetchAltasPorAdmisiones(admisiones);
+                    setAltasVinculadas(altas);
+                } catch (e) {
+                    console.warn('Error cargando altas vinculadas:', e);
+                    setAltasVinculadas([]);
+                }
+            } else {
+                setAltasVinculadas([]);
+            }
+
             // Buscar presupuestos vinculados por NHC
             if (deudor.nhc) {
                 try {
@@ -276,6 +310,105 @@ export default function DeudasPanel({ addToast, currentUser }) {
         }
     }, [selectedDeudor, newNote, noteType, montoPago, empleadoNombre, addToast]);
 
+    // ─── Plan de Pago ───
+    const handleCreatePlan = useCallback(async () => {
+        if (!selectedDeudor) return;
+        const { montoOriginal, tipoInteres, tasaInteres, cantidadCuotas, fechaInicio, notas } = planForm;
+        if (!montoOriginal || !cantidadCuotas || Number(cantidadCuotas) < 1) {
+            addToast?.('Complete monto y cantidad de cuotas', 'warning');
+            return;
+        }
+        try {
+            await createPlanPago(selectedDeudor.id, {
+                montoOriginal: Number(montoOriginal),
+                tipoInteres,
+                tasaInteres: Number(tasaInteres) || 0,
+                cantidadCuotas: Number(cantidadCuotas),
+                fechaInicio,
+                notas,
+                usuario: empleadoNombre,
+            });
+            const planesData = await fetchPlanesPago(selectedDeudor.id);
+            setPlanes(planesData);
+            setShowPlanForm(false);
+            addToast?.('Plan de pago creado', 'success');
+        } catch (err) {
+            addToast?.('Error al crear plan: ' + err.message, 'error');
+        }
+    }, [selectedDeudor, planForm, empleadoNombre, addToast]);
+
+    const handleMarcarCuota = useCallback(async (cuotaId) => {
+        try {
+            await marcarCuotaPagada(cuotaId, { fechaPago: null, comprobante: null });
+            const planesData = await fetchPlanesPago(selectedDeudor.id);
+            setPlanes(planesData);
+            addToast?.('Cuota marcada como pagada', 'success');
+        } catch (err) {
+            addToast?.('Error al marcar cuota', 'error');
+        }
+    }, [selectedDeudor, addToast]);
+
+    const handleCancelarPlan = useCallback(async (planId) => {
+        if (!confirm('¿Cancelar este plan de pago?')) return;
+        try {
+            await cancelarPlan(planId);
+            const planesData = await fetchPlanesPago(selectedDeudor.id);
+            setPlanes(planesData);
+            addToast?.('Plan cancelado', 'success');
+        } catch (err) {
+            addToast?.('Error al cancelar plan', 'error');
+        }
+    }, [selectedDeudor, addToast]);
+
+    // ─── Exportación ───
+    const exportToExcel = useCallback(() => {
+        if (!deudores.length) return;
+        const headers = ['Paciente', 'NHC', 'Teléfono', 'Deuda Total', 'Facturas', 'Categoría', 'Cobertura', 'Última Factura', 'Último Contacto'];
+        const rows = deudores.map(d => {
+            const cat = CATEGORIAS_DEUDOR[d.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
+            return [
+                d.nombre, d.nhc, d.telefono || '', Number(d.deuda_total).toFixed(2),
+                d.cantidad_facturas, cat.label, d.obra_social || 'Sin datos',
+                d.fecha_ultima_factura ? new Date(d.fecha_ultima_factura).toLocaleDateString('es-AR') : '',
+                d.ultimo_contacto_at ? new Date(d.ultimo_contacto_at).toLocaleDateString('es-AR') : '',
+            ].join(';');
+        });
+        const csv = '\uFEFF' + headers.join(';') + '\n' + rows.join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `deudas_pacientes_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        addToast?.(`${deudores.length} registros exportados a Excel`, 'success');
+    }, [deudores, addToast]);
+
+    const exportToPDF = useCallback(() => {
+        if (!deudores.length) return;
+        const w = window.open('', '_blank');
+        const rows = deudores.map(d => {
+            const cat = CATEGORIAS_DEUDOR[d.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
+            return `<tr>
+                <td>${d.nombre}</td><td>${d.nhc}</td>
+                <td style="text-align:right;font-weight:700">$${Number(d.deuda_total).toLocaleString('es-AR')}</td>
+                <td>${d.cantidad_facturas}</td><td>${cat.label}</td>
+                <td>${d.obra_social || '—'}</td>
+                <td>${d.fecha_ultima_factura ? new Date(d.fecha_ultima_factura).toLocaleDateString('es-AR') : '—'}</td>
+            </tr>`;
+        }).join('');
+        w.document.write(`<!DOCTYPE html><html><head><title>Deudas Pacientes</title>
+            <style>body{font-family:Arial;padding:20px}table{width:100%;border-collapse:collapse;margin-top:16px}
+            th,td{border:1px solid #ddd;padding:8px;font-size:12px}th{background:#f5f5f5;font-weight:700}
+            h1{font-size:18px;color:#0D3B66}h2{font-size:14px;color:#64748B;font-weight:400}</style></head>
+            <body><h1>Gestión de Deudas — Sanatorio Argentino</h1>
+            <h2>Exportado: ${new Date().toLocaleDateString('es-AR')} · ${deudores.length} pacientes · Deudas ≥ $${MIN_DEUDA.toLocaleString('es-AR')}</h2>
+            <table><thead><tr><th>Paciente</th><th>NHC</th><th>Deuda</th><th>Fact.</th><th>Categoría</th><th>Cobertura</th><th>Últ. Factura</th></tr></thead>
+            <tbody>${rows}</tbody></table></body></html>`);
+        w.document.close();
+        w.print();
+    }, [deudores]);
+
     // ─── Helpers ───
     const formatMoney = (n) => {
         const num = Number(n) || 0;
@@ -315,10 +448,16 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         </div>
                         <div>
                             <h2 style={st.headerTitle}>Gestión de Deudas</h2>
-                            <span style={st.headerSub}>Seguimiento de cobros · Fuente: SALUS</span>
+                            <span style={st.headerSub}>Seguimiento de cobros · Deudas ≥ ${MIN_DEUDA.toLocaleString('es-AR')} · Fuente: SALUS</span>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <button onClick={exportToExcel} style={{ ...st.btnSmall, background: '#16A34A', color: '#fff', border: 'none' }} disabled={!deudores.length}>
+                            <Download size={14} /> Excel
+                        </button>
+                        <button onClick={exportToPDF} style={{ ...st.btnSmall, background: '#DC2626', color: '#fff', border: 'none' }} disabled={!deudores.length}>
+                            <Download size={14} /> PDF
+                        </button>
                         <button onClick={() => setShowMetricas(p => !p)} style={st.btnSmall}>
                             <BarChart3 size={14} /> {showMetricas ? 'Ocultar' : 'Métricas'}
                         </button>
@@ -328,7 +467,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         <button
                             onClick={() => fileInputRef.current?.click()}
                             disabled={importing}
-                            style={{ ...st.btnSmall, background: '#16A34A', color: '#fff', border: 'none', boxShadow: '0 2px 8px rgba(22,163,106,0.25)' }}
+                            style={{ ...st.btnSmall, background: '#3B82F6', color: '#fff', border: 'none', boxShadow: '0 2px 8px rgba(59,130,246,0.25)' }}
                         >
                             {importing ? <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Upload size={14} />}
                             {importing ? 'Importando...' : 'Importar Excel'}
@@ -572,6 +711,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                         Deuda {sortBy === 'deuda_total' ? (sortDir === 'desc' ? '▼' : '▲') : ''}
                                     </th>
                                     <th style={{ ...st.th, width: '50px', textAlign: 'center' }}>Fact.</th>
+                                    <th style={{ ...st.th, width: '120px' }}>Cobertura</th>
                                     <th style={{ ...st.th, width: '155px' }}>Categoría</th>
                                     <th style={{ ...st.th, width: '120px' }}>Teléfono</th>
                                     <th style={{ ...st.th, width: '80px', textAlign: 'center' }}>Contacto</th>
@@ -597,6 +737,15 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                                 {formatMoney(d.deuda_total)}
                                             </td>
                                             <td style={{ ...st.td, textAlign: 'center', fontSize: '0.82rem', color: '#475569' }}>{d.cantidad_facturas}</td>
+                                            <td style={{ ...st.td, fontSize: '0.72rem', color: '#64748B' }}>
+                                                {d.obra_social ? (
+                                                    <span style={{ padding: '2px 8px', borderRadius: '10px', background: '#EFF6FF', color: '#2563EB', fontSize: '0.68rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                                        {d.obra_social}
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ color: '#CBD5E1', fontSize: '0.72rem' }}>—</span>
+                                                )}
+                                            </td>
                                             <td style={st.td}>
                                                 <span style={{
                                                     display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -667,7 +816,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                             <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: '#0D3B66' }}>
                                 {selectedDeudor.nombre}
                             </h2>
-                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '4px' }}>
+                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
                                 <span style={{ fontSize: '0.82rem', color: '#64748B' }}>NHC: <strong>{selectedDeudor.nhc}</strong></span>
                                 <span style={{
                                     padding: '2px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700,
@@ -675,6 +824,26 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                 }}>
                                     {cat.icon} {cat.label}
                                 </span>
+                                {selectedDeudor.obra_social && (
+                                    <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 600, background: '#EFF6FF', color: '#2563EB', border: '1px solid #93C5FD40' }}>
+                                        🏥 {selectedDeudor.obra_social}
+                                    </span>
+                                )}
+                                {altasVinculadas.length > 0 && (() => {
+                                    const ultima = altasVinculadas[0];
+                                    return (<>
+                                        {ultima.fecha_alta && (
+                                            <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 600, background: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D040' }}>
+                                                📅 Alta: {new Date(ultima.fecha_alta).toLocaleDateString('es-AR')}
+                                            </span>
+                                        )}
+                                        {ultima.operador && (
+                                            <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 600, background: '#FDF2F8', color: '#EC4899', border: '1px solid #F9A8D440' }}>
+                                                👤 {ultima.operador}
+                                            </span>
+                                        )}
+                                    </>);
+                                })()}
                             </div>
                         </div>
                     </div>
@@ -988,6 +1157,207 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                             )}
                                         </div>
                                     ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Plan de Pago */}
+                        <div style={st.card}>
+                            <h4 style={st.cardTitle}>
+                                <CreditCard size={14} /> Plan de Pago
+                                {planes.filter(p => p.estado === 'activo').length > 0 && (
+                                    <span style={{ marginLeft: '8px', padding: '2px 8px', borderRadius: '10px', background: '#DCFCE7', color: '#16A34A', fontSize: '0.65rem', fontWeight: 700 }}>
+                                        {planes.filter(p => p.estado === 'activo').length} activo{planes.filter(p => p.estado === 'activo').length !== 1 ? 's' : ''}
+                                    </span>
+                                )}
+                                <button onClick={() => setShowPlanForm(p => !p)} style={{ ...st.btnSmall, marginLeft: 'auto', padding: '4px 10px', fontSize: '0.72rem' }}>
+                                    <Plus size={12} /> {showPlanForm ? 'Cerrar' : 'Nuevo Plan'}
+                                </button>
+                            </h4>
+
+                            {/* Formulario nuevo plan */}
+                            {showPlanForm && (
+                                <div style={{ padding: '14px', background: '#F8FAFC', borderRadius: '12px', marginBottom: '12px', border: '1px solid #E2E8F0' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                                        <div>
+                                            <label style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>Monto original</label>
+                                            <input type="number" value={planForm.montoOriginal}
+                                                onChange={e => setPlanForm(p => ({ ...p, montoOriginal: e.target.value }))}
+                                                style={{ ...st.input, width: '100%', boxSizing: 'border-box' }} placeholder="$" />
+                                        </div>
+                                        <div>
+                                            <label style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>Cuotas</label>
+                                            <input type="number" value={planForm.cantidadCuotas}
+                                                onChange={e => setPlanForm(p => ({ ...p, cantidadCuotas: e.target.value }))}
+                                                style={{ ...st.input, width: '100%', boxSizing: 'border-box' }} placeholder="Ej: 6" min="1" />
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                                        <div>
+                                            <label style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>Tipo de interés</label>
+                                            <select value={planForm.tipoInteres}
+                                                onChange={e => setPlanForm(p => ({ ...p, tipoInteres: e.target.value }))}
+                                                style={{ ...st.input, width: '100%', boxSizing: 'border-box' }}>
+                                                <option value="porcentaje">% Mensual</option>
+                                                <option value="fijo">Monto fijo por cuota</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>
+                                                {planForm.tipoInteres === 'porcentaje' ? 'Tasa % mensual' : 'Recargo fijo $'}
+                                            </label>
+                                            <input type="number" value={planForm.tasaInteres}
+                                                onChange={e => setPlanForm(p => ({ ...p, tasaInteres: e.target.value }))}
+                                                style={{ ...st.input, width: '100%', boxSizing: 'border-box' }}
+                                                placeholder={planForm.tipoInteres === 'porcentaje' ? 'Ej: 5' : 'Ej: 2000'} step="0.01" />
+                                        </div>
+                                    </div>
+                                    <div style={{ marginBottom: '8px' }}>
+                                        <label style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>Fecha inicio</label>
+                                        <input type="date" value={planForm.fechaInicio}
+                                            onChange={e => setPlanForm(p => ({ ...p, fechaInicio: e.target.value }))}
+                                            style={{ ...st.input, width: '100%', boxSizing: 'border-box' }} />
+                                    </div>
+
+                                    {/* Preview */}
+                                    {planForm.montoOriginal && planForm.cantidadCuotas && Number(planForm.cantidadCuotas) > 0 && (() => {
+                                        const monto = Number(planForm.montoOriginal);
+                                        const cuotas = Number(planForm.cantidadCuotas);
+                                        const tasa = Number(planForm.tasaInteres) || 0;
+                                        let montoCuota, total;
+                                        if (planForm.tipoInteres === 'fijo') {
+                                            montoCuota = (monto / cuotas) + tasa;
+                                            total = montoCuota * cuotas;
+                                        } else {
+                                            const r = tasa / 100;
+                                            montoCuota = r > 0
+                                                ? monto * (r * Math.pow(1 + r, cuotas)) / (Math.pow(1 + r, cuotas) - 1)
+                                                : monto / cuotas;
+                                            total = montoCuota * cuotas;
+                                        }
+                                        return (
+                                            <div style={{ padding: '10px 14px', background: '#F0F9FF', borderRadius: '10px', border: '1px solid #BAE6FD', marginBottom: '8px' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                                                    <span style={{ color: '#0369A1', fontWeight: 700 }}>Cuota: {formatMoney(montoCuota)}</span>
+                                                    <span style={{ color: '#64748B' }}>Total: {formatMoney(total)}</span>
+                                                </div>
+                                                {tasa > 0 && (
+                                                    <div style={{ fontSize: '0.68rem', color: '#94A3B8', marginTop: '2px' }}>
+                                                        Recargo: {formatMoney(total - monto)} ({planForm.tipoInteres === 'porcentaje' ? `${tasa}% mensual` : `$${tasa} por cuota`})
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
+
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <input type="text" value={planForm.notas}
+                                            onChange={e => setPlanForm(p => ({ ...p, notas: e.target.value }))}
+                                            placeholder="Notas del plan..."
+                                            style={{ ...st.input, flex: 1 }} />
+                                        <button onClick={handleCreatePlan}
+                                            style={{ ...st.btnSmall, background: '#8B5CF6', color: '#fff', border: 'none' }}>
+                                            <CheckCircle size={14} /> Crear
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Planes existentes */}
+                            {planes.length === 0 && !showPlanForm ? (
+                                <span style={{ color: '#CBD5E1', fontSize: '0.85rem' }}>Sin planes de pago</span>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '400px', overflowY: 'auto' }}>
+                                    {planes.map(plan => {
+                                        const pagadas = plan.cuotas?.filter(c => c.pagada).length || 0;
+                                        const totalCuotas = plan.cuotas?.length || plan.cantidad_cuotas;
+                                        const progreso = totalCuotas > 0 ? (pagadas / totalCuotas) * 100 : 0;
+                                        const isActive = plan.estado === 'activo';
+                                        return (
+                                            <div key={plan.id} style={{
+                                                borderRadius: '12px', border: `1px solid ${isActive ? '#E2E8F0' : '#FEE2E2'}`,
+                                                overflow: 'hidden', opacity: isActive ? 1 : 0.6,
+                                            }}>
+                                                <div style={{
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                    padding: '10px 14px', background: isActive ? '#F8FAFC' : '#FEF2F2',
+                                                }}>
+                                                    <div>
+                                                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0D3B66' }}>
+                                                            {plan.cantidad_cuotas} cuotas de {formatMoney(plan.monto_cuota)}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.68rem', color: '#94A3B8' }}>
+                                                            Total: {formatMoney(plan.monto_total_financiado)} ·
+                                                            {plan.tipo_interes === 'porcentaje' ? ` ${plan.tasa_interes}% mensual` : ` +$${plan.tasa_interes}/cuota`}
+                                                            {plan.notas && ` · ${plan.notas}`}
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{
+                                                            padding: '2px 8px', borderRadius: '10px', fontSize: '0.65rem', fontWeight: 700,
+                                                            background: isActive ? '#DCFCE7' : '#FEE2E2',
+                                                            color: isActive ? '#16A34A' : '#EF4444',
+                                                        }}>
+                                                            {plan.estado === 'activo' ? '✅ Activo' : plan.estado === 'finalizado' ? '🏁 Finalizado' : '❌ Cancelado'}
+                                                        </span>
+                                                        {isActive && (
+                                                            <button onClick={() => handleCancelarPlan(plan.id)}
+                                                                style={{ ...st.btnSmall, padding: '2px 8px', fontSize: '0.65rem', color: '#EF4444' }}>
+                                                                <XCircle size={12} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                {/* Barra de progreso */}
+                                                <div style={{ padding: '0 14px 6px', background: isActive ? '#F8FAFC' : '#FEF2F2' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                                                        <span style={{ fontSize: '0.65rem', color: '#64748B' }}>{pagadas}/{totalCuotas} pagadas</span>
+                                                        <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#16A34A' }}>{Math.round(progreso)}%</span>
+                                                    </div>
+                                                    <div style={{ background: '#E2E8F0', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
+                                                        <div style={{ width: `${progreso}%`, height: '100%', borderRadius: '4px', background: 'linear-gradient(90deg, #16A34A, #22C55E)', transition: 'width 0.3s' }} />
+                                                    </div>
+                                                </div>
+                                                {/* Cuotas */}
+                                                {isActive && plan.cuotas?.length > 0 && (
+                                                    <div style={{ padding: '0 14px 10px' }}>
+                                                        {plan.cuotas.map(c => {
+                                                            const vencida = !c.pagada && new Date(c.fecha_vencimiento) < new Date();
+                                                            return (
+                                                                <div key={c.id} style={{
+                                                                    display: 'flex', alignItems: 'center', gap: '8px',
+                                                                    padding: '6px 0', borderBottom: '1px solid #F1F5F9',
+                                                                    fontSize: '0.78rem',
+                                                                }}>
+                                                                    <input type="checkbox" checked={c.pagada} disabled={c.pagada}
+                                                                        onChange={() => !c.pagada && handleMarcarCuota(c.id)}
+                                                                        style={{ cursor: c.pagada ? 'default' : 'pointer' }} />
+                                                                    <span style={{
+                                                                        fontWeight: 600, color: c.pagada ? '#16A34A' : (vencida ? '#EF4444' : '#0D3B66'),
+                                                                        textDecoration: c.pagada ? 'line-through' : 'none',
+                                                                    }}>
+                                                                        Cuota {c.numero_cuota}
+                                                                    </span>
+                                                                    <span style={{ color: '#64748B', flex: 1 }}>
+                                                                        {formatMoney(c.monto)}
+                                                                    </span>
+                                                                    <span style={{
+                                                                        fontSize: '0.68rem',
+                                                                        color: c.pagada ? '#16A34A' : (vencida ? '#EF4444' : '#94A3B8'),
+                                                                        fontWeight: vencida ? 700 : 400,
+                                                                    }}>
+                                                                        {c.pagada
+                                                                            ? `✅ ${c.fecha_pago ? new Date(c.fecha_pago).toLocaleDateString('es-AR') : 'Pagada'}`
+                                                                            : `Vence: ${new Date(c.fecha_vencimiento).toLocaleDateString('es-AR')}${vencida ? ' ⚠️' : ''}`}
+                                                                    </span>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>

@@ -178,7 +178,7 @@ export default function AltasPanel({ addToast, currentUser }) {
             // 3) Estado manual = 'Alta Adm' (puesto por operador)
             const effectiveEstado = (isCtrlAdmSi || obsHasAltaAdm || alta.estado === 'Alta Adm')
                 ? 'Alta Adm'
-                : (alta.estado || null);
+                : (alta.estado || 'Vacío');
             return { ...alta, _effectiveEstado: effectiveEstado, _responsable: asignacion?.responsable || '' };
         });
     }, [altas, criterios]);
@@ -213,6 +213,7 @@ export default function AltasPanel({ addToast, currentUser }) {
         preFilteredAltas.forEach(a => {
             const ecfg = ALTA_ESTADOS[a._effectiveEstado];
             if (ecfg) cols.estado.add(ecfg.label);
+            else cols.estado.add('Vacío');
             if (a.cliente) cols.cliente.add(a.cliente);
             if (a.especialidad) cols.especialidad.add(a.especialidad);
             if (a.doctor) cols.doctor.add(a.doctor);
@@ -226,7 +227,8 @@ export default function AltasPanel({ addToast, currentUser }) {
         return preFilteredAltas.filter(a => {
             if (columnFilters.estado) {
                 const ecfg = ALTA_ESTADOS[a._effectiveEstado];
-                if (!ecfg || !columnFilters.estado.has(ecfg.label)) return false;
+                const label = ecfg ? ecfg.label : 'Vacío';
+                if (!columnFilters.estado.has(label)) return false;
             }
             if (columnFilters.cliente && !columnFilters.cliente.has(a.cliente)) return false;
             if (columnFilters.especialidad && !columnFilters.especialidad.has(a.especialidad)) return false;
