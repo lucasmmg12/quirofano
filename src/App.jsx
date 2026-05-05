@@ -34,6 +34,7 @@ import SimonPanel from './components/SimonPanel.jsx';
 import AsociacionesEntregaPanel from './components/AsociacionesEntregaPanel.jsx';
 import LaboratoriosPanel from './components/LaboratoriosPanel.jsx';
 import PublicLabView from './components/PublicLabView.jsx';
+import IdleHomerOverlay from './components/IdleHomerOverlay.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -763,6 +764,9 @@ function App({ currentUser, onLogout }) {
                     ))}
                 </div>
             )}
+
+            {/* Easter egg: Homer idle overlay — solo para frojo */}
+            {currentUser?.usuario === 'frojo' && <IdleHomerOverlay />}
         </div>
     );
 }
