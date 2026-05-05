@@ -18,7 +18,7 @@ import {
     fetchMetricasDeudas, fetchWhatsAppTracking, CATEGORIAS_DEUDOR,
     updateDeudor, fetchPresupuestosPorNhc, MIN_DEUDA,
     fetchAltasPorAdmisiones, fetchPlanesPago, createPlanPago,
-    marcarCuotaPagada, cancelarPlan, fetchResponsablesPorNhcs,
+    marcarCuotaPagada, cancelarPlan, fetchResponsablesPorNombres,
 } from '../services/deudaService';
 import { parseDeudaExcel } from '../utils/deudaExcelParser';
 import { subscribeToAllIncoming } from '../services/chatService';
@@ -98,11 +98,11 @@ export default function DeudasPanel({ addToast, currentUser }) {
             const m = await fetchMetricasDeudas();
             setMetricas(m);
 
-            // Fetch responsables from altas by NHC (batch, non-blocking)
-            const nhcs = data.map(d => d.nhc).filter(Boolean);
-            if (nhcs.length > 0) {
+            // Fetch responsables from altas by patient name (batch, non-blocking)
+            const nombres = data.map(d => d.nombre).filter(Boolean);
+            if (nombres.length > 0) {
                 try {
-                    const rMap = await fetchResponsablesPorNhcs(nhcs);
+                    const rMap = await fetchResponsablesPorNombres(nombres);
                     setResponsablesMap(rMap);
                 } catch (e) {
                     console.warn('Error cargando responsables:', e);
@@ -773,7 +773,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                             </td>
                                             <td style={st.td}>
                                                 {(() => {
-                                                    const rInfo = responsablesMap[d.nhc];
+                                                    const rInfo = responsablesMap[d.nombre];
                                                     if (!rInfo) return <span style={{ color: '#CBD5E1', fontSize: '0.72rem' }}>—</span>;
                                                     return (
                                                         <span style={{

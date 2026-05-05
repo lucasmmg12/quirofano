@@ -421,33 +421,34 @@ export async function fetchAltasPorAdmisiones(admisiones) {
 }
 
 /**
- * Obtener el responsable (override o auto) para una lista de NHCs.
- * Devuelve un mapa: { nhc: { responsable, isOverride } }
+ * Obtener el responsable (override o auto) para una lista de nombres de paciente.
+ * Devuelve un mapa: { nombre_normalizado: { responsable, isOverride } }
+ * Se cruza por nombre de paciente ya que altas_administrativas no tiene campo nhc.
  */
-export async function fetchResponsablesPorNhcs(nhcs) {
-    if (!nhcs?.length) return {};
-    const cleaned = [...new Set(nhcs.filter(Boolean).map(n => String(n).trim()))];
+export async function fetchResponsablesPorNombres(nombres) {
+    if (!nombres?.length) return {};
+    const cleaned = [...new Set(nombres.filter(Boolean).map(n => String(n).trim()))];
     if (!cleaned.length) return {};
 
-    // Fetch altas más recientes por NHC
+    // Fetch altas más recientes por nombre de paciente
     const { data, error } = await supabase
         .from('altas_administrativas')
-        .select('nhc, operador, responsable_override')
-        .in('nhc', cleaned)
+        .select('paciente, operador, responsable_override')
+        .in('paciente', cleaned)
         .order('fecha_ingreso', { ascending: false });
 
     if (error) {
-        console.warn('Error fetching responsables por NHC:', error.message);
+        console.warn('Error fetching responsables por nombre:', error.message);
         return {};
     }
 
-    // Usar la más reciente por NHC
+    // Usar la más reciente por paciente
     const map = {};
     for (const row of (data || [])) {
-        if (!row.nhc || map[row.nhc]) continue; // ya tenemos la más reciente
+        if (!row.paciente || map[row.paciente]) continue;
         const resp = row.responsable_override || row.operador || null;
         if (resp) {
-            map[row.nhc] = {
+            map[row.paciente] = {
                 responsable: resp,
                 isOverride: !!row.responsable_override,
             };
