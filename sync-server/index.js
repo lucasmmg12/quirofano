@@ -516,8 +516,7 @@ async function syncDeudas(db) {
                 ELSE NULL
             END AS telefono1_formateado,
             V.email,
-            V.mutua,
-            V.idPaciente AS idPacienteSalus
+            V.mutua
         FROM [TABLEAU_Detalle de ventas Facturadas con Gastos y Honorarios] AS T
         LEFT JOIN VIS_Pacientes AS V ON T.Paciente_NHC = V.NHC
         WHERE T.Tarifa LIKE '042%'
@@ -553,9 +552,8 @@ async function syncDeudas(db) {
             let telValido = tel.length === 13 && tel.startsWith('549');
 
             const dni = r.Paciente_NIF ? String(r.Paciente_NIF).trim() : null;
-            const idPaciente = r.idPacienteSalus ? String(r.idPacienteSalus).trim() : null;
             facturasMap.set(folio, {
-                nombre: r.Paciente, nhc, dni, id_paciente_salus: idPaciente, folio, codigo: folio,
+                nombre: r.Paciente, nhc, dni, folio, codigo: folio,
                 telefono: tel, telefono_invalido: !telValido && tel !== '',
                 obra_social: r.mutua || null,
                 pendiente: deuda, cobrado, total: deuda + cobrado,
@@ -578,7 +576,7 @@ async function syncDeudas(db) {
     const porNhc = {};
     for (const r of registros) {
         if (!porNhc[r.nhc]) {
-            porNhc[r.nhc] = { nombre: r.nombre, dni: r.dni, id_paciente_salus: r.id_paciente_salus, obra_social: r.obra_social, facturas: [], telefono: r.telefono, telefono_invalido: r.telefono_invalido };
+            porNhc[r.nhc] = { nombre: r.nombre, dni: r.dni, obra_social: r.obra_social, facturas: [], telefono: r.telefono, telefono_invalido: r.telefono_invalido };
         } else if (!porNhc[r.nhc].telefono && r.telefono) {
             porNhc[r.nhc].telefono = r.telefono;
             porNhc[r.nhc].telefono_invalido = r.telefono_invalido;
@@ -614,7 +612,6 @@ async function syncDeudas(db) {
             const upd = {
                 nombre: grupo.nombre,
                 dni: grupo.dni || null,
-                id_paciente_salus: grupo.id_paciente_salus || null,
                 obra_social: grupo.obra_social || null,
                 deuda_total: deudaTotal,
                 cantidad_facturas: grupo.facturas.length,
@@ -633,7 +630,6 @@ async function syncDeudas(db) {
                 .from('deudas_pacientes')
                 .insert({
                     nhc, nombre: grupo.nombre, dni: grupo.dni || null,
-                    id_paciente_salus: grupo.id_paciente_salus || null,
                     obra_social: grupo.obra_social || null,
                     deuda_total: deudaTotal,
                     cantidad_facturas: grupo.facturas.length,
