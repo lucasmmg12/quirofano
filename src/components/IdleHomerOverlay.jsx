@@ -4,8 +4,12 @@
  * Muestra el GIF de Homer Simpson en el centro de la pantalla
  * después de 1 minuto de inactividad (sin mouse, teclado, scroll o touch).
  * Desaparece instantáneamente al interactuar con el sistema.
+ * 
+ * Usa React Portal para renderizar directamente en document.body
+ * y evitar problemas con overflow:hidden en contenedores padres.
  */
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 const IDLE_TIMEOUT_MS = 60_000; // 1 minuto
 
@@ -37,12 +41,11 @@ export default function IdleHomerOverlay() {
         // Arrancar timer inicial
         startTimer();
 
-        // Escuchar eventos en document (más confiable que window para algunos eventos)
+        // Escuchar eventos en document con capture para máxima confiabilidad
         const events = ['mousemove', 'mousedown', 'keydown', 'keyup', 'scroll', 'touchstart', 'click', 'wheel'];
         events.forEach(evt => {
             document.addEventListener(evt, handleActivity, { passive: true, capture: true });
         });
-        // También en window por si acaso
         window.addEventListener('focus', handleActivity);
         window.addEventListener('resize', handleActivity);
 
@@ -54,26 +57,28 @@ export default function IdleHomerOverlay() {
             });
             window.removeEventListener('focus', handleActivity);
             window.removeEventListener('resize', handleActivity);
-            console.log('[IdleHomer] 🔴 Componente desmontado');
         };
     }, []);
 
     if (!idle) return null;
 
-    return (
+    // Usar Portal para renderizar en document.body directamente,
+    // evitando overflow:hidden de contenedores padres
+    return createPortal(
         <div
+            id="homer-idle-overlay"
             style={{
                 position: 'fixed',
                 top: 0,
                 left: 0,
-                right: 0,
-                bottom: 0,
-                zIndex: 999998,
+                width: '100vw',
+                height: '100vh',
+                zIndex: 2147483647,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: 'rgba(0, 0, 0, 0.35)',
-                backdropFilter: 'blur(4px)',
+                background: 'rgba(0, 0, 0, 0.45)',
+                backdropFilter: 'blur(6px)',
                 animation: 'homerFadeIn 0.5s ease-out',
                 cursor: 'pointer',
             }}
@@ -107,7 +112,6 @@ export default function IdleHomerOverlay() {
                 </span>
             </div>
 
-            {/* Inline keyframes */}
             <style>{`
                 @keyframes homerFadeIn {
                     from { opacity: 0; }
@@ -120,6 +124,7 @@ export default function IdleHomerOverlay() {
                     100% { transform: scale(1); }
                 }
             `}</style>
-        </div>
+        </div>,
+        document.body
     );
 }
