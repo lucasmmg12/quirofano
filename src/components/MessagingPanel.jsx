@@ -22,6 +22,7 @@ import { sendWhatsAppMessage, normalizeArgentinePhone } from '../services/builde
 import { searchPatients } from '../services/patientService';
 import { fetchShortcuts } from '../services/shortcutService';
 import { supabase } from '../lib/supabase';
+import { CATEGORIAS_DEUDOR } from '../services/deudaService';
 import ShortcutManager from './ShortcutManager';
 
 const EMOJI_LIST = [
@@ -81,6 +82,9 @@ export default function MessagingPanel({ addToast, currentUser }) {
     const [showBudgetDetail, setShowBudgetDetail] = useState(false);
     // Surgery Context for the Conversation List
     const [surgeriesMap, setSurgeriesMap] = useState({});
+    // Debt Context for the Conversation List
+    const [debtsMap, setDebtsMap] = useState({});
+    const [debtFilter, setDebtFilter] = useState('all');
     // Dual WhatsApp line state
     const [whatsappLines, setWhatsappLines] = useState([]);
     const [assignedLineId, setAssignedLineId] = useState(null);
@@ -150,8 +154,32 @@ export default function MessagingPanel({ addToast, currentUser }) {
             }
         }
 
+        async function fetchConvDebts() {
+            try {
+                const { data, error } = await supabase
+                    .from('deudas_pacientes')
+                    .select('telefono, nombre, nhc, deuda_total, categoria, cantidad_facturas')
+                    .not('telefono', 'is', null)
+                    .gte('deuda_total', 1);
+
+                if (error) { console.error('Error fetching debts:', error); return; }
+
+                const dMap = {};
+                (data || []).forEach(d => {
+                    const normTel = normalizeArgentinePhone(d.telefono);
+                    if (normTel && !dMap[normTel]) {
+                        dMap[normTel] = d;
+                    }
+                });
+                setDebtsMap(dMap);
+            } catch (err) {
+                console.error('Error fetching debts for list:', err);
+            }
+        }
+
         if (conversations.length > 0) {
             fetchConvSurgeries();
+            fetchConvDebts();
         }
     }, [conversations]);
 
@@ -760,13 +788,21 @@ export default function MessagingPanel({ addToast, currentUser }) {
                 return false;
             });
         }
+        // Filter by debt category
+        if (debtFilter !== 'all') {
+            list = list.filter(c => {
+                const debt = debtsMap[c.phone];
+                if (debtFilter === 'con_deuda') return !!debt;
+                return debt?.categoria === debtFilter;
+            });
+        }
         // Sort: unread first, then by date
         return [...list].sort((a, b) => {
             if (a.unreadCount > 0 && b.unreadCount === 0) return -1;
             if (b.unreadCount > 0 && a.unreadCount === 0) return 1;
             return new Date(b.lastDate) - new Date(a.lastDate);
         });
-    }, [conversations, searchQuery, contactNames, surgeriesMap]);
+    }, [conversations, searchQuery, contactNames, surgeriesMap, debtsMap, debtFilter]);
 
     // Total unread count
     const totalUnread = useMemo(() => conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0), [conversations]);
@@ -915,6 +951,48 @@ export default function MessagingPanel({ addToast, currentUser }) {
                     />
                 </div>
 
+                {/* Debt Filter */}
+                {Object.keys(debtsMap).length > 0 && (
+                    <div style={{
+                        display: 'flex', gap: '4px', padding: '4px 12px 6px',
+                        overflowX: 'auto', flexShrink: 0,
+                    }}>
+                        <button
+                            onClick={() => setDebtFilter('all')}
+                            style={{
+                                padding: '3px 10px', borderRadius: '12px', border: 'none',
+                                fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                                background: debtFilter === 'all' ? '#1E293B' : '#F1F5F9',
+                                color: debtFilter === 'all' ? '#fff' : '#64748B',
+                                transition: 'all 0.15s',
+                            }}
+                        >Todos</button>
+                        <button
+                            onClick={() => setDebtFilter(debtFilter === 'con_deuda' ? 'all' : 'con_deuda')}
+                            style={{
+                                padding: '3px 10px', borderRadius: '12px', border: 'none',
+                                fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                                background: debtFilter === 'con_deuda' ? '#DC2626' : '#FEF2F2',
+                                color: debtFilter === 'con_deuda' ? '#fff' : '#DC2626',
+                                transition: 'all 0.15s',
+                            }}
+                        >💰 Con deuda</button>
+                        {Object.entries(CATEGORIAS_DEUDOR).map(([key, cfg]) => (
+                            <button
+                                key={key}
+                                onClick={() => setDebtFilter(debtFilter === key ? 'all' : key)}
+                                style={{
+                                    padding: '3px 10px', borderRadius: '12px', border: 'none',
+                                    fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                                    background: debtFilter === key ? cfg.color : cfg.bg,
+                                    color: debtFilter === key ? '#fff' : cfg.color,
+                                    transition: 'all 0.15s',
+                                }}
+                            >{cfg.icon} {cfg.label}</button>
+                        ))}
+                    </div>
+                )}
+
                 {/* New Chat Form */}
                 {showNewChat && (
                     <div className="msg-panel__new-chat animate-fade-in">
@@ -1016,7 +1094,6 @@ export default function MessagingPanel({ addToast, currentUser }) {
                                                 </>
                                             )}
                                         </div>
-                                        {/* Estado de Cirugía */}
                                         {(() => {
                                             const surgery = surgeriesMap[conv.phone];
                                             if (!surgery || !surgery.fecha_cirugia) return null;
@@ -1057,6 +1134,34 @@ export default function MessagingPanel({ addToast, currentUser }) {
                                                             }}
                                                         />
                                                         {formattedDate} · {cfg.label}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })()}
+                                        {/* Deuda del paciente */}
+                                        {(() => {
+                                            const debt = debtsMap[conv.phone];
+                                            if (!debt) return null;
+                                            const catCfg = CATEGORIAS_DEUDOR[debt.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
+                                            return (
+                                                <div className="msg-panel__conv-lines" style={{ marginTop: '2px' }}>
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                        padding: '2px 8px', borderRadius: '12px',
+                                                        background: '#FEF2F2', color: '#DC2626',
+                                                        border: '1px solid #FECACA',
+                                                        fontSize: '0.65rem', fontWeight: 700,
+                                                    }}>
+                                                        💰 ${Number(debt.deuda_total).toLocaleString('es-AR')}
+                                                    </span>
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                        padding: '2px 6px', borderRadius: '12px',
+                                                        background: catCfg.bg, color: catCfg.color,
+                                                        border: `1px solid ${catCfg.color}25`,
+                                                        fontSize: '0.6rem', fontWeight: 600,
+                                                    }}>
+                                                        {catCfg.icon} {catCfg.label}
                                                     </span>
                                                 </div>
                                             );
@@ -1163,9 +1268,43 @@ export default function MessagingPanel({ addToast, currentUser }) {
                                                 {showBudgetDetail ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                                             </button>
                                         )}
+                                        {patientContext.debt && (
+                                            <span className="msg-panel__context-badge" style={{ background: '#FEF2F2', color: '#DC2626' }}>
+                                                💰 Deuda: ${Number(patientContext.debt.deuda_total || 0).toLocaleString('es-AR')}
+                                                {patientContext.debt.categoria && (
+                                                    <span style={{
+                                                        marginLeft: '4px', padding: '1px 6px', borderRadius: '6px',
+                                                        background: (CATEGORIAS_DEUDOR[patientContext.debt.categoria] || CATEGORIAS_DEUDOR.sin_gestionar).bg,
+                                                        color: (CATEGORIAS_DEUDOR[patientContext.debt.categoria] || CATEGORIAS_DEUDOR.sin_gestionar).color,
+                                                        fontSize: '0.62rem', fontWeight: 700,
+                                                    }}>
+                                                        {(CATEGORIAS_DEUDOR[patientContext.debt.categoria] || CATEGORIAS_DEUDOR.sin_gestionar).label}
+                                                    </span>
+                                                )}
+                                            </span>
+                                        )}
                                     </div>
                                 )}
                             </div>
+                            {/* Standalone debt badge (when no surgery context but has debt) */}
+                            {!patientContext?.surgery && debtsMap[selectedPhone] && (
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', padding: '0 16px 6px' }}>
+                                    <span className="msg-panel__context-badge" style={{ background: '#FEF2F2', color: '#DC2626' }}>
+                                        💰 Deuda: ${Number(debtsMap[selectedPhone].deuda_total || 0).toLocaleString('es-AR')}
+                                    </span>
+                                    {(() => {
+                                        const catCfg = CATEGORIAS_DEUDOR[debtsMap[selectedPhone].categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
+                                        return (
+                                            <span className="msg-panel__context-badge" style={{ background: catCfg.bg, color: catCfg.color }}>
+                                                {catCfg.icon} {catCfg.label}
+                                            </span>
+                                        );
+                                    })()}
+                                    <span className="msg-panel__context-badge" style={{ background: '#F8FAFC', color: '#64748B' }}>
+                                        {debtsMap[selectedPhone].cantidad_facturas} factura{debtsMap[selectedPhone].cantidad_facturas !== 1 ? 's' : ''}
+                                    </span>
+                                </div>
+                            )}
                             {/* Budget Detail Dropdown */}
                             {showBudgetDetail && patientContext?.budgetItems?.length > 0 && (
                                 <div className="msg-panel__budget-dropdown animate-fade-in">
