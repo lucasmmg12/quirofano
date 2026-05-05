@@ -487,7 +487,7 @@ function App({ currentUser, onLogout }) {
                 )}
 
                 {activeView === 'mensajeria' && (
-                    <MessagingPanel addToast={addToast} />
+                    <MessagingPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'pedidos' && (

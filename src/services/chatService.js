@@ -154,7 +154,7 @@ export async function fetchUnreadCounts() {
 /**
  * Guarda un mensaje saliente en la tabla (cuando enviamos desde el panel)
  */
-export async function saveOutgoingMessage({ phone, content, mediaUrl, mediaType, lineId }) {
+export async function saveOutgoingMessage({ phone, content, mediaUrl, mediaType, lineId, senderName }) {
     const normalized = normalizeArgentinePhone(phone);
     if (!normalized) return null;
 
@@ -166,7 +166,7 @@ export async function saveOutgoingMessage({ phone, content, mediaUrl, mediaType,
             content: content || '',
             media_url: mediaUrl || null,
             media_type: mediaType || 'text',
-            sender_name: 'Sistema ADM-QUI',
+            sender_name: senderName || 'Sistema ADM-QUI',
             is_read: true,
             line_id: lineId || null,
         })

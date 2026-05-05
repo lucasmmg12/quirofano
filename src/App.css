@@ -2361,6 +2361,17 @@
     margin-top: 2px;
 }
 
+.msg-panel__bubble-operator {
+    display: block;
+    text-align: right;
+    font-size: 0.6rem;
+    font-weight: 600;
+    color: #1D7A50;
+    margin-top: 1px;
+    opacity: 0.75;
+    letter-spacing: 0.01em;
+}
+
 .msg-panel__bubble-image {
     max-width: 240px;
     border-radius: 8px;

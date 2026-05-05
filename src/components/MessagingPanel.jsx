@@ -45,7 +45,7 @@ const STATUS_CONFIG = {
     suspendida: { label: 'Suspendida', color: '#6B7280', bg: '#F3F4F6' },
 };
 
-export default function MessagingPanel({ addToast }) {
+export default function MessagingPanel({ addToast, currentUser }) {
     // === STATE ===
     const [conversations, setConversations] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -418,7 +418,7 @@ export default function MessagingPanel({ addToast }) {
         setShowEmoji(false);
         try {
             await sendWhatsAppMessage({ content: messageText, number: selectedPhone, lineId: assignedLineId });
-            await saveOutgoingMessage({ phone: selectedPhone, content: messageText, lineId: assignedLineId });
+            await saveOutgoingMessage({ phone: selectedPhone, content: messageText, lineId: assignedLineId, senderName: currentUser?.nombre || currentUser?.usuario || 'Sistema ADM-QUI' });
             // Realtime se encarga de agregar al state — evita duplicados
             setMessageText('');
             inputRef.current?.focus();
@@ -454,6 +454,7 @@ export default function MessagingPanel({ addToast }) {
                 mediaType: 'image',
                 mediaUrl,
                 lineId: assignedLineId,
+                senderName: currentUser?.nombre || currentUser?.usuario || 'Sistema ADM-QUI',
             });
             // Realtime se encarga de agregar al state
             setMessageText('');
@@ -524,6 +525,7 @@ export default function MessagingPanel({ addToast }) {
             await sendWhatsAppMessage({ content: '🎤 Audio', number: selectedPhone, mediaUrl, lineId: assignedLineId });
             await saveOutgoingMessage({
                 phone: selectedPhone, content: '🎤 Audio', mediaType: 'audio', mediaUrl, lineId: assignedLineId,
+                senderName: currentUser?.nombre || currentUser?.usuario || 'Sistema ADM-QUI',
             });
             // Realtime se encarga de agregar al state
             addToast?.('Audio enviado', 'success');
@@ -1189,6 +1191,9 @@ export default function MessagingPanel({ addToast }) {
                                                     <CheckCheck size={12} style={{ marginLeft: '3px', opacity: 0.6 }} />
                                                 )}
                                             </span>
+                                            {isOutgoing && item.sender_name && item.sender_name !== 'Sistema ADM-QUI' && (
+                                                <span className="msg-panel__bubble-operator">{item.sender_name}</span>
+                                            )}
                                         </div>
                                     );
                                 })
