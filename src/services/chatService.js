@@ -5,6 +5,7 @@
 
 import { supabase } from '../lib/supabase';
 import { normalizeArgentinePhone } from './builderbotApi';
+import { getCurrentUser } from './authService';
 
 /**
  * Obtiene lista de conversaciones agrupadas por teléfono.
@@ -158,6 +159,17 @@ export async function saveOutgoingMessage({ phone, content, mediaUrl, mediaType,
     const normalized = normalizeArgentinePhone(phone);
     if (!normalized) return null;
 
+    // Auto-detect sender from logged-in user if not explicitly provided
+    const resolvedSender = senderName || (() => {
+        const user = getCurrentUser();
+        if (!user) return 'Sistema ADM-QUI';
+        // Reconstruct institutional email from username
+        if (user.usuario && !user.usuario.includes('@')) {
+            return `${user.usuario}@sanatorioargentino.com.ar`;
+        }
+        return user.usuario || user.nombre || 'Sistema ADM-QUI';
+    })();
+
     const { data, error } = await supabase
         .from('whatsapp_messages')
         .insert({
@@ -166,7 +178,7 @@ export async function saveOutgoingMessage({ phone, content, mediaUrl, mediaType,
             content: content || '',
             media_url: mediaUrl || null,
             media_type: mediaType || 'text',
-            sender_name: senderName || 'Sistema ADM-QUI',
+            sender_name: resolvedSender,
             is_read: true,
             line_id: lineId || null,
         })
