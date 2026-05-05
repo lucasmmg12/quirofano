@@ -11,7 +11,7 @@ import {
     Stethoscope, ChevronDown, ChevronUp, StickyNote, Save,
     ListFilter, Download, FileDown,
 } from 'lucide-react';
-import { fetchAltas, updateAltaEstado, updateAltaNotas, ALTA_ESTADOS } from '../services/altasService';
+import { fetchAltas, updateAltaEstado, updateAltaNotas, updateAltaResponsable, ALTA_ESTADOS } from '../services/altasService';
 import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
 import SalusSyncButton from './SalusSyncButton';
 import AltasMetricsPanel from './AltasMetricsPanel';
@@ -36,6 +36,7 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [loading, setLoading] = useState(true);
     const [expandedId, setExpandedId] = useState(null);
     const [statusDropdownId, setStatusDropdownId] = useState(null);
+    const [responsableDropdownId, setResponsableDropdownId] = useState(null);
     const [processing, setProcessing] = useState(false);
 
     // Filtros
@@ -179,9 +180,27 @@ export default function AltasPanel({ addToast, currentUser }) {
             const effectiveEstado = (isCtrlAdmSi || obsHasAltaAdm || alta.estado === 'Alta Adm')
                 ? 'Alta Adm'
                 : (alta.estado || 'Vacío');
-            return { ...alta, _effectiveEstado: effectiveEstado, _responsable: asignacion?.responsable || '' };
+            // Responsable: manual override tiene prioridad sobre auto-match
+            const autoResp = asignacion?.responsable || '';
+            const finalResp = alta.responsable_override || autoResp;
+            return { ...alta, _effectiveEstado: effectiveEstado, _responsable: finalResp, _autoResponsable: autoResp };
         });
     }, [altas, criterios]);
+
+    // ── Check if current user is jcorrea (can edit responsable) ──
+    const isJcorrea = useMemo(() => {
+        const email = (currentUser?.usuario || currentUser?.email || '').toLowerCase();
+        return email === 'jcorrea@sanatorioargentino.com.ar' || email.split('@')[0] === 'jcorrea';
+    }, [currentUser]);
+
+    // ── Lista única de responsables (de criterios de asignación) ──
+    const allResponsables = useMemo(() => {
+        const set = new Set();
+        criterios.forEach(c => {
+            if (c.responsable) set.add(c.responsable.trim().toUpperCase());
+        });
+        return [...set].sort();
+    }, [criterios]);
 
     // ── KPIs (calculados ANTES del filtro de pill para mostrar conteos globales) ──
     const localStats = useMemo(() => {
@@ -928,15 +947,120 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             <td className="cart__td" style={{ fontSize: '0.75rem', fontFamily: 'monospace', fontWeight: 600 }}>
                                                 {alta.fecha_alta ? formatDate(alta.fecha_alta) : <span style={{ color: '#4F46E5', fontWeight: 700, fontSize: '0.7rem', padding: '2px 6px', background: '#EEF2FF', borderRadius: '4px' }}>Paciente internado</span>}
                                             </td>
-                                            {/* Responsable (auto-matched) */}
-                                            <td className="cart__td">
-                                                {asignacion?.responsable ? (
-                                                    <span style={{
-                                                        display: 'inline-block', padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                                                        background: '#EFF6FF', color: '#1E40AF',
-                                                        fontSize: '0.7rem', fontWeight: 700,
-                                                    }}>{asignacion.responsable}</span>
-                                                ) : <span style={{ color: 'var(--neutral-300)', fontSize: '0.75rem' }}>—</span>}
+                                            {/* Responsable (auto-matched or override) */}
+                                            <td className="cart__td" style={{ position: 'relative' }}>
+                                                {isJcorrea ? (
+                                                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                                                        <button
+                                                            onClick={e => {
+                                                                e.stopPropagation();
+                                                                setResponsableDropdownId(prev => prev === alta.id ? null : alta.id);
+                                                            }}
+                                                            style={{
+                                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                                padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                                                                background: alta._responsable ? (alta.responsable_override ? '#ECFDF5' : '#EFF6FF') : '#F9FAFB',
+                                                                color: alta._responsable ? (alta.responsable_override ? '#059669' : '#1E40AF') : '#94A3B8',
+                                                                border: `1px solid ${alta.responsable_override ? '#A7F3D0' : alta._responsable ? '#BFDBFE' : '#E5E7EB'}`,
+                                                                fontSize: '0.7rem', fontWeight: 700,
+                                                                cursor: 'pointer', transition: 'all 0.15s',
+                                                                whiteSpace: 'nowrap',
+                                                            }}
+                                                            onMouseOver={e => e.currentTarget.style.boxShadow = '0 0 0 2px #6366F130'}
+                                                            onMouseOut={e => e.currentTarget.style.boxShadow = 'none'}
+                                                            title={alta.responsable_override ? `Override manual (auto: ${alta._autoResponsable || '—'})` : 'Click para asignar responsable'}
+                                                        >
+                                                            {alta._responsable || '—'}
+                                                            <ChevronDown size={10} />
+                                                        </button>
+                                                        {responsableDropdownId === alta.id && (
+                                                            <>
+                                                                <div
+                                                                    onClick={e => { e.stopPropagation(); setResponsableDropdownId(null); }}
+                                                                    style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 999 }}
+                                                                />
+                                                                <div style={{
+                                                                    position: 'absolute', top: '100%', right: 0,
+                                                                    marginTop: '4px', zIndex: 1000,
+                                                                    background: '#fff', borderRadius: '10px',
+                                                                    boxShadow: '0 8px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
+                                                                    padding: '4px', minWidth: '140px',
+                                                                    animation: 'fadeIn 0.15s ease-out',
+                                                                    maxHeight: '250px', overflowY: 'auto',
+                                                                }}>
+                                                                    {/* Opción: quitar override */}
+                                                                    {alta.responsable_override && (
+                                                                        <button
+                                                                            onClick={async e => {
+                                                                                e.stopPropagation();
+                                                                                try {
+                                                                                    await updateAltaResponsable(alta.id, null);
+                                                                                    addToast?.('Responsable vuelto a automático', 'success');
+                                                                                    setResponsableDropdownId(null);
+                                                                                    loadData();
+                                                                                } catch (err) {
+                                                                                    addToast?.('Error: ' + err.message, 'error');
+                                                                                }
+                                                                            }}
+                                                                            style={{
+                                                                                display: 'flex', alignItems: 'center', gap: '6px',
+                                                                                width: '100%', padding: '6px 10px',
+                                                                                border: 'none', borderRadius: '6px',
+                                                                                background: 'transparent', color: '#DC2626',
+                                                                                cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600,
+                                                                                textAlign: 'left', borderBottom: '1px solid #F3F4F6',
+                                                                                marginBottom: '2px',
+                                                                            }}
+                                                                            onMouseOver={e => e.currentTarget.style.background = '#FEF2F2'}
+                                                                            onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                                                                        >
+                                                                            <X size={12} /> Automático
+                                                                        </button>
+                                                                    )}
+                                                                    {allResponsables.map(resp => (
+                                                                        <button
+                                                                            key={resp}
+                                                                            onClick={async e => {
+                                                                                e.stopPropagation();
+                                                                                try {
+                                                                                    await updateAltaResponsable(alta.id, resp);
+                                                                                    addToast?.(`Responsable → ${resp}`, 'success');
+                                                                                    setResponsableDropdownId(null);
+                                                                                    loadData();
+                                                                                } catch (err) {
+                                                                                    addToast?.('Error: ' + err.message, 'error');
+                                                                                }
+                                                                            }}
+                                                                            style={{
+                                                                                display: 'flex', alignItems: 'center', gap: '8px',
+                                                                                width: '100%', padding: '6px 10px',
+                                                                                border: 'none', borderRadius: '6px',
+                                                                                background: alta._responsable === resp ? '#EFF6FF' : 'transparent',
+                                                                                color: '#1E40AF', cursor: 'pointer',
+                                                                                fontSize: '0.72rem', fontWeight: 600,
+                                                                                textAlign: 'left', transition: 'background 0.1s',
+                                                                            }}
+                                                                            onMouseOver={e => e.currentTarget.style.background = '#EFF6FF'}
+                                                                            onMouseOut={e => e.currentTarget.style.background = alta._responsable === resp ? '#EFF6FF' : 'transparent'}
+                                                                        >
+                                                                            <span>{resp}</span>
+                                                                            {alta._responsable === resp && <span style={{ marginLeft: 'auto', fontSize: '0.68rem' }}>✓</span>}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    alta._responsable ? (
+                                                        <span style={{
+                                                            display: 'inline-block', padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                                                            background: alta.responsable_override ? '#ECFDF5' : '#EFF6FF',
+                                                            color: alta.responsable_override ? '#059669' : '#1E40AF',
+                                                            fontSize: '0.7rem', fontWeight: 700,
+                                                        }}>{alta._responsable}</span>
+                                                    ) : <span style={{ color: 'var(--neutral-300)', fontSize: '0.75rem' }}>—</span>
+                                                )}
                                             </td>
                                         </tr>,
 

@@ -84,6 +84,20 @@ export async function updateAltaNotas(id, notas_internas) {
 }
 
 /**
+ * Actualiza el responsable manual de un alta (override sobre auto-match)
+ */
+export async function updateAltaResponsable(id, responsable_override) {
+    const { data, error } = await supabase
+        .from('altas_administrativas')
+        .update({ responsable_override: responsable_override || null })
+        .eq('id', id)
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+}
+
+/**
  * Obtiene estadísticas de altas por estado (paginado)
  */
 export async function getAltasStats(fromDate, toDate) {
