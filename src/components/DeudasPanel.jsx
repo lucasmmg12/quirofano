@@ -453,7 +453,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
     // ─── VISTA: LISTADO ───
     function renderList() {
         return (
-            <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto' }}>
+            <div style={{ padding: '20px 28px' }}>
                 {/* HEADER */}
                 <div style={st.header}>
                     <div style={st.headerLeft}>
@@ -831,7 +831,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
         const cat = CATEGORIAS_DEUDOR[selectedDeudor.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
 
         return (
-            <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+            <div style={{ padding: '20px 28px' }}>
                 {/* Back button */}
                 <button onClick={goBack} style={st.backBtn}>
                     <ArrowLeft size={16} /> Volver al listado
