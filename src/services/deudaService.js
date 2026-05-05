@@ -413,11 +413,47 @@ export async function fetchAltasPorAdmisiones(admisiones) {
     if (!cleaned.length) return [];
     const { data, error } = await supabase
         .from('altas_administrativas')
-        .select('numero_admision, paciente, fecha_ingreso, fecha_alta, estado, operador, cliente, control_adm_finalizado')
+        .select('numero_admision, paciente, fecha_ingreso, fecha_alta, estado, operador, cliente, control_adm_finalizado, responsable_override')
         .in('numero_admision', cleaned)
         .order('fecha_ingreso', { ascending: false });
     if (error) throw error;
     return data || [];
+}
+
+/**
+ * Obtener el responsable (override o auto) para una lista de NHCs.
+ * Devuelve un mapa: { nhc: { responsable, isOverride } }
+ */
+export async function fetchResponsablesPorNhcs(nhcs) {
+    if (!nhcs?.length) return {};
+    const cleaned = [...new Set(nhcs.filter(Boolean).map(n => String(n).trim()))];
+    if (!cleaned.length) return {};
+
+    // Fetch altas más recientes por NHC
+    const { data, error } = await supabase
+        .from('altas_administrativas')
+        .select('nhc, operador, responsable_override')
+        .in('nhc', cleaned)
+        .order('fecha_ingreso', { ascending: false });
+
+    if (error) {
+        console.warn('Error fetching responsables por NHC:', error.message);
+        return {};
+    }
+
+    // Usar la más reciente por NHC
+    const map = {};
+    for (const row of (data || [])) {
+        if (!row.nhc || map[row.nhc]) continue; // ya tenemos la más reciente
+        const resp = row.responsable_override || row.operador || null;
+        if (resp) {
+            map[row.nhc] = {
+                responsable: resp,
+                isOverride: !!row.responsable_override,
+            };
+        }
+    }
+    return map;
 }
 
 // ─── Planes de Pago ───

@@ -18,7 +18,7 @@ import {
     fetchMetricasDeudas, fetchWhatsAppTracking, CATEGORIAS_DEUDOR,
     updateDeudor, fetchPresupuestosPorNhc, MIN_DEUDA,
     fetchAltasPorAdmisiones, fetchPlanesPago, createPlanPago,
-    marcarCuotaPagada, cancelarPlan,
+    marcarCuotaPagada, cancelarPlan, fetchResponsablesPorNhcs,
 } from '../services/deudaService';
 import { parseDeudaExcel } from '../utils/deudaExcelParser';
 import { subscribeToAllIncoming } from '../services/chatService';
@@ -80,6 +80,9 @@ export default function DeudasPanel({ addToast, currentUser }) {
     useEffect(() => { deudoresRef.current = deudores; }, [deudores]);
     useEffect(() => { selectedDeudorRef.current = selectedDeudor; }, [selectedDeudor]);
 
+    // ─── Responsables map ───
+    const [responsablesMap, setResponsablesMap] = useState({});
+
     // ─── Load data ───
     const loadDeudores = useCallback(async () => {
         setLoading(true);
@@ -94,6 +97,17 @@ export default function DeudasPanel({ addToast, currentUser }) {
             setDeudores(data);
             const m = await fetchMetricasDeudas();
             setMetricas(m);
+
+            // Fetch responsables from altas by NHC (batch, non-blocking)
+            const nhcs = data.map(d => d.nhc).filter(Boolean);
+            if (nhcs.length > 0) {
+                try {
+                    const rMap = await fetchResponsablesPorNhcs(nhcs);
+                    setResponsablesMap(rMap);
+                } catch (e) {
+                    console.warn('Error cargando responsables:', e);
+                }
+            }
         } catch (err) {
             console.error('Error loading deudores:', err);
             addToast?.('Error al cargar deudores', 'error');
@@ -713,6 +727,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                     <th style={{ ...st.th, width: '50px', textAlign: 'center' }}>Fact.</th>
                                     <th style={{ ...st.th, width: '120px' }}>Cobertura</th>
                                     <th style={{ ...st.th, width: '155px' }}>Categoría</th>
+                                    <th style={{ ...st.th, width: '120px' }}>Responsable</th>
                                     <th style={{ ...st.th, width: '120px' }}>Teléfono</th>
                                     <th style={{ ...st.th, width: '80px', textAlign: 'center' }}>Contacto</th>
                                     <th style={{ ...st.th, width: '36px' }}></th>
@@ -755,6 +770,25 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                                 }}>
                                                     {cat.icon} {cat.label}
                                                 </span>
+                                            </td>
+                                            <td style={st.td}>
+                                                {(() => {
+                                                    const rInfo = responsablesMap[d.nhc];
+                                                    if (!rInfo) return <span style={{ color: '#CBD5E1', fontSize: '0.72rem' }}>—</span>;
+                                                    return (
+                                                        <span style={{
+                                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                            padding: '3px 10px', borderRadius: '16px', fontSize: '0.7rem', fontWeight: 600,
+                                                            background: rInfo.isOverride ? '#DCFCE7' : '#DBEAFE',
+                                                            color: rInfo.isOverride ? '#15803D' : '#1D4ED8',
+                                                            border: `1px solid ${rInfo.isOverride ? '#BBF7D0' : '#BFDBFE'}`,
+                                                            whiteSpace: 'nowrap', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis',
+                                                        }}>
+                                                            <UserCheck size={11} />
+                                                            {rInfo.responsable}
+                                                        </span>
+                                                    );
+                                                })()}
                                             </td>
                                             <td style={{ ...st.td, fontSize: '0.78rem', color: d.telefono_invalido ? '#EF4444' : (d.telefono ? '#16A34A' : '#CBD5E1') }}>
                                                 {d.telefono ? (
