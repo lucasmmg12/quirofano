@@ -273,10 +273,33 @@ export default function MessagingPanel({ addToast, currentUser }) {
                         .order('linea', { ascending: true });
                     budgetItems = items || [];
                 }
+                // Fetch debt data (by NHC from surgery, or by name match)
+                let debtData = null;
+                const surgeryNhc = surgeries?.[0]?.nhc;
+                if (surgeryNhc) {
+                    const { data: debt } = await supabase
+                        .from('deudas_pacientes')
+                        .select('nombre, nhc, deuda_total, cantidad_facturas, fecha_ultima_factura, obra_social, telefono')
+                        .eq('nhc', String(surgeryNhc))
+                        .maybeSingle();
+                    debtData = debt;
+                }
+                if (!debtData && contact?.nombre) {
+                    // Fallback: search by patient name
+                    const { data: debtByName } = await supabase
+                        .from('deudas_pacientes')
+                        .select('nombre, nhc, deuda_total, cantidad_facturas, fecha_ultima_factura, obra_social, telefono')
+                        .ilike('nombre', `%${contact.nombre.split(' ')[0]}%`)
+                        .gte('deuda_total', 1)
+                        .limit(1)
+                        .maybeSingle();
+                    debtData = debtByName;
+                }
                 setPatientContext({
                     surgery: surgeries?.[0] || null,
                     budget: budgets?.[0] || null,
                     budgetItems,
+                    debt: debtData,
                 });
             } catch (e) {
                 console.error('Error loading patient context:', e);
@@ -626,6 +649,27 @@ export default function MessagingPanel({ addToast, currentUser }) {
         const total = patientContext?.budget?.importe_total;
         result = result.replace(/\{presupuesto_total\}/gi, total ? `$${Number(total).toLocaleString('es-AR')}` : '');
         result = result.replace(/\{total_presupuesto\}/gi, total ? `$${Number(total).toLocaleString('es-AR')}` : '');
+
+        // Variables de Deuda
+        const debt = patientContext?.debt;
+        if (debt) {
+            result = result.replace(/\{deuda_total\}/gi, `$${Number(debt.deuda_total || 0).toLocaleString('es-AR')}`);
+            result = result.replace(/\{deuda\}/gi, `$${Number(debt.deuda_total || 0).toLocaleString('es-AR')}`);
+            result = result.replace(/\{cantidad_facturas\}/gi, String(debt.cantidad_facturas || 0));
+            if (debt.fecha_ultima_factura) {
+                const fd = new Date(debt.fecha_ultima_factura);
+                result = result.replace(/\{fecha_ultima_factura\}/gi, fd.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }));
+            } else {
+                result = result.replace(/\{fecha_ultima_factura\}/gi, '');
+            }
+            result = result.replace(/\{nhc\}/gi, debt.nhc || '');
+        } else {
+            result = result.replace(/\{deuda_total\}/gi, '');
+            result = result.replace(/\{deuda\}/gi, '');
+            result = result.replace(/\{cantidad_facturas\}/gi, '');
+            result = result.replace(/\{fecha_ultima_factura\}/gi, '');
+            result = result.replace(/\{nhc\}/gi, '');
+        }
 
         return result;
     }, [patientContext]);

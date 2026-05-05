@@ -209,14 +209,61 @@ export default function ShortcutManager({ isOpen, onClose, addToast }) {
                             <textarea
                                 value={form.message}
                                 onChange={e => setForm(f => ({ ...f, message: e.target.value }))}
-                                placeholder="Escribí el mensaje del atajo..."
+                                placeholder="Escribí el mensaje del atajo... Usá {variables} del panel de abajo"
                                 rows={3}
                                 style={{
                                     width: '100%', padding: '8px 10px', borderRadius: '6px',
                                     border: '1px solid #D1D5DB', fontSize: '0.82rem',
                                     fontFamily: 'inherit', resize: 'vertical', outline: 'none',
                                 }}
+                                id="shortcut-message-textarea"
                             />
+                        </div>
+                        {/* Variable reference chips */}
+                        <div style={{
+                            marginBottom: '12px', padding: '10px 12px',
+                            background: '#F8FAFC', borderRadius: '8px',
+                            border: '1px solid #E2E8F0',
+                        }}>
+                            <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748B', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                📋 Variables disponibles — click para insertar
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
+                                <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#2563EB', marginRight: '4px', alignSelf: 'center' }}>PACIENTE</span>
+                                {['{nombre}', '{paciente}', '{fecha_hoy}'].map(v => (
+                                    <button key={v} type="button" onClick={() => setForm(f => ({ ...f, message: f.message + v }))}
+                                        style={{ padding: '2px 8px', borderRadius: '4px', background: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE', fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'monospace' }}>
+                                        {v}
+                                    </button>
+                                ))}
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
+                                <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#7C3AED', marginRight: '4px', alignSelf: 'center' }}>CIRUGÍA</span>
+                                {['{fecha_cirugia}', '{medico}', '{obra_social}'].map(v => (
+                                    <button key={v} type="button" onClick={() => setForm(f => ({ ...f, message: f.message + v }))}
+                                        style={{ padding: '2px 8px', borderRadius: '4px', background: '#F5F3FF', color: '#7C3AED', border: '1px solid #DDD6FE', fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'monospace' }}>
+                                        {v}
+                                    </button>
+                                ))}
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
+                                <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#D97706', marginRight: '4px', alignSelf: 'center' }}>PRESUP.</span>
+                                {['{presupuesto_total}'].map(v => (
+                                    <button key={v} type="button" onClick={() => setForm(f => ({ ...f, message: f.message + v }))}
+                                        style={{ padding: '2px 8px', borderRadius: '4px', background: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A', fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'monospace' }}>
+                                        {v}
+                                    </button>
+                                ))}
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#DC2626', marginRight: '4px', alignSelf: 'center' }}>DEUDA</span>
+                                {['{deuda_total}', '{cantidad_facturas}', '{fecha_ultima_factura}', '{nhc}'].map(v => (
+                                    <button key={v} type="button" onClick={() => setForm(f => ({ ...f, message: f.message + v }))}
+                                        style={{ padding: '2px 8px', borderRadius: '4px', background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'monospace' }}>
+                                        {v}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <div style={{ flex: 1 }}>
