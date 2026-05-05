@@ -500,13 +500,31 @@ async function syncDeudas(db) {
         SELECT
             T.[Fecha albaran], T.Paciente, T.Paciente_NHC, T.Paciente_NIF,
             T.Tarifa, T.Concepto, T.[Numero folio], T.[Cobrado linea],
-            T.[Deuda linea], T.[Núm.Admisión], T.HOSP_Habitacion
+            T.[Deuda linea], T.[Núm.Admisión], T.HOSP_Habitacion,
+            CASE 
+                WHEN V.telefono1 IS NOT NULL 
+                THEN '549' + 
+                    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                        LOWER(V.telefono1)
+                    , 'a', ''), 'b', ''), 'c', ''), 'd', ''), 'e', ''), 'f', ''), 'g', ''), 'h', ''), 'i', ''), 'j', '')
+                    , 'k', ''), 'l', ''), 'm', ''), 'n', ''), N'ñ', ''), 'o', ''), 'p', ''), 'q', ''), 'r', ''), 's', '')
+                    , 't', ''), 'u', ''), 'v', ''), 'w', ''), 'x', ''), 'y', ''), 'z', ''), N'á', ''), N'é', ''), N'í', '')
+                    , N'ó', ''), N'ú', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '+', ''), '*', ''), '.', ''), ',', '')
+                ELSE NULL
+            END AS telefono1_formateado,
+            V.email,
+            V.mutua,
+            V.idPaciente AS idPacienteSalus
         FROM [TABLEAU_Detalle de ventas Facturadas con Gastos y Honorarios] AS T
+        LEFT JOIN VIS_Pacientes AS V ON T.Paciente_NHC = V.NHC
         WHERE T.Tarifa LIKE '042%'
           AND T.[Deuda linea] > 0
           AND T.[Numero folio] LIKE 'B 00028%'
           AND T.Paciente IS NOT NULL
-          AND T.[Fecha albaran] >= DATEADD(DAY, -90, CAST(GETDATE() AS DATE))
+          AND T.[Fecha albaran] >= '2025-05-01'
         ORDER BY T.[Fecha albaran] DESC
     `);
     console.log(`   📥 ${result.recordset.length} filas extraídas`);
@@ -531,11 +549,15 @@ async function syncDeudas(db) {
         };
 
         if (!facturasMap.has(folio)) {
+            let tel = String(r.telefono1_formateado || '').replace(/\D/g, '');
+            let telValido = tel.length === 13 && tel.startsWith('549');
+
             const dni = r.Paciente_NIF ? String(r.Paciente_NIF).trim() : null;
+            const idPaciente = r.idPacienteSalus ? String(r.idPacienteSalus).trim() : null;
             facturasMap.set(folio, {
-                nombre: r.Paciente, nhc, dni, folio, codigo: folio,
-                telefono: '', telefono_invalido: false,
-                obra_social: null,
+                nombre: r.Paciente, nhc, dni, id_paciente_salus: idPaciente, folio, codigo: folio,
+                telefono: tel, telefono_invalido: !telValido && tel !== '',
+                obra_social: r.mutua || null,
                 pendiente: deuda, cobrado, total: deuda + cobrado,
                 lineas: [lineItem],
             });
@@ -592,11 +614,17 @@ async function syncDeudas(db) {
             const upd = {
                 nombre: grupo.nombre,
                 dni: grupo.dni || null,
+                id_paciente_salus: grupo.id_paciente_salus || null,
+                obra_social: grupo.obra_social || null,
                 deuda_total: deudaTotal,
                 cantidad_facturas: grupo.facturas.length,
                 fecha_ultima_factura: fechaMasReciente?.toISOString() || null,
                 updated_at: new Date().toISOString(),
             };
+            if (!existente.telefono && grupo.telefono) {
+                upd.telefono = grupo.telefono;
+                upd.telefono_invalido = grupo.telefono_invalido;
+            }
             await supabase.from('deudas_pacientes').update(upd).eq('id', existente.id);
             pacienteId = existente.id;
             pacientesActualizados++;
@@ -605,8 +633,12 @@ async function syncDeudas(db) {
                 .from('deudas_pacientes')
                 .insert({
                     nhc, nombre: grupo.nombre, dni: grupo.dni || null,
+                    id_paciente_salus: grupo.id_paciente_salus || null,
+                    obra_social: grupo.obra_social || null,
                     deuda_total: deudaTotal,
                     cantidad_facturas: grupo.facturas.length,
+                    telefono: grupo.telefono || null,
+                    telefono_invalido: grupo.telefono_invalido || false,
                     fecha_ultima_factura: fechaMasReciente?.toISOString() || null,
                 })
                 .select('id').single();
