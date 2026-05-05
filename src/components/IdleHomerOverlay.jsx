@@ -5,45 +5,58 @@
  * después de 1 minuto de inactividad (sin mouse, teclado, scroll o touch).
  * Desaparece instantáneamente al interactuar con el sistema.
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 const IDLE_TIMEOUT_MS = 60_000; // 1 minuto
-
-const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
 
 export default function IdleHomerOverlay() {
     const [idle, setIdle] = useState(false);
     const timerRef = useRef(null);
-
-    const resetTimer = useCallback(() => {
-        // Si está idle, ocultarlo
-        setIdle(false);
-
-        // Limpiar timer anterior
-        if (timerRef.current) clearTimeout(timerRef.current);
-
-        // Iniciar nuevo timer
-        timerRef.current = setTimeout(() => {
-            setIdle(true);
-        }, IDLE_TIMEOUT_MS);
-    }, []);
+    const mountedRef = useRef(true);
 
     useEffect(() => {
-        // Arrancar el timer inicial
-        resetTimer();
+        mountedRef.current = true;
+        console.log('[IdleHomer] ✅ Componente montado — timer de', IDLE_TIMEOUT_MS / 1000, 'segundos');
 
-        // Escuchar todos los eventos de actividad
-        ACTIVITY_EVENTS.forEach(event => {
-            window.addEventListener(event, resetTimer, { passive: true });
+        function startTimer() {
+            if (timerRef.current) clearTimeout(timerRef.current);
+            timerRef.current = setTimeout(() => {
+                if (mountedRef.current) {
+                    console.log('[IdleHomer] 💤 Inactividad detectada — mostrando Homer');
+                    setIdle(true);
+                }
+            }, IDLE_TIMEOUT_MS);
+        }
+
+        function handleActivity() {
+            if (!mountedRef.current) return;
+            setIdle(false);
+            startTimer();
+        }
+
+        // Arrancar timer inicial
+        startTimer();
+
+        // Escuchar eventos en document (más confiable que window para algunos eventos)
+        const events = ['mousemove', 'mousedown', 'keydown', 'keyup', 'scroll', 'touchstart', 'click', 'wheel'];
+        events.forEach(evt => {
+            document.addEventListener(evt, handleActivity, { passive: true, capture: true });
         });
+        // También en window por si acaso
+        window.addEventListener('focus', handleActivity);
+        window.addEventListener('resize', handleActivity);
 
         return () => {
+            mountedRef.current = false;
             if (timerRef.current) clearTimeout(timerRef.current);
-            ACTIVITY_EVENTS.forEach(event => {
-                window.removeEventListener(event, resetTimer);
+            events.forEach(evt => {
+                document.removeEventListener(evt, handleActivity, { capture: true });
             });
+            window.removeEventListener('focus', handleActivity);
+            window.removeEventListener('resize', handleActivity);
+            console.log('[IdleHomer] 🔴 Componente desmontado');
         };
-    }, [resetTimer]);
+    }, []);
 
     if (!idle) return null;
 
