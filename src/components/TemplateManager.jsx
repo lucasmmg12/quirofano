@@ -392,36 +392,70 @@ export default function TemplateManager({ addToast }) {
                             💡 Las <strong>variables</strong> son campos que se reemplazan automáticamente por los datos reales del paciente al usar la plantilla en el chat.
                             Ej: <code style={{ background: '#FEF3C7', padding: '1px 4px', borderRadius: '3px', fontFamily: "'JetBrains Mono', monospace", fontSize: '0.68rem' }}>{'{nombre}'}</code> se convierte en el nombre del paciente.
                         </p>
-                        <div style={{
-                            display: 'flex', flexWrap: 'wrap', gap: '6px',
-                        }}>
-                            {AVAILABLE_VARIABLES.map(v => (
-                                <button
-                                    key={v.key}
-                                    onClick={() => insertVariable(v.key)}
-                                    type="button"
-                                    style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                        padding: '4px 10px', borderRadius: '6px',
-                                        background: `${v.color}10`, border: `1px solid ${v.color}30`,
-                                        color: v.color, fontSize: '0.72rem', fontWeight: 700,
-                                        cursor: 'pointer', transition: 'all 0.15s',
-                                        fontFamily: "'JetBrains Mono', monospace",
-                                    }}
-                                    onMouseOver={e => {
-                                        e.currentTarget.style.background = `${v.color}20`;
-                                        e.currentTarget.style.transform = 'translateY(-1px)';
-                                    }}
-                                    onMouseOut={e => {
-                                        e.currentTarget.style.background = `${v.color}10`;
-                                        e.currentTarget.style.transform = 'translateY(0)';
-                                    }}
-                                    title={`Insertar ${v.label}`}
-                                >
-                                    <span>{v.icon}</span>
-                                    {v.key}
-                                </button>
-                            ))}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {/* Group variables by their group property */}
+                            {(() => {
+                                const groups = {};
+                                AVAILABLE_VARIABLES.forEach(v => {
+                                    if (!groups[v.group]) groups[v.group] = [];
+                                    groups[v.group].push(v);
+                                });
+                                const GROUP_META = {
+                                    'Paciente': { icon: '👤', borderColor: '#6366F120' },
+                                    'Clínico': { icon: '🩺', borderColor: '#8B5CF620' },
+                                    'Fechas': { icon: '📅', borderColor: '#F59E0B20' },
+                                    'Presupuesto': { icon: '💰', borderColor: '#22C55E20' },
+                                    'Deuda': { icon: '💸', borderColor: '#DC262620' },
+                                };
+                                return Object.entries(groups).map(([groupName, vars]) => {
+                                    const meta = GROUP_META[groupName] || {};
+                                    const isDebt = groupName === 'Deuda';
+                                    return (
+                                        <div key={groupName} style={{
+                                            display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap',
+                                            padding: isDebt ? '8px 10px' : '0',
+                                            background: isDebt ? '#FEF2F2' : 'transparent',
+                                            borderRadius: isDebt ? '8px' : '0',
+                                            border: isDebt ? '1px dashed #FECACA' : 'none',
+                                        }}>
+                                            <span style={{
+                                                fontSize: '0.62rem', fontWeight: 800, color: vars[0].color,
+                                                textTransform: 'uppercase', letterSpacing: '0.05em',
+                                                whiteSpace: 'nowrap', minWidth: '70px',
+                                            }}>
+                                                {meta.icon} {groupName}
+                                            </span>
+                                            {vars.map(v => (
+                                                <button
+                                                    key={v.key}
+                                                    onClick={() => insertVariable(v.key)}
+                                                    type="button"
+                                                    style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                        padding: '4px 10px', borderRadius: '6px',
+                                                        background: `${v.color}10`, border: `1px solid ${v.color}30`,
+                                                        color: v.color, fontSize: '0.72rem', fontWeight: 700,
+                                                        cursor: 'pointer', transition: 'all 0.15s',
+                                                        fontFamily: "'JetBrains Mono', monospace",
+                                                    }}
+                                                    onMouseOver={e => {
+                                                        e.currentTarget.style.background = `${v.color}20`;
+                                                        e.currentTarget.style.transform = 'translateY(-1px)';
+                                                    }}
+                                                    onMouseOut={e => {
+                                                        e.currentTarget.style.background = `${v.color}10`;
+                                                        e.currentTarget.style.transform = 'translateY(0)';
+                                                    }}
+                                                    title={`Insertar ${v.label}`}
+                                                >
+                                                    <span>{v.icon}</span>
+                                                    {v.key}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    );
+                                });
+                            })()}
                         </div>
                     </div>
 
