@@ -35,6 +35,18 @@ export default function LoginScreen({ onLogin }) {
         const result = await login(usuario, password);
 
         if (result.success) {
+            // Block lab users from admin panel
+            const LAB_USERS = ['aguero', 'cedap', 'cuyo'];
+            const loginUser = (result.user.usuario || '').toLowerCase();
+            if (LAB_USERS.includes(loginUser)) {
+                setError('Esta cuenta es exclusiva del portal de laboratorio. Acceda desde su enlace dedicado.');
+                triggerShake();
+                setPassword('');
+                // Clear the session that was just created
+                localStorage.removeItem('admqui_session');
+                setLoading(false);
+                return;
+            }
             await logAction('login', { usuario: result.user.usuario });
             onLogin(result.user);
         } else {

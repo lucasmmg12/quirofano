@@ -11,7 +11,7 @@
  */
 import React, { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { Microscope, Lock, Eye, EyeOff, LogOut, Loader2 } from 'lucide-react';
+import { Microscope, Lock, User, Eye, EyeOff, LogOut, Loader2 } from 'lucide-react';
 import PublicLabView from './PublicLabView';
 
 // ═══════════════════════════════════════════
@@ -152,18 +152,25 @@ export default function LabPortal({ labSlug }) {
 
 
 // ═══════════════════════════════════════════
-// Login Screen — branded per laboratory
+// Login Screen — identical to main LoginScreen, branded per lab
 // ═══════════════════════════════════════════
 function LabLoginScreen({ config, onLogin }) {
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [shake, setShake] = useState(false);
+
+    const triggerShake = () => {
+        setShake(true);
+        setTimeout(() => setShake(false), 500);
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!password.trim()) {
             setError('Ingrese su contraseña');
+            triggerShake();
             return;
         }
 
@@ -178,12 +185,15 @@ function LabLoginScreen({ config, onLogin }) {
 
             if (rpcError) {
                 setError('Error de conexión. Intente nuevamente.');
+                triggerShake();
                 setLoading(false);
                 return;
             }
 
             if (!data || data.length === 0) {
                 setError('Contraseña incorrecta');
+                triggerShake();
+                setPassword('');
                 setLoading(false);
                 return;
             }
@@ -207,174 +217,266 @@ function LabLoginScreen({ config, onLogin }) {
 
     return (
         <div style={{
-            minHeight: '100vh',
-            background: 'linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%)',
+            position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 99999,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: 'system-ui, -apple-system, sans-serif',
-            padding: '20px',
+            background: '#fff',
+            fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
         }}>
-            {/* Background decorative elements */}
+            {/* Background image at 50% opacity — same as main login */}
             <div style={{
-                position: 'fixed', top: '-200px', right: '-200px',
-                width: '500px', height: '500px', borderRadius: '50%',
-                background: config.gradient, opacity: 0.06, filter: 'blur(80px)',
+                position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+                backgroundImage: "url('/SANARG2021_fondo.webp')",
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+                opacity: 0.5,
+            }} />
+            {/* Subtle decorative blobs */}
+            <div style={{
+                position: 'absolute', width: '400px', height: '400px', borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(30,64,120,0.04) 0%, transparent 70%)',
+                top: '-5%', right: '-5%',
             }} />
             <div style={{
-                position: 'fixed', bottom: '-150px', left: '-150px',
-                width: '400px', height: '400px', borderRadius: '50%',
-                background: config.gradient, opacity: 0.04, filter: 'blur(60px)',
+                position: 'absolute', width: '350px', height: '350px', borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(30,64,120,0.03) 0%, transparent 70%)',
+                bottom: '-5%', left: '-5%',
             }} />
 
+            {/* Login Card */}
             <div style={{
-                background: '#fff', borderRadius: '20px', padding: '48px 40px',
-                boxShadow: '0 20px 60px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.03)',
-                width: '100%', maxWidth: '420px', position: 'relative',
+                position: 'relative',
+                width: '100%', maxWidth: '440px',
+                margin: '0 20px',
+                animation: 'loginFadeIn 0.5s ease-out',
             }}>
-                {/* Top accent bar */}
-                <div style={{
-                    position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)',
-                    width: '60%', height: '4px', borderRadius: '0 0 4px 4px',
-                    background: config.gradient,
-                }} />
-
-                {/* Logo + branding */}
-                <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-                    <img src="/logosanatorio.png" alt="Sanatorio Argentino"
-                        style={{ height: '52px', objectFit: 'contain', marginBottom: '20px', opacity: 0.9 }}
-                    />
-                    <div style={{
-                        width: '56px', height: '56px', borderRadius: '14px',
-                        background: config.gradient, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        margin: '0 auto 16px',
-                        boxShadow: `0 8px 20px ${config.color}30`,
-                    }}>
-                        <Microscope size={26} color="#fff" />
+                <form
+                    onSubmit={handleSubmit}
+                    style={{
+                        background: '#FFFFFF',
+                        borderRadius: '20px',
+                        padding: '40px 36px 36px',
+                        boxShadow: '0 8px 40px rgba(30,64,120,0.08), 0 2px 8px rgba(0,0,0,0.04)',
+                        animation: shake ? 'shakeX 0.4s ease-out' : 'none',
+                    }}
+                >
+                    {/* Logo */}
+                    <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                        <img
+                            src="/logosanatorio.png"
+                            alt="Sanatorio Argentino"
+                            style={{
+                                width: '68px', height: '68px',
+                                objectFit: 'contain',
+                                borderRadius: '14px',
+                                boxShadow: '0 4px 12px rgba(30,64,120,0.12)',
+                            }}
+                        />
                     </div>
-                    <h1 style={{
-                        margin: '0 0 6px', fontSize: '1.4rem', fontWeight: 800,
-                        color: '#1F2937', letterSpacing: '-0.02em',
-                    }}>
-                        Bienvenido
-                    </h1>
-                    <h2 style={{
-                        margin: '0 0 8px', fontSize: '1.15rem', fontWeight: 700,
-                        color: config.color,
-                    }}>
-                        {config.displayName}
-                    </h2>
-                    <p style={{
-                        margin: 0, color: '#94A3B8', fontSize: '0.85rem',
-                    }}>
-                        Por favor ingrese sus credenciales
-                    </p>
-                </div>
 
-                {/* Login form */}
-                <form onSubmit={handleSubmit}>
-                    {/* Username (readonly, pre-filled) */}
-                    <div style={{ marginBottom: '16px' }}>
+                    {/* Title — lab branded */}
+                    <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+                        <h1 style={{
+                            margin: '0 0 6px',
+                            fontSize: '1.45rem',
+                            fontWeight: 800,
+                            color: '#1E293B',
+                            letterSpacing: '-0.02em',
+                        }}>
+                            {config.displayName}
+                        </h1>
+                        <p style={{
+                            margin: 0,
+                            fontSize: '0.85rem',
+                            color: '#94A3B8',
+                            fontWeight: 500,
+                        }}>
+                            Portal de Anatomía Patológica
+                        </p>
+                    </div>
+
+                    {/* Error */}
+                    {error && (
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '8px',
+                            padding: '10px 14px', borderRadius: '10px',
+                            background: '#FEF2F2',
+                            border: '1px solid #FECACA',
+                            marginBottom: '20px',
+                            animation: 'loginFadeIn 0.2s ease-out',
+                        }}>
+                            <span style={{ fontSize: '0.8rem', color: '#DC2626', fontWeight: 500 }}>{error}</span>
+                        </div>
+                    )}
+
+                    {/* USUARIO — readonly pre-filled */}
+                    <div style={{ marginBottom: '18px' }}>
                         <label style={{
-                            display: 'block', fontSize: '0.75rem', fontWeight: 600,
-                            color: '#64748B', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px',
+                            display: 'block',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            color: '#374151',
+                            marginBottom: '8px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.8px',
                         }}>
                             Usuario
                         </label>
-                        <div style={{
-                            padding: '12px 14px', borderRadius: '10px',
-                            border: '1px solid #E2E8F0', background: '#F8FAFC',
-                            fontSize: '0.9rem', color: '#64748B', fontWeight: 500,
-                        }}>
-                            {config.usuario}@sanatorioargentino.com.ar
+                        <div style={{ position: 'relative' }}>
+                            <User size={17} style={{
+                                position: 'absolute', left: '14px', top: '50%',
+                                transform: 'translateY(-50%)',
+                                color: '#94A3B8', pointerEvents: 'none',
+                            }} />
+                            <div style={{
+                                width: '100%',
+                                padding: '13px 14px 13px 44px',
+                                borderRadius: '10px',
+                                border: '1.5px solid #E5E7EB',
+                                background: '#F9FAFB',
+                                color: '#64748B',
+                                fontSize: '0.9rem',
+                                fontWeight: 500,
+                                boxSizing: 'border-box',
+                            }}>
+                                {config.usuario}@sanatorioargentino.com.ar
+                            </div>
                         </div>
                     </div>
 
-                    {/* Password */}
-                    <div style={{ marginBottom: '20px' }}>
+                    {/* CONTRASEÑA */}
+                    <div style={{ marginBottom: '28px' }}>
                         <label style={{
-                            display: 'block', fontSize: '0.75rem', fontWeight: 600,
-                            color: '#64748B', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px',
+                            display: 'block',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            color: '#374151',
+                            marginBottom: '8px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.8px',
                         }}>
                             Contraseña
                         </label>
                         <div style={{ position: 'relative' }}>
-                            <Lock size={16} style={{
-                                position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)',
-                                color: '#94A3B8',
+                            <Lock size={17} style={{
+                                position: 'absolute', left: '14px', top: '50%',
+                                transform: 'translateY(-50%)',
+                                color: '#94A3B8', pointerEvents: 'none',
                             }} />
                             <input
                                 type={showPassword ? 'text' : 'password'}
                                 value={password}
                                 onChange={e => { setPassword(e.target.value); setError(''); }}
-                                placeholder="Ingrese su contraseña"
+                                placeholder="••••••••"
+                                autoComplete="current-password"
                                 autoFocus
                                 style={{
-                                    width: '100%', padding: '12px 44px 12px 40px',
-                                    borderRadius: '10px', border: `1.5px solid ${error ? '#FECACA' : '#E2E8F0'}`,
-                                    fontSize: '0.9rem', outline: 'none',
-                                    transition: 'border-color 0.2s, box-shadow 0.2s',
-                                    background: error ? '#FEF2F2' : '#fff',
+                                    width: '100%',
+                                    padding: '13px 44px 13px 44px',
+                                    borderRadius: '10px',
+                                    border: '1.5px solid #E5E7EB',
+                                    background: '#F9FAFB',
+                                    color: '#1E293B',
+                                    fontSize: '0.9rem',
+                                    fontWeight: 500,
+                                    outline: 'none',
+                                    transition: 'all 0.2s ease',
+                                    boxSizing: 'border-box',
                                 }}
-                                onFocus={e => { e.target.style.borderColor = config.color; e.target.style.boxShadow = `0 0 0 3px ${config.color}15`; }}
-                                onBlur={e => { e.target.style.borderColor = error ? '#FECACA' : '#E2E8F0'; e.target.style.boxShadow = 'none'; }}
+                                onFocus={e => {
+                                    e.target.style.borderColor = '#1E4078';
+                                    e.target.style.boxShadow = '0 0 0 3px rgba(30,64,120,0.08)';
+                                    e.target.style.background = '#FFFFFF';
+                                }}
+                                onBlur={e => {
+                                    e.target.style.borderColor = '#E5E7EB';
+                                    e.target.style.boxShadow = 'none';
+                                    e.target.style.background = '#F9FAFB';
+                                }}
                             />
                             <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
                                 style={{
-                                    position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
-                                    background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: '4px',
+                                    position: 'absolute', right: '12px', top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    background: 'none', border: 'none',
+                                    cursor: 'pointer', color: '#94A3B8',
+                                    padding: '4px', display: 'flex',
+                                    transition: 'color 0.2s',
                                 }}
+                                onMouseOver={e => e.currentTarget.style.color = '#64748B'}
+                                onMouseOut={e => e.currentTarget.style.color = '#94A3B8'}
                             >
-                                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
                             </button>
                         </div>
                     </div>
 
-                    {/* Error message */}
-                    {error && (
-                        <div style={{
-                            padding: '10px 14px', borderRadius: '8px',
-                            background: '#FEF2F2', color: '#DC2626',
-                            fontSize: '0.8rem', fontWeight: 600,
-                            marginBottom: '16px', border: '1px solid #FECACA',
-                            animation: 'fadeIn 0.2s ease-out',
-                        }}>
-                            {error}
-                        </div>
-                    )}
-
-                    {/* Submit */}
+                    {/* SUBMIT — same institutional blue */}
                     <button
                         type="submit"
                         disabled={loading}
                         style={{
-                            width: '100%', padding: '14px',
-                            borderRadius: '12px', border: 'none',
-                            background: loading ? '#94A3B8' : config.gradient,
-                            color: '#fff', fontSize: '0.95rem', fontWeight: 700,
+                            width: '100%',
+                            padding: '14px',
+                            borderRadius: '10px',
+                            border: 'none',
+                            background: loading ? '#2C5282' : '#1E4078',
+                            color: '#FFFFFF',
+                            fontSize: '0.95rem',
+                            fontWeight: 700,
                             cursor: loading ? 'not-allowed' : 'pointer',
-                            transition: 'all 0.2s',
-                            boxShadow: loading ? 'none' : `0 4px 16px ${config.color}30`,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            transition: 'all 0.2s ease',
+                            boxShadow: '0 4px 12px rgba(30,64,120,0.25)',
+                            letterSpacing: '0.3px',
                         }}
+                        onMouseOver={e => { if (!loading) { e.currentTarget.style.background = '#163560'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(30,64,120,0.35)'; } }}
+                        onMouseOut={e => { e.currentTarget.style.background = loading ? '#2C5282' : '#1E4078'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(30,64,120,0.25)'; }}
                     >
                         {loading ? (
-                            <><Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> Verificando...</>
+                            <><Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> Ingresando...</>
                         ) : (
-                            'Ingresar al Portal'
+                            'Iniciar Sesión'
                         )}
                     </button>
                 </form>
 
                 {/* Footer */}
-                <div style={{
-                    marginTop: '28px', textAlign: 'center',
-                    color: '#CBD5E1', fontSize: '0.72rem', fontWeight: 500,
+                <p style={{
+                    textAlign: 'center',
+                    marginTop: '20px',
+                    fontSize: '0.72rem',
+                    color: '#94A3B8',
+                    fontWeight: 500,
                 }}>
-                    Portal Seguro • Sanatorio Argentino<br />
-                    Anatomía Patológica
-                </div>
+                    Portal de Laboratorios · Sanatorio Argentino © 2026
+                </p>
             </div>
+
+            {/* Animations */}
+            <style>{`
+                @keyframes shakeX {
+                    0%, 100% { transform: translateX(0); }
+                    20% { transform: translateX(-8px); }
+                    40% { transform: translateX(8px); }
+                    60% { transform: translateX(-4px); }
+                    80% { transform: translateX(4px); }
+                }
+                @keyframes loginFadeIn {
+                    from { opacity: 0; transform: translateY(12px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                @keyframes spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                }
+            `}</style>
         </div>
     );
 }
+
