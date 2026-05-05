@@ -6,6 +6,7 @@
  *   Agrupado por Laboratorio (Agüero / CEDAP / Cuyo)
  */
 import { supabase } from '../lib/supabase';
+import { logAction, AUDIT_ACTIONS } from './laboratoriosAuditService';
 
 // ═══════════════════════════════════════════
 // Color palette for labs (like ASOCIACION_COLORS)
@@ -66,20 +67,40 @@ export async function fetchLabRecords({ soloSinCarrito = false, soloCarrito = fa
 // ═══════════════════════════════════════════
 // Cart operations
 // ═══════════════════════════════════════════
-export async function enviarAlCarritoLab(idVisita) {
+export async function enviarAlCarritoLab(idVisita, { usuario = 'sistema', paciente = null, laboratorio = null } = {}) {
     const { error } = await supabase
         .from('laboratorios_anatomia_patologica')
         .update({ en_carrito: true })
         .eq('id_visita', idVisita);
     if (error) throw error;
+
+    // Audit log (non-blocking)
+    logAction({
+        accion: AUDIT_ACTIONS.ENVIAR_CARRITO,
+        usuario,
+        id_visita: idVisita,
+        paciente,
+        laboratorio,
+        detalle: `Envió al carrito el registro ${idVisita}`,
+    });
 }
 
-export async function quitarDelCarritoLab(idVisita) {
+export async function quitarDelCarritoLab(idVisita, { usuario = 'sistema', paciente = null, laboratorio = null } = {}) {
     const { error } = await supabase
         .from('laboratorios_anatomia_patologica')
         .update({ en_carrito: false })
         .eq('id_visita', idVisita);
     if (error) throw error;
+
+    // Audit log (non-blocking)
+    logAction({
+        accion: AUDIT_ACTIONS.QUITAR_CARRITO,
+        usuario,
+        id_visita: idVisita,
+        paciente,
+        laboratorio,
+        detalle: `Quitó del carrito el registro ${idVisita}`,
+    });
 }
 
 export async function fetchCarritoLab() {
@@ -131,6 +152,21 @@ export async function generarConstanciaLab({
         .in('id_visita', ids);
 
     if (linkErr) throw linkErr;
+
+    // Audit log (non-blocking)
+    logAction({
+        accion: AUDIT_ACTIONS.GENERAR_CONSTANCIA,
+        usuario: responsable,
+        laboratorio,
+        detalle: `Constancia ${codigo} generada con ${items.length} registros. Cadete: ${nombreCadete || 'N/A'}`,
+        datos_despues: {
+            codigo,
+            cantidad: items.length,
+            cadete: nombreCadete,
+            items: ids,
+        },
+    });
+
     return constancia;
 }
 
@@ -166,7 +202,7 @@ export async function fetchConstanciaDetalleLab(constanciaId) {
 /**
  * Revert a constancia: unlink items → cart, delete constancia
  */
-export async function revertirConstanciaLab(constanciaId) {
+export async function revertirConstanciaLab(constanciaId, { usuario = 'sistema', codigo = '' } = {}) {
     const { error: unlinkErr } = await supabase
         .from('laboratorios_anatomia_patologica')
         .update({
@@ -182,4 +218,12 @@ export async function revertirConstanciaLab(constanciaId) {
         .delete()
         .eq('id', constanciaId);
     if (deleteErr) throw deleteErr;
+
+    // Audit log (non-blocking)
+    logAction({
+        accion: AUDIT_ACTIONS.REVERTIR_CONSTANCIA,
+        usuario,
+        detalle: `Constancia ${codigo || constanciaId} revertida`,
+        datos_antes: { constancia_id: constanciaId, codigo },
+    });
 }

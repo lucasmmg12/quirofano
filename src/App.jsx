@@ -34,6 +34,7 @@ import SimonPanel from './components/SimonPanel.jsx';
 import AsociacionesEntregaPanel from './components/AsociacionesEntregaPanel.jsx';
 import LaboratoriosPanel from './components/LaboratoriosPanel.jsx';
 import PublicLabView from './components/PublicLabView.jsx';
+import LabPortal from './components/LabPortal.jsx';
 import IdleHomerOverlay from './components/IdleHomerOverlay.jsx';
 import './App.css';
 
@@ -53,11 +54,29 @@ function AppRoot() {
         setCurrentUser(null);
     }, [currentUser]);
 
+    // Lab Portal routes (authenticated) — /lab/aguero, /lab/cedap, /lab/cuyo
+    const labMatch = path.match(/^\/lab\/(aguero|cedap|cuyo)\/?$/);
+    if (labMatch) {
+        return <LabPortal labSlug={labMatch[1]} />;
+    }
+
+    // Legacy public lab routes — redirect to new authenticated portal
     if (isPublicLab) {
         try {
             const hash = path.split('/publico/laboratorio/')[1];
             const labName = decodeURIComponent(atob(hash));
-            return <PublicLabView labName={labName} />;
+            // Map old labName to new slug
+            const slugMap = {
+                'LDA - Dra. Aguero o Dra Rios': 'aguero',
+                'LAB. CEDAP': 'cedap',
+                'LAB.INST.PATOLOG.CUYO': 'cuyo',
+            };
+            const slug = slugMap[labName];
+            if (slug) {
+                window.location.replace(`/lab/${slug}`);
+                return null;
+            }
+            return <div style={{ padding: '40px', textAlign: 'center' }}>Enlace público inválido.</div>;
         } catch (e) {
             return <div style={{ padding: '40px', textAlign: 'center' }}>Enlace público inválido.</div>;
         }

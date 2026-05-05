@@ -703,8 +703,13 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
     };
 
     const copyPublicLinkLab = (labString, toastName) => {
-        const token = btoa(encodeURIComponent(labString));
-        const url = `${window.location.origin}/publico/laboratorio/${token}`;
+        const slugMap = {
+            'LDA - Dra. Aguero o Dra Rios': 'aguero',
+            'LAB. CEDAP': 'cedap',
+            'LAB.INST.PATOLOG.CUYO': 'cuyo',
+        };
+        const slug = slugMap[labString] || btoa(encodeURIComponent(labString));
+        const url = `${window.location.origin}/lab/${slug}`;
         navigator.clipboard.writeText(url);
         addToast(`Enlace de ${toastName} copiado!`, 'success');
     };
