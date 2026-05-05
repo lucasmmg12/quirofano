@@ -6,11 +6,12 @@ import { supabase } from '../lib/supabase';
 
 // ─── Categorías de deudor ───
 export const CATEGORIAS_DEUDOR = {
-    sin_gestionar:    { label: 'Sin gestionar',    color: '#F59E0B', bg: '#FEF3C7', icon: '🟡' },
-    en_gestion:       { label: 'En gestión',       color: '#3B82F6', bg: '#DBEAFE', icon: '🔵' },
-    comprometido:     { label: 'Comprometido',     color: '#16A34A', bg: '#DCFCE7', icon: '🟢' },
-    cuenta_corriente: { label: 'Cuenta Corriente', color: '#8B5CF6', bg: '#F3E8FF', icon: '🟣' },
-    incobrable:       { label: 'Incobrable',       color: '#EF4444', bg: '#FEE2E2', icon: '🔴' },
+    sin_gestionar:         { label: 'Sin gestionar',             color: '#F59E0B', bg: '#FEF3C7', icon: '🟡' },
+    en_gestion:            { label: 'En gestión',                color: '#3B82F6', bg: '#DBEAFE', icon: '🔵' },
+    comprometido:          { label: 'Comprometido',              color: '#16A34A', bg: '#DCFCE7', icon: '🟢' },
+    cuenta_corriente:      { label: 'Cuenta Corriente',          color: '#8B5CF6', bg: '#F3E8FF', icon: '🟣' },
+    incobrable:            { label: 'Incobrable',                color: '#EF4444', bg: '#FEE2E2', icon: '🔴' },
+    descuento_liquidacion: { label: 'Descuento por Liquidación', color: '#0D9488', bg: '#CCFBF1', icon: '🏷️' },
 };
 
 export const MIN_DEUDA = 50000;
