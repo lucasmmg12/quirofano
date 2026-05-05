@@ -1374,7 +1374,7 @@ export default function MessagingPanel({ addToast, currentUser }) {
                                                     <CheckCheck size={12} style={{ marginLeft: '3px', opacity: 0.6 }} />
                                                 )}
                                             </span>
-                                            {isOutgoing && item.sender_name && item.sender_name !== 'Sistema ADM-QUI' && (
+                                            {isOutgoing && item.sender_name && (
                                                 <span className="msg-panel__bubble-operator">{item.sender_name}</span>
                                             )}
                                         </div>
