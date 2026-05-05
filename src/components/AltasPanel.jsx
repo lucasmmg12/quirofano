@@ -710,6 +710,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                     <th className="cart__th" style={{ width: '30px' }}></th>
                                     <FilterHeader label="Estado" col="estado" width="120px" />
                                     <th className="cart__th">Paciente</th>
+                                    <th className="cart__th" style={{ width: '85px' }}>N° Adm</th>
                                     <FilterHeader label="Obra Social" col="cliente" />
                                     <FilterHeader label="Especialidad" col="especialidad" />
                                     <FilterHeader label="Médico" col="doctor" />
@@ -741,7 +742,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                 </tr>
                                 {activeFilterCount > 0 && (
                                     <tr>
-                                        <td colSpan={9} style={{ padding: '4px 10px', background: '#EFF6FF', borderBottom: '1px solid #DBEAFE' }}>
+                                        <td colSpan={10} style={{ padding: '4px 10px', background: '#EFF6FF', borderBottom: '1px solid #DBEAFE' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                                 <ListFilter size={12} color="#4F46E5" />
                                                 <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#4F46E5' }}>
@@ -892,6 +893,21 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             <td className="cart__td" style={{ fontWeight: 600, fontSize: '0.82rem' }}>
                                                 {alta.paciente || '—'}
                                             </td>
+                                            {/* N° Admisión */}
+                                            <td className="cart__td" style={{ whiteSpace: 'nowrap' }}>
+                                                <span style={{
+                                                    background: alta.numero_admision ? '#EFF6FF' : 'transparent',
+                                                    color: alta.numero_admision ? '#1E40AF' : '#94A3B8',
+                                                    padding: alta.numero_admision ? '2px 8px' : '0',
+                                                    borderRadius: '6px',
+                                                    fontSize: '0.73rem',
+                                                    fontWeight: 600,
+                                                    fontFamily: 'monospace',
+                                                    border: alta.numero_admision ? '1px solid #BFDBFE' : 'none',
+                                                }}>
+                                                    {alta.numero_admision || '—'}
+                                                </span>
+                                            </td>
                                             {/* OS */}
                                             <td className="cart__td" style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>
                                                 {alta.cliente || '—'}
@@ -927,7 +943,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                         // ── Expanded Detail ──
                                         isExpanded && (
                                             <tr key={`${alta.id}-detail`}>
-                                                <td colSpan={9} style={{
+                                                <td colSpan={10} style={{
                                                     padding: 0, background: 'var(--neutral-50)',
                                                     borderLeft: `4px solid ${cfg?.color || '#CBD5E1'}`,
                                                     animation: 'fadeIn 0.2s ease-out',
