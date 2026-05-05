@@ -174,6 +174,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
             const matchSearch = searchTerm === '' ||
                 (r.paciente?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
                 (r.dni?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                (r.n_admision?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
                 (r.laboratorio?.toLowerCase() || '').includes(searchTerm.toLowerCase());
             const isAssigned = r.modulo_a_qty > 0 || r.modulo_b_qty > 0 || r.modulo_c_qty > 0 || r.modulo_asignado;
             const matchFilter = filterModulo === 'all' ||
@@ -510,6 +511,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 if (item.modulo_c_qty > 0) modText.push(`C:${item.modulo_c_qty}`);
                 return [
                     String(idx + 1),
+                    item.n_admision || '—',
                     fecha,
                     item.paciente || '—',
                     item.dni || '—',
@@ -521,7 +523,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
 
             autoTable(doc, {
                 startY: y,
-                head: [['#', 'Fecha', 'Paciente', 'DNI', 'Obra Social', 'Biopsias', 'Módulo']],
+                head: [['#', 'N° Adm', 'Fecha', 'Paciente', 'DNI', 'Obra Social', 'Biopsias', 'Módulo']],
                 body: tableBody,
                 theme: 'grid',
                 headStyles: {
@@ -533,12 +535,13 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 alternateRowStyles: { fillColor: [248, 250, 252] },
                 columnStyles: {
                     0: { cellWidth: 8, halign: 'center', fontStyle: 'bold', textColor: [148, 163, 184] },
-                    1: { cellWidth: 18 },
-                    2: { fontStyle: 'bold', cellWidth: 36 },
-                    3: { cellWidth: 22, font: 'courier' },
-                    4: { cellWidth: 30 },
-                    5: { cellWidth: 42 },
-                    6: { cellWidth: 26 },
+                    1: { cellWidth: 18, font: 'courier' },
+                    2: { cellWidth: 16 },
+                    3: { fontStyle: 'bold', cellWidth: 32 },
+                    4: { cellWidth: 20, font: 'courier' },
+                    5: { cellWidth: 28 },
+                    6: { cellWidth: 36 },
+                    7: { cellWidth: 24 },
                 },
                 margin: { left: margin, right: margin },
                 didDrawPage: () => {
@@ -650,7 +653,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
         doc.setFontSize(10);
         doc.text(`Filtros: Lab: ${filterLaboratorio !== 'all' ? filterLaboratorio : 'Todos'} | Modulo: ${filterModulo !== 'all' ? filterModulo : 'Todos'}`, 14, 28);
 
-        const tableColumn = ["Fecha", "Paciente", "DNI", "Obra Social", "Coseguro", "Lab", "Biopsias", "Módulo", "Acción"];
+        const tableColumn = ["Fecha", "N° Adm", "Paciente", "DNI", "Obra Social", "Coseguro", "Lab", "Biopsias", "Módulo", "Acción"];
         const tableRows = filteredRecords.map(r => {
             let biopsias = [];
             if (r.biopsia_congelacion) biopsias.push(`C: ${r.biopsia_congelacion}`);
@@ -662,6 +665,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
             if (r.modulo_c_qty > 0) modText.push(`C: ${r.modulo_c_qty}`);
             return [
                 r.fecha_visita ? new Date(r.fecha_visita).toLocaleDateString('es-AR') : '-',
+                r.n_admision || '-',
                 r.paciente || 'S/D', r.dni || 'S/D', r.cliente || '-', r.coseguro || '-',
                 r.laboratorio || '-', biopsias.join('\n') || '-',
                 modText.length > 0 ? modText.join(', ') : (r.modulo_asignado || 'Sin asignar'),
@@ -684,6 +688,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
             if (r.modulo_c_qty > 0) modText.push(`C: ${r.modulo_c_qty}`);
             return {
                 Fecha: r.fecha_visita ? new Date(r.fecha_visita).toLocaleDateString('es-AR') : '',
+                'N° Admision': r.n_admision || '',
                 Paciente: r.paciente || '', DNI: r.dni || '', ObraSocial: r.cliente || '',
                 Coseguro: r.coseguro || '', Laboratorio: r.laboratorio || '',
                 Muestras: biopsias.join(' | '),
@@ -872,6 +877,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                 <thead>
                                     <tr>
                                         <th style={thStyle}>Fecha</th>
+                                        <th style={thStyle}>N° Adm</th>
                                         <th style={thStyle}>Paciente</th>
                                         <th style={thStyle}>OS</th>
                                         <th style={thStyle}>Coseguro</th>
@@ -885,11 +891,11 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                 </thead>
                                 <tbody>
                                     {loading ? (
-                                        <tr><td colSpan={10} style={{ padding: '32px', textAlign: 'center', color: 'var(--neutral-400)' }}>
+                                        <tr><td colSpan={11} style={{ padding: '32px', textAlign: 'center', color: 'var(--neutral-400)' }}>
                                             <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 12px' }} /> Cargando...
                                         </td></tr>
                                     ) : filteredRecords.length === 0 ? (
-                                        <tr><td colSpan={10} style={{ padding: '32px', textAlign: 'center', color: 'var(--neutral-400)' }}>
+                                        <tr><td colSpan={11} style={{ padding: '32px', textAlign: 'center', color: 'var(--neutral-400)' }}>
                                             Ningún registro coincide con los filtros.
                                         </td></tr>
                                     ) : filteredRecords.map(r => {
@@ -906,6 +912,20 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                 >
                                                     <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
                                                         {r.fecha_visita && new Date(r.fecha_visita).toLocaleDateString('es-AR')}
+                                                    </td>
+                                                    <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
+                                                        <span style={{
+                                                            background: r.n_admision ? '#EFF6FF' : 'transparent',
+                                                            color: r.n_admision ? '#1E40AF' : '#94A3B8',
+                                                            padding: r.n_admision ? '2px 8px' : '0',
+                                                            borderRadius: '6px',
+                                                            fontSize: '0.78rem',
+                                                            fontWeight: 600,
+                                                            fontFamily: 'monospace',
+                                                            border: r.n_admision ? '1px solid #BFDBFE' : 'none',
+                                                        }}>
+                                                            {r.n_admision || '—'}
+                                                        </span>
                                                     </td>
                                                     <td style={tdStyle}>
                                                         <div style={{ fontWeight: 600, color: 'var(--neutral-800)', fontSize: '0.85rem' }}>{r.paciente}</div>
@@ -961,7 +981,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                 </tr>
                                                 {isExpanded && (
                                                     <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--neutral-200)' }}>
-                                                        <td colSpan={10} style={{ padding: '0 24px 24px 24px' }}>
+                                                        <td colSpan={11} style={{ padding: '0 24px 24px 24px' }}>
                                                             <div style={{ background: '#fff', border: '1px solid var(--neutral-200)', borderRadius: '8px', padding: '16px', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
                                                                 <div style={{ flex: '1', minWidth: '250px' }}>
                                                                     <h4 style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', marginBottom: '8px', borderBottom: '1px solid var(--neutral-100)', paddingBottom: '4px' }}>Detalles de Muestras</h4>

@@ -1286,6 +1286,7 @@ async function syncLaboratorios(db) {
     const result = await db.request().query(`
         SELECT 
               AP.[idvisita]
+              ,PP.[N.Admision]
               ,AP.[Fecha visita]
               ,AP.[Paciente]
               ,V.[NIF]
@@ -1299,7 +1300,10 @@ async function syncLaboratorios(db) {
           FROM [SALUS].[dbo].[VLIS_AnatomiaPatologica] AS AP
           LEFT JOIN [SALUS].[dbo].[VLISE_Visitas] AS V 
               ON AP.[idvisita] = V.[idVisita]
+          LEFT JOIN [SALUS].[dbo].[VLISE_PeticionesPruebas] AS PP 
+              ON AP.[idvisita] = PP.[idVisita]
           WHERE AP.[Fecha visita] >= '20260301'
+            AND PP.[N.Admision] IS NOT NULL
           ORDER BY AP.[Fecha visita] DESC;
     `);
     console.log(`   📥 ${result.recordset.length} registros extraídos`);
@@ -1325,6 +1329,7 @@ async function syncLaboratorios(db) {
 
         records.push({
             id_visita: idVisita,
+            n_admision: r['N.Admision'] ? String(r['N.Admision']).trim() : null,
             fecha_visita: fecha,
             paciente: r.Paciente ? String(r.Paciente).trim() : null,
             dni: r.NIF ? String(r.NIF).trim() : null,
