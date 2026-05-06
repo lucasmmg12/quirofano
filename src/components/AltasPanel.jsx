@@ -5,6 +5,7 @@
  * filtros por fecha/estado/búsqueda, y KPIs resumidos.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
     Search, RefreshCw, ChevronRight, Clock, Calendar,
     Filter, X, Loader2, FileText, User, Building2,
@@ -37,6 +38,7 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [expandedId, setExpandedId] = useState(null);
     const [statusDropdownId, setStatusDropdownId] = useState(null);
     const [responsableDropdownId, setResponsableDropdownId] = useState(null);
+    const [dropdownAnchor, setDropdownAnchor] = useState(null); // { id, type, rect }
     const [dropdownDir, setDropdownDir] = useState('down'); // 'down' | 'up'
     const [processing, setProcessing] = useState(false);
 
@@ -90,6 +92,7 @@ export default function AltasPanel({ addToast, currentUser }) {
             await updateAltaEstado(id, nuevoEstado, currentUser?.nombre || 'operador');
             addToast?.(`Estado → ${ALTA_ESTADOS[nuevoEstado]?.label || nuevoEstado}`, 'success');
             setStatusDropdownId(null);
+            setDropdownAnchor(null);
             loadData();
         } catch (err) {
             addToast?.('Error: ' + err.message, 'error');
@@ -828,11 +831,13 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                             e.stopPropagation();
                                                             if (statusDropdownId === alta.id) {
                                                                 setStatusDropdownId(null);
+                                                                setDropdownAnchor(null);
                                                             } else {
                                                                 const rect = e.currentTarget.getBoundingClientRect();
                                                                 const spaceBelow = window.innerHeight - rect.bottom;
                                                                 setDropdownDir(spaceBelow < 280 ? 'up' : 'down');
                                                                 setStatusDropdownId(alta.id);
+                                                                setDropdownAnchor({ id: alta.id, type: 'status', rect });
                                                             }
                                                         }}
                                                         style={{
@@ -867,57 +872,6 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                     >
                                                         {!cfg ? '—' : <>{cfg.icon} {cfg.label}</>}
                                                     </button>
-                                                    {/* Dropdown */}
-                                                    {statusDropdownId === alta.id && (
-                                                        <>
-                                                            <div
-                                                                onClick={e => { e.stopPropagation(); setStatusDropdownId(null); }}
-                                                                style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 999 }}
-                                                            />
-                                                            <div style={{
-                                                                position: 'absolute', 
-                                                                [dropdownDir === 'up' ? 'bottom' : 'top']: '100%', 
-                                                                left: 0,
-                                                                marginTop: dropdownDir === 'up' ? '0' : '4px',
-                                                                marginBottom: dropdownDir === 'up' ? '4px' : '0',
-                                                                zIndex: 1000,
-                                                                background: '#fff', borderRadius: '10px',
-                                                                boxShadow: '0 8px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
-                                                                padding: '4px', minWidth: '165px',
-                                                                animation: dropdownDir === 'up' ? 'fadeInUp 0.15s ease-out' : 'fadeIn 0.15s ease-out',
-                                                            }}>
-                                                                {Object.entries(ALTA_ESTADOS).map(([key, scfg]) => {
-                                                                    if (key === 'Procesada') return null; // 'Procesada' ya no se usa
-                                                                    return (
-                                                                        <button
-                                                                            key={key}
-                                                                            onClick={e => {
-                                                                                e.stopPropagation();
-                                                                                handleEstadoChange(alta.id, key);
-                                                                            }}
-                                                                            disabled={processing}
-                                                                            style={{
-                                                                                display: 'flex', alignItems: 'center', gap: '8px',
-                                                                                width: '100%', padding: '7px 12px',
-                                                                                border: 'none', borderRadius: '6px',
-                                                                                background: alta.estado === key ? scfg.bg : 'transparent',
-                                                                                color: scfg.color, cursor: 'pointer',
-                                                                                fontSize: '0.76rem', fontWeight: 600,
-                                                                                transition: 'background 0.1s',
-                                                                                textAlign: 'left',
-                                                                            }}
-                                                                            onMouseOver={e => e.currentTarget.style.background = scfg.bg}
-                                                                            onMouseOut={e => e.currentTarget.style.background = alta.estado === key ? scfg.bg : 'transparent'}
-                                                                        >
-                                                                            <span>{scfg.icon}</span>
-                                                                            <span>{scfg.label}</span>
-                                                                            {alta.estado === key && <span style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>✓</span>}
-                                                                        </button>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        </>
-                                                    )}
                                                 </div>
                                             </td>
                                             {/* Paciente */}
@@ -968,11 +922,13 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                                 e.stopPropagation();
                                                                 if (responsableDropdownId === alta.id) {
                                                                     setResponsableDropdownId(null);
+                                                                    setDropdownAnchor(null);
                                                                 } else {
                                                                     const rect = e.currentTarget.getBoundingClientRect();
                                                                     const spaceBelow = window.innerHeight - rect.bottom;
                                                                     setDropdownDir(spaceBelow < 280 ? 'up' : 'down');
                                                                     setResponsableDropdownId(alta.id);
+                                                                    setDropdownAnchor({ id: alta.id, type: 'responsable', rect });
                                                                 }
                                                             }}
                                                             style={{
@@ -992,87 +948,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                             {alta._responsable || '—'}
                                                             <ChevronDown size={10} />
                                                         </button>
-                                                        {responsableDropdownId === alta.id && (
-                                                            <>
-                                                                <div
-                                                                    onClick={e => { e.stopPropagation(); setResponsableDropdownId(null); }}
-                                                                    style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 999 }}
-                                                                />
-                                                                <div style={{
-                                                                    position: 'absolute', 
-                                                                    [dropdownDir === 'up' ? 'bottom' : 'top']: '100%', 
-                                                                    right: 0,
-                                                                    marginTop: dropdownDir === 'up' ? '0' : '4px',
-                                                                    marginBottom: dropdownDir === 'up' ? '4px' : '0',
-                                                                    zIndex: 1000,
-                                                                    background: '#fff', borderRadius: '10px',
-                                                                    boxShadow: '0 8px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
-                                                                    padding: '4px', minWidth: '140px',
-                                                                    animation: dropdownDir === 'up' ? 'fadeInUp 0.15s ease-out' : 'fadeIn 0.15s ease-out',
-                                                                    maxHeight: '250px', overflowY: 'auto',
-                                                                }}>
-                                                                    {/* Opción: quitar override */}
-                                                                    {alta.responsable_override && (
-                                                                        <button
-                                                                            onClick={async e => {
-                                                                                e.stopPropagation();
-                                                                                try {
-                                                                                    await updateAltaResponsable(alta.id, null);
-                                                                                    addToast?.('Responsable vuelto a automático', 'success');
-                                                                                    setResponsableDropdownId(null);
-                                                                                    loadData();
-                                                                                } catch (err) {
-                                                                                    addToast?.('Error: ' + err.message, 'error');
-                                                                                }
-                                                                            }}
-                                                                            style={{
-                                                                                display: 'flex', alignItems: 'center', gap: '6px',
-                                                                                width: '100%', padding: '6px 10px',
-                                                                                border: 'none', borderRadius: '6px',
-                                                                                background: 'transparent', color: '#DC2626',
-                                                                                cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600,
-                                                                                textAlign: 'left', borderBottom: '1px solid #F3F4F6',
-                                                                                marginBottom: '2px',
-                                                                            }}
-                                                                            onMouseOver={e => e.currentTarget.style.background = '#FEF2F2'}
-                                                                            onMouseOut={e => e.currentTarget.style.background = 'transparent'}
-                                                                        >
-                                                                            <X size={12} /> Automático
-                                                                        </button>
-                                                                    )}
-                                                                    {allResponsables.map(resp => (
-                                                                        <button
-                                                                            key={resp}
-                                                                            onClick={async e => {
-                                                                                e.stopPropagation();
-                                                                                try {
-                                                                                    await updateAltaResponsable(alta.id, resp);
-                                                                                    addToast?.(`Responsable → ${resp}`, 'success');
-                                                                                    setResponsableDropdownId(null);
-                                                                                    loadData();
-                                                                                } catch (err) {
-                                                                                    addToast?.('Error: ' + err.message, 'error');
-                                                                                }
-                                                                            }}
-                                                                            style={{
-                                                                                display: 'flex', alignItems: 'center', gap: '8px',
-                                                                                width: '100%', padding: '6px 10px',
-                                                                                border: 'none', borderRadius: '6px',
-                                                                                background: alta._responsable === resp ? '#EFF6FF' : 'transparent',
-                                                                                color: '#1E40AF', cursor: 'pointer',
-                                                                                fontSize: '0.72rem', fontWeight: 600,
-                                                                                textAlign: 'left', transition: 'background 0.1s',
-                                                                            }}
-                                                                            onMouseOver={e => e.currentTarget.style.background = '#EFF6FF'}
-                                                                            onMouseOut={e => e.currentTarget.style.background = alta._responsable === resp ? '#EFF6FF' : 'transparent'}
-                                                                        >
-                                                                            <span>{resp}</span>
-                                                                            {alta._responsable === resp && <span style={{ marginLeft: 'auto', fontSize: '0.68rem' }}>✓</span>}
-                                                                        </button>
-                                                                    ))}
-                                                                </div>
-                                                            </>
-                                                        )}
+                                                        </button>
                                                     </div>
                                                 ) : (
                                                     alta._responsable ? (
@@ -1234,6 +1110,139 @@ export default function AltasPanel({ addToast, currentUser }) {
                 )}
             </div>
         </>
+            )}
+        </div>
+            {/* ── Dropdown Portals ── */}
+            {dropdownAnchor && (
+                createPortal(
+                    <>
+                        <div
+                            onClick={e => { e.stopPropagation(); setStatusDropdownId(null); setResponsableDropdownId(null); setDropdownAnchor(null); }}
+                            style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 9998 }}
+                        />
+                        <div style={{
+                            position: 'fixed',
+                            [dropdownDir === 'up' ? 'bottom' : 'top']: dropdownDir === 'up' ? (window.innerHeight - dropdownAnchor.rect.top + 4) : (dropdownAnchor.rect.bottom + 4),
+                            left: dropdownAnchor.rect.left,
+                            zIndex: 9999,
+                            background: '#fff',
+                            borderRadius: '10px',
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
+                            padding: '4px',
+                            minWidth: dropdownAnchor.type === 'status' ? '165px' : '150px',
+                            animation: dropdownDir === 'up' ? 'fadeInUp 0.15s ease-out' : 'fadeIn 0.15s ease-out',
+                        }}>
+                            {dropdownAnchor.type === 'status' && (
+                                Object.entries(ALTA_ESTADOS).map(([key, scfg]) => {
+                                    const alta = sortedAltas.find(a => a.id === dropdownAnchor.id);
+                                    if (!alta || key === 'Procesada') return null;
+                                    return (
+                                        <button
+                                            key={key}
+                                            onClick={e => {
+                                                e.stopPropagation();
+                                                handleEstadoChange(dropdownAnchor.id, key);
+                                            }}
+                                            disabled={processing}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '8px',
+                                                width: '100%', padding: '7px 12px',
+                                                border: 'none', borderRadius: '6px',
+                                                background: alta.estado === key ? scfg.bg : 'transparent',
+                                                color: scfg.color, cursor: 'pointer',
+                                                fontSize: '0.76rem', fontWeight: 600,
+                                                transition: 'background 0.1s',
+                                                textAlign: 'left',
+                                            }}
+                                            onMouseOver={e => e.currentTarget.style.background = scfg.bg}
+                                            onMouseOut={e => e.currentTarget.style.background = alta.estado === key ? scfg.bg : 'transparent'}
+                                        >
+                                            <span>{scfg.icon}</span>
+                                            <span>{scfg.label}</span>
+                                            {alta.estado === key && <span style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>✓</span>}
+                                        </button>
+                                    );
+                                })
+                            )}
+                            {dropdownAnchor.type === 'responsable' && (
+                                <>
+                                    <div style={{ padding: '6px 10px', fontSize: '0.65rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid #F3F4F6', marginBottom: '4px' }}>Asignar Responsable</div>
+                                    {/* Opción: quitar override */}
+                                    {(() => {
+                                        const alta = sortedAltas.find(a => a.id === dropdownAnchor.id);
+                                        if (alta?.responsable_override) {
+                                            return (
+                                                <button
+                                                    onClick={async e => {
+                                                        e.stopPropagation();
+                                                        try {
+                                                            await updateAltaResponsable(alta.id, null);
+                                                            addToast?.('Responsable vuelto a automático', 'success');
+                                                            setResponsableDropdownId(null);
+                                                            setDropdownAnchor(null);
+                                                            loadData();
+                                                        } catch (err) {
+                                                            addToast?.('Error: ' + err.message, 'error');
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                                        width: '100%', padding: '7px 12px',
+                                                        border: 'none', borderRadius: '6px',
+                                                        background: 'transparent', color: '#DC2626',
+                                                        cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600,
+                                                        textAlign: 'left',
+                                                    }}
+                                                    onMouseOver={e => e.currentTarget.style.background = '#FEF2F2'}
+                                                    onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                                                >
+                                                    <X size={13} /> Automático
+                                                </button>
+                                            );
+                                        }
+                                        return null;
+                                    })()}
+                                    {allResponsables.map(resp => {
+                                        const alta = sortedAltas.find(a => a.id === dropdownAnchor.id);
+                                        if (!alta) return null;
+                                        return (
+                                            <button
+                                                key={resp}
+                                                onClick={async e => {
+                                                    e.stopPropagation();
+                                                    try {
+                                                        await updateAltaResponsable(dropdownAnchor.id, resp);
+                                                        addToast?.(`Responsable → ${resp}`, 'success');
+                                                        setResponsableDropdownId(null);
+                                                        setDropdownAnchor(null);
+                                                        loadData();
+                                                    } catch (err) {
+                                                        addToast?.('Error: ' + err.message, 'error');
+                                                    }
+                                                }}
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', gap: '8px',
+                                                    width: '100%', padding: '7px 12px',
+                                                    border: 'none', borderRadius: '6px',
+                                                    background: alta._responsable === resp ? '#EFF6FF' : 'transparent',
+                                                    color: '#1E40AF', cursor: 'pointer',
+                                                    fontSize: '0.74rem', fontWeight: 600,
+                                                    transition: 'all 0.1s', textAlign: 'left',
+                                                }}
+                                                onMouseOver={e => e.currentTarget.style.background = '#EFF6FF'}
+                                                onMouseOut={e => e.currentTarget.style.background = alta._responsable === resp ? '#EFF6FF' : 'transparent'}
+                                            >
+                                                <span>{resp}</span>
+                                                {alta._responsable === resp && <span style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>✓</span>}
+                                            </button>
+                                        );
+                                    })}
+                                </>
+                            )}
+                        </div>
+                    </>,
+                    document.body
+                )
             )}
         </div>
     );

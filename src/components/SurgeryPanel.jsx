@@ -10,6 +10,7 @@
  *   - Modal de preview mejorado con columnas detectadas
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
     Upload, Search, Send, CheckCircle, AlertTriangle, XCircle,
     FileText, Eye, ArrowRight, RefreshCw, User, Calendar, Building2, Phone,
@@ -187,6 +188,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     // Expandable row
     const [expandedRowId, setExpandedRowId] = useState(null);
     const [statusDropdownId, setStatusDropdownId] = useState(null);
+    const [dropdownAnchor, setDropdownAnchor] = useState(null); // { id, rect }
     const [dropdownDir, setDropdownDir] = useState('down');
     const [customMessage, setCustomMessage] = useState('');
     const [sendingMessage, setSendingMessage] = useState(false);
@@ -964,11 +966,17 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                const spaceBelow = window.innerHeight - rect.bottom;
-                                const needed = 300; // Altura estimada del dropdown
-                                setDropdownDir(spaceBelow < needed ? 'up' : 'down');
-                                setStatusDropdownId(prev => prev === surgery.id ? null : surgery.id);
+                                if (statusDropdownId === surgery.id) {
+                                    setStatusDropdownId(null);
+                                    setDropdownAnchor(null);
+                                } else {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const spaceBelow = window.innerHeight - rect.bottom;
+                                    const needed = 300; // Altura estimada del dropdown
+                                    setDropdownDir(spaceBelow < needed ? 'up' : 'down');
+                                    setStatusDropdownId(surgery.id);
+                                    setDropdownAnchor({ id: surgery.id, rect });
+                                }
                             }}
                             style={{
                                 display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -1029,22 +1037,9 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                 </div>
                             );
                         })()}
-                        {statusDropdownId === surgery.id && (
-                            <>
-                                <div
-                                    onClick={(e) => { e.stopPropagation(); setStatusDropdownId(null); }}
-                                    style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 999 }}
-                                />
-                                <div style={{
-                                    position: 'absolute',
-                                    ...(dropdownDir === 'down' ? { top: '100%', marginTop: '4px' } : { bottom: '100%', marginBottom: '4px' }),
-                                    left: 0,
-                                    zIndex: 1000,
-                                    background: '#fff', borderRadius: '10px',
-                                    boxShadow: '0 8px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
-                                    padding: '4px', minWidth: '150px',
-                                    animation: dropdownDir === 'down' ? 'fadeIn 0.15s ease-out' : 'fadeInUp 0.15s ease-out',
-                                }}>
+                        </button>
+                    </div>
+                </td>
                                     {Object.entries(STATUS_CONFIG)
                                         .filter(([key]) => !['realizada', 'suspendida'].includes(key))
                                         .map(([key, scfg]) => (
@@ -2737,6 +2732,65 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 }}
                 addToast={addToast}
             />
+        </div>
+
+            {/* ── Dropdown Portals ── */}
+            {dropdownAnchor && (
+                createPortal(
+                    <>
+                        <div
+                            onClick={(e) => { e.stopPropagation(); setStatusDropdownId(null); setDropdownAnchor(null); }}
+                            style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 9998 }}
+                        />
+                        <div style={{
+                            position: 'fixed',
+                            [dropdownDir === 'up' ? 'bottom' : 'top']: dropdownDir === 'up' ? (window.innerHeight - dropdownAnchor.rect.top + 4) : (dropdownAnchor.rect.bottom + 4),
+                            left: dropdownAnchor.rect.left,
+                            zIndex: 9999,
+                            background: '#fff',
+                            borderRadius: '10px',
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
+                            padding: '4px',
+                            minWidth: '160px',
+                            animation: dropdownDir === 'up' ? 'fadeInUp 0.15s ease-out' : 'fadeIn 0.15s ease-out',
+                        }}>
+                            {(() => {
+                                const surgery = surgeries.find(s => s.id === dropdownAnchor.id);
+                                if (!surgery) return null;
+                                return Object.entries(STATUS_CONFIG)
+                                    .filter(([key]) => !['realizada', 'suspendida'].includes(key))
+                                    .map(([key, scfg]) => (
+                                        <button
+                                            key={key}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleAction(key, surgery);
+                                                setStatusDropdownId(null);
+                                                setDropdownAnchor(null);
+                                            }}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '8px',
+                                                width: '100%', padding: '7px 12px',
+                                                border: 'none', borderRadius: '6px',
+                                                background: surgery.status === key ? scfg.bg : 'transparent',
+                                                color: scfg.color, cursor: 'pointer',
+                                                fontSize: '0.76rem', fontWeight: 600,
+                                                transition: 'background 0.1s', textAlign: 'left',
+                                            }}
+                                            onMouseOver={e => e.currentTarget.style.background = scfg.bg}
+                                            onMouseOut={e => e.currentTarget.style.background = surgery.status === key ? scfg.bg : 'transparent'}
+                                        >
+                                            <span>{scfg.icon}</span>
+                                            <span>{scfg.label}</span>
+                                            {surgery.status === key && <span style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>✓</span>}
+                                        </button>
+                                    ));
+                            })()}
+                        </div>
+                    </>,
+                    document.body
+                )
+            )}
         </div>
     );
 }
