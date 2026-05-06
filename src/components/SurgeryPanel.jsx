@@ -1037,40 +1037,6 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                 </div>
                             );
                         })()}
-                        </button>
-                    </div>
-                </td>
-                                    {Object.entries(STATUS_CONFIG)
-                                        .filter(([key]) => !['realizada', 'suspendida'].includes(key))
-                                        .map(([key, scfg]) => (
-                                            <button
-                                                key={key}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleManualChange(surgery.id, key);
-                                                    setStatusDropdownId(null);
-                                                }}
-                                                style={{
-                                                    display: 'flex', alignItems: 'center', gap: '8px',
-                                                    width: '100%', padding: '7px 12px',
-                                                    border: 'none', borderRadius: '6px',
-                                                    background: effectiveStatus === key ? `${scfg.bg}` : 'transparent',
-                                                    color: scfg.color, cursor: 'pointer',
-                                                    fontSize: '0.78rem', fontWeight: 600,
-                                                    transition: 'background 0.1s',
-                                                    textAlign: 'left',
-                                                }}
-                                                onMouseOver={e => e.currentTarget.style.background = scfg.bg}
-                                                onMouseOut={e => e.currentTarget.style.background = effectiveStatus === key ? scfg.bg : 'transparent'}
-                                            >
-                                                <span>{scfg.icon}</span>
-                                                <span>{scfg.label}</span>
-                                                {effectiveStatus === key && <span style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>✓</span>}
-                                            </button>
-                                        ))}
-                                </div>
-                            </>
-                        )}
                     </div>
                 </td>
                 {/* Patient */}

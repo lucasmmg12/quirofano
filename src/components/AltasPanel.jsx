@@ -948,7 +948,6 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                             {alta._responsable || '—'}
                                                             <ChevronDown size={10} />
                                                         </button>
-                                                        </button>
                                                     </div>
                                                 ) : (
                                                     alta._responsable ? (
