@@ -37,6 +37,7 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [expandedId, setExpandedId] = useState(null);
     const [statusDropdownId, setStatusDropdownId] = useState(null);
     const [responsableDropdownId, setResponsableDropdownId] = useState(null);
+    const [dropdownDir, setDropdownDir] = useState('down'); // 'down' | 'up'
     const [processing, setProcessing] = useState(false);
 
     // Filtros
@@ -825,7 +826,14 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                     <button
                                                         onClick={e => {
                                                             e.stopPropagation();
-                                                            setStatusDropdownId(prev => prev === alta.id ? null : alta.id);
+                                                            if (statusDropdownId === alta.id) {
+                                                                setStatusDropdownId(null);
+                                                            } else {
+                                                                const rect = e.currentTarget.getBoundingClientRect();
+                                                                const spaceBelow = window.innerHeight - rect.bottom;
+                                                                setDropdownDir(spaceBelow < 280 ? 'up' : 'down');
+                                                                setStatusDropdownId(alta.id);
+                                                            }
                                                         }}
                                                         style={{
                                                             display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -867,12 +875,16 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                                 style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 999 }}
                                                             />
                                                             <div style={{
-                                                                position: 'absolute', top: '100%', left: 0,
-                                                                marginTop: '4px', zIndex: 1000,
+                                                                position: 'absolute', 
+                                                                [dropdownDir === 'up' ? 'bottom' : 'top']: '100%', 
+                                                                left: 0,
+                                                                marginTop: dropdownDir === 'up' ? '0' : '4px',
+                                                                marginBottom: dropdownDir === 'up' ? '4px' : '0',
+                                                                zIndex: 1000,
                                                                 background: '#fff', borderRadius: '10px',
                                                                 boxShadow: '0 8px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
                                                                 padding: '4px', minWidth: '165px',
-                                                                animation: 'fadeIn 0.15s ease-out',
+                                                                animation: dropdownDir === 'up' ? 'fadeInUp 0.15s ease-out' : 'fadeIn 0.15s ease-out',
                                                             }}>
                                                                 {Object.entries(ALTA_ESTADOS).map(([key, scfg]) => {
                                                                     if (key === 'Procesada') return null; // 'Procesada' ya no se usa
@@ -954,7 +966,14 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                         <button
                                                             onClick={e => {
                                                                 e.stopPropagation();
-                                                                setResponsableDropdownId(prev => prev === alta.id ? null : alta.id);
+                                                                if (responsableDropdownId === alta.id) {
+                                                                    setResponsableDropdownId(null);
+                                                                } else {
+                                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                                    const spaceBelow = window.innerHeight - rect.bottom;
+                                                                    setDropdownDir(spaceBelow < 280 ? 'up' : 'down');
+                                                                    setResponsableDropdownId(alta.id);
+                                                                }
                                                             }}
                                                             style={{
                                                                 display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -980,12 +999,16 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                                     style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 999 }}
                                                                 />
                                                                 <div style={{
-                                                                    position: 'absolute', top: '100%', right: 0,
-                                                                    marginTop: '4px', zIndex: 1000,
+                                                                    position: 'absolute', 
+                                                                    [dropdownDir === 'up' ? 'bottom' : 'top']: '100%', 
+                                                                    right: 0,
+                                                                    marginTop: dropdownDir === 'up' ? '0' : '4px',
+                                                                    marginBottom: dropdownDir === 'up' ? '4px' : '0',
+                                                                    zIndex: 1000,
                                                                     background: '#fff', borderRadius: '10px',
                                                                     boxShadow: '0 8px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
                                                                     padding: '4px', minWidth: '140px',
-                                                                    animation: 'fadeIn 0.15s ease-out',
+                                                                    animation: dropdownDir === 'up' ? 'fadeInUp 0.15s ease-out' : 'fadeIn 0.15s ease-out',
                                                                     maxHeight: '250px', overflowY: 'auto',
                                                                 }}>
                                                                     {/* Opción: quitar override */}

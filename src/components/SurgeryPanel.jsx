@@ -187,6 +187,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     // Expandable row
     const [expandedRowId, setExpandedRowId] = useState(null);
     const [statusDropdownId, setStatusDropdownId] = useState(null);
+    const [dropdownDir, setDropdownDir] = useState('down');
     const [customMessage, setCustomMessage] = useState('');
     const [sendingMessage, setSendingMessage] = useState(false);
 
@@ -963,6 +964,10 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const spaceBelow = window.innerHeight - rect.bottom;
+                                const needed = 300; // Altura estimada del dropdown
+                                setDropdownDir(spaceBelow < needed ? 'up' : 'down');
                                 setStatusDropdownId(prev => prev === surgery.id ? null : surgery.id);
                             }}
                             style={{
@@ -1031,12 +1036,14 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                     style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 999 }}
                                 />
                                 <div style={{
-                                    position: 'absolute', top: '100%', left: 0,
-                                    marginTop: '4px', zIndex: 1000,
+                                    position: 'absolute',
+                                    ...(dropdownDir === 'down' ? { top: '100%', marginTop: '4px' } : { bottom: '100%', marginBottom: '4px' }),
+                                    left: 0,
+                                    zIndex: 1000,
                                     background: '#fff', borderRadius: '10px',
                                     boxShadow: '0 8px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
                                     padding: '4px', minWidth: '150px',
-                                    animation: 'fadeIn 0.15s ease-out',
+                                    animation: dropdownDir === 'down' ? 'fadeIn 0.15s ease-out' : 'fadeInUp 0.15s ease-out',
                                 }}>
                                     {Object.entries(STATUS_CONFIG)
                                         .filter(([key]) => !['realizada', 'suspendida'].includes(key))
