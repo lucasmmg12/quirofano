@@ -1109,8 +1109,6 @@ export default function AltasPanel({ addToast, currentUser }) {
                 )}
             </div>
         </>
-            )}
-        </div>
             {/* ── Dropdown Portals ── */}
             {dropdownAnchor && (
                 createPortal(
