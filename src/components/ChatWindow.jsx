@@ -458,6 +458,14 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
         // Variables de Presupuesto
         result = result.replace(/\{presupuesto_total\}/gi, patientContext.presupuestoTotal || '');
 
+        // Variables de Deuda
+        result = result.replace(/\{deuda_total\}/gi, patientContext.deudaTotal || ''); // backward compatibility
+        result = result.replace(/\{factura_pendiente\}/gi, patientContext.deudaTotal || '');
+        result = result.replace(/\{cantidad_facturas\}/gi, patientContext.cantidadFacturas || ''); // backward compatibility
+        result = result.replace(/\{fecha_ultima_factura\}/gi, formatFechaCirugia(patientContext.fechaUltimaFactura)); // backward compatibility
+        result = result.replace(/\{fecha_factura_pendiente\}/gi, formatFechaCirugia(patientContext.fechaUltimaFactura));
+        result = result.replace(/\{nhc\}/gi, patientContext.nhc || ''); // backward compatibility
+
         return result;
     }, [patientContext]);
 

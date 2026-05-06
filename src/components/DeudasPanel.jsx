@@ -1522,6 +1522,12 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         }}
                         patientName={selectedDeudor.nombre}
                         patientPhone={selectedDeudor.telefono}
+                        patientContext={{
+                            deudaTotal: formatMoney(selectedDeudor.deuda_total),
+                            cantidadFacturas: selectedDeudor.cantidad_facturas,
+                            fechaUltimaFactura: selectedDeudor.fecha_ultima_factura,
+                            nhc: selectedDeudor.nhc
+                        }}
                         addToast={addToast}
                     />
                 )}

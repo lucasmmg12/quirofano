@@ -28,10 +28,9 @@ const AVAILABLE_VARIABLES = [
     { key: '{fecha_cirugia}', label: 'Fecha de Cirugía', icon: '📅', color: '#F59E0B', group: 'Fechas' },
     { key: '{fecha_hoy}', label: 'Fecha de Hoy', icon: '🗓️', color: '#F59E0B', group: 'Fechas' },
     { key: '{presupuesto_total}', label: 'Presupuesto Total', icon: '💰', color: '#22C55E', group: 'Presupuesto' },
-    { key: '{deuda_total}', label: 'Deuda Total', icon: '💸', color: '#DC2626', group: 'Deuda' },
-    { key: '{cantidad_facturas}', label: 'Cant. Facturas', icon: '🧾', color: '#DC2626', group: 'Deuda' },
-    { key: '{fecha_ultima_factura}', label: 'Últ. Factura', icon: '📆', color: '#DC2626', group: 'Deuda' },
-    { key: '{nhc}', label: 'N° Historia Clínica', icon: '🏷️', color: '#DC2626', group: 'Deuda' },
+    { key: '{paciente}', label: 'Paciente', icon: '👤', color: '#DC2626', group: 'Deuda' },
+    { key: '{factura_pendiente}', label: 'Factura pendiente', icon: '💸', color: '#DC2626', group: 'Deuda' },
+    { key: '{fecha_factura_pendiente}', label: 'Fecha de factura pendiente', icon: '📆', color: '#DC2626', group: 'Deuda' },
 ];
 
 // Datos de ejemplo para el preview
@@ -45,10 +44,9 @@ const PREVIEW_DATA = {
     '{fecha_cirugia}': '15/03/2026',
     '{fecha_hoy}': new Date().toLocaleDateString('es-AR'),
     '{presupuesto_total}': '$350.000',
-    '{deuda_total}': '$633.855',
-    '{cantidad_facturas}': '3',
-    '{fecha_ultima_factura}': '06/04/2026',
-    '{nhc}': '92764',
+    '{paciente}': 'María González',
+    '{factura_pendiente}': '$633.855',
+    '{fecha_factura_pendiente}': '06/04/2026',
 };
 
 // Categorías predefinidas
