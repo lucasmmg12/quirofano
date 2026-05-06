@@ -2698,7 +2698,6 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 }}
                 addToast={addToast}
             />
-        </div>
 
             {/* ── Dropdown Portals ── */}
             {dropdownAnchor && (
