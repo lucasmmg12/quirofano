@@ -23,6 +23,7 @@ import {
 import { parseDeudaExcel } from '../utils/deudaExcelParser';
 import { subscribeToAllIncoming } from '../services/chatService';
 import ChatWindow from './ChatWindow';
+import * as XLSX from 'xlsx';
 
 const VIEWS = { LIST: 'list', DETAIL: 'detail' };
 
@@ -381,21 +382,24 @@ export default function DeudasPanel({ addToast, currentUser }) {
         const rows = deudores.map(d => {
             const cat = CATEGORIAS_DEUDOR[d.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
             return [
-                d.nombre, d.nhc, d.telefono || '', Number(d.deuda_total).toFixed(2),
-                d.cantidad_facturas, cat.label, d.obra_social || 'Sin datos',
+                d.nombre, 
+                d.nhc, 
+                d.telefono || '', 
+                Number(d.deuda_total),
+                d.cantidad_facturas, 
+                cat.label, 
+                d.obra_social || 'Sin datos',
                 d.fecha_ultima_factura ? new Date(d.fecha_ultima_factura).toLocaleDateString('es-AR') : '',
                 d.ultimo_contacto_at ? new Date(d.ultimo_contacto_at).toLocaleDateString('es-AR') : '',
-            ].join(';');
+            ];
         });
-        const csv = '\uFEFF' + headers.join(';') + '\n' + rows.join('\n');
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `deudas_pacientes_${new Date().toISOString().split('T')[0]}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
-        addToast?.(`${deudores.length} registros exportados a Excel`, 'success');
+
+        const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Deudores");
+        
+        XLSX.writeFile(workbook, `deudas_pacientes_${new Date().toISOString().split('T')[0]}.xlsx`);
+        addToast?.(`${deudores.length} registros exportados a Excel (XLSX)`, 'success');
     }, [deudores, addToast]);
 
     const exportToPDF = useCallback(() => {
