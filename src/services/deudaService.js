@@ -425,12 +425,38 @@ export async function fetchMetricasDeudas() {
 
     const top10 = all.slice(0, 10);
 
-    // Contactados vs sin contactar
-    const contactados = all.filter(p => p.ultimo_contacto_at).length;
-    const sinContactar = total - contactados;
+    // ─── Contactados y Respondieron: cruzar con whatsapp_messages ───
+    // Obtener teléfonos únicos de deudores que tienen teléfono
+    const telefonosDeudores = [...new Set(all.filter(p => p.telefono).map(p => p.telefono))];
 
-    // Respondieron
-    const respondieron = all.filter(p => p.ultima_respuesta_at).length;
+    let contactados = 0;
+    let respondieron = 0;
+
+    if (telefonosDeudores.length > 0) {
+        // Buscar teléfonos que tienen al menos 1 mensaje outgoing (contactados)
+        const { data: outPhones } = await supabase
+            .from('whatsapp_messages')
+            .select('phone')
+            .in('phone', telefonosDeudores)
+            .eq('direction', 'outgoing')
+            .limit(5000);
+
+        const phonesContactados = new Set((outPhones || []).map(m => m.phone));
+        contactados = phonesContactados.size;
+
+        // Buscar teléfonos que tienen al menos 1 mensaje incoming (respondieron)
+        const { data: inPhones } = await supabase
+            .from('whatsapp_messages')
+            .select('phone')
+            .in('phone', telefonosDeudores)
+            .eq('direction', 'incoming')
+            .limit(5000);
+
+        const phonesRespondieron = new Set((inPhones || []).map(m => m.phone));
+        respondieron = phonesRespondieron.size;
+    }
+
+    const sinContactar = total - contactados;
 
     // Derivados
     const promedioPorPaciente = total > 0 ? deudaTotal / total : 0;
