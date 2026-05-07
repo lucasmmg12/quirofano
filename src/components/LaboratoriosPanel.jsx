@@ -68,6 +68,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterModulo, setFilterModulo] = useState('all');
     const [filterLaboratorio, setFilterLaboratorio] = useState('all');
+    const [filterObraSocial, setFilterObraSocial] = useState('all');
     const [expandedRow, setExpandedRow] = useState(null);
 
     // Filtro por mes (default: mes actual)
@@ -169,6 +170,11 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
         return Array.from(unique).sort();
     }, [records]);
 
+    const obrasSocialesUnicas = useMemo(() => {
+        const unique = new Set(records.map(r => r.cliente).filter(Boolean));
+        return Array.from(unique).sort();
+    }, [records]);
+
     const filteredRecords = useMemo(() => {
         return records.filter(r => {
             const matchSearch = searchTerm === '' ||
@@ -182,9 +188,10 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 (filterModulo === 'assigned' && isAssigned) ||
                 r.modulo_asignado === filterModulo;
             const matchLab = filterLaboratorio === 'all' || r.laboratorio === filterLaboratorio;
-            return matchSearch && matchFilter && matchLab;
+            const matchOS = filterObraSocial === 'all' || r.cliente === filterObraSocial;
+            return matchSearch && matchFilter && matchLab && matchOS;
         });
-    }, [records, searchTerm, filterModulo, filterLaboratorio]);
+    }, [records, searchTerm, filterModulo, filterLaboratorio, filterObraSocial]);
 
     // Carrito stats
     const carritoStats = useMemo(() => {
@@ -854,6 +861,11 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                     style={{ padding: '10px 32px 10px 12px', borderRadius: '8px', border: '1px solid var(--neutral-200)', fontSize: '0.85rem', background: '#fff', cursor: 'pointer', outline: 'none' }}>
                                     <option value="all">Todos los Laboratorios</option>
                                     {laboratoriosUnicos.map(l => <option key={l} value={l}>{l}</option>)}
+                                </select>
+                                <select value={filterObraSocial} onChange={e => setFilterObraSocial(e.target.value)}
+                                    style={{ padding: '10px 32px 10px 12px', borderRadius: '8px', border: '1px solid var(--neutral-200)', fontSize: '0.85rem', background: '#fff', cursor: 'pointer', outline: 'none' }}>
+                                    <option value="all">Todas las O.S.</option>
+                                    {obrasSocialesUnicas.map(os => <option key={os} value={os}>{os}</option>)}
                                 </select>
                                 <select value={filterModulo} onChange={e => setFilterModulo(e.target.value)}
                                     style={{ padding: '10px 32px 10px 12px', borderRadius: '8px', border: '1px solid var(--neutral-200)', fontSize: '0.85rem', background: '#fff', cursor: 'pointer', outline: 'none' }}>

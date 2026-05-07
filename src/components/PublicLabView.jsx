@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
-import { Microscope, Search, RefreshCw, FileText, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { Microscope, Search, RefreshCw, FileText, Download, ChevronDown, ChevronUp, Filter, Calendar } from 'lucide-react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -11,6 +11,8 @@ export default function PublicLabView({ labName }) {
     const [loading, setLoading] = useState(true);
     const [records, setRecords] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
+    const [filterFecha, setFilterFecha] = useState('all');
+    const [filterOS, setFilterOS] = useState('all');
     const [expandedRow, setExpandedRow] = useState(null);
 
     useEffect(() => {
@@ -143,14 +145,50 @@ export default function PublicLabView({ labName }) {
 
     const MODULOS = ['Módulo A', 'Módulo B', 'Módulo C'];
 
+    // Unique values for filters
+    const fechasUnicas = useMemo(() => {
+        const months = new Set();
+        records.forEach(r => {
+            if (r.fecha_visita) {
+                const d = new Date(r.fecha_visita);
+                const label = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+                months.add(label.charAt(0).toUpperCase() + label.slice(1));
+            }
+        });
+        return Array.from(months);
+    }, [records]);
+
+    const obrasSocialesUnicas = useMemo(() => {
+        const unique = new Set(records.map(r => r.cliente).filter(Boolean));
+        return Array.from(unique).sort();
+    }, [records]);
+
     const filteredRecords = useMemo(() => {
-        if (!searchTerm) return records;
-        const lower = searchTerm.toLowerCase();
-        return records.filter(r => 
-            (r.paciente?.toLowerCase() || '').includes(lower) ||
-            (r.dni?.toLowerCase() || '').includes(lower)
-        );
-    }, [records, searchTerm]);
+        return records.filter(r => {
+            // Search filter
+            if (searchTerm) {
+                const lower = searchTerm.toLowerCase();
+                const matchSearch = (r.paciente?.toLowerCase() || '').includes(lower) ||
+                    (r.dni?.toLowerCase() || '').includes(lower) ||
+                    (r.cliente?.toLowerCase() || '').includes(lower);
+                if (!matchSearch) return false;
+            }
+            // Date filter (by month)
+            if (filterFecha !== 'all' && r.fecha_visita) {
+                const d = new Date(r.fecha_visita);
+                const label = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+                const formatted = label.charAt(0).toUpperCase() + label.slice(1);
+                if (formatted !== filterFecha) return false;
+            }
+            // Obra Social filter
+            if (filterOS !== 'all' && r.cliente !== filterOS) return false;
+            return true;
+        }).sort((a, b) => {
+            const fa = a.fecha_visita || '';
+            const fb = b.fecha_visita || '';
+            return fb.localeCompare(fa);
+        });
+    }, [records, searchTerm, filterFecha, filterOS]);
 
     const renderBiopsies = (r) => {
         return (
@@ -275,17 +313,29 @@ export default function PublicLabView({ labName }) {
                         </div>
 
                         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div style={{ position: 'relative', width: '320px', maxWidth: '100%' }}>
-                                <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
-                                <input 
-                                    type="text" 
-                                    placeholder="Buscar paciente o DNI..." 
-                                    value={searchTerm}
-                                    onChange={e => setSearchTerm(e.target.value)}
-                                    style={{ width: '100%', padding: '10px 16px 10px 42px', borderRadius: '10px', border: '1.5px solid #E2E8F0', outline: 'none', transition: 'all 0.2s', fontSize: '0.9rem' }}
-                                    onFocus={(e) => { e.target.style.borderColor = '#1E4078'; e.target.style.boxShadow = '0 0 0 3px rgba(30,64,120,0.1)'; }}
-                                    onBlur={(e) => { e.target.style.borderColor = '#E2E8F0'; e.target.style.boxShadow = 'none'; }}
-                                />
+                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', flex: 1 }}>
+                                <div style={{ position: 'relative', width: '260px', maxWidth: '100%' }}>
+                                    <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                                    <input 
+                                        type="text" 
+                                        placeholder="Buscar paciente, DNI u O.S..." 
+                                        value={searchTerm}
+                                        onChange={e => setSearchTerm(e.target.value)}
+                                        style={{ width: '100%', padding: '10px 16px 10px 42px', borderRadius: '10px', border: '1.5px solid #E2E8F0', outline: 'none', transition: 'all 0.2s', fontSize: '0.9rem' }}
+                                        onFocus={(e) => { e.target.style.borderColor = '#1E4078'; e.target.style.boxShadow = '0 0 0 3px rgba(30,64,120,0.1)'; }}
+                                        onBlur={(e) => { e.target.style.borderColor = '#E2E8F0'; e.target.style.boxShadow = 'none'; }}
+                                    />
+                                </div>
+                                <select value={filterFecha} onChange={e => setFilterFecha(e.target.value)}
+                                    style={{ padding: '10px 32px 10px 12px', borderRadius: '10px', border: '1.5px solid #E2E8F0', fontSize: '0.85rem', background: '#fff', cursor: 'pointer', outline: 'none', color: '#334155', fontWeight: 500 }}>
+                                    <option value="all">Todas las fechas</option>
+                                    {fechasUnicas.map(f => <option key={f} value={f}>{f}</option>)}
+                                </select>
+                                <select value={filterOS} onChange={e => setFilterOS(e.target.value)}
+                                    style={{ padding: '10px 32px 10px 12px', borderRadius: '10px', border: '1.5px solid #E2E8F0', fontSize: '0.85rem', background: '#fff', cursor: 'pointer', outline: 'none', color: '#334155', fontWeight: 500 }}>
+                                    <option value="all">Todas las coberturas</option>
+                                    {obrasSocialesUnicas.map(os => <option key={os} value={os}>{os}</option>)}
+                                </select>
                             </div>
                             <div style={{ display: 'flex', gap: '8px' }}>
                                 <button onClick={exportToPDF} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', color: '#DC2626', border: '1px solid #FECACA', padding: '8px 16px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'background 0.2s' }} onMouseOver={e=>e.currentTarget.style.background='#FEF2F2'} onMouseOut={e=>e.currentTarget.style.background='#fff'}>

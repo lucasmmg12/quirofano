@@ -603,6 +603,11 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                 if (cellValue !== val) return false;
             }
             return true;
+        }).sort((a, b) => {
+            // Ordenar por fecha descendente (más reciente primero)
+            const fa = a.fecha_realizacion || '';
+            const fb = b.fecha_realizacion || '';
+            return fb.localeCompare(fa);
         });
     }, [pendientesCirugias, columnFilters]);
 
