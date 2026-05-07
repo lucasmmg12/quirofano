@@ -685,7 +685,7 @@ async function syncDeudas(db) {
 }
 
 // ═══════════════════════════════════════════════════
-// SYNC COBROS — SQL Server -> Supabase
+// SYNC COBROS — SQL Server -> Supabase (BATCH)
 // ═══════════════════════════════════════════════════
 async function syncCobros(db) {
     console.log('💰 [3b/10] Extrayendo cobros de SALUS...');
@@ -704,8 +704,16 @@ async function syncCobros(db) {
     `);
     console.log('   ' + result.recordset.length + ' cobros extraidos');
 
+    // Prefetch: NHC -> paciente_id (una sola query)
+    const { data: allPacientes } = await supabase
+        .from('deudas_pacientes').select('id, nhc');
+    const nhcMap = {};
+    for (const p of (allPacientes || [])) nhcMap[p.nhc] = p.id;
+
+    // Preparar registros y acumular totales por NHC
     const porNhc = {};
-    let cobrosUpserted = 0;
+    const rows = [];
+    const now = new Date().toISOString();
 
     for (const r of result.recordset) {
         const nhc = r.Paciente_NHC ? String(r.Paciente_NHC).trim() : '';
@@ -721,16 +729,13 @@ async function syncCobros(db) {
             if (parts.length === 3) fechaParsed = parts[2] + '-' + parts[1] + '-' + parts[0];
         }
 
-        if (!porNhc[nhc]) {
-            const { data: pac } = await supabase
-                .from('deudas_pacientes').select('id').eq('nhc', nhc).maybeSingle();
-            porNhc[nhc] = { pacienteId: pac?.id || null, total: 0, count: 0 };
-        }
+        const pacienteId = nhcMap[nhc] || null;
+        if (!porNhc[nhc]) porNhc[nhc] = { pacienteId, total: 0, count: 0 };
         porNhc[nhc].total += importe;
         porNhc[nhc].count++;
 
-        const { error } = await supabase.from('deudas_cobros').upsert({
-            paciente_id: porNhc[nhc].pacienteId, nhc, id_cobro: idCobro,
+        rows.push({
+            paciente_id: pacienteId, nhc, id_cobro: idCobro,
             nombre: r.nombre || null, nombre_fiscal: r.nombreFiscal || null,
             nif: r.NIF || null, descripcion: r.descripcion || null, importe,
             comentario: r.comentario || null, fecha: fechaParsed,
@@ -738,11 +743,23 @@ async function syncCobros(db) {
             centro: r.Centro_Nombre || null, paciente_nombre: r.Paciente || null,
             forma_pago: r.FormaPago || null, caja: r.Caja || null,
             clasificacion: r.Clasificacion || null, usuario_cobro: r.UsuarioCobro || null,
-            updated_at: new Date().toISOString(),
-        }, { onConflict: 'id_cobro' });
-        if (!error) cobrosUpserted++;
+            updated_at: now,
+        });
     }
 
+    // Batch upsert en lotes de 500
+    const BATCH = 500;
+    let cobrosUpserted = 0;
+    for (let i = 0; i < rows.length; i += BATCH) {
+        const batch = rows.slice(i, i + BATCH);
+        const { error } = await supabase.from('deudas_cobros')
+            .upsert(batch, { onConflict: 'id_cobro' });
+        if (!error) cobrosUpserted += batch.length;
+        else console.error('   Error batch cobros ' + i + ': ' + error.message);
+    }
+    console.log('   ' + cobrosUpserted + '/' + rows.length + ' cobros upserted en ' + Math.ceil(rows.length / BATCH) + ' batches');
+
+    // Actualizar totales por paciente
     let pacientesActualizados = 0;
     for (const [nhc, data] of Object.entries(porNhc)) {
         if (!data.pacienteId) continue;
@@ -753,17 +770,17 @@ async function syncCobros(db) {
         await supabase.from('deudas_pacientes').update({
             total_cobros: data.total, cantidad_cobros: data.count,
             balance_neto: deudaTotal - data.total - totalNC,
-            updated_at: new Date().toISOString(),
+            updated_at: now,
         }).eq('id', data.pacienteId);
         pacientesActualizados++;
     }
 
-    console.log('   Cobros: ' + cobrosUpserted + ' upserted, ' + pacientesActualizados + ' pacientes actualizados');
+    console.log('   Cobros OK: ' + pacientesActualizados + ' pacientes actualizados');
     return { total: result.recordset.length, cobrosUpserted, pacientesActualizados };
 }
 
 // ═══════════════════════════════════════════════════
-// SYNC NOTAS DE CREDITO — SQL Server -> Supabase
+// SYNC NOTAS DE CREDITO — SQL Server -> Supabase (BATCH)
 // ═══════════════════════════════════════════════════
 async function syncNotasCredito(db) {
     console.log('📝 [3c/10] Extrayendo notas de credito de SALUS...');
@@ -789,8 +806,15 @@ async function syncNotasCredito(db) {
     `);
     console.log('   ' + result.recordset.length + ' notas de credito extraidas');
 
+    // Prefetch: NHC -> paciente_id
+    const { data: allPacientes } = await supabase
+        .from('deudas_pacientes').select('id, nhc');
+    const nhcMap = {};
+    for (const p of (allPacientes || [])) nhcMap[p.nhc] = p.id;
+
     const porNhc = {};
-    let ncUpserted = 0;
+    const rows = [];
+    const now = new Date().toISOString();
 
     for (const r of result.recordset) {
         const nhc = r.Paciente_NHC ? String(r.Paciente_NHC).trim() : '';
@@ -806,26 +830,35 @@ async function syncNotasCredito(db) {
             if (parts.length === 3) fechaParsed = parts[2] + '-' + parts[1] + '-' + parts[0];
         }
 
-        if (!porNhc[nhc]) {
-            const { data: pac } = await supabase
-                .from('deudas_pacientes').select('id').eq('nhc', nhc).maybeSingle();
-            porNhc[nhc] = { pacienteId: pac?.id || null, total: 0, count: 0 };
-        }
+        const pacienteId = nhcMap[nhc] || null;
+        if (!porNhc[nhc]) porNhc[nhc] = { pacienteId, total: 0, count: 0 };
         porNhc[nhc].total += importe;
         porNhc[nhc].count++;
 
-        const { error } = await supabase.from('deudas_notas_credito').upsert({
-            paciente_id: porNhc[nhc].pacienteId, nhc, id_factura: idFactura,
+        rows.push({
+            paciente_id: pacienteId, nhc, id_factura: idFactura,
             fecha: fechaParsed, paciente_nombre: r.Paciente_Nombre || null,
             descripcion: r.descripcion || null,
             id_paciente_salus: r.idPaciente ? String(r.idPaciente) : null,
             centro: r.Centro_Alias || null, nif: r.Paciente_NIF || null,
             nombre_serie: r.NombreSerie || null, importe_total: importe,
-            updated_at: new Date().toISOString(),
-        }, { onConflict: 'id_factura' });
-        if (!error) ncUpserted++;
+            updated_at: now,
+        });
     }
 
+    // Batch upsert en lotes de 500
+    const BATCH = 500;
+    let ncUpserted = 0;
+    for (let i = 0; i < rows.length; i += BATCH) {
+        const batch = rows.slice(i, i + BATCH);
+        const { error } = await supabase.from('deudas_notas_credito')
+            .upsert(batch, { onConflict: 'id_factura' });
+        if (!error) ncUpserted += batch.length;
+        else console.error('   Error batch NC ' + i + ': ' + error.message);
+    }
+    console.log('   ' + ncUpserted + '/' + rows.length + ' NC upserted en ' + Math.ceil(rows.length / BATCH) + ' batches');
+
+    // Actualizar totales por paciente
     let pacientesActualizados = 0;
     for (const [nhc, data] of Object.entries(porNhc)) {
         if (!data.pacienteId) continue;
@@ -836,12 +869,12 @@ async function syncNotasCredito(db) {
         await supabase.from('deudas_pacientes').update({
             total_notas_credito: data.total, cantidad_notas_credito: data.count,
             balance_neto: deudaTotal - totalCobros - data.total,
-            updated_at: new Date().toISOString(),
+            updated_at: now,
         }).eq('id', data.pacienteId);
         pacientesActualizados++;
     }
 
-    console.log('   NC: ' + ncUpserted + ' upserted, ' + pacientesActualizados + ' pacientes actualizados');
+    console.log('   NC OK: ' + pacientesActualizados + ' pacientes actualizados');
     return { total: result.recordset.length, ncUpserted, pacientesActualizados };
 }
 
