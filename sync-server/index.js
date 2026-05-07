@@ -1304,7 +1304,7 @@ async function syncAsociacionesCirugias(db) {
 
     const result = await db.request().query(`
         SELECT 
-            RIGHT(LEFT([Fecha realización], 10), 4) + '-' + SUBSTRING(LEFT([Fecha realización], 10), 4, 2) + '-' + LEFT([Fecha realización], 2) AS [Fecha realización],
+            CONVERT(VARCHAR(10), TRY_CONVERT(DATE, LEFT([Fecha realización], 10), 103), 23) AS [Fecha realización],
             [Nombre Paciente],
             [Cliente],
             [DNI],
@@ -1315,7 +1315,8 @@ async function syncAsociacionesCirugias(db) {
         FROM [SALUS].[dbo].[TABLEAU_Cirugias]
         WHERE 
             LEN([Fecha realización]) >= 10 
-            AND (RIGHT(LEFT([Fecha realización], 10), 4) + SUBSTRING(LEFT([Fecha realización], 10), 4, 2) + LEFT([Fecha realización], 2)) >= '20260301'
+            AND TRY_CONVERT(DATE, LEFT([Fecha realización], 10), 103) >= '2026-03-01'
+            AND TRY_CONVERT(DATE, LEFT([Fecha realización], 10), 103) IS NOT NULL
             AND [Especialidad] IN (
                 'CIRUGIA', 
                 'OTORRINOLARINGOLOGIA', 
@@ -1337,7 +1338,7 @@ async function syncAsociacionesCirugias(db) {
                 'Finalizada',
                 'Finalizado'
             )
-        ORDER BY RIGHT(LEFT([Fecha realización], 10), 4) + SUBSTRING(LEFT([Fecha realización], 10), 4, 2) + LEFT([Fecha realización], 2) ASC
+        ORDER BY TRY_CONVERT(DATE, LEFT([Fecha realización], 10), 103) ASC
     `);
     console.log(`   📥 ${result.recordset.length} registros extraídos`);
 
@@ -1670,7 +1671,7 @@ app.get('/api/salus/sync-all', async (req, res) => {
         try {
             results.visitas = await syncVisitasSede(db);
         } catch (err) {
-            console.error('âŒ Error en visitas sede:', err.message);
+            console.error('❌ Error en visitas sede:', err.message);
             results.visitas = { error: err.message };
         }
 
@@ -1689,7 +1690,7 @@ app.get('/api/salus/sync-all', async (req, res) => {
         }
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`\n–… â•â•â• SINCRONIZACIÃ“N COMPLETADA en ${elapsed}s â•â•â•\n`);
+        console.log(`\n–… ▬▬▬▬▬ SINCRONIZACIÓN COMPLETADA en ${elapsed}s ▬▬▬▬▬ \n`);
 
         console.log(`
          ___  _____
@@ -1781,6 +1782,102 @@ app.get('/api/salus/health', async (req, res) => {
         res.json({ success: true, connected: true, server: '128.223.16.29:2450', supabase: supabaseUrl ? 'configured' : 'missing' });
     } catch (err) {
         res.json({ success: false, connected: false, error: err.message });
+    }
+});
+
+// Limpieza de duplicados de asociaciones por fecha inconsistente
+app.get('/api/salus/cleanup/asociaciones-dups', async (req, res) => {
+    try {
+        console.log('Buscando duplicados de asociaciones por fecha inconsistente...');
+
+        const { data: all, error } = await supabase
+            .from('asociaciones_cirugias')
+            .select('id, fecha_realizacion, nombre_paciente, nombre_cirugia, dni, docs_completos, en_carrito, constancia_id, created_at')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Agrupar por nombre_paciente + nombre_cirugia + dni (sin fecha)
+        const groups = new Map();
+        for (const row of all) {
+            const key = `${(row.nombre_paciente || '').toUpperCase()}|${(row.nombre_cirugia || '').toUpperCase()}|${row.dni || ''}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(row);
+        }
+
+        // Detectar duplicados: mismo key con fechas donde dia y mes estan invertidos
+        const toDelete = [];
+        const dupsFound = [];
+
+        for (const [key, rows] of groups) {
+            if (rows.length < 2) continue;
+
+            for (let i = 0; i < rows.length; i++) {
+                for (let j = i + 1; j < rows.length; j++) {
+                    const a = rows[i], b = rows[j];
+                    const [aY, aM, aD] = (a.fecha_realizacion || '').split('-');
+                    const [bY, bM, bD] = (b.fecha_realizacion || '').split('-');
+
+                    // Verificar si las fechas son inversion de dia/mes
+                    if (aY === bY && aM === bD && aD === bM && aM !== aD) {
+                        const aHasWork = a.docs_completos || a.en_carrito || a.constancia_id;
+                        const bHasWork = b.docs_completos || b.en_carrito || b.constancia_id;
+
+                        let keep, remove;
+                        if (aHasWork && !bHasWork) {
+                            keep = a; remove = b;
+                        } else if (bHasWork && !aHasWork) {
+                            keep = b; remove = a;
+                        } else {
+                            keep = new Date(a.created_at) > new Date(b.created_at) ? a : b;
+                            remove = keep === a ? b : a;
+                        }
+
+                        dupsFound.push({
+                            paciente: a.nombre_paciente,
+                            cirugia: a.nombre_cirugia,
+                            fecha_keep: keep.fecha_realizacion,
+                            fecha_remove: remove.fecha_realizacion,
+                            id_keep: keep.id,
+                            id_remove: remove.id,
+                        });
+                        toDelete.push(remove.id);
+                    }
+                }
+            }
+        }
+
+        console.log(`   ${dupsFound.length} duplicados encontrados`);
+
+        const execute = req.query.execute === 'true';
+        let deleted = 0;
+
+        if (execute && toDelete.length > 0) {
+            const BATCH = 50;
+            for (let i = 0; i < toDelete.length; i += BATCH) {
+                const batch = toDelete.slice(i, i + BATCH);
+                const { error: delErr } = await supabase
+                    .from('asociaciones_cirugias')
+                    .delete()
+                    .in('id', batch);
+                if (delErr) console.error('   Error borrando batch:', delErr.message);
+                else deleted += batch.length;
+            }
+            console.log(`   ${deleted} duplicados eliminados`);
+        }
+
+        res.json({
+            success: true,
+            duplicates_found: dupsFound.length,
+            details: dupsFound,
+            deleted: execute ? deleted : 0,
+            message: execute
+                ? `${deleted} duplicados eliminados`
+                : `${dupsFound.length} duplicados encontrados. Agrega ?execute=true para eliminarlos.`,
+        });
+    } catch (err) {
+        console.error('Error limpiando duplicados:', err.message);
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
