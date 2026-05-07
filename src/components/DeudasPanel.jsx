@@ -1048,28 +1048,36 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         {/* Balance Financiero */}
                         <div style={{ ...st.card, background: 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)' }}>
                             <h4 style={st.cardTitle}><DollarSign size={14} /> Resumen Financiero</h4>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px', marginTop: '8px' }}>
+                            <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginBottom: '10px', lineHeight: '1.5' }}>
+                                Cálculo en tiempo real basado en las facturas, cobros y notas de crédito registradas en SALUS para este paciente.
+                                <br />
+                                <strong style={{ color: '#64748B' }}>Balance Neto = Deuda Bruta − Cobros − Notas de Crédito</strong>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px' }}>
                                 {(() => {
                                     const totalCobrosCalc = cobros.reduce((s, c) => s + (Number(c.importe) || 0), 0);
                                     const totalNCCalc = notasCredito.reduce((s, n) => s + (Number(n.importe_total) || 0), 0);
                                     const deudaBruta = Number(selectedDeudor.deuda_total) || 0;
                                     const balanceCalc = deudaBruta - totalCobrosCalc - totalNCCalc;
                                     return [
-                                        { label: 'Deuda Bruta', value: deudaBruta, color: '#EF4444', bg: '#FEF2F2', icon: '🔴' },
-                                        { label: 'Cobros', value: totalCobrosCalc, color: '#16A34A', bg: '#F0FDF4', icon: '🟢' },
-                                        { label: 'Notas Crédito', value: totalNCCalc, color: '#3B82F6', bg: '#EFF6FF', icon: '🔵' },
-                                        { label: 'Balance Neto', value: balanceCalc, color: balanceCalc > 0 ? '#D97706' : '#16A34A', bg: '#FFFBEB', icon: '🟠' },
+                                        { label: 'Deuda Bruta', desc: 'Total facturado pendiente', value: deudaBruta, color: '#EF4444', bg: '#FEF2F2', icon: '🔴' },
+                                        { label: 'Cobros', desc: 'Pagos realizados', value: totalCobrosCalc, color: '#16A34A', bg: '#F0FDF4', icon: '🟢' },
+                                        { label: 'Notas Crédito', desc: 'Ajustes a favor', value: totalNCCalc, color: '#3B82F6', bg: '#EFF6FF', icon: '🔵' },
+                                        { label: 'Balance Neto', desc: 'Lo que realmente debe', value: balanceCalc, color: balanceCalc > 0 ? '#D97706' : '#16A34A', bg: '#FFFBEB', icon: '🟠' },
                                     ];
                                 })().map((item, idx) => (
                                     <div key={idx} style={{
                                         padding: '10px', borderRadius: '10px', background: item.bg,
                                         border: `1px solid ${item.color}20`, textAlign: 'center',
                                     }}>
-                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600, marginBottom: '4px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600, marginBottom: '2px' }}>
                                             {item.icon} {item.label}
                                         </div>
                                         <div style={{ fontSize: '1rem', fontWeight: 800, color: item.color }}>
                                             {formatMoney(item.value)}
+                                        </div>
+                                        <div style={{ fontSize: '0.58rem', color: '#94A3B8', marginTop: '2px', fontStyle: 'italic' }}>
+                                            {item.desc}
                                         </div>
                                     </div>
                                 ))}
