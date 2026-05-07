@@ -1,4 +1,4 @@
-/**
+﻿/**
  * SALUS Sync Server — ETL autónomo
  * =================================
  * Servidor Express que:
@@ -684,9 +684,170 @@ async function syncDeudas(db) {
     return summary;
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// SYNC ALTAS ADMINISTRATIVAS — SQL Server â†’ Supabase
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
+// SYNC COBROS — SQL Server → Supabase
+// ═══════════════════════════════════════════════════
+async function syncCobros(db) {
+    console.log('💰 [3b/10] Extrayendo cobros de SALUS...');
+    const req = db.request();
+    req.timeout = 300000;
+    const result = await req.query(`
+        SELECT t.[IdCobro], t.[nombre], t.[nombreFiscal], t.[NIF], t.[descripcion],
+               t.[importe2], t.[comentario],
+               CONVERT(VARCHAR(10), t.[fecha], 103) AS [fecha],
+               t.[FechaCobro], t.[Entidad_telefono1], t.[Centro_Nombre],
+               t.[Paciente], t.[Paciente_NHC], t.[FormaPago], t.[Caja],
+               t.[Clasificacion], t.[UsuarioCobro]
+          FROM [SALUS].[dbo].[PR_COBROS_QRY] AS t
+          WHERE t.[FechaCobro] >= '2025-01-01'
+          ORDER BY t.[fecha] DESC
+    `);
+    console.log(`   📥 ${result.recordset.length} cobros extraídos`);
+
+    const porNhc = {};
+    let cobrosUpserted = 0;
+
+    for (const r of result.recordset) {
+        const nhc = r.Paciente_NHC ? String(r.Paciente_NHC).trim() : '';
+        const idCobro = r.IdCobro ? String(r.IdCobro).trim() : '';
+        if (!nhc || !idCobro) continue;
+
+        const importe = Number(r.importe2) || 0;
+        if (importe <= 0) continue;
+
+        let fechaParsed = null;
+        if (r.fecha) {
+            const parts = String(r.fecha).split('/');
+            if (parts.length === 3) fechaParsed = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
+
+        if (!porNhc[nhc]) {
+            const { data: pac } = await supabase
+                .from('deudas_pacientes').select('id').eq('nhc', nhc).maybeSingle();
+            porNhc[nhc] = { pacienteId: pac?.id || null, total: 0, count: 0 };
+        }
+        porNhc[nhc].total += importe;
+        porNhc[nhc].count++;
+
+        const { error } = await supabase.from('deudas_cobros').upsert({
+            paciente_id: porNhc[nhc].pacienteId, nhc, id_cobro: idCobro,
+            nombre: r.nombre || null, nombre_fiscal: r.nombreFiscal || null,
+            nif: r.NIF || null, descripcion: r.descripcion || null, importe,
+            comentario: r.comentario || null, fecha: fechaParsed,
+            fecha_cobro: r.FechaCobro || null, telefono: r.Entidad_telefono1 || null,
+            centro: r.Centro_Nombre || null, paciente_nombre: r.Paciente || null,
+            forma_pago: r.FormaPago || null, caja: r.Caja || null,
+            clasificacion: r.Clasificacion || null, usuario_cobro: r.UsuarioCobro || null,
+            updated_at: new Date().toISOString(),
+        }, { onConflict: 'id_cobro' });
+        if (!error) cobrosUpserted++;
+    }
+
+    let pacientesActualizados = 0;
+    for (const [nhc, data] of Object.entries(porNhc)) {
+        if (!data.pacienteId) continue;
+        const { data: pac } = await supabase.from('deudas_pacientes')
+            .select('deuda_total, total_notas_credito').eq('id', data.pacienteId).single();
+        const deudaTotal = Number(pac?.deuda_total) || 0;
+        const totalNC = Number(pac?.total_notas_credito) || 0;
+        await supabase.from('deudas_pacientes').update({
+            total_cobros: data.total, cantidad_cobros: data.count,
+            balance_neto: deudaTotal - data.total - totalNC,
+            updated_at: new Date().toISOString(),
+        }).eq('id', data.pacienteId);
+        pacientesActualizados++;
+    }
+
+    console.log(`   ✅ Cobros: ${cobrosUpserted} upserted, ${pacientesActualizados} pacientes actualizados`);
+    return { total: result.recordset.length, cobrosUpserted, pacientesActualizados };
+}
+
+// ═══════════════════════════════════════════════════
+// SYNC NOTAS DE CRÉDITO — SQL Server → Supabase
+// ═══════════════════════════════════════════════════
+async function syncNotasCredito(db) {
+    console.log('📝 [3c/10] Extrayendo notas de crédito de SALUS...');
+    const req = db.request();
+    req.timeout = 300000;
+    const result = await req.query(`
+        WITH FacturasUnicas AS (
+            SELECT t.[id], t.[fecha] AS FechaOriginal,
+                   CONVERT(VARCHAR(10), t.[fecha], 103) AS [fecha],
+                   t.[Paciente_Nombre], t.[Paciente_NHC], t.[descripcion],
+                   t.[idPaciente], t.[Centro_Alias], t.[Paciente_NIF], t.[NombreSerie],
+                   CAST(ABS(t.[ImporteTotal]) AS FLOAT) AS [ImporteTotal],
+                   ROW_NUMBER() OVER(PARTITION BY t.[id] ORDER BY t.[fecha] DESC) AS NumeroDeFila
+              FROM [SALUS].[dbo].[PR_FACTURAS_QRY] AS t
+              WHERE t.[fecha] >= '2025-01-01'
+                AND t.[NombreSerie] LIKE '%Nota Cr%dito%'
+                AND t.[Paciente_Nombre] IS NOT NULL
+        )
+        SELECT [id],[fecha],[Paciente_Nombre],[Paciente_NHC],[descripcion],
+               [idPaciente],[Centro_Alias],[Paciente_NIF],[NombreSerie],[ImporteTotal]
+          FROM FacturasUnicas WHERE NumeroDeFila = 1
+          ORDER BY FechaOriginal DESC
+    `);
+    console.log(`   📥 ${result.recordset.length} notas de crédito extraídas`);
+
+    const porNhc = {};
+    let ncUpserted = 0;
+
+    for (const r of result.recordset) {
+        const nhc = r.Paciente_NHC ? String(r.Paciente_NHC).trim() : '';
+        const idFactura = r.id ? String(r.id).trim() : '';
+        if (!nhc || !idFactura) continue;
+
+        const importe = Number(r.ImporteTotal) || 0;
+        if (importe <= 0) continue;
+
+        let fechaParsed = null;
+        if (r.fecha) {
+            const parts = String(r.fecha).split('/');
+            if (parts.length === 3) fechaParsed = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
+
+        if (!porNhc[nhc]) {
+            const { data: pac } = await supabase
+                .from('deudas_pacientes').select('id').eq('nhc', nhc).maybeSingle();
+            porNhc[nhc] = { pacienteId: pac?.id || null, total: 0, count: 0 };
+        }
+        porNhc[nhc].total += importe;
+        porNhc[nhc].count++;
+
+        const { error } = await supabase.from('deudas_notas_credito').upsert({
+            paciente_id: porNhc[nhc].pacienteId, nhc, id_factura: idFactura,
+            fecha: fechaParsed, paciente_nombre: r.Paciente_Nombre || null,
+            descripcion: r.descripcion || null,
+            id_paciente_salus: r.idPaciente ? String(r.idPaciente) : null,
+            centro: r.Centro_Alias || null, nif: r.Paciente_NIF || null,
+            nombre_serie: r.NombreSerie || null, importe_total: importe,
+            updated_at: new Date().toISOString(),
+        }, { onConflict: 'id_factura' });
+        if (!error) ncUpserted++;
+    }
+
+    let pacientesActualizados = 0;
+    for (const [nhc, data] of Object.entries(porNhc)) {
+        if (!data.pacienteId) continue;
+        const { data: pac } = await supabase.from('deudas_pacientes')
+            .select('deuda_total, total_cobros').eq('id', data.pacienteId).single();
+        const deudaTotal = Number(pac?.deuda_total) || 0;
+        const totalCobros = Number(pac?.total_cobros) || 0;
+        await supabase.from('deudas_pacientes').update({
+            total_notas_credito: data.total, cantidad_notas_credito: data.count,
+            balance_neto: deudaTotal - totalCobros - data.total,
+            updated_at: new Date().toISOString(),
+        }).eq('id', data.pacienteId);
+        pacientesActualizados++;
+    }
+
+    console.log(`   ✅ NC: ${ncUpserted} upserted, ${pacientesActualizados} pacientes actualizados`);
+    return { total: result.recordset.length, ncUpserted, pacientesActualizados };
+}
+
+// ═══════════════════════════════════════════════════
+// SYNC ALTAS ADMINISTRATIVAS — SQL Server → Supabase
+// ═══════════════════════════════════════════════════
 async function syncAltasAdministrativas(db) {
     console.log('📋 [4/7] Extrayendo altas administrativas de SALUS...');
 
@@ -1446,6 +1607,19 @@ app.get('/api/salus/sync-all', async (req, res) => {
         }
 
         try {
+            results.cobros = await syncCobros(db);
+        } catch (err) {
+            console.error('Error en cobros:', err.message);
+            results.cobros = { error: err.message };
+        }
+
+        try {
+            results.notasCredito = await syncNotasCredito(db);
+        } catch (err) {
+            console.error('Error en notas de credito:', err.message);
+            results.notasCredito = { error: err.message };
+        }
+        try {
             results.altas = await syncAltasAdministrativas(db);
         } catch (err) {
             console.error('âŒ Error en altas administrativas:', err.message);
@@ -1531,7 +1705,16 @@ app.get('/api/salus/sync/presupuestos', async (req, res) => {
 });
 
 app.get('/api/salus/sync/deudas', async (req, res) => {
-    try { const db = await getPool(); res.json({ success: true, results: await syncDeudas(db) }); }
+    try { const db = await getPool(); res.json({ success: true, results: await syncDeudas(db) });
+app.get('/api/salus/sync/cobros', async (req, res) => {
+    try { const db = await getPool(); res.json({ success: true, results: await syncCobros(db) }); }
+    catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+app.get('/api/salus/sync/notas-credito', async (req, res) => {
+    try { const db = await getPool(); res.json({ success: true, results: await syncNotasCredito(db) }); }
+    catch (err) { res.status(500).json({ success: false, error: err.message }); }
+}); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
@@ -1579,7 +1762,9 @@ app.listen(PORT, '0.0.0.0', () => {
 â•‘    GET /api/salus/sync-all    (todo de una vez)     â•‘
 â•‘    GET /api/salus/sync/cirugias                     â•‘
 â•‘    GET /api/salus/sync/presupuestos                 â•‘
-â•‘    GET /api/salus/sync/deudas                       â•‘
+║    GET /api/salus/sync/deudas                       ║
+║    GET /api/salus/sync/cobros                      ║
+║    GET /api/salus/sync/notas-credito               ║
 â•‘    GET /api/salus/sync/asociaciones                     â•‘
 â•‘    GET /api/salus/sync/laboratorios                     â•‘
 â•‘    GET /api/salus/health                            â•‘

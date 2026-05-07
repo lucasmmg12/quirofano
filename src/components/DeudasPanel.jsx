@@ -19,6 +19,7 @@ import {
     updateDeudor, fetchPresupuestosPorNhc, MIN_DEUDA,
     fetchAltasPorAdmisiones, fetchPlanesPago, createPlanPago,
     marcarCuotaPagada, cancelarPlan, fetchResponsablesPorNombres,
+    fetchCobros, fetchNotasCredito,
 } from '../services/deudaService';
 import { parseDeudaExcel } from '../utils/deudaExcelParser';
 import { subscribeToAllIncoming } from '../services/chatService';
@@ -35,7 +36,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
     const [search, setSearch] = useState('');
     const [catFilter, setCatFilter] = useState(null);
     const [telFilter, setTelFilter] = useState(null); // null=todos, true=con, false=sin
-    const [sortBy, setSortBy] = useState('deuda_total');
+    const [sortBy, setSortBy] = useState('balance_neto');
     const [sortDir, setSortDir] = useState('desc');
     const [metricas, setMetricas] = useState(null);
     const [showMetricas, setShowMetricas] = useState(false);
@@ -48,6 +49,9 @@ export default function DeudasPanel({ addToast, currentUser }) {
     // ─── Detail view ───
     const [selectedDeudor, setSelectedDeudor] = useState(null);
     const [facturas, setFacturas] = useState([]);
+    const [cobros, setCobros] = useState([]);
+    const [notasCredito, setNotasCredito] = useState([]);
+    const [financialTab, setFinancialTab] = useState('facturas');
     const [seguimiento, setSeguimiento] = useState([]);
     const [whatsappTracking, setWhatsappTracking] = useState(null);
     const [presupuestos, setPresupuestos] = useState([]);
@@ -167,14 +171,19 @@ export default function DeudasPanel({ addToast, currentUser }) {
         setEditingPhone(false);
         setPhoneInput(deudor.telefono || '');
         setShowPlanForm(false);
+        setFinancialTab('facturas');
         setPlanForm(p => ({ ...p, montoOriginal: deudor.deuda_total || '' }));
         try {
-            const [facts, segs, planesData] = await Promise.all([
+            const [facts, segs, planesData, cobrosData, ncData] = await Promise.all([
                 fetchFacturas(deudor.id),
                 fetchSeguimiento(deudor.id),
                 fetchPlanesPago(deudor.id),
+                fetchCobros(deudor.id),
+                fetchNotasCredito(deudor.id),
             ]);
             setFacturas(facts);
+            setCobros(cobrosData);
+            setNotasCredito(ncData);
             setSeguimiento(segs);
             setPlanes(planesData);
 
@@ -378,7 +387,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
     // ─── Exportación ───
     const exportToExcel = useCallback(() => {
         if (!deudores.length) return;
-        const headers = ['Paciente', 'NHC', 'Teléfono', 'Deuda Total', 'Facturas', 'Categoría', 'Cobertura', 'Última Factura', 'Último Contacto'];
+        const headers = ['Paciente', 'NHC', 'Teléfono', 'Deuda Bruta', 'Cobros', 'Notas Crédito', 'Balance Neto', 'Facturas', 'Categoría', 'Cobertura', 'Última Factura', 'Último Contacto'];
         const rows = deudores.map(d => {
             const cat = CATEGORIAS_DEUDOR[d.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
             return [
@@ -386,6 +395,9 @@ export default function DeudasPanel({ addToast, currentUser }) {
                 d.nhc, 
                 d.telefono || '', 
                 Number(d.deuda_total),
+                Number(d.total_cobros) || 0,
+                Number(d.total_notas_credito) || 0,
+                Number(d.balance_neto) || Number(d.deuda_total),
                 d.cantidad_facturas, 
                 cat.label, 
                 d.obra_social || 'Sin datos',
@@ -585,7 +597,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                             <span style={st.topName}>{p.nombre}</span>
                                             <span style={st.topNhc}>NHC: {p.nhc}</span>
                                         </div>
-                                        <span style={st.topAmount}>{formatMoney(p.deuda_total)}</span>
+                                        <span style={st.topAmount}>{formatMoney(Number(p.balance_neto) || p.deuda_total)}</span>
                                     </div>
                                 ))}
                             </div>
@@ -722,11 +734,11 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                     </th>
                                     <th style={{ ...st.th, width: '130px', textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}
                                         onClick={() => {
-                                            if (sortBy === 'deuda_total') setSortDir(p => p === 'desc' ? 'asc' : 'desc');
-                                            else { setSortBy('deuda_total'); setSortDir('desc'); }
+                                            if (sortBy === 'balance_neto') setSortDir(p => p === 'desc' ? 'asc' : 'desc');
+                                            else { setSortBy('balance_neto'); setSortDir('desc'); }
                                         }}
                                     >
-                                        Deuda {sortBy === 'deuda_total' ? (sortDir === 'desc' ? '▼' : '▲') : ''}
+                                        Balance {sortBy === 'balance_neto' ? (sortDir === 'desc' ? '▼' : '▲') : ''}
                                     </th>
                                     <th style={{ ...st.th, width: '50px', textAlign: 'center' }}>Fact.</th>
                                     <th style={{ ...st.th, width: '120px' }}>Cobertura</th>
@@ -753,7 +765,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                                 {d.fecha_ultima_factura ? new Date(d.fecha_ultima_factura).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
                                             </td>
                                             <td style={{ ...st.td, textAlign: 'right', fontWeight: 800, color: '#D97706', fontSize: '0.88rem' }}>
-                                                {formatMoney(d.deuda_total)}
+                                                {formatMoney(Number(d.balance_neto) || d.deuda_total)}
                                             </td>
                                             <td style={{ ...st.td, textAlign: 'center', fontSize: '0.82rem', color: '#475569' }}>{d.cantidad_facturas}</td>
                                             <td style={{ ...st.td, fontSize: '0.72rem', color: '#64748B' }}>
@@ -887,10 +899,10 @@ export default function DeudasPanel({ addToast, currentUser }) {
                     </div>
                     <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#D97706', letterSpacing: '-1px' }}>
-                            {formatMoney(selectedDeudor.deuda_total)}
+                            {formatMoney(Number(selectedDeudor.balance_neto) || selectedDeudor.deuda_total)}
                         </div>
-                        <div style={{ fontSize: '0.78rem', color: '#94A3B8' }}>
-                            {selectedDeudor.cantidad_facturas} factura{selectedDeudor.cantidad_facturas !== 1 ? 's' : ''}
+                        <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
+                            Balance Neto
                         </div>
                     </div>
                 </div>
@@ -1024,8 +1036,55 @@ export default function DeudasPanel({ addToast, currentUser }) {
                             </div>
                         )}
 
-                        {/* Facturas */}
+                        {/* Balance Financiero */}
+                        <div style={{ ...st.card, background: 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)' }}>
+                            <h4 style={st.cardTitle}><DollarSign size={14} /> Resumen Financiero</h4>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px', marginTop: '8px' }}>
+                                {[
+                                    { label: 'Deuda Bruta', value: selectedDeudor.deuda_total, color: '#EF4444', bg: '#FEF2F2', icon: '🔴' },
+                                    { label: 'Cobros', value: selectedDeudor.total_cobros || 0, color: '#16A34A', bg: '#F0FDF4', icon: '🟢' },
+                                    { label: 'Notas Crédito', value: selectedDeudor.total_notas_credito || 0, color: '#3B82F6', bg: '#EFF6FF', icon: '🔵' },
+                                    { label: 'Balance Neto', value: Number(selectedDeudor.balance_neto) || selectedDeudor.deuda_total, color: '#D97706', bg: '#FFFBEB', icon: '🟠' },
+                                ].map((item, idx) => (
+                                    <div key={idx} style={{
+                                        padding: '10px', borderRadius: '10px', background: item.bg,
+                                        border: `1px solid ${item.color}20`, textAlign: 'center',
+                                    }}>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600, marginBottom: '4px' }}>
+                                            {item.icon} {item.label}
+                                        </div>
+                                        <div style={{ fontSize: '1rem', fontWeight: 800, color: item.color }}>
+                                            {formatMoney(item.value)}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Tabs Financieros */}
                         <div style={st.card}>
+                            <div style={{ display: 'flex', gap: '4px', marginBottom: '12px', background: '#F1F5F9', borderRadius: '10px', padding: '3px' }}>
+                                {[
+                                    { key: 'facturas', label: `📄 Facturas (${facturas.length})`, color: '#D97706' },
+                                    { key: 'cobros', label: `💰 Cobros (${cobros.length})`, color: '#16A34A' },
+                                    { key: 'nc', label: `📝 NC (${notasCredito.length})`, color: '#3B82F6' },
+                                ].map(tab => (
+                                    <button key={tab.key} onClick={() => setFinancialTab(tab.key)} style={{
+                                        flex: 1, padding: '8px 12px', borderRadius: '8px', border: 'none',
+                                        cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700,
+                                        background: financialTab === tab.key ? '#fff' : 'transparent',
+                                        color: financialTab === tab.key ? tab.color : '#94A3B8',
+                                        boxShadow: financialTab === tab.key ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                                        transition: 'all 0.2s',
+                                    }}>
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Tab: Facturas */}
+                            {financialTab === 'facturas' && (
+                                <>
                             <h4 style={st.cardTitle}><FileText size={14} /> Facturas Pendientes ({facturas.length} ítems)</h4>
                             {detailLoading ? (
                                 <span style={{ color: '#94A3B8' }}>Cargando...</span>
@@ -1119,6 +1178,136 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                     </div>
                                 );
                             })()}
+                                </>
+                            )}
+
+                            {/* Tab: Cobros */}
+                            {financialTab === 'cobros' && (
+                                <>
+                                    <h4 style={st.cardTitle}><Banknote size={14} /> Cobros Registrados ({cobros.length})</h4>
+                                    {cobros.length === 0 ? (
+                                        <span style={{ color: '#CBD5E1' }}>Sin cobros registrados</span>
+                                    ) : (
+                                        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                                            {cobros.map((c, idx) => (
+                                                <div key={c.id || idx} style={{
+                                                    marginBottom: '8px', borderRadius: '10px',
+                                                    border: '1px solid #D1FAE5', overflow: 'hidden',
+                                                }}>
+                                                    <div style={{
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                        padding: '10px 14px', background: '#F0FDF4',
+                                                    }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#065F46' }}>
+                                                                💰 {c.forma_pago || 'Sin forma de pago'}
+                                                            </span>
+                                                            {c.fecha && (
+                                                                <span style={{
+                                                                    padding: '2px 8px', borderRadius: '10px',
+                                                                    background: '#DCFCE7', color: '#16A34A',
+                                                                    fontSize: '0.65rem', fontWeight: 600,
+                                                                }}>
+                                                                    📅 {(() => {
+                                                                        const d = new Date(c.fecha + 'T12:00:00');
+                                                                        return isNaN(d.getTime()) ? c.fecha : d.toLocaleDateString('es-AR');
+                                                                    })()}
+                                                                </span>
+                                                            )}
+                                                            {c.caja && (
+                                                                <span style={{
+                                                                    padding: '2px 8px', borderRadius: '10px',
+                                                                    background: '#E0E7FF', color: '#4F46E5',
+                                                                    fontSize: '0.65rem', fontWeight: 600,
+                                                                }}>
+                                                                    🏦 {c.caja}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#16A34A' }}>
+                                                            {formatMoney(c.importe)}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ padding: '8px 14px', background: '#fff' }}>
+                                                        <div style={{ fontSize: '0.78rem', color: '#334155' }}>
+                                                            {c.descripcion || 'Sin descripción'}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.68rem', color: '#94A3B8', display: 'flex', gap: '12px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                                            {c.usuario_cobro && <span>👤 {c.usuario_cobro}</span>}
+                                                            {c.clasificacion && <span>📋 {c.clasificacion}</span>}
+                                                            {c.comentario && <span>💬 {c.comentario}</span>}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {/* Tab: Notas de Crédito */}
+                            {financialTab === 'nc' && (
+                                <>
+                                    <h4 style={st.cardTitle}><CreditCard size={14} /> Notas de Crédito ({notasCredito.length})</h4>
+                                    {notasCredito.length === 0 ? (
+                                        <span style={{ color: '#CBD5E1' }}>Sin notas de crédito registradas</span>
+                                    ) : (
+                                        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                                            {notasCredito.map((nc, idx) => (
+                                                <div key={nc.id || idx} style={{
+                                                    marginBottom: '8px', borderRadius: '10px',
+                                                    border: '1px solid #BFDBFE', overflow: 'hidden',
+                                                }}>
+                                                    <div style={{
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                        padding: '10px 14px', background: '#EFF6FF',
+                                                    }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1E40AF' }}>
+                                                                📝 {nc.nombre_serie || 'Nota Crédito'}
+                                                            </span>
+                                                            {nc.fecha && (
+                                                                <span style={{
+                                                                    padding: '2px 8px', borderRadius: '10px',
+                                                                    background: '#DBEAFE', color: '#2563EB',
+                                                                    fontSize: '0.65rem', fontWeight: 600,
+                                                                }}>
+                                                                    📅 {(() => {
+                                                                        const d = new Date(nc.fecha + 'T12:00:00');
+                                                                        return isNaN(d.getTime()) ? nc.fecha : d.toLocaleDateString('es-AR');
+                                                                    })()}
+                                                                </span>
+                                                            )}
+                                                            {nc.centro && (
+                                                                <span style={{
+                                                                    padding: '2px 8px', borderRadius: '10px',
+                                                                    background: '#F3E8FF', color: '#7C3AED',
+                                                                    fontSize: '0.65rem', fontWeight: 600,
+                                                                }}>
+                                                                    🏥 {nc.centro}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#2563EB' }}>
+                                                            {formatMoney(nc.importe_total)}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ padding: '8px 14px', background: '#fff' }}>
+                                                        <div style={{ fontSize: '0.78rem', color: '#334155' }}>
+                                                            {nc.descripcion || 'Sin descripción'}
+                                                        </div>
+                                                        {nc.nif && (
+                                                            <div style={{ fontSize: '0.68rem', color: '#94A3B8', marginTop: '4px' }}>
+                                                                🪪 NIF: {nc.nif}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </>
+                            )}
                         </div>
 
                         {/* Presupuestos Vinculados */}

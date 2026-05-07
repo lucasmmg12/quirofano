@@ -100,6 +100,52 @@ export async function fetchFacturas(pacienteId) {
     return data || [];
 }
 
+// ─── Cobros ───
+
+export async function fetchCobros(pacienteId) {
+    const { data, error } = await supabase
+        .from('deudas_cobros')
+        .select('*')
+        .eq('paciente_id', pacienteId)
+        .order('fecha', { ascending: false });
+    if (error) throw error;
+    return data || [];
+}
+
+export async function fetchCobrosPorNhc(nhc) {
+    if (!nhc) return [];
+    const { data, error } = await supabase
+        .from('deudas_cobros')
+        .select('*')
+        .eq('nhc', nhc)
+        .order('fecha', { ascending: false });
+    if (error) throw error;
+    return data || [];
+}
+
+// ─── Notas de Crédito ───
+
+export async function fetchNotasCredito(pacienteId) {
+    const { data, error } = await supabase
+        .from('deudas_notas_credito')
+        .select('*')
+        .eq('paciente_id', pacienteId)
+        .order('fecha', { ascending: false });
+    if (error) throw error;
+    return data || [];
+}
+
+export async function fetchNotasCreditoPorNhc(nhc) {
+    if (!nhc) return [];
+    const { data, error } = await supabase
+        .from('deudas_notas_credito')
+        .select('*')
+        .eq('nhc', nhc)
+        .order('fecha', { ascending: false });
+    if (error) throw error;
+    return data || [];
+}
+
 // ─── Presupuestos vinculados por NHC ───
 
 export async function fetchPresupuestosPorNhc(nhc) {
