@@ -743,15 +743,15 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                         {/* Todos + Limpiar */}
                         <div style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
                             <button
-                                onClick={() => { setColumnFilters(prev => ({ ...prev, [colKey]: null })); setOpenFilterCol(null); setFilterDropdownSearch(''); }}
+                                onClick={() => { setColumnFilters(prev => ({ ...prev, [colKey]: [...uniqueVals] })); setFilterDropdownSearch(''); }}
                                 style={{
                                     flex: 1, padding: '5px 8px', border: '1px solid #E2E8F0',
-                                    borderRadius: '6px', background: !isFiltered ? '#EFF6FF' : '#fff',
+                                    borderRadius: '6px', background: !isFiltered || selected.length === uniqueVals.length ? '#EFF6FF' : '#fff',
                                     color: '#0D3B66', fontSize: '0.7rem', fontWeight: 600,
                                     cursor: 'pointer', textAlign: 'center',
                                 }}
                             >
-                                Todos
+                                Todos ({uniqueVals.length})
                             </button>
                             <button
                                 onClick={() => { setColumnFilters(prev => ({ ...prev, [colKey]: null })); setFilterDropdownSearch(''); }}
