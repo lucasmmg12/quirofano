@@ -11,7 +11,9 @@ import {
     Package, CheckCircle2, ShoppingCart, History, Search,
     Filter, ChevronDown, ChevronRight, Printer, FileCheck,
     AlertCircle, RefreshCw, Loader2, X, PackageCheck, RotateCcw,
+    Download,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import {
     fetchAsociacionesCirugias,
     toggleDocsCompletos,
@@ -976,6 +978,42 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                         >
                             <ShoppingCart size={14} />
                             Enviar al Carrito
+                        </button>
+
+                        <button
+                            onClick={() => {
+                                const rows = filteredPendientes.map(c => ({
+                                    'Fecha': fmtFecha(c.fecha_realizacion),
+                                    'Paciente': c.nombre_paciente || '',
+                                    'DNI': c.dni || '',
+                                    'Obra Social': c.cliente || '',
+                                    'Cirugía': c.nombre_cirugia || '',
+                                    'Cirujano': c.cirujano || '',
+                                    'Asociación': c.asociacion || '',
+                                    'Docs Completos': c.docs_completos ? 'Sí' : 'No',
+                                    'En Carrito': c.en_carrito ? 'Sí' : 'No',
+                                }));
+                                const ws = XLSX.utils.json_to_sheet(rows);
+                                // Auto-width columns
+                                const colWidths = Object.keys(rows[0] || {}).map(key => ({
+                                    wch: Math.max(key.length, ...rows.map(r => String(r[key] || '').length)) + 2,
+                                }));
+                                ws['!cols'] = colWidths;
+                                const wb = XLSX.utils.book_new();
+                                XLSX.utils.book_append_sheet(wb, ws, 'Asociaciones');
+                                XLSX.writeFile(wb, `Asociaciones_Pendientes_${new Date().toISOString().slice(0, 10)}.xlsx`);
+                            }}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                padding: '8px 14px', borderRadius: '8px',
+                                background: '#DCFCE7', color: '#16A34A',
+                                border: '1px solid #BBF7D0', fontWeight: 600,
+                                fontSize: '0.78rem', cursor: 'pointer',
+                                transition: 'all 0.2s',
+                            }}
+                        >
+                            <Download size={14} />
+                            Excel
                         </button>
                     </div>
 
