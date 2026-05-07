@@ -1,4 +1,4 @@
-﻿/**
+/**
  * SALUS Sync Server — ETL autónomo
  * =================================
  * Servidor Express que:
@@ -685,7 +685,7 @@ async function syncDeudas(db) {
 }
 
 // ═══════════════════════════════════════════════════
-// SYNC COBROS — SQL Server → Supabase
+// SYNC COBROS — SQL Server -> Supabase
 // ═══════════════════════════════════════════════════
 async function syncCobros(db) {
     console.log('💰 [3b/10] Extrayendo cobros de SALUS...');
@@ -702,7 +702,7 @@ async function syncCobros(db) {
           WHERE t.[FechaCobro] >= '2025-01-01'
           ORDER BY t.[fecha] DESC
     `);
-    console.log(`   📥 ${result.recordset.length} cobros extraídos`);
+    console.log('   ' + result.recordset.length + ' cobros extraidos');
 
     const porNhc = {};
     let cobrosUpserted = 0;
@@ -718,7 +718,7 @@ async function syncCobros(db) {
         let fechaParsed = null;
         if (r.fecha) {
             const parts = String(r.fecha).split('/');
-            if (parts.length === 3) fechaParsed = `${parts[2]}-${parts[1]}-${parts[0]}`;
+            if (parts.length === 3) fechaParsed = parts[2] + '-' + parts[1] + '-' + parts[0];
         }
 
         if (!porNhc[nhc]) {
@@ -758,15 +758,15 @@ async function syncCobros(db) {
         pacientesActualizados++;
     }
 
-    console.log(`   ✅ Cobros: ${cobrosUpserted} upserted, ${pacientesActualizados} pacientes actualizados`);
+    console.log('   Cobros: ' + cobrosUpserted + ' upserted, ' + pacientesActualizados + ' pacientes actualizados');
     return { total: result.recordset.length, cobrosUpserted, pacientesActualizados };
 }
 
 // ═══════════════════════════════════════════════════
-// SYNC NOTAS DE CRÉDITO — SQL Server → Supabase
+// SYNC NOTAS DE CREDITO — SQL Server -> Supabase
 // ═══════════════════════════════════════════════════
 async function syncNotasCredito(db) {
-    console.log('📝 [3c/10] Extrayendo notas de crédito de SALUS...');
+    console.log('📝 [3c/10] Extrayendo notas de credito de SALUS...');
     const req = db.request();
     req.timeout = 300000;
     const result = await req.query(`
@@ -787,7 +787,7 @@ async function syncNotasCredito(db) {
           FROM FacturasUnicas WHERE NumeroDeFila = 1
           ORDER BY FechaOriginal DESC
     `);
-    console.log(`   📥 ${result.recordset.length} notas de crédito extraídas`);
+    console.log('   ' + result.recordset.length + ' notas de credito extraidas');
 
     const porNhc = {};
     let ncUpserted = 0;
@@ -803,7 +803,7 @@ async function syncNotasCredito(db) {
         let fechaParsed = null;
         if (r.fecha) {
             const parts = String(r.fecha).split('/');
-            if (parts.length === 3) fechaParsed = `${parts[2]}-${parts[1]}-${parts[0]}`;
+            if (parts.length === 3) fechaParsed = parts[2] + '-' + parts[1] + '-' + parts[0];
         }
 
         if (!porNhc[nhc]) {
@@ -841,13 +841,13 @@ async function syncNotasCredito(db) {
         pacientesActualizados++;
     }
 
-    console.log(`   ✅ NC: ${ncUpserted} upserted, ${pacientesActualizados} pacientes actualizados`);
+    console.log('   NC: ' + ncUpserted + ' upserted, ' + pacientesActualizados + ' pacientes actualizados');
     return { total: result.recordset.length, ncUpserted, pacientesActualizados };
 }
 
-// ═══════════════════════════════════════════════════
-// SYNC ALTAS ADMINISTRATIVAS — SQL Server → Supabase
-// ═══════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// SYNC ALTAS ADMINISTRATIVAS — SQL Server â†’ Supabase
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncAltasAdministrativas(db) {
     console.log('📋 [4/7] Extrayendo altas administrativas de SALUS...');
 
@@ -1619,6 +1619,7 @@ app.get('/api/salus/sync-all', async (req, res) => {
             console.error('Error en notas de credito:', err.message);
             results.notasCredito = { error: err.message };
         }
+
         try {
             results.altas = await syncAltasAdministrativas(db);
         } catch (err) {
@@ -1705,7 +1706,10 @@ app.get('/api/salus/sync/presupuestos', async (req, res) => {
 });
 
 app.get('/api/salus/sync/deudas', async (req, res) => {
-    try { const db = await getPool(); res.json({ success: true, results: await syncDeudas(db) });
+    try { const db = await getPool(); res.json({ success: true, results: await syncDeudas(db) }); }
+    catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
 app.get('/api/salus/sync/cobros', async (req, res) => {
     try { const db = await getPool(); res.json({ success: true, results: await syncCobros(db) }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
@@ -1713,8 +1717,6 @@ app.get('/api/salus/sync/cobros', async (req, res) => {
 
 app.get('/api/salus/sync/notas-credito', async (req, res) => {
     try { const db = await getPool(); res.json({ success: true, results: await syncNotasCredito(db) }); }
-    catch (err) { res.status(500).json({ success: false, error: err.message }); }
-}); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
@@ -1762,9 +1764,7 @@ app.listen(PORT, '0.0.0.0', () => {
 â•‘    GET /api/salus/sync-all    (todo de una vez)     â•‘
 â•‘    GET /api/salus/sync/cirugias                     â•‘
 â•‘    GET /api/salus/sync/presupuestos                 â•‘
-║    GET /api/salus/sync/deudas                       ║
-║    GET /api/salus/sync/cobros                      ║
-║    GET /api/salus/sync/notas-credito               ║
+â•‘    GET /api/salus/sync/deudas                       â•‘
 â•‘    GET /api/salus/sync/asociaciones                     â•‘
 â•‘    GET /api/salus/sync/laboratorios                     â•‘
 â•‘    GET /api/salus/health                            â•‘
