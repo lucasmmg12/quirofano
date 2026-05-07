@@ -786,7 +786,11 @@ function App({ currentUser, onLogout }) {
             )}
 
             {/* Beto — AI Assistant Widget */}
-            <BetoWidget currentUser={currentUser} />
+            <BetoWidget
+                currentUser={currentUser}
+                currentModule={activeView}
+                onNavigate={(mod) => setActiveView(mod)}
+            />
 
             {/* Easter egg: Homer idle overlay — solo para frojo */}
             {currentUser?.usuario === 'frojo' && <IdleHomerOverlay />}

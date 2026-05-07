@@ -12,7 +12,7 @@ import ReactMarkdown from 'react-markdown';
 const BETO_AVATAR = '/beto.jpg';
 const BETO_GIF = '/The_avatar_is_greetings.gif';
 
-export default function BetoWidget({ currentUser }) {
+export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
     const [isOpen, setIsOpen] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [messages, setMessages] = useState([]);
@@ -48,7 +48,7 @@ export default function BetoWidget({ currentUser }) {
                     : currentUser?.nombre || 'usuario';
                 setMessages([{
                     role: 'assistant',
-                    content: `¡Hola **${userName}**! 👋 Soy **Beto**, tu asistente del Sanatorio Argentino.\n\nPodés preguntarme sobre:\n- 💰 **Deudas** de pacientes\n- 🏥 **Asociaciones** y cirugías\n- 🔬 **Laboratorios** de anatomía\n- 📊 **Métricas** del sistema\n- ❓ **Cómo funciona** cualquier módulo\n\n¿En qué te puedo ayudar?`,
+                    content: `¡Hola **${userName}**! 👋 Soy **Beto**, tu asistente del Sanatorio Argentino.\n\nPodés preguntarme sobre:\n- 🔍 **Consultar datos** de cualquier módulo\n- 📊 **Generar reportes** (deudas, cirugías, asociaciones)\n- ✏️ **Modificar datos** (con tu confirmación)\n- 📲 **Enviar WhatsApp** a pacientes\n- 🧭 **Navegar** a cualquier módulo\n- 🔔 **Ver pendientes** y alertas\n- ❓ **Explicar** cómo funciona cada parte\n\n¿En qué te puedo ayudar?`,
                 }]);
             }
         }, 2000);
@@ -83,20 +83,31 @@ export default function BetoWidget({ currentUser }) {
                         nombre: currentUser.nombre,
                         usuario: currentUser.usuario,
                     } : null,
+                    currentModule: currentModule || 'inicio',
                 },
             });
 
             if (error) throw error;
 
             if (data?.message) {
+                // Parse action tags from response
+                let content = data.message;
+                const navMatch = content.match(/\[ACTION:navigate:(\w+)\]/);
+                if (navMatch && onNavigate) {
+                    content = content.replace(/\[ACTION:navigate:\w+\]/g, '');
+                    setTimeout(() => onNavigate(navMatch[1]), 500);
+                }
+                // Remove any remaining action tags from display
+                content = content.replace(/\[ACTION:[^\]]+\]/g, '').trim();
+
                 setMessages(prev => [...prev, {
                     role: 'assistant',
-                    content: data.message,
+                    content,
                 }]);
             } else if (data?.error) {
                 setMessages(prev => [...prev, {
                     role: 'assistant',
-                    content: `⚠️ Error: ${data.error}`,
+                    content: `⚠️ ${data.message || data.error}`,
                 }]);
             }
         } catch (err) {
@@ -403,9 +414,10 @@ export default function BetoWidget({ currentUser }) {
                     display: 'flex', flexWrap: 'wrap', gap: '6px',
                 }}>
                     {[
-                        '📊 ¿Cómo está la deuda general?',
-                        '🏥 ¿Qué hace el módulo de Asociaciones?',
-                        '📈 Dame las métricas del sistema',
+                        '🔔 ¿Qué hay pendiente hoy?',
+                        '📊 Reporte de cirugías de hoy',
+                        '💰 Resumen de deudas',
+                        '🧭 Llevame a Cirugías',
                     ].map((q, i) => (
                         <button
                             key={i}

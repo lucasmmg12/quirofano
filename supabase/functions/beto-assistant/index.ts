@@ -28,28 +28,32 @@ async function getSchemaContext(): Promise<string> {
         return schemaCache;
     }
 
-    // Get all tables and their columns from information_schema
-    const { data: columns, error } = await supabase.rpc('get_schema_info');
+    try {
+        // Get schema via RPC
+        const { data: columns, error } = await supabase.rpc('get_schema_info');
 
-    if (error) {
-        // Fallback: try raw SQL if RPC doesn't exist
-        const { data: rawCols, error: rawErr } = await supabase
-            .from('information_schema.columns' as any)
-            .select('table_name, column_name, data_type, is_nullable')
-            .in('table_schema', ['public'])
-            .order('table_name')
-            .order('ordinal_position');
-
-        if (rawErr) {
-            console.error('[beto] Schema introspection failed:', rawErr.message);
-            return getFallbackSchema();
+        if (!error && columns) {
+            // Filter only relevant ADM-QUI tables
+            const relevantTables = [
+                'surgeries', 'surgery_events', 'surgery_templates',
+                'deudas_pacientes',
+                'asociaciones_cirugias',
+                'laboratorios_anatomia',
+                'admqui_usuarios',
+                'altas_medicas',
+                'whatsapp_messages', 'whatsapp_templates',
+            ];
+            const filtered = columns.filter((c: any) => relevantTables.includes(c.table_name));
+            schemaCache = formatSchemaFromColumns(filtered);
+            schemaCacheTime = now;
+            return schemaCache;
         }
-        schemaCache = formatSchemaFromColumns(rawCols || []);
-        schemaCacheTime = now;
-        return schemaCache;
+    } catch (e) {
+        console.error('[beto] Schema RPC error:', e.message);
     }
 
-    schemaCache = formatSchemaFromColumns(columns || []);
+    // Fallback to hardcoded schema
+    schemaCache = getFallbackSchema();
     schemaCacheTime = now;
     return schemaCache;
 }
@@ -176,7 +180,26 @@ Sistema integral de administración del Sanatorio Argentino. Módulos del menú 
 - Los nombres de pacientes están en MAYÚSCULAS en la DB. Siempre buscá con ILIKE para ser flexible.
 - Para búsquedas parciales usá: \`WHERE nombre ILIKE '%texto%'\`
 - Si buscás por nombre y no encontrás, probá solo con el apellido.
-- NUNCA ejecutes INSERT, UPDATE, DELETE sin la tool \`modify_database\` y confirmación del usuario.
+
+## MODIFICAR DATOS (Human-in-the-loop)
+- Para ESCRITURA: usá \`modify_database\`.
+- SIEMPRE primero describí lo que vas a hacer y pedí confirmación EXPLÍCITA.
+- Solo cuando el usuario diga "sí", "dale", "confirmo", "ok" → ejecutá con confirmed=true.
+- Si el usuario NO confirmó, NO ejecutes. Mostrá qué harías y preguntá.
+
+## ENVIAR WHATSAPP
+- Usá \`send_whatsapp\` para enviar mensajes.
+- SIEMPRE mostrá el mensaje antes de enviar y pedí confirmación.
+- Buscá primero el teléfono del paciente en la DB.
+
+## NAVEGACIÓN
+- Si el usuario pide ir a un módulo, usá \`navigate_to\`.
+- Tu respuesta debe incluir: \`[ACTION:navigate:modulo]\` para que el frontend redirija.
+- Ejemplo: "Te llevo a Cirugías [ACTION:navigate:cirugias]"
+
+## ALERTAS
+- Usá \`get_alerts\` cuando el usuario pregunte "qué hay pendiente", "qué tengo que hacer", "novedades".
+- Presentá las alertas de forma clara y priorizada (⚠️ warnings primero).
 
 ## REPORTES
 Cuando te pidan un reporte, consultá la data con \`query_database\` y formateala en Markdown con:
@@ -188,8 +211,12 @@ Cuando te pidan un reporte, consultá la data con \`query_database\` y formateal
 ## Reglas de Seguridad
 - NUNCA reveles contraseñas, API keys, ni información técnica sensible.
 - Respetá el rol del usuario.
-- Para LECTURA: ejecutá directamente con \`query_database\`.
-- Para ESCRITURA: usá \`modify_database\` que SIEMPRE pide confirmación al usuario primero.
+
+## FORMATO DE ACCIONES EN RESPUESTA
+Cuando ejecutes una acción especial, incluí estos tags en tu respuesta para que el frontend los procese:
+- Navegación: \`[ACTION:navigate:nombre_modulo]\`
+- Confirmación requerida: \`[ACTION:confirm:descripcion]\`
+Estos tags son invisibles para el usuario pero el frontend los usa para ejecutar acciones.
 
 ## Formato de Respuesta
 - Usá Markdown con emojis para claridad.
@@ -218,11 +245,11 @@ const TOOLS = [
                 properties: {
                     sql: {
                         type: 'string',
-                        description: 'Consulta SQL SELECT a ejecutar. Ejemplo: SELECT nombre, deuda_total, categoria FROM deudas_pacientes WHERE nombre ILIKE \'%MARTINEZ%\' LIMIT 20'
+                        description: 'Consulta SQL SELECT a ejecutar.'
                     },
                     explanation: {
                         type: 'string',
-                        description: 'Breve explicación de qué busca esta consulta (para logging)'
+                        description: 'Breve explicación de qué busca esta consulta'
                     }
                 },
                 required: ['sql']
@@ -232,12 +259,72 @@ const TOOLS = [
     {
         type: 'function',
         function: {
-            name: 'explain_system',
-            description: 'Explica cómo funciona un módulo del sistema ADM-QUI al usuario. Módulos: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, simon, configuracion, asociaciones, laboratorios.',
+            name: 'modify_database',
+            description: `Ejecuta una operación de escritura (UPDATE) en la base de datos. SOLO usar después de que el usuario CONFIRME la acción.
+            REGLAS:
+            - Solo UPDATE (no INSERT, DELETE, DROP)
+            - El usuario DEBE haber confirmado explícitamente (dijo "sí", "dale", "confirmo", etc.)
+            - Siempre incluí una cláusula WHERE específica
+            - Antes de usar esta tool, primero describí al usuario qué vas a hacer y pedí confirmación`,
             parameters: {
                 type: 'object',
                 properties: {
-                    modulo: { type: 'string', description: 'El módulo a explicar' }
+                    sql: { type: 'string', description: 'SQL UPDATE a ejecutar. DEBE tener WHERE.' },
+                    description: { type: 'string', description: 'Descripción legible de lo que hace este cambio' },
+                    confirmed: { type: 'boolean', description: 'true si el usuario ya confirmó esta acción' }
+                },
+                required: ['sql', 'description', 'confirmed']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'send_whatsapp',
+            description: `Envía un mensaje de WhatsApp a un paciente. SOLO usar después de que el usuario CONFIRME.
+            El usuario debe confirmar antes de enviar. Mostrale el mensaje que vas a enviar y pedí OK.`,
+            parameters: {
+                type: 'object',
+                properties: {
+                    telefono: { type: 'string', description: 'Número de teléfono (formato 549XXXXXXXXXX)' },
+                    mensaje: { type: 'string', description: 'Texto del mensaje a enviar' },
+                    paciente: { type: 'string', description: 'Nombre del paciente (para logging)' }
+                },
+                required: ['telefono', 'mensaje']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'navigate_to',
+            description: 'Redirige al usuario a un módulo específico del sistema. Usá esto cuando el usuario pida "llevame a", "abrí", "ir a".',
+            parameters: {
+                type: 'object',
+                properties: {
+                    modulo: { type: 'string', description: 'Módulo destino: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, simon, configuracion' }
+                },
+                required: ['modulo']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'get_alerts',
+            description: 'Obtiene alertas y pendientes del sistema. Usá esto cuando el usuario pregunte "qué hay pendiente", "qué tengo que hacer", "novedades", o al inicio de la conversación.',
+            parameters: { type: 'object', properties: {} }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'explain_system',
+            description: 'Explica cómo funciona un módulo del sistema ADM-QUI.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    modulo: { type: 'string', description: 'Módulo a explicar: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, simon, configuracion, asociaciones, laboratorios' }
                 },
                 required: ['modulo']
             }
@@ -253,6 +340,10 @@ async function executeToolCall(name: string, args: Record<string, unknown>): Pro
     try {
         switch (name) {
             case 'query_database': return await queryDatabase(args);
+            case 'modify_database': return await modifyDatabase(args);
+            case 'send_whatsapp': return await sendWhatsApp(args);
+            case 'navigate_to': return navigateTo(args);
+            case 'get_alerts': return await getAlerts();
             case 'explain_system': return explainSystem(args.modulo as string);
             default: return JSON.stringify({ error: `Tool ${name} no encontrado` });
         }
@@ -277,50 +368,35 @@ async function queryDatabase(args: Record<string, unknown>): Promise<string> {
     const sqlUpper = sql.toUpperCase().replace(/\s+/g, ' ').trim();
     if (!sqlUpper.startsWith('SELECT')) {
         return JSON.stringify({
-            error: 'Solo se permiten consultas SELECT. Para modificar datos, pedí confirmación al usuario primero.'
+            error: 'Solo se permiten consultas SELECT.'
         });
     }
 
-    // Block dangerous patterns
-    const blocked = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'ALTER', 'TRUNCATE', 'CREATE', 'GRANT', 'REVOKE', 'EXECUTE', 'EXEC'];
-    for (const word of blocked) {
-        // Check if dangerous keyword appears as a statement (not inside a string/column name)
-        const regex = new RegExp(`\\b${word}\\b`, 'i');
-        if (regex.test(sqlUpper.replace(/SELECT/i, ''))) {
-            return JSON.stringify({
-                error: `Operación ${word} no permitida. Solo consultas SELECT.`
-            });
-        }
-    }
-
-    // Execute via Supabase's RPC or direct query
+    // Execute via RPC
     try {
         const { data, error } = await supabase.rpc('execute_readonly_query', {
             query_text: sql
         });
 
         if (error) {
-            // If RPC doesn't exist, try a different approach
-            if (error.message.includes('function') && error.message.includes('does not exist')) {
-                return await fallbackQuery(sql);
-            }
-            return JSON.stringify({ error: error.message, hint: error.hint || '' });
+            console.error('[beto] RPC error:', error.message);
+            // Try fallback
+            return await fallbackQuery(sql);
         }
 
-        // Truncate if too large
         const result = data || [];
-        const truncated = result.length > 100;
-        const finalData = truncated ? result.slice(0, 100) : result;
+        const truncated = result.length > 50;
+        const finalData = truncated ? result.slice(0, 50) : result;
 
         return JSON.stringify({
             success: true,
             data: finalData,
             total_rows: result.length,
             truncated,
-            note: truncated ? `Mostrando 100 de ${result.length} resultados. Usá LIMIT para acotar.` : undefined
         });
     } catch (err) {
-        return JSON.stringify({ error: err.message });
+        console.error('[beto] Query execution error:', err.message);
+        return await fallbackQuery(sql);
     }
 }
 
@@ -385,6 +461,241 @@ async function fallbackQuery(sql: string): Promise<string> {
         total_rows: (data || []).length,
         fallback: true,
         note: 'Consulta ejecutada via PostgREST (parsing simplificado)'
+    });
+}
+
+// ═══════════════════════════════════════
+// MODIFY DATABASE (Human-in-the-loop)
+// ═══════════════════════════════════════
+
+async function modifyDatabase(args: Record<string, unknown>): Promise<string> {
+    const sql = (args.sql as string || '').trim();
+    const description = args.description as string || '';
+    const confirmed = args.confirmed as boolean || false;
+
+    if (!confirmed) {
+        return JSON.stringify({
+            action: 'confirm_required',
+            description,
+            sql_preview: sql,
+            message: 'El usuario aún no confirmó esta acción. Mostrá la descripción y pedí confirmación.'
+        });
+    }
+
+    // Only allow UPDATE
+    const sqlUpper = sql.toUpperCase().replace(/\s+/g, ' ').trim();
+    if (!sqlUpper.startsWith('UPDATE')) {
+        return JSON.stringify({ error: 'Solo se permiten operaciones UPDATE.' });
+    }
+
+    // Must have WHERE clause
+    if (!sqlUpper.includes('WHERE')) {
+        return JSON.stringify({ error: 'UPDATE debe tener cláusula WHERE.' });
+    }
+
+    // Block dangerous operations
+    if (/\b(DROP|TRUNCATE|DELETE|ALTER|CREATE)\b/i.test(sql)) {
+        return JSON.stringify({ error: 'Operación no permitida.' });
+    }
+
+    try {
+        const { data, error } = await supabase.rpc('execute_readonly_query', {
+            query_text: sql.replace(/^UPDATE/i, 'UPDATE') // RPC only allows SELECT, so we need direct execution
+        });
+
+        // Since our RPC only allows SELECT, we need a write RPC
+        // For now, parse the UPDATE and use Supabase client
+        const tableMatch = sql.match(/UPDATE\s+["']?(\w+)["']?/i);
+        const whereMatch = sql.match(/WHERE\s+(\w+)\s*=\s*'([^']+)'/i);
+        const setMatch = sql.match(/SET\s+(\w+)\s*=\s*'([^']+)'/i);
+
+        if (!tableMatch || !whereMatch || !setMatch) {
+            return JSON.stringify({ error: 'No se pudo parsear el UPDATE. Formato: UPDATE tabla SET campo=valor WHERE condicion=valor' });
+        }
+
+        const { error: updateError } = await supabase
+            .from(tableMatch[1])
+            .update({ [setMatch[1]]: setMatch[2], updated_at: new Date().toISOString() })
+            .eq(whereMatch[1], whereMatch[2]);
+
+        if (updateError) {
+            return JSON.stringify({ error: updateError.message });
+        }
+
+        return JSON.stringify({
+            success: true,
+            action: 'modified',
+            description,
+            message: `✅ ${description}`
+        });
+    } catch (err) {
+        return JSON.stringify({ error: err.message });
+    }
+}
+
+// ═══════════════════════════════════════
+// SEND WHATSAPP
+// ═══════════════════════════════════════
+
+async function sendWhatsApp(args: Record<string, unknown>): Promise<string> {
+    const telefono = args.telefono as string;
+    const mensaje = args.mensaje as string;
+    const paciente = args.paciente as string || 'Paciente';
+
+    if (!telefono || !mensaje) {
+        return JSON.stringify({ error: 'Se requiere teléfono y mensaje.' });
+    }
+
+    // Normalize phone number
+    let phone = telefono.replace(/\D/g, '');
+    if (phone.length === 10) phone = '549' + phone;
+    if (phone.length === 11 && phone.startsWith('0')) phone = '549' + phone.slice(1);
+
+    try {
+        // Call the existing WhatsApp send function
+        const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+            body: {
+                to: phone,
+                message: mensaje,
+                context: `Enviado por Beto para ${paciente}`
+            }
+        });
+
+        if (error) {
+            return JSON.stringify({ error: error.message, fallback: 'Podés intentar enviarlo manualmente desde el módulo de Mensajería.' });
+        }
+
+        return JSON.stringify({
+            success: true,
+            action: 'whatsapp_sent',
+            message: `📲 Mensaje enviado a ${paciente} (${phone})`,
+            paciente,
+            telefono: phone
+        });
+    } catch (err) {
+        return JSON.stringify({
+            error: err.message,
+            message: 'No se pudo enviar. Intentá desde el módulo de Mensajería.',
+            action: 'whatsapp_error'
+        });
+    }
+}
+
+// ═══════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════
+
+function navigateTo(args: Record<string, unknown>): string {
+    const modulo = args.modulo as string || '';
+    const moduleMap: Record<string, string> = {
+        inicio: 'inicio',
+        mensajeria: 'mensajeria',
+        pedidos: 'pedidos',
+        altas: 'altas',
+        turnos: 'turnos',
+        deudas: 'deudas',
+        cirugias: 'cirugias',
+        simon: 'simon',
+        configuracion: 'configuracion',
+    };
+
+    const target = moduleMap[modulo.toLowerCase()];
+    if (!target) {
+        return JSON.stringify({ error: `Módulo "${modulo}" no encontrado.`, available: Object.keys(moduleMap) });
+    }
+
+    return JSON.stringify({
+        action: 'navigate',
+        target,
+        message: `🧭 Navegando a ${modulo}...`
+    });
+}
+
+// ═══════════════════════════════════════
+// PROACTIVE ALERTS
+// ═══════════════════════════════════════
+
+async function getAlerts(): Promise<string> {
+    const hoy = new Date().toISOString().split('T')[0];
+    const alerts: { type: string; icon: string; message: string; count?: number }[] = [];
+
+    try {
+        // 1. Cirugías de hoy sin notificar
+        const { count: cirugiasHoy } = await supabase.from('surgeries')
+            .select('*', { count: 'exact', head: true })
+            .eq('excluido', false).eq('fecha_cirugia', hoy);
+
+        const { count: sinNotificar } = await supabase.from('surgeries')
+            .select('*', { count: 'exact', head: true })
+            .eq('excluido', false).eq('fecha_cirugia', hoy)
+            .is('notificado_at', null);
+
+        if (cirugiasHoy && cirugiasHoy > 0) {
+            alerts.push({
+                type: 'info', icon: '🔪',
+                message: `${cirugiasHoy} cirugías programadas para hoy`,
+                count: cirugiasHoy
+            });
+        }
+        if (sinNotificar && sinNotificar > 0) {
+            alerts.push({
+                type: 'warning', icon: '⚠️',
+                message: `${sinNotificar} cirugías de hoy SIN notificar al paciente`,
+                count: sinNotificar
+            });
+        }
+
+        // 2. Deudas sin gestionar
+        const { count: sinGestionar } = await supabase.from('deudas_pacientes')
+            .select('*', { count: 'exact', head: true })
+            .eq('categoria', 'sin_gestionar')
+            .gte('deuda_total', 50000);
+
+        if (sinGestionar && sinGestionar > 0) {
+            alerts.push({
+                type: 'warning', icon: '💰',
+                message: `${sinGestionar} pacientes con deuda sin gestionar (>$50.000)`,
+                count: sinGestionar
+            });
+        }
+
+        // 3. Documentación pendiente en asociaciones
+        const { count: docsPend } = await supabase.from('asociaciones_cirugias')
+            .select('*', { count: 'exact', head: true })
+            .or('docs_completos.is.null,docs_completos.eq.false');
+
+        if (docsPend && docsPend > 0) {
+            alerts.push({
+                type: 'info', icon: '📋',
+                message: `${docsPend} cirugías de asociaciones con documentación pendiente`,
+                count: docsPend
+            });
+        }
+
+        // 4. Cirugías próximas (próximos 3 días)
+        const tresDias = new Date();
+        tresDias.setDate(tresDias.getDate() + 3);
+        const { count: proximas } = await supabase.from('surgeries')
+            .select('*', { count: 'exact', head: true })
+            .eq('excluido', false)
+            .gt('fecha_cirugia', hoy)
+            .lte('fecha_cirugia', tresDias.toISOString().split('T')[0]);
+
+        if (proximas && proximas > 0) {
+            alerts.push({
+                type: 'info', icon: '📅',
+                message: `${proximas} cirugías programadas en los próximos 3 días`,
+                count: proximas
+            });
+        }
+    } catch (err) {
+        console.error('[beto] Alerts error:', err.message);
+    }
+
+    return JSON.stringify({
+        alerts,
+        total: alerts.length,
+        fecha: hoy
     });
 }
 
@@ -514,7 +825,7 @@ Deno.serve(async (req) => {
     }
 
     try {
-        const { messages, user } = await req.json();
+        const { messages, user, currentModule } = await req.json();
 
         if (!messages || !Array.isArray(messages)) {
             return new Response(
@@ -526,26 +837,51 @@ Deno.serve(async (req) => {
         if (!OPENAI_API_KEY) {
             return new Response(
                 JSON.stringify({ error: 'OpenAI API key no configurada' }),
-                { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
         }
 
         // RAG Step 1: Retrieve schema context
         const schemaContext = await getSchemaContext();
 
-        // Build context with date + user + schema
+        // Build context
         const now = new Date();
         const fechaHoy = now.toISOString().split('T')[0];
+
+        // Per-user personality
+        let personalityBoost = '';
+        if (user?.usuario === 'frojo') {
+            personalityBoost = `
+PERSONALIDAD ESPECIAL PARA ESTE USUARIO: Sos fanático de Los Simpsons. Metele referencias, frases y comparaciones de Los Simpsons en tus respuestas, de forma natural y graciosa pero sin perder la utilidad. Ejemplos:
+- Cuando muestres datos buenos: "¡Excelente, Smithers!" o "Mmm... datos" (como Homer con las donas)
+- Cuando algo está mal: "¡Ay caramba!" o "Todo es culpa de Milhouse"
+- Si hay muchas deudas: "Esto parece la cuenta del bar de Moe"
+- Usá emojis de donas 🍩 y cerveza 🍺 cuando sea apropiado
+NO te excedas — una o dos referencias por respuesta, bien colocadas.`;
+        }
+
+        // Screen context
+        const moduleNames: Record<string, string> = {
+            inicio: 'Inicio (Dashboard)', mensajeria: 'Mensajería (WhatsApp)',
+            pedidos: 'Pedidos de Prácticas', altas: 'Altas Administrativas',
+            turnos: 'Cola de Turnos', deudas: 'Deudas', cirugias: 'Cirugías',
+            simon: 'Simón IA', configuracion: 'Configuración',
+        };
+        const screenContext = currentModule
+            ? `\nEl usuario está actualmente en el módulo: **${moduleNames[currentModule] || currentModule}**. Si pregunta "qué veo acá" o "qué es esto", explicale ese módulo.`
+            : '';
+
         const contextInfo = `
 
 Fecha y hora actual: ${fechaHoy} (${now.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}).
-${user ? `Usuario actual: ${user.nombre} (${user.usuario}). Tratalo por su nombre.` : ''}
+${user ? `Usuario actual: ${user.nombre} (${user.usuario}). Tratalo por su nombre.` : ''}${screenContext}
+${personalityBoost}
 
 ${schemaContext}`;
 
         const fullMessages = [
             { role: 'system', content: SYSTEM_PROMPT_BASE + contextInfo },
-            ...messages.slice(-20)
+            ...messages.slice(-10) // Keep last 10 to avoid context overflow
         ];
 
         // First call to OpenAI
@@ -586,10 +922,15 @@ ${schemaContext}`;
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
     } catch (error) {
-        console.error('[beto-assistant] Error:', error.message);
+        console.error('[beto-assistant] Error:', error.message, error.stack);
+        // ALWAYS return 200 with error message so frontend doesn't crash
         return new Response(
-            JSON.stringify({ error: error.message }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            JSON.stringify({
+                success: false,
+                message: `⚠️ Disculpá, tuve un problema técnico: ${error.message}. Intentá de nuevo con una pregunta más simple.`,
+                error: error.message,
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
     }
 });
@@ -607,13 +948,13 @@ async function callOpenAI(messages: unknown[], tools: unknown[]) {
             tools,
             tool_choice: 'auto',
             temperature: 0.3,
-            max_tokens: 4096,
+            max_tokens: 2048,
         }),
     });
 
     if (!res.ok) {
         const errBody = await res.text();
-        throw new Error(`OpenAI API error ${res.status}: ${errBody}`);
+        throw new Error(`OpenAI error ${res.status}: ${errBody.slice(0, 200)}`);
     }
 
     return await res.json();
