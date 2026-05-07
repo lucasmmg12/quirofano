@@ -136,6 +136,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     // Column filters state
     const [columnFilters, setColumnFilters] = useState({});
     const [openFilterCol, setOpenFilterCol] = useState(null);
+    const [filterDropdownSearch, setFilterDropdownSearch] = useState('');
 
     // Close filter dropdown on outside click
     useEffect(() => {
@@ -655,10 +656,22 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
         const isOpen = openFilterCol === colKey;
         const isFiltered = !!columnFilters[colKey];
         const uniqueVals = columnUniqueValues[colKey] || [];
+        const searchLower = filterDropdownSearch.toLowerCase();
+        const filteredVals = filterDropdownSearch
+            ? uniqueVals.filter(v => v.toLowerCase().includes(searchLower))
+            : uniqueVals;
         return (
             <th style={{ ...thStyle, width, position: 'relative', userSelect: 'none' }}>
                 <div
-                    onClick={() => setOpenFilterCol(isOpen ? null : colKey)}
+                    onClick={() => {
+                        if (isOpen) {
+                            setOpenFilterCol(null);
+                            setFilterDropdownSearch('');
+                        } else {
+                            setOpenFilterCol(colKey);
+                            setFilterDropdownSearch('');
+                        }
+                    }}
                     style={{
                         display: 'flex', alignItems: 'center', gap: '4px',
                         cursor: 'pointer', color: isFiltered ? '#0D3B66' : undefined,
@@ -681,41 +694,91 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                         onClick={e => e.stopPropagation()}
                         style={{
                             position: 'absolute', top: '100%', left: 0, zIndex: 100,
-                            minWidth: '180px', maxHeight: '260px', overflowY: 'auto',
+                            minWidth: '220px', maxHeight: '340px',
                             background: '#fff', border: '1px solid #E2E8F0',
                             borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                            padding: '4px', marginTop: '2px',
+                            padding: '8px', marginTop: '2px',
+                            display: 'flex', flexDirection: 'column',
                         }}
                     >
-                        <button
-                            onClick={() => { setColumnFilters(prev => ({ ...prev, [colKey]: null })); setOpenFilterCol(null); }}
-                            style={{
-                                display: 'block', width: '100%', textAlign: 'left',
-                                padding: '6px 10px', border: 'none', borderRadius: '6px',
-                                background: !columnFilters[colKey] ? '#EFF6FF' : 'transparent',
-                                color: '#0D3B66', fontSize: '0.75rem', fontWeight: 600,
-                                cursor: 'pointer', marginBottom: '2px',
-                            }}
-                        >
-                            ✕ Todos ({uniqueVals.length})
-                        </button>
-                        {uniqueVals.map(val => (
-                            <button
-                                key={val}
-                                onClick={() => { setColumnFilters(prev => ({ ...prev, [colKey]: val })); setOpenFilterCol(null); }}
+                        {/* Search input */}
+                        <div style={{ position: 'relative', marginBottom: '6px' }}>
+                            <Search size={13} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                            <input
+                                type="text"
+                                placeholder="Buscar..."
+                                value={filterDropdownSearch}
+                                onChange={e => setFilterDropdownSearch(e.target.value)}
+                                onClick={e => e.stopPropagation()}
+                                autoFocus
                                 style={{
-                                    display: 'block', width: '100%', textAlign: 'left',
-                                    padding: '5px 10px', border: 'none', borderRadius: '6px',
-                                    background: columnFilters[colKey] === val ? '#DBEAFE' : 'transparent',
-                                    color: columnFilters[colKey] === val ? '#1D4ED8' : '#374151',
-                                    fontSize: '0.73rem', fontWeight: columnFilters[colKey] === val ? 700 : 400,
-                                    cursor: 'pointer', overflow: 'hidden',
-                                    textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                    width: '100%', padding: '6px 8px 6px 28px',
+                                    borderRadius: '6px', border: '1px solid #E2E8F0',
+                                    fontSize: '0.75rem', outline: 'none',
+                                    background: '#F8FAFC',
+                                }}
+                            />
+                        </div>
+                        {/* Todos + Limpiar */}
+                        <div style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
+                            <button
+                                onClick={() => { setColumnFilters(prev => ({ ...prev, [colKey]: null })); setOpenFilterCol(null); setFilterDropdownSearch(''); }}
+                                style={{
+                                    flex: 1, padding: '5px 8px', border: '1px solid #E2E8F0',
+                                    borderRadius: '6px', background: !columnFilters[colKey] ? '#EFF6FF' : '#fff',
+                                    color: '#0D3B66', fontSize: '0.7rem', fontWeight: 600,
+                                    cursor: 'pointer', textAlign: 'center',
                                 }}
                             >
-                                {val}
+                                Todos
                             </button>
-                        ))}
+                            <button
+                                onClick={() => { setColumnFilters(prev => ({ ...prev, [colKey]: null })); setFilterDropdownSearch(''); }}
+                                style={{
+                                    flex: 1, padding: '5px 8px', border: '1px solid #FECACA',
+                                    borderRadius: '6px', background: '#fff',
+                                    color: '#DC2626', fontSize: '0.7rem', fontWeight: 600,
+                                    cursor: 'pointer', textAlign: 'center',
+                                }}
+                            >
+                                Limpiar
+                            </button>
+                        </div>
+                        {/* Options list */}
+                        <div style={{ overflowY: 'auto', maxHeight: '220px', flex: 1 }}>
+                            {filteredVals.map(val => (
+                                <button
+                                    key={val}
+                                    onClick={() => { setColumnFilters(prev => ({ ...prev, [colKey]: val })); setOpenFilterCol(null); setFilterDropdownSearch(''); }}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                        width: '100%', textAlign: 'left',
+                                        padding: '5px 8px', border: 'none', borderRadius: '6px',
+                                        background: columnFilters[colKey] === val ? '#DBEAFE' : 'transparent',
+                                        color: columnFilters[colKey] === val ? '#1D4ED8' : '#374151',
+                                        fontSize: '0.73rem', fontWeight: columnFilters[colKey] === val ? 700 : 400,
+                                        cursor: 'pointer', overflow: 'hidden',
+                                        textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                    }}
+                                >
+                                    <span style={{
+                                        width: '14px', height: '14px', borderRadius: '3px',
+                                        border: columnFilters[colKey] === val ? '2px solid #1D4ED8' : '1.5px solid #CBD5E1',
+                                        background: columnFilters[colKey] === val ? '#1D4ED8' : '#fff',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        flexShrink: 0, fontSize: '0.6rem', color: '#fff',
+                                    }}>
+                                        {columnFilters[colKey] === val && '✓'}
+                                    </span>
+                                    {val}
+                                </button>
+                            ))}
+                            {filteredVals.length === 0 && (
+                                <div style={{ padding: '12px', textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem' }}>
+                                    Sin resultados
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
             </th>
