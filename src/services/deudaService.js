@@ -12,6 +12,7 @@ export const CATEGORIAS_DEUDOR = {
     cuenta_corriente:      { label: 'Cuenta Corriente',          color: '#8B5CF6', bg: '#F3E8FF', icon: '🟣' },
     incobrable:            { label: 'Incobrable',                color: '#EF4444', bg: '#FEE2E2', icon: '🔴' },
     descuento_liquidacion: { label: 'Descuento por Liquidación', color: '#0D9488', bg: '#CCFBF1', icon: '🏷️' },
+    sin_deuda_salus:       { label: 'Sin Deuda en Salus',       color: '#059669', bg: '#D1FAE5', icon: '✅' },
 };
 
 export const MIN_DEUDA = 50000;

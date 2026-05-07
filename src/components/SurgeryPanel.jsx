@@ -2729,7 +2729,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                             key={key}
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                handleAction(key, surgery);
+                                                handleManualChange(surgery.id, key);
                                                 setStatusDropdownId(null);
                                                 setDropdownAnchor(null);
                                             }}
