@@ -584,11 +584,11 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     const pendientesCirugias = cirugias; // all items returned are already pending (not in cart)
     const enCarritoCount = Object.values(carrito).flat().length; // from carrito state
 
-    // ─── Column-filtered data ───
+    // ─── Column-filtered data (multi-select) ───
     const filteredPendientes = useMemo(() => {
         return pendientesCirugias.filter(c => {
-            for (const [col, val] of Object.entries(columnFilters)) {
-                if (!val) continue;
+            for (const [col, selectedVals] of Object.entries(columnFilters)) {
+                if (!selectedVals || !Array.isArray(selectedVals) || selectedVals.length === 0) continue;
                 let cellValue = '';
                 if (col === 'fecha') {
                     const d = new Date(c.fecha_realizacion + 'T12:00:00');
@@ -601,7 +601,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                 else if (col === 'cirugia') cellValue = c.nombre_cirugia || '';
                 else if (col === 'cirujano') cellValue = c.cirujano || '';
                 else if (col === 'asociacion') cellValue = c.asociacion || '';
-                if (cellValue !== val) return false;
+                if (!selectedVals.includes(cellValue)) return false;
             }
             return true;
         }).sort((a, b) => {
@@ -650,16 +650,31 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
         return result;
     }, [pendientesCirugias]);
 
-    const activeFilterCount = Object.values(columnFilters).filter(Boolean).length;
+    const activeFilterCount = Object.values(columnFilters).filter(v => Array.isArray(v) && v.length > 0).length;
 
     const FilterableHeader = ({ label, colKey, width }) => {
         const isOpen = openFilterCol === colKey;
-        const isFiltered = !!columnFilters[colKey];
+        const selected = columnFilters[colKey] || [];
+        const isFiltered = Array.isArray(selected) && selected.length > 0;
         const uniqueVals = columnUniqueValues[colKey] || [];
         const searchLower = filterDropdownSearch.toLowerCase();
         const filteredVals = filterDropdownSearch
             ? uniqueVals.filter(v => v.toLowerCase().includes(searchLower))
             : uniqueVals;
+
+        const toggleVal = (val) => {
+            setColumnFilters(prev => {
+                const current = prev[colKey] || [];
+                const arr = Array.isArray(current) ? current : [];
+                if (arr.includes(val)) {
+                    const next = arr.filter(v => v !== val);
+                    return { ...prev, [colKey]: next.length > 0 ? next : null };
+                } else {
+                    return { ...prev, [colKey]: [...arr, val] };
+                }
+            });
+        };
+
         return (
             <th style={{ ...thStyle, width, position: 'relative', userSelect: 'none' }}>
                 <div
@@ -684,9 +699,13 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                     }} />
                     {isFiltered && (
                         <span style={{
-                            width: '6px', height: '6px', borderRadius: '50%',
-                            background: '#0D3B66', flexShrink: 0,
-                        }} />
+                            background: '#0D3B66', color: '#fff', borderRadius: '50%',
+                            width: '14px', height: '14px', fontSize: '0.55rem',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            fontWeight: 700, flexShrink: 0,
+                        }}>
+                            {selected.length}
+                        </span>
                     )}
                 </div>
                 {isOpen && (
@@ -725,7 +744,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                 onClick={() => { setColumnFilters(prev => ({ ...prev, [colKey]: null })); setOpenFilterCol(null); setFilterDropdownSearch(''); }}
                                 style={{
                                     flex: 1, padding: '5px 8px', border: '1px solid #E2E8F0',
-                                    borderRadius: '6px', background: !columnFilters[colKey] ? '#EFF6FF' : '#fff',
+                                    borderRadius: '6px', background: !isFiltered ? '#EFF6FF' : '#fff',
                                     color: '#0D3B66', fontSize: '0.7rem', fontWeight: 600,
                                     cursor: 'pointer', textAlign: 'center',
                                 }}
@@ -744,35 +763,38 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                 Limpiar
                             </button>
                         </div>
-                        {/* Options list */}
+                        {/* Options list — multi-select */}
                         <div style={{ overflowY: 'auto', maxHeight: '220px', flex: 1 }}>
-                            {filteredVals.map(val => (
-                                <button
-                                    key={val}
-                                    onClick={() => { setColumnFilters(prev => ({ ...prev, [colKey]: val })); setOpenFilterCol(null); setFilterDropdownSearch(''); }}
-                                    style={{
-                                        display: 'flex', alignItems: 'center', gap: '8px',
-                                        width: '100%', textAlign: 'left',
-                                        padding: '5px 8px', border: 'none', borderRadius: '6px',
-                                        background: columnFilters[colKey] === val ? '#DBEAFE' : 'transparent',
-                                        color: columnFilters[colKey] === val ? '#1D4ED8' : '#374151',
-                                        fontSize: '0.73rem', fontWeight: columnFilters[colKey] === val ? 700 : 400,
-                                        cursor: 'pointer', overflow: 'hidden',
-                                        textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                    }}
-                                >
-                                    <span style={{
-                                        width: '14px', height: '14px', borderRadius: '3px',
-                                        border: columnFilters[colKey] === val ? '2px solid #1D4ED8' : '1.5px solid #CBD5E1',
-                                        background: columnFilters[colKey] === val ? '#1D4ED8' : '#fff',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        flexShrink: 0, fontSize: '0.6rem', color: '#fff',
-                                    }}>
-                                        {columnFilters[colKey] === val && '✓'}
-                                    </span>
-                                    {val}
-                                </button>
-                            ))}
+                            {filteredVals.map(val => {
+                                const isChecked = selected.includes(val);
+                                return (
+                                    <button
+                                        key={val}
+                                        onClick={() => toggleVal(val)}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '8px',
+                                            width: '100%', textAlign: 'left',
+                                            padding: '5px 8px', border: 'none', borderRadius: '6px',
+                                            background: isChecked ? '#DBEAFE' : 'transparent',
+                                            color: isChecked ? '#1D4ED8' : '#374151',
+                                            fontSize: '0.73rem', fontWeight: isChecked ? 700 : 400,
+                                            cursor: 'pointer', overflow: 'hidden',
+                                            textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                        }}
+                                    >
+                                        <span style={{
+                                            width: '14px', height: '14px', borderRadius: '3px',
+                                            border: isChecked ? '2px solid #1D4ED8' : '1.5px solid #CBD5E1',
+                                            background: isChecked ? '#1D4ED8' : '#fff',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            flexShrink: 0, fontSize: '0.6rem', color: '#fff',
+                                        }}>
+                                            {isChecked && '✓'}
+                                        </span>
+                                        {val}
+                                    </button>
+                                );
+                            })}
                             {filteredVals.length === 0 && (
                                 <div style={{ padding: '12px', textAlign: 'center', color: '#94A3B8', fontSize: '0.72rem' }}>
                                     Sin resultados
