@@ -1346,59 +1346,151 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                     ⚠️ Este deudor no tiene <strong>NHC</strong> vinculado.
                                 </div>
                             ) : presupuestos.length === 0 ? (
-                                <span style={{ color: '#CBD5E1', fontSize: '0.85rem' }}>Sin presupuestos encontrados para este paciente</span>
+                                <div style={{ textAlign: 'center', padding: '20px', color: '#CBD5E1' }}>
+                                    <Banknote size={28} strokeWidth={1.2} style={{ margin: '0 auto 8px', display: 'block', opacity: 0.4 }} />
+                                    <span style={{ fontSize: '0.82rem' }}>Sin presupuestos encontrados</span>
+                                </div>
                             ) : (
-                                <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    {presupuestos.map(p => (
-                                        <div key={p.id_presupuesto} style={{
-                                            borderRadius: '10px', border: '1px solid #E2E8F0',
-                                            overflow: 'hidden',
-                                        }}>
-                                            <div style={{
-                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                padding: '10px 14px',
-                                                background: p.aceptado === 'true' || p.aceptado === 'si' ? '#F0FDF4' : '#F8FAFC',
-                                                borderBottom: '1px solid #E2E8F0',
-                                            }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
-                                                    <Banknote size={14} style={{ color: '#3B82F6', flexShrink: 0 }} />
-                                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                                        <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0D3B66', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                            #{p.id_presupuesto} — {p.presup_descripcion || 'Sin descripción'}
-                                                        </div>
-                                                        <div style={{ fontSize: '0.68rem', color: '#64748B', display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
-                                                            <span>📅 {formatDate(p.fecha)}</span>
-                                                            <span>📦 {p.total_items} ítem{p.total_items !== 1 ? 's' : ''}</span>
-                                                            {p.aceptado && (
+                                <div style={{ maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    {presupuestos.map(p => {
+                                        const isAceptado = p.aceptado === 'true' || p.aceptado === 'si';
+                                        const total = Number(p.importe_total) || 0;
+                                        const cobrado = Number(p.importe_cobrado) || 0;
+                                        const pendiente = total - cobrado;
+                                        const pctCobrado = total > 0 ? Math.min((cobrado / total) * 100, 100) : 0;
+                                        const accentColor = isAceptado ? '#10B981' : (p.aceptado === 'no' ? '#EF4444' : '#F59E0B');
+
+                                        return (
+                                            <div key={p.id_presupuesto} style={{
+                                                borderRadius: '12px', border: '1px solid #E2E8F0',
+                                                overflow: 'hidden', background: '#fff',
+                                                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                                                transition: 'box-shadow 0.2s',
+                                            }}
+                                                onMouseOver={e => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'}
+                                                onMouseOut={e => e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'}
+                                            >
+                                                {/* Header con accent bar */}
+                                                <div style={{
+                                                    display: 'flex', alignItems: 'stretch',
+                                                    borderBottom: '1px solid #F1F5F9',
+                                                }}>
+                                                    {/* Accent bar lateral */}
+                                                    <div style={{
+                                                        width: '4px', background: accentColor,
+                                                        borderRadius: '12px 0 0 0', flexShrink: 0,
+                                                    }} />
+                                                    <div style={{
+                                                        flex: 1, padding: '12px 14px',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                        gap: '12px',
+                                                    }}>
+                                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                                            <div style={{
+                                                                fontSize: '0.82rem', fontWeight: 700, color: '#0F172A',
+                                                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                                display: 'flex', alignItems: 'center', gap: '6px',
+                                                            }}>
                                                                 <span style={{
-                                                                    padding: '1px 6px', borderRadius: '8px', fontSize: '0.62rem', fontWeight: 700,
-                                                                    background: p.aceptado === 'true' || p.aceptado === 'si' ? '#DCFCE7' : '#FEF3C7',
-                                                                    color: p.aceptado === 'true' || p.aceptado === 'si' ? '#16A34A' : '#D97706',
+                                                                    padding: '2px 6px', borderRadius: '6px',
+                                                                    background: '#F1F5F9', color: '#64748B',
+                                                                    fontSize: '0.68rem', fontWeight: 600, flexShrink: 0,
+                                                                    fontFamily: 'monospace',
                                                                 }}>
-                                                                    {p.aceptado === 'true' || p.aceptado === 'si' ? '✅ Aceptado' : '⏳ ' + p.aceptado}
+                                                                    #{p.id_presupuesto}
                                                                 </span>
-                                                            )}
+                                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                    {p.presup_descripcion || 'Sin descripción'}
+                                                                </span>
+                                                            </div>
+                                                            <div style={{
+                                                                display: 'flex', gap: '12px', marginTop: '6px',
+                                                                fontSize: '0.7rem', color: '#94A3B8', fontWeight: 500,
+                                                            }}>
+                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                                    <Calendar size={11} /> {formatDate(p.fecha)}
+                                                                </span>
+                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                                    📦 {p.total_items} ítem{p.total_items !== 1 ? 's' : ''}
+                                                                </span>
+                                                                <span style={{
+                                                                    padding: '1px 8px', borderRadius: '10px', fontWeight: 700,
+                                                                    fontSize: '0.62rem',
+                                                                    background: isAceptado ? '#D1FAE5' : (p.aceptado === 'no' ? '#FEE2E2' : '#FEF3C7'),
+                                                                    color: isAceptado ? '#059669' : (p.aceptado === 'no' ? '#DC2626' : '#D97706'),
+                                                                }}>
+                                                                    {isAceptado ? '✓ Aceptado' : (p.aceptado === 'no' ? '✕ no' : (p.aceptado || '—'))}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        {/* Monto total */}
+                                                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                                            <div style={{
+                                                                fontSize: '1rem', fontWeight: 800, color: '#0F172A',
+                                                                letterSpacing: '-0.02em',
+                                                            }}>
+                                                                {formatMoney(total)}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '12px' }}>
-                                                    <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0D3B66' }}>
-                                                        {formatMoney(p.importe_total)}
-                                                    </div>
-                                                    {Number(p.importe_cobrado) > 0 && (
-                                                        <div style={{ fontSize: '0.65rem', color: '#16A34A' }}>
-                                                            Cobrado: {formatMoney(p.importe_cobrado)}
+
+                                                {/* Barra de progreso cobrado/pendiente */}
+                                                {total > 0 && (
+                                                    <div style={{ padding: '8px 14px 10px', background: '#FAFBFC' }}>
+                                                        <div style={{
+                                                            display: 'flex', justifyContent: 'space-between',
+                                                            fontSize: '0.65rem', fontWeight: 600, marginBottom: '4px',
+                                                        }}>
+                                                            <span style={{ color: '#10B981' }}>
+                                                                Cobrado: {formatMoney(cobrado)}
+                                                            </span>
+                                                            <span style={{ color: pendiente > 0 ? '#EF4444' : '#10B981' }}>
+                                                                {pendiente > 0 ? `Pendiente: ${formatMoney(pendiente)}` : '✓ Pagado'}
+                                                            </span>
                                                         </div>
-                                                    )}
-                                                </div>
+                                                        <div style={{
+                                                            height: '6px', borderRadius: '3px',
+                                                            background: '#E2E8F0', overflow: 'hidden',
+                                                        }}>
+                                                            <div style={{
+                                                                height: '100%', borderRadius: '3px',
+                                                                width: `${pctCobrado}%`,
+                                                                background: pctCobrado >= 100
+                                                                    ? 'linear-gradient(90deg, #10B981, #059669)'
+                                                                    : pctCobrado > 0
+                                                                        ? 'linear-gradient(90deg, #3B82F6, #2563EB)'
+                                                                        : 'transparent',
+                                                                transition: 'width 0.5s ease',
+                                                            }} />
+                                                        </div>
+                                                        <div style={{
+                                                            textAlign: 'right', fontSize: '0.6rem',
+                                                            color: '#94A3B8', marginTop: '2px', fontWeight: 600,
+                                                        }}>
+                                                            {pctCobrado.toFixed(0)}% cobrado
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Observaciones */}
+                                                {p.observaciones && (
+                                                    <div style={{
+                                                        padding: '8px 14px',
+                                                        fontSize: '0.72rem', color: '#64748B',
+                                                        background: '#F8FAFC',
+                                                        borderTop: '1px solid #F1F5F9',
+                                                        display: 'flex', gap: '6px', alignItems: 'flex-start',
+                                                    }}>
+                                                        <span style={{ flexShrink: 0, opacity: 0.6 }}>💬</span>
+                                                        <span style={{ lineHeight: '1.4', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                                                            {p.observaciones}
+                                                        </span>
+                                                    </div>
+                                                )}
                                             </div>
-                                            {p.observaciones && (
-                                                <div style={{ padding: '6px 14px', fontSize: '0.72rem', color: '#64748B', background: '#FAFBFC' }}>
-                                                    💬 {p.observaciones}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
