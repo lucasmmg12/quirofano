@@ -898,12 +898,21 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#D97706', letterSpacing: '-1px' }}>
-                            {formatMoney(Number(selectedDeudor.balance_neto) || selectedDeudor.deuda_total)}
-                        </div>
-                        <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
-                            Balance Neto
-                        </div>
+                        {(() => {
+                            const totalCobrosCalc = cobros.reduce((s, c) => s + (Number(c.importe) || 0), 0);
+                            const totalNCCalc = notasCredito.reduce((s, n) => s + (Number(n.importe_total) || 0), 0);
+                            const balanceCalc = (Number(selectedDeudor.deuda_total) || 0) - totalCobrosCalc - totalNCCalc;
+                            return (
+                                <>
+                                    <div style={{ fontSize: '1.8rem', fontWeight: 900, color: balanceCalc > 0 ? '#D97706' : '#16A34A', letterSpacing: '-1px' }}>
+                                        {formatMoney(balanceCalc)}
+                                    </div>
+                                    <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
+                                        Balance Neto
+                                    </div>
+                                </>
+                            );
+                        })()}
                     </div>
                 </div>
 
@@ -1040,12 +1049,18 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         <div style={{ ...st.card, background: 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)' }}>
                             <h4 style={st.cardTitle}><DollarSign size={14} /> Resumen Financiero</h4>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px', marginTop: '8px' }}>
-                                {[
-                                    { label: 'Deuda Bruta', value: selectedDeudor.deuda_total, color: '#EF4444', bg: '#FEF2F2', icon: '🔴' },
-                                    { label: 'Cobros', value: selectedDeudor.total_cobros || 0, color: '#16A34A', bg: '#F0FDF4', icon: '🟢' },
-                                    { label: 'Notas Crédito', value: selectedDeudor.total_notas_credito || 0, color: '#3B82F6', bg: '#EFF6FF', icon: '🔵' },
-                                    { label: 'Balance Neto', value: Number(selectedDeudor.balance_neto) || selectedDeudor.deuda_total, color: '#D97706', bg: '#FFFBEB', icon: '🟠' },
-                                ].map((item, idx) => (
+                                {(() => {
+                                    const totalCobrosCalc = cobros.reduce((s, c) => s + (Number(c.importe) || 0), 0);
+                                    const totalNCCalc = notasCredito.reduce((s, n) => s + (Number(n.importe_total) || 0), 0);
+                                    const deudaBruta = Number(selectedDeudor.deuda_total) || 0;
+                                    const balanceCalc = deudaBruta - totalCobrosCalc - totalNCCalc;
+                                    return [
+                                        { label: 'Deuda Bruta', value: deudaBruta, color: '#EF4444', bg: '#FEF2F2', icon: '🔴' },
+                                        { label: 'Cobros', value: totalCobrosCalc, color: '#16A34A', bg: '#F0FDF4', icon: '🟢' },
+                                        { label: 'Notas Crédito', value: totalNCCalc, color: '#3B82F6', bg: '#EFF6FF', icon: '🔵' },
+                                        { label: 'Balance Neto', value: balanceCalc, color: balanceCalc > 0 ? '#D97706' : '#16A34A', bg: '#FFFBEB', icon: '🟠' },
+                                    ];
+                                })().map((item, idx) => (
                                     <div key={idx} style={{
                                         padding: '10px', borderRadius: '10px', background: item.bg,
                                         border: `1px solid ${item.color}20`, textAlign: 'center',
