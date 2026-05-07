@@ -36,6 +36,7 @@ import LaboratoriosPanel from './components/LaboratoriosPanel.jsx';
 import PublicLabView from './components/PublicLabView.jsx';
 import LabPortal from './components/LabPortal.jsx';
 import IdleHomerOverlay from './components/IdleHomerOverlay.jsx';
+import BetoWidget from './components/BetoWidget.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -783,6 +784,9 @@ function App({ currentUser, onLogout }) {
                     ))}
                 </div>
             )}
+
+            {/* Beto — AI Assistant Widget */}
+            <BetoWidget currentUser={currentUser} />
 
             {/* Easter egg: Homer idle overlay — solo para frojo */}
             {currentUser?.usuario === 'frojo' && <IdleHomerOverlay />}
