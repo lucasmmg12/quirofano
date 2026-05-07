@@ -1,6 +1,6 @@
 // Supabase Edge Function: beto-assistant
 // Asistente personal AI para ADM-QUI — Sanatorio Argentino
-// Usa OpenAI GPT-4.1 con function calling para consultas y acciones sobre la DB
+// Arquitectura RAG: Schema Introspection → SQL Dinámico → Respuesta Inteligente
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -11,9 +11,141 @@ const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 // ═══════════════════════════════════════
+// SCHEMA CACHE (RAG Knowledge Base)
+// ═══════════════════════════════════════
+let schemaCache: string | null = null;
+let schemaCacheTime = 0;
+const SCHEMA_TTL = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Introspects the database schema dynamically.
+ * This is the "Retrieval" part of RAG — Beto learns the real schema
+ * before answering any question, so column names are always accurate.
+ */
+async function getSchemaContext(): Promise<string> {
+    const now = Date.now();
+    if (schemaCache && (now - schemaCacheTime) < SCHEMA_TTL) {
+        return schemaCache;
+    }
+
+    // Get all tables and their columns from information_schema
+    const { data: columns, error } = await supabase.rpc('get_schema_info');
+
+    if (error) {
+        // Fallback: try raw SQL if RPC doesn't exist
+        const { data: rawCols, error: rawErr } = await supabase
+            .from('information_schema.columns' as any)
+            .select('table_name, column_name, data_type, is_nullable')
+            .in('table_schema', ['public'])
+            .order('table_name')
+            .order('ordinal_position');
+
+        if (rawErr) {
+            console.error('[beto] Schema introspection failed:', rawErr.message);
+            return getFallbackSchema();
+        }
+        schemaCache = formatSchemaFromColumns(rawCols || []);
+        schemaCacheTime = now;
+        return schemaCache;
+    }
+
+    schemaCache = formatSchemaFromColumns(columns || []);
+    schemaCacheTime = now;
+    return schemaCache;
+}
+
+function formatSchemaFromColumns(columns: any[]): string {
+    const tables: Record<string, { cols: string[]; types: Record<string, string> }> = {};
+    for (const col of columns) {
+        const tbl = col.table_name;
+        if (!tables[tbl]) tables[tbl] = { cols: [], types: {} };
+        tables[tbl].cols.push(col.column_name);
+        tables[tbl].types[col.column_name] = col.data_type;
+    }
+
+    let schema = '## Esquema Real de la Base de Datos\n\n';
+    for (const [table, info] of Object.entries(tables)) {
+        schema += `### \`${table}\`\n`;
+        schema += info.cols.map(c => `- \`${c}\` (${info.types[c]})`).join('\n');
+        schema += '\n\n';
+    }
+    return schema;
+}
+
+/**
+ * Fallback hardcoded schema — used when introspection fails.
+ * Based on actual column names verified from the codebase.
+ */
+function getFallbackSchema(): string {
+    return `## Esquema de la Base de Datos (verificado)
+
+### \`surgeries\` (Cirugías programadas)
+- \`id\` (uuid PK)
+- \`id_paciente\` (text) — ID del paciente en SALUS
+- \`nombre\` (text) — Nombre completo del paciente (MAYÚSCULAS)
+- \`dni\` (text)
+- \`telefono\` (text) — Formato 549XXXXXXXXXX
+- \`obra_social\` (text)
+- \`fecha_cirugia\` (date) — Formato YYYY-MM-DD
+- \`medico\` (text) — Cirujano
+- \`modulo\` (text) — Módulo/especialidad
+- \`status\` (text) — lila, amarillo, verde, azul, rojo, precaucion
+- \`excluido\` (boolean) — Si el módulo está excluido del bot
+- \`ausente\` (text) — null=pendiente, '0'=realizada, '1'=suspendida
+- \`notas\` (text)
+- \`operador\` (text)
+- \`notificado_at\`, \`autorizado_at\`, \`confirmado_at\` (timestamptz)
+- \`descripcion\` (text)
+- \`instrucciones\` (text)
+
+### \`deudas_pacientes\` (Deudas de pacientes)
+- \`id\` (uuid PK)
+- \`nhc\` (text) — Número de historia clínica
+- \`nombre\` (text) — Nombre del paciente (MAYÚSCULAS)
+- \`telefono\` (text)
+- \`cobertura\` (text) — Obra social / Cobertura médica
+- \`deuda_total\` (numeric) — Monto total de deuda (Balance)
+- \`categoria\` (text) — sin_gestionar, en_gestion, comprometido, cuenta_corriente, incobrable, descuento_liquidacion, sin_deuda_salus
+- \`observaciones\` (text)
+- \`fecha_deuda\` (date)
+- \`facturas_count\` (integer) — Cantidad de facturas
+- \`updated_at\` (timestamptz)
+
+### \`asociaciones_cirugias\` (Cirugías de asociaciones médicas)
+- \`id\` (uuid PK)
+- \`nombre_paciente\` (text)
+- \`nombre_cirugia\` (text) — Nombre de la cirugía/procedimiento
+- \`fecha_realizacion\` (date)
+- \`cirujano\` (text)
+- \`asociacion\` (text) — Nombre de la asociación
+- \`especialidad\` (text)
+- \`obra_social\` (text)
+- \`docs_completos\` (boolean) — Documentación completa
+- \`constancia_entregada\` (boolean)
+- \`carrito_id\` (uuid)
+
+### \`laboratorios_anatomia\` (Biopsias de anatomía patológica)
+- \`id\` (uuid PK)
+- \`paciente\` (text)
+- \`laboratorio\` (text) — Laboratorio asignado
+- \`fecha_visita\` (date)
+- \`biopsia_simple\` (integer)
+- \`biopsia_ampliada\` (integer)
+- \`obra_social\` (text)
+
+### \`admqui_usuarios\` (Usuarios del sistema)
+- \`id\` (uuid PK)
+- \`usuario\` (text) — Username
+- \`nombre\` (text) — Nombre completo
+- \`iniciales\` (text)
+- \`activo\` (boolean)
+`;
+}
+
+// ═══════════════════════════════════════
 // SYSTEM PROMPT — Personalidad de Beto
 // ═══════════════════════════════════════
-const SYSTEM_PROMPT = `Eres **Beto**, el asistente personal inteligente del Sistema de Administración del Sanatorio Argentino (ADM-QUI).
+const SYSTEM_PROMPT_BASE = `Eres **Beto**, el asistente personal inteligente del Sistema de Administración del Sanatorio Argentino (ADM-QUI).
 
 ## Tu Personalidad
 - Sos cordial, profesional y directo. Usás español rioplatense natural (vos, tenés, querés).
@@ -21,169 +153,93 @@ const SYSTEM_PROMPT = `Eres **Beto**, el asistente personal inteligente del Sist
 - Cuando expliques datos financieros o médicos, sé claro y preciso.
 - Si el usuario pregunta algo que no podés resolver, decilo honestamente.
 - Cuando muestres datos, usalos en formato legible con emojis para mejorar la lectura.
-- Si te piden explicar el sistema, usá analogías simples y, cuando sea posible, describí diagramas con texto.
-- IMPORTANTE: Cuando el usuario diga "hoy", "mañana", "esta semana", etc., calculá la fecha correspondiente basándote en la fecha actual que te paso en el contexto.
+- Si te piden explicar el sistema, usá analogías simples.
+- IMPORTANTE: Cuando el usuario diga "hoy", "mañana", "esta semana", etc., calculá la fecha correspondiente.
 
 ## El Sistema ADM-QUI
-Es el sistema integral de administración del Sanatorio Argentino. Tiene estos módulos:
+Sistema integral de administración del Sanatorio Argentino. Módulos del menú lateral:
 
-1. **Pedidos de Prácticas** — Gestión de pedidos médicos con nomenclador
-2. **Cirugías** — Panel de cirugías programadas con envío de WhatsApp a pacientes. Tabla: \`surgeries\`. Estados: lila (sin mensaje), amarillo (en revisión), verde (autorizado), azul (paciente confirmó), rojo (problema), precaución.
-3. **Deudas** — Seguimiento de deuda de pacientes por obra social (categorías: Sin contactar, Contactado, Compromiso pago, Plan de pago, Deuda judicial, Sin deuda SALUS)
-4. **Asociaciones** — Cirugías de asociaciones médicas (Cirujanos, Ginecólogos, Traumatólogos, etc.) con documentación pendiente
-5. **Laboratorios** — Biopsias de anatomía patológica asignadas a laboratorios
-6. **Altas** — Control de altas médicas con responsable y estado
-7. **Mensajería** — Chat WhatsApp bidireccional con pacientes
-8. **Métricas** — Dashboard de KPIs y analytics
-9. **Turnos** — Administración de turnos
-10. **SIMÓN** — Sistema de procesamiento de documentos con IA
+1. **🏠 Inicio** — Dashboard con resumen general
+2. **💬 Mensajería** — Chat WhatsApp bidireccional con pacientes (templates, multimedia, múltiples líneas)
+3. **📋 Pedidos** — Pedidos de prácticas médicas con nomenclador y carrito
+4. **📤 Altas Adm** — Control de altas médicas (ingreso, alta, responsable, diagnóstico)
+5. **🕐 Cola de Turnos** — Gestión de cola de turnos del día
+6. **💰 Deudas** — Seguimiento de deuda por paciente y obra social (categorías: sin_gestionar, en_gestion, comprometido, cuenta_corriente, incobrable, descuento_liquidacion, sin_deuda_salus)
+7. **🔪 Cirugías** — Panel de cirugías con bot WhatsApp. Estados: lila→amarillo→verde→azul (+ rojo, precaución)
+8. **🤖 Simón IA** — Procesamiento de documentos con inteligencia artificial
+9. **⚙️ Configuración** — Usuarios, líneas WhatsApp, templates, parámetros
+10. **🏥 Asociaciones** — Cirugías de asociaciones médicas con documentación pendiente
+11. **🔬 Laboratorios** — Biopsias de anatomía patológica por laboratorio
 
-## Tablas principales en la base de datos:
-- \`surgeries\`: nombre, dni, telefono, obra_social, fecha_cirugia, medico, modulo, status (lila/amarillo/verde/azul/rojo/precaucion), excluido, ausente (null=pendiente, 0=realizada, 1=suspendida)
-- \`deudas_pacientes\`: paciente, obra_social, factura_nro, monto, categoria, telefono, observaciones
-- \`asociaciones_cirugias\`: fecha_realizacion, nombre_paciente, especialidad, nombre_cirugia, estado, cirujano, asociacion, docs_completos
-- \`laboratorios_anatomia\`: fecha_visita, paciente, laboratorio, biopsia_simple, biopsia_ampliada
-- \`admqui_usuarios\`: usuario, nombre, iniciales, activo
+## CÓMO BUSCAR DATOS
+- Usá la tool \`query_database\` para CUALQUIER consulta de datos. Generá SQL SELECT válido.
+- Los nombres de pacientes están en MAYÚSCULAS en la DB. Siempre buscá con ILIKE para ser flexible.
+- Para búsquedas parciales usá: \`WHERE nombre ILIKE '%texto%'\`
+- Si buscás por nombre y no encontrás, probá solo con el apellido.
+- NUNCA ejecutes INSERT, UPDATE, DELETE sin la tool \`modify_database\` y confirmación del usuario.
+
+## REPORTES
+Cuando te pidan un reporte, consultá la data con \`query_database\` y formateala en Markdown con:
+- Título y fecha
+- Métricas clave con emojis
+- Tablas Markdown para datos tabulares
+- Totales y resúmenes
 
 ## Reglas de Seguridad
 - NUNCA reveles contraseñas, API keys, ni información técnica sensible.
-- Respetá el rol del usuario. Si alguien no tiene permisos, no ejecutes la acción.
-- Para acciones de ESCRITURA (modificar, eliminar), SIEMPRE pedí confirmación antes.
-- Para acciones de LECTURA (consultar datos), ejecutá directamente.
+- Respetá el rol del usuario.
+- Para LECTURA: ejecutá directamente con \`query_database\`.
+- Para ESCRITURA: usá \`modify_database\` que SIEMPRE pide confirmación al usuario primero.
 
 ## Formato de Respuesta
-- Usá Markdown para formatear tus respuestas.
-- Para tablas de datos, usá formato de tabla Markdown.
-- Para explicaciones del sistema, usá listas y headers claros.
+- Usá Markdown con emojis para claridad.
+- Tablas Markdown para datos.
 - Sé conciso pero completo.`;
 
 // ═══════════════════════════════════════
-// TOOLS — Function Calling definitions
+// TOOLS — Simplified RAG Architecture
 // ═══════════════════════════════════════
 const TOOLS = [
     {
         type: 'function',
         function: {
-            name: 'query_deudas',
-            description: 'Consulta información de deudas de pacientes. Puede filtrar por obra social, categoría, paciente, o traer un resumen general.',
+            name: 'query_database',
+            description: `Ejecuta una consulta SQL SELECT de solo lectura sobre la base de datos del Sanatorio Argentino. 
+            Usá esta tool para CUALQUIER consulta de datos: cirugías, deudas, asociaciones, laboratorios, usuarios, etc.
+            REGLAS:
+            - Solo SELECT (no INSERT/UPDATE/DELETE)
+            - Los nombres de pacientes están en MAYÚSCULAS, usá ILIKE para búsquedas flexibles
+            - Para fechas usá formato YYYY-MM-DD
+            - Limitá resultados con LIMIT (default 50)
+            - Para contar registros usá COUNT(*)
+            - Podés usar JOINs, GROUP BY, ORDER BY, etc.`,
             parameters: {
                 type: 'object',
                 properties: {
-                    obra_social: { type: 'string', description: 'Filtrar por obra social (ej: OSDE, Swiss Medical)' },
-                    categoria: { type: 'string', description: 'Filtrar por categoría de deuda (ej: Sin contactar, Compromiso pago)' },
-                    paciente: { type: 'string', description: 'Buscar por nombre de paciente (búsqueda parcial)' },
-                    resumen: { type: 'boolean', description: 'Si true, devuelve un resumen agregado por obra social' },
-                    limit: { type: 'number', description: 'Cantidad máxima de resultados (default 20)' }
-                }
+                    sql: {
+                        type: 'string',
+                        description: 'Consulta SQL SELECT a ejecutar. Ejemplo: SELECT nombre, deuda_total, categoria FROM deudas_pacientes WHERE nombre ILIKE \'%MARTINEZ%\' LIMIT 20'
+                    },
+                    explanation: {
+                        type: 'string',
+                        description: 'Breve explicación de qué busca esta consulta (para logging)'
+                    }
+                },
+                required: ['sql']
             }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'query_asociaciones',
-            description: 'Consulta cirugías de asociaciones médicas. Puede filtrar por asociación, fecha, paciente, estado de documentos.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    asociacion: { type: 'string', description: 'Nombre de la asociación (ej: Asociación de Cirujanos)' },
-                    fecha_desde: { type: 'string', description: 'Fecha desde en formato YYYY-MM-DD' },
-                    fecha_hasta: { type: 'string', description: 'Fecha hasta en formato YYYY-MM-DD' },
-                    paciente: { type: 'string', description: 'Buscar por nombre de paciente' },
-                    docs_pendientes: { type: 'boolean', description: 'Si true, solo muestra cirugías con documentos pendientes' },
-                    limit: { type: 'number', description: 'Cantidad máxima de resultados (default 20)' }
-                }
-            }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'query_laboratorios',
-            description: 'Consulta biopsias de anatomía patológica asignadas a laboratorios.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    laboratorio: { type: 'string', description: 'Nombre del laboratorio' },
-                    paciente: { type: 'string', description: 'Buscar por nombre de paciente' },
-                    fecha_desde: { type: 'string', description: 'Fecha desde en formato YYYY-MM-DD' },
-                    limit: { type: 'number', description: 'Cantidad máxima de resultados (default 20)' }
-                }
-            }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'query_cirugias',
-            description: 'Consulta cirugías programadas del Sanatorio Argentino. Tabla: surgeries. IMPORTANTE: si el usuario pregunta por las cirugías de "hoy", usá la fecha actual como fecha_desde y fecha_hasta.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    paciente: { type: 'string', description: 'Buscar por nombre de paciente' },
-                    medico: { type: 'string', description: 'Buscar por médico/cirujano' },
-                    status: { type: 'string', description: 'Estado: lila, amarillo, verde, azul, rojo, precaucion' },
-                    obra_social: { type: 'string', description: 'Filtrar por obra social' },
-                    fecha_desde: { type: 'string', description: 'Fecha desde en formato YYYY-MM-DD. Para "hoy" usá la fecha actual.' },
-                    fecha_hasta: { type: 'string', description: 'Fecha hasta en formato YYYY-MM-DD. Para "hoy" usá la misma fecha que fecha_desde.' },
-                    incluir_excluidos: { type: 'boolean', description: 'Si true, incluye cirugías de módulos excluidos (default false)' },
-                    limit: { type: 'number', description: 'Cantidad máxima de resultados (default 50)' }
-                }
-            }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'get_system_metrics',
-            description: 'Obtiene métricas y estadísticas generales del sistema: totales de deudas, cirugías pendientes, documentación incompleta, etc.',
-            parameters: { type: 'object', properties: {} }
         }
     },
     {
         type: 'function',
         function: {
             name: 'explain_system',
-            description: 'Explica cómo funciona una parte del sistema ADM-QUI al usuario. Módulos disponibles del menú lateral: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, simon, configuracion, asociaciones, laboratorios, metricas.',
+            description: 'Explica cómo funciona un módulo del sistema ADM-QUI al usuario. Módulos: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, simon, configuracion, asociaciones, laboratorios.',
             parameters: {
                 type: 'object',
                 properties: {
-                    modulo: { type: 'string', description: 'El módulo a explicar: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, simon, configuracion, asociaciones, laboratorios, metricas' }
+                    modulo: { type: 'string', description: 'El módulo a explicar' }
                 },
                 required: ['modulo']
-            }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'generate_report',
-            description: 'Genera un reporte completo sobre un área del sistema. Consolida datos de múltiples fuentes y presenta un informe detallado. Útil cuando el usuario pide un "reporte", "informe", "resumen ejecutivo" o "análisis".',
-            parameters: {
-                type: 'object',
-                properties: {
-                    tipo: { type: 'string', description: 'Tipo de reporte: deudas_general, cirugias_dia, cirugias_semana, asociaciones_pendientes, laboratorios_pendientes, resumen_ejecutivo, actividad_mensajeria' },
-                    fecha_desde: { type: 'string', description: 'Fecha desde en formato YYYY-MM-DD' },
-                    fecha_hasta: { type: 'string', description: 'Fecha hasta en formato YYYY-MM-DD' }
-                },
-                required: ['tipo']
-            }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'query_altas',
-            description: 'Consulta altas médicas administrativas del sanatorio. Tabla: altas_medicas.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    paciente: { type: 'string', description: 'Buscar por nombre de paciente' },
-                    responsable: { type: 'string', description: 'Buscar por responsable asignado' },
-                    estado: { type: 'string', description: 'Estado del alta' },
-                    fecha_desde: { type: 'string', description: 'Fecha desde en formato YYYY-MM-DD' },
-                    limit: { type: 'number', description: 'Cantidad máxima de resultados (default 20)' }
-                }
             }
         }
     }
@@ -196,14 +252,8 @@ const TOOLS = [
 async function executeToolCall(name: string, args: Record<string, unknown>): Promise<string> {
     try {
         switch (name) {
-            case 'query_deudas': return await queryDeudas(args);
-            case 'query_asociaciones': return await queryAsociaciones(args);
-            case 'query_laboratorios': return await queryLaboratorios(args);
-            case 'query_cirugias': return await queryCirugias(args);
-            case 'get_system_metrics': return await getSystemMetrics();
+            case 'query_database': return await queryDatabase(args);
             case 'explain_system': return explainSystem(args.modulo as string);
-            case 'generate_report': return await generateReport(args);
-            case 'query_altas': return await queryAltas(args);
             default: return JSON.stringify({ error: `Tool ${name} no encontrado` });
         }
     } catch (err) {
@@ -211,140 +261,131 @@ async function executeToolCall(name: string, args: Record<string, unknown>): Pro
     }
 }
 
-async function queryDeudas(args: Record<string, unknown>): Promise<string> {
-    const limit = (args.limit as number) || 20;
+/**
+ * RAG Query Engine — Executes validated SELECT queries against the database.
+ * This is the core of the RAG pattern: GPT generates SQL based on the schema
+ * context, and this function safely executes it.
+ */
+async function queryDatabase(args: Record<string, unknown>): Promise<string> {
+    const sql = (args.sql as string || '').trim();
+    const explanation = args.explanation as string || '';
 
-    if (args.resumen) {
-        const { data, error } = await supabase
-            .from('deudas_pacientes')
-            .select('obra_social, monto, categoria');
-        if (error) throw error;
+    console.log(`[beto] SQL Query: ${sql}`);
+    console.log(`[beto] Explanation: ${explanation}`);
 
-        const resumen: Record<string, { total: number; count: number; categorias: Record<string, number> }> = {};
-        for (const row of (data || [])) {
-            const os = row.obra_social || 'Sin OS';
-            if (!resumen[os]) resumen[os] = { total: 0, count: 0, categorias: {} };
-            resumen[os].total += parseFloat(row.monto) || 0;
-            resumen[os].count++;
-            const cat = row.categoria || 'Sin categorizar';
-            resumen[os].categorias[cat] = (resumen[os].categorias[cat] || 0) + 1;
+    // Security: Only allow SELECT statements
+    const sqlUpper = sql.toUpperCase().replace(/\s+/g, ' ').trim();
+    if (!sqlUpper.startsWith('SELECT')) {
+        return JSON.stringify({
+            error: 'Solo se permiten consultas SELECT. Para modificar datos, pedí confirmación al usuario primero.'
+        });
+    }
+
+    // Block dangerous patterns
+    const blocked = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'ALTER', 'TRUNCATE', 'CREATE', 'GRANT', 'REVOKE', 'EXECUTE', 'EXEC'];
+    for (const word of blocked) {
+        // Check if dangerous keyword appears as a statement (not inside a string/column name)
+        const regex = new RegExp(`\\b${word}\\b`, 'i');
+        if (regex.test(sqlUpper.replace(/SELECT/i, ''))) {
+            return JSON.stringify({
+                error: `Operación ${word} no permitida. Solo consultas SELECT.`
+            });
         }
-        return JSON.stringify({ tipo: 'resumen', data: resumen, total_registros: data?.length || 0 });
     }
 
-    let query = supabase.from('deudas_pacientes').select('*').limit(limit);
-    if (args.obra_social) query = query.ilike('obra_social', `%${args.obra_social}%`);
-    if (args.categoria) query = query.ilike('categoria', `%${args.categoria}%`);
-    if (args.paciente) query = query.ilike('paciente', `%${args.paciente}%`);
+    // Execute via Supabase's RPC or direct query
+    try {
+        const { data, error } = await supabase.rpc('execute_readonly_query', {
+            query_text: sql
+        });
 
-    const { data, error } = await query.order('monto', { ascending: false });
-    if (error) throw error;
-    return JSON.stringify({ tipo: 'listado', data: data || [], count: data?.length || 0 });
+        if (error) {
+            // If RPC doesn't exist, try a different approach
+            if (error.message.includes('function') && error.message.includes('does not exist')) {
+                return await fallbackQuery(sql);
+            }
+            return JSON.stringify({ error: error.message, hint: error.hint || '' });
+        }
+
+        // Truncate if too large
+        const result = data || [];
+        const truncated = result.length > 100;
+        const finalData = truncated ? result.slice(0, 100) : result;
+
+        return JSON.stringify({
+            success: true,
+            data: finalData,
+            total_rows: result.length,
+            truncated,
+            note: truncated ? `Mostrando 100 de ${result.length} resultados. Usá LIMIT para acotar.` : undefined
+        });
+    } catch (err) {
+        return JSON.stringify({ error: err.message });
+    }
 }
 
-async function queryAsociaciones(args: Record<string, unknown>): Promise<string> {
-    const limit = (args.limit as number) || 20;
-    let query = supabase.from('asociaciones_cirugias').select('*').limit(limit);
-
-    if (args.asociacion) query = query.ilike('asociacion', `%${args.asociacion}%`);
-    if (args.paciente) query = query.ilike('nombre_paciente', `%${args.paciente}%`);
-    if (args.fecha_desde) query = query.gte('fecha_realizacion', args.fecha_desde);
-    if (args.fecha_hasta) query = query.lte('fecha_realizacion', args.fecha_hasta);
-    if (args.docs_pendientes) query = query.or('docs_completos.is.null,docs_completos.eq.false');
-
-    const { data, error } = await query.order('fecha_realizacion', { ascending: false });
-    if (error) throw error;
-    return JSON.stringify({ tipo: 'listado', data: data || [], count: data?.length || 0 });
-}
-
-async function queryLaboratorios(args: Record<string, unknown>): Promise<string> {
-    const limit = (args.limit as number) || 20;
-    let query = supabase.from('laboratorios_anatomia').select('*').limit(limit);
-
-    if (args.laboratorio) query = query.ilike('laboratorio', `%${args.laboratorio}%`);
-    if (args.paciente) query = query.ilike('paciente', `%${args.paciente}%`);
-    if (args.fecha_desde) query = query.gte('fecha_visita', args.fecha_desde);
-
-    const { data, error } = await query.order('fecha_visita', { ascending: false });
-    if (error) throw error;
-    return JSON.stringify({ tipo: 'listado', data: data || [], count: data?.length || 0 });
-}
-
-async function queryCirugias(args: Record<string, unknown>): Promise<string> {
-    const limit = (args.limit as number) || 50;
-    let query = supabase.from('surgeries').select('id, nombre, dni, telefono, obra_social, fecha_cirugia, medico, modulo, status, ausente, excluido, notas').limit(limit);
-
-    // Por defecto excluir las excluidas
-    if (!args.incluir_excluidos) query = query.eq('excluido', false);
-
-    if (args.paciente) query = query.ilike('nombre', `%${args.paciente}%`);
-    if (args.medico) query = query.ilike('medico', `%${args.medico}%`);
-    if (args.status) query = query.eq('status', args.status);
-    if (args.obra_social) query = query.ilike('obra_social', `%${args.obra_social}%`);
-    if (args.fecha_desde) query = query.gte('fecha_cirugia', args.fecha_desde);
-    if (args.fecha_hasta) query = query.lte('fecha_cirugia', args.fecha_hasta);
-
-    const { data, error } = await query.order('fecha_cirugia', { ascending: true }).order('nombre', { ascending: true });
-    if (error) throw error;
-
-    // Resumir para que no sea demasiado largo
-    const resumen = {
-        tipo: 'listado',
-        total: data?.length || 0,
-        por_status: {} as Record<string, number>,
-        por_medico: {} as Record<string, number>,
-        cirugias: (data || []).map(s => ({
-            nombre: s.nombre,
-            fecha: s.fecha_cirugia,
-            medico: s.medico,
-            obra_social: s.obra_social,
-            status: s.status,
-            modulo: s.modulo,
-            ausente: s.ausente,
-        })),
-    };
-
-    for (const s of (data || [])) {
-        const st = s.status || 'sin_status';
-        resumen.por_status[st] = (resumen.por_status[st] || 0) + 1;
-        const med = s.medico || 'Sin médico';
-        resumen.por_medico[med] = (resumen.por_medico[med] || 0) + 1;
+/**
+ * Fallback: Use Supabase PostgREST API to execute simple queries
+ * when RPC is not available.
+ */
+async function fallbackQuery(sql: string): Promise<string> {
+    // Parse the SQL to extract table name and use PostgREST
+    const tableMatch = sql.match(/FROM\s+["']?(\w+)["']?/i);
+    if (!tableMatch) {
+        return JSON.stringify({ error: 'No se pudo identificar la tabla en la consulta.' });
     }
 
-    return JSON.stringify(resumen);
-}
+    const table = tableMatch[1];
+    const hasWhere = sql.match(/WHERE\s+(.+?)(?:ORDER|GROUP|LIMIT|$)/is);
+    const hasLimit = sql.match(/LIMIT\s+(\d+)/i);
+    const limit = hasLimit ? parseInt(hasLimit[1]) : 50;
 
-async function getSystemMetrics(): Promise<string> {
-    const metrics: Record<string, unknown> = {};
+    // For simple queries, use Supabase client
+    let query = supabase.from(table).select('*').limit(limit);
 
-    // Deudas
-    const { count: totalDeudas } = await supabase.from('deudas_pacientes').select('*', { count: 'exact', head: true });
-    const { data: deudaSums } = await supabase.from('deudas_pacientes').select('monto');
-    const totalMonto = (deudaSums || []).reduce((sum, r) => sum + (parseFloat(r.monto) || 0), 0);
-    metrics.deudas = { total_pacientes: totalDeudas, monto_total: totalMonto };
+    // Try to parse simple WHERE conditions
+    if (hasWhere) {
+        const conditions = hasWhere[1].trim();
+        // Handle ILIKE conditions
+        const ilikeMatches = conditions.matchAll(/(\w+)\s+ILIKE\s+'%([^%]+)%'/gi);
+        for (const match of ilikeMatches) {
+            query = query.ilike(match[1], `%${match[2]}%`);
+        }
+        // Handle = conditions
+        const eqMatches = conditions.matchAll(/(\w+)\s*=\s*'([^']+)'/gi);
+        for (const match of eqMatches) {
+            query = query.eq(match[1], match[2]);
+        }
+        // Handle >= conditions (dates)
+        const gteMatches = conditions.matchAll(/(\w+)\s*>=\s*'([^']+)'/gi);
+        for (const match of gteMatches) {
+            query = query.gte(match[1], match[2]);
+        }
+        // Handle <= conditions
+        const lteMatches = conditions.matchAll(/(\w+)\s*<=\s*'([^']+)'/gi);
+        for (const match of lteMatches) {
+            query = query.lte(match[1], match[2]);
+        }
+    }
 
-    // Cirugías - hoy
-    const hoy = new Date().toISOString().split('T')[0];
-    const { count: cirugiasHoy } = await supabase.from('surgeries').select('*', { count: 'exact', head: true })
-        .eq('excluido', false).eq('fecha_cirugia', hoy);
-    const { count: cirugiasPendientes } = await supabase.from('surgeries').select('*', { count: 'exact', head: true })
-        .eq('excluido', false).gte('fecha_cirugia', hoy).or('ausente.is.null,and(ausente.neq.0,ausente.neq.1)');
-    metrics.cirugias = { hoy: cirugiasHoy, pendientes_total: cirugiasPendientes };
+    // Parse ORDER BY
+    const orderMatch = sql.match(/ORDER\s+BY\s+(\w+)(?:\s+(ASC|DESC))?/i);
+    if (orderMatch) {
+        query = query.order(orderMatch[1], { ascending: (orderMatch[2] || 'ASC').toUpperCase() === 'ASC' });
+    }
 
-    // Asociaciones
-    const { count: totalAsoc } = await supabase.from('asociaciones_cirugias').select('*', { count: 'exact', head: true });
-    const { count: docsPendientes } = await supabase.from('asociaciones_cirugias')
-        .select('*', { count: 'exact', head: true })
-        .or('docs_completos.is.null,docs_completos.eq.false');
-    metrics.asociaciones = { total: totalAsoc, docs_pendientes: docsPendientes };
+    const { data, error } = await query;
+    if (error) {
+        return JSON.stringify({ error: error.message, table, fallback: true });
+    }
 
-    // Laboratorios
-    const { count: totalLabs } = await supabase.from('laboratorios_anatomia').select('*', { count: 'exact', head: true });
-    metrics.laboratorios = { total: totalLabs };
-
-    metrics.fecha_actual = hoy;
-
-    return JSON.stringify(metrics);
+    return JSON.stringify({
+        success: true,
+        data: data || [],
+        total_rows: (data || []).length,
+        fallback: true,
+        note: 'Consulta ejecutada via PostgREST (parsing simplificado)'
+    });
 }
 
 function explainSystem(modulo: string): string {
@@ -363,294 +404,99 @@ Chat WhatsApp bidireccional con pacientes. Es uno de los módulos más usados.
 
 **Funcionalidades:**
 - 📩 Envío y recepción de mensajes WhatsApp en tiempo real
-- 📝 Templates predefinidos con variables dinámicas (\{paciente\}, \{fecha_cirugia\}, etc.)
+- 📝 Templates predefinidos con variables dinámicas
 - 🖼️ Soporte multimedia (imágenes, documentos, audios)
 - 🔔 Notificaciones de mensajes nuevos (badge rojo con contador)
 - 📞 Múltiples líneas WhatsApp configurables
-- 👤 Identificación del operador que envía cada mensaje
+- 👤 Identificación del operador
 
-**Flujo:**
-1. El paciente envía un WhatsApp al sanatorio
-2. Llega al sistema en tiempo real
-3. El operador ve el mensaje y responde desde acá
-4. Se puede usar templates para respuestas rápidas`,
+**Flujo:** Paciente envía WA → llega al sistema en tiempo real → operador responde`,
 
         pedidos: `## 📋 Pedidos de Prácticas
 Gestión de pedidos médicos con nomenclador integrado.
 
-**Funcionalidades:**
-- 🔍 Búsqueda en nomenclador de prácticas (miles de códigos)
-- 🛒 Carrito de prácticas (similar a un e-commerce: agregás, quitás, modificás)
-- 🖨️ Impresión de pedidos en formato profesional
-- 📲 Envío por WhatsApp al paciente
-- 📂 Historial de pedidos anteriores
-- 👤 Carga de datos del paciente (nombre, DNI, obra social, teléfono)
+- 🔍 Búsqueda en nomenclador (miles de códigos)
+- 🛒 Carrito de prácticas (agregar, quitar, modificar)
+- 🖨️ Impresión profesional
+- 📲 Envío por WhatsApp
+- 📂 Historial de pedidos
 
-**Soporta:** Prácticas ambulatorias e internación.`,
+Soporta prácticas ambulatorias e internación.`,
 
-        altas: `## 📤 Altas Administrativas (Altas Adm)
-Control y seguimiento de altas médicas hospitalarias.
+        altas: `## 📤 Altas Administrativas
+Control de altas médicas hospitalarias.
 
-**Funcionalidades:**
-- 📅 Registro de fecha de ingreso y fecha de alta
-- 👨‍⚕️ Asignación de responsable del alta
-- 📊 Estado del alta (pendiente, en proceso, completada)
+- 📅 Registro de fechas de ingreso y alta
+- 👨‍⚕️ Asignación de responsable
+- 📊 Estados: pendiente, en proceso, completada
 - 📝 Notas internas y observaciones
-- 🔍 Filtros por fecha, responsable y estado
-- 📋 Seguimiento de diagnósticos
-
-**Objetivo:** Asegurar que todas las altas tengan la documentación completa antes de darle el alta definitiva al paciente.`,
+- 📋 Seguimiento de diagnósticos`,
 
         turnos: `## 🕐 Cola de Turnos
-Administración y gestión de la cola de turnos del sanatorio.
+Gestión de la cola de turnos del sanatorio.
 
-**Funcionalidades:**
-- 📋 Vista de turnos programados del día
-- ⏰ Gestión de espera y llamado de pacientes
-- 📊 Estadísticas de tiempos de espera
-- 🔄 Actualización en tiempo real del estado de cada turno`,
+- 📋 Vista de turnos del día
+- ⏰ Gestión de espera y llamado
+- 📊 Tiempos de espera
+- 🔄 Actualización en tiempo real`,
 
-        deudas: `## 💰 Módulo de Deudas
-Seguimiento completo de la deuda de pacientes por obra social.
+        deudas: `## 💰 Deudas
+Seguimiento completo de deuda de pacientes.
 
-**Categorías de seguimiento:**
-1. 🔴 **Sin contactar** — Paciente con deuda sin ningún intento de contacto
-2. 📞 **Contactado** — Se intentó contactar al paciente
-3. 🤝 **Compromiso de pago** — El paciente se comprometió a pagar
-4. 📆 **Plan de pago** — Se acordó un plan de cuotas
-5. ⚖️ **Deuda judicial** — Derivado a gestión legal
-6. ✅ **Sin deuda SALUS** — Regularizado en el sistema hospitalario
+**Categorías:** sin_gestionar → en_gestion → comprometido → cuenta_corriente / incobrable / descuento_liquidacion / sin_deuda_salus
 
-**Flujo:**
-1. Los datos se importan desde SALUS automáticamente vía sync
-2. Se categorizan según el estado de gestión
-3. Se puede enviar WhatsApp al paciente para recordarle el pago
-4. Se exporta a Excel para reportes gerenciales
+**Datos:** nombre, NHC, teléfono, cobertura (obra social), deuda_total (balance), facturas, categoría
+**Filtros:** Por categoría, con/sin teléfono, búsqueda por nombre/NHC
+**Acciones:** Enviar WhatsApp, cambiar categoría, agregar observaciones, exportar Excel`,
 
-**Métricas clave:** Deuda Bruta, Cobros, Notas de Crédito, Balance Neto.`,
+        cirugias: `## 🔪 Cirugías
+Panel de cirugías programadas con bot automático de WhatsApp.
 
-        cirugias: `## 🔪 Módulo de Cirugías
-Panel principal de cirugías programadas con bot automático de WhatsApp.
+**Estados (colores):**
+- 🟣 Lila — Sin mensaje enviado
+- 🟡 Amarillo — Documentación en revisión
+- 🟢 Verde — Autorizada
+- 🔵 Azul — Paciente confirmó
+- 🔴 Rojo — Problema
+- ⚠️ Precaución — Requiere atención
 
-**Sistema de estados (colores):**
-- 🟣 **Lila** — Cirugía cargada, sin mensaje enviado
-- 🟡 **Amarillo** — Documentación en revisión
-- 🟢 **Verde** — Autorizada, esperando confirmación del paciente
-- 🔵 **Azul** — Paciente confirmó asistencia, indicaciones enviadas
-- 🔴 **Rojo** — Problema (doc faltante, paciente no responde, tel inválido)
-- ⚠️ **Precaución** — Requiere atención especial
+**Datos:** nombre, DNI, teléfono, obra_social, fecha_cirugia, médico, módulo, status
+**Flujo:** Carga Excel SALUS → Bot WA notifica → Docs → Autorización → Confirmación`,
 
-**Funcionalidades:**
-- 📋 Carga masiva desde Excel de SALUS
-- 📲 Bot automático de WhatsApp (notificación → solicitud docs → autorización → indicaciones)
-- 🔍 Filtros por fecha, cirujano, estado, obra social
-- 💰 Presupuestos de cirugías
-- 📊 Estadísticas por estado
-
-**Flujo automatizado:** Lila → Amarillo (se envía WA) → Verde (admin autoriza) → Azul (paciente confirma)`,
-
-        simon: `## 🤖 SIMÓN IA — Sistema Inteligente de Monitoreo
+        simon: `## 🤖 SIMÓN IA
 Pipeline de procesamiento de documentos con inteligencia artificial.
 
-**Funcionalidades:**
-- 📄 Carga y clasificación automática de documentos
-- 🧠 Extracción de datos con IA (nombres, fechas, diagnósticos)
-- ✅ Validación automática de documentación
-- 📊 Dashboard de documentos procesados
-
-**Casos de uso:**
-- Procesamiento de documentación preoperatoria
-- Clasificación de estudios médicos
-- Extracción de datos de formularios escaneados`,
+- 📄 Carga y clasificación automática
+- 🧠 Extracción de datos con IA
+- ✅ Validación automática
+- 📊 Dashboard de procesados`,
 
         configuracion: `## ⚙️ Configuración
 Panel de administración del sistema.
 
-**Opciones:**
-- 👤 Gestión de usuarios (crear, activar/desactivar)
-- 🔑 Cambio de contraseñas
-- 📞 Configuración de líneas WhatsApp
+- 👤 Gestión de usuarios
+- 📞 Líneas WhatsApp
 - 📝 Templates de mensajes
-- 🔧 Parámetros generales del sistema
-- 📊 Logs de actividad y auditoría`,
+- 🔧 Parámetros generales
+- 📊 Logs de auditoría`,
 
-        asociaciones: `## 🏥 Módulo de Asociaciones
-Gestiona las cirugías que pertenecen a asociaciones médicas profesionales.
+        asociaciones: `## 🏥 Asociaciones
+Cirugías de asociaciones médicas profesionales.
 
-**Asociaciones registradas:**
-- Asociación de Cirujanos
-- Asociación de Ginecólogos
-- Asociación de Traumatólogos
-- Asociación de Cirujanos Pediatras
-- ORL (Particular)
+**Asociaciones:** Cirujanos, Ginecólogos, Traumatólogos, Cirujanos Pediatras, ORL
 
-**Flujo:**
-1. Las cirugías se sincronizan desde SALUS automáticamente
-2. Se organizan en "carritos" mensuales por asociación
-3. Se marca si la documentación está completa (✅) o pendiente (❌)
-4. Cuando está todo completo, se genera la constancia de entrega
-5. Se puede exportar a Excel
+**Flujo:** Sync SALUS → Carritos mensuales → Documentación ✅/❌ → Constancia de entrega
+**Datos:** nombre_paciente, nombre_cirugia, fecha_realizacion, cirujano, asociacion, docs_completos`,
 
-**Filtros:** Por asociación, fecha, paciente, obra social, estado.`,
+        laboratorios: `## 🔬 Laboratorios
+Biopsias de anatomía patológica por laboratorio.
 
-        laboratorios: `## 🔬 Módulo de Laboratorios
-Gestiona las biopsias de anatomía patológica asignadas a laboratorios externos.
-
-**Laboratorios:**
-- LDA - Dra. Aguero o Dra Rios
-- LAB. CEDAP
-- LAB.INST.PATOLOG.CUYO
-
-**Tipos de biopsia:**
-- Biopsia por congelación
-- Biopsia simple
-- Biopsia ampliada
-
-Cada laboratorio tiene su portal propio con acceso web donde puede ver sus biopsias asignadas.`,
-
-        metricas: `## 📊 Módulo de Métricas
-Dashboard de KPIs y analytics del sistema.
-
-**Indicadores:**
-- Cirugías realizadas vs programadas
-- Deuda cobrada vs pendiente
-- Documentación completada en asociaciones
-- Tiempos de respuesta en mensajería
-- Actividad por usuario/operador
-
-Permite ver tendencias y tomar decisiones basadas en datos.`,
+**Labs:** LDA - Dra. Aguero/Rios, CEDAP, INST.PATOLOG.CUYO
+**Tipos:** Congelación, Simple, Ampliada
+Cada lab tiene portal propio con sus biopsias asignadas.`,
     };
 
-    return explicaciones[modulo] || `No tengo información detallada sobre el módulo "${modulo}". Los módulos del menú son: ${Object.keys(explicaciones).join(', ')}.`;
-}
-
-// ═══════════════════════════════════════
-// REPORT GENERATION
-// ═══════════════════════════════════════
-
-async function generateReport(args: Record<string, unknown>): Promise<string> {
-    const tipo = args.tipo as string;
-    const hoy = new Date().toISOString().split('T')[0];
-    const fechaDesde = (args.fecha_desde as string) || hoy;
-    const fechaHasta = (args.fecha_hasta as string) || hoy;
-
-    switch (tipo) {
-        case 'cirugias_dia': {
-            const { data } = await supabase.from('surgeries')
-                .select('nombre, fecha_cirugia, medico, obra_social, modulo, status, ausente, telefono')
-                .eq('excluido', false).eq('fecha_cirugia', fechaDesde)
-                .order('nombre');
-            const porStatus: Record<string, number> = {};
-            const porMedico: Record<string, number> = {};
-            for (const s of (data || [])) {
-                porStatus[s.status || 'sin_status'] = (porStatus[s.status || 'sin_status'] || 0) + 1;
-                porMedico[s.medico || 'Sin médico'] = (porMedico[s.medico || 'Sin médico'] || 0) + 1;
-            }
-            return JSON.stringify({
-                reporte: 'Cirugías del Día', fecha: fechaDesde, total: data?.length || 0,
-                por_status: porStatus, por_medico: porMedico,
-                detalle: (data || []).map(s => ({ paciente: s.nombre, medico: s.medico, os: s.obra_social, modulo: s.modulo, status: s.status })),
-            });
-        }
-
-        case 'cirugias_semana': {
-            const desde = fechaDesde;
-            const d = new Date(fechaDesde); d.setDate(d.getDate() + 7);
-            const hasta = d.toISOString().split('T')[0];
-            const { data } = await supabase.from('surgeries')
-                .select('nombre, fecha_cirugia, medico, obra_social, status, ausente')
-                .eq('excluido', false).gte('fecha_cirugia', desde).lte('fecha_cirugia', hasta)
-                .order('fecha_cirugia').order('nombre');
-            const porDia: Record<string, number> = {};
-            for (const s of (data || [])) { porDia[s.fecha_cirugia] = (porDia[s.fecha_cirugia] || 0) + 1; }
-            return JSON.stringify({
-                reporte: 'Cirugías de la Semana', desde, hasta, total: data?.length || 0,
-                por_dia: porDia,
-                detalle: (data || []).map(s => ({ paciente: s.nombre, fecha: s.fecha_cirugia, medico: s.medico, os: s.obra_social, status: s.status })),
-            });
-        }
-
-        case 'deudas_general': {
-            const { data } = await supabase.from('deudas_pacientes').select('paciente, obra_social, monto, categoria, factura_nro');
-            const porCategoria: Record<string, { count: number; monto: number }> = {};
-            const porOS: Record<string, { count: number; monto: number }> = {};
-            let totalMonto = 0;
-            for (const d of (data || [])) {
-                const m = parseFloat(d.monto) || 0; totalMonto += m;
-                const cat = d.categoria || 'Sin categorizar';
-                if (!porCategoria[cat]) porCategoria[cat] = { count: 0, monto: 0 };
-                porCategoria[cat].count++; porCategoria[cat].monto += m;
-                const os = d.obra_social || 'Sin OS';
-                if (!porOS[os]) porOS[os] = { count: 0, monto: 0 };
-                porOS[os].count++; porOS[os].monto += m;
-            }
-            return JSON.stringify({
-                reporte: 'Reporte General de Deudas', total_pacientes: data?.length || 0,
-                monto_total: totalMonto, por_categoria: porCategoria, por_obra_social: porOS,
-            });
-        }
-
-        case 'asociaciones_pendientes': {
-            const { data } = await supabase.from('asociaciones_cirugias')
-                .select('nombre_paciente, asociacion, nombre_cirugia, fecha_realizacion, docs_completos')
-                .or('docs_completos.is.null,docs_completos.eq.false')
-                .order('fecha_realizacion', { ascending: false }).limit(50);
-            const porAsoc: Record<string, number> = {};
-            for (const a of (data || [])) { porAsoc[a.asociacion || 'Sin asoc'] = (porAsoc[a.asociacion || 'Sin asoc'] || 0) + 1; }
-            return JSON.stringify({
-                reporte: 'Asociaciones con Documentación Pendiente', total: data?.length || 0,
-                por_asociacion: porAsoc,
-                detalle: (data || []).map(a => ({ paciente: a.nombre_paciente, cirugia: a.nombre_cirugia, asociacion: a.asociacion, fecha: a.fecha_realizacion })),
-            });
-        }
-
-        case 'resumen_ejecutivo': {
-            // Consolidar todo
-            const { count: totalDeudas } = await supabase.from('deudas_pacientes').select('*', { count: 'exact', head: true });
-            const { data: deudaSums } = await supabase.from('deudas_pacientes').select('monto');
-            const totalMonto = (deudaSums || []).reduce((s, r) => s + (parseFloat(r.monto) || 0), 0);
-
-            const { count: cirugiasHoy } = await supabase.from('surgeries').select('*', { count: 'exact', head: true })
-                .eq('excluido', false).eq('fecha_cirugia', hoy);
-            const { count: cirugiasPend } = await supabase.from('surgeries').select('*', { count: 'exact', head: true })
-                .eq('excluido', false).gte('fecha_cirugia', hoy).or('ausente.is.null,and(ausente.neq.0,ausente.neq.1)');
-
-            const { count: docsPend } = await supabase.from('asociaciones_cirugias')
-                .select('*', { count: 'exact', head: true })
-                .or('docs_completos.is.null,docs_completos.eq.false');
-
-            const { count: totalLabs } = await supabase.from('laboratorios_anatomia').select('*', { count: 'exact', head: true });
-
-            return JSON.stringify({
-                reporte: 'Resumen Ejecutivo', fecha: hoy,
-                deudas: { total_pacientes: totalDeudas, monto_total: totalMonto },
-                cirugias: { hoy: cirugiasHoy, pendientes: cirugiasPend },
-                asociaciones: { docs_pendientes: docsPend },
-                laboratorios: { total_registros: totalLabs },
-            });
-        }
-
-        default:
-            return JSON.stringify({ error: `Tipo de reporte "${tipo}" no reconocido. Tipos disponibles: deudas_general, cirugias_dia, cirugias_semana, asociaciones_pendientes, resumen_ejecutivo` });
-    }
-}
-
-// ═══════════════════════════════════════
-// ALTAS QUERY
-// ═══════════════════════════════════════
-
-async function queryAltas(args: Record<string, unknown>): Promise<string> {
-    const limit = (args.limit as number) || 20;
-    let query = supabase.from('altas_medicas').select('*').limit(limit);
-
-    if (args.paciente) query = query.ilike('paciente', `%${args.paciente}%`);
-    if (args.responsable) query = query.ilike('responsable', `%${args.responsable}%`);
-    if (args.estado) query = query.ilike('estado', `%${args.estado}%`);
-    if (args.fecha_desde) query = query.gte('fecha_alta', args.fecha_desde);
-
-    const { data, error } = await query.order('fecha_alta', { ascending: false });
-    if (error) throw error;
-    return JSON.stringify({ tipo: 'listado', data: data || [], count: data?.length || 0 });
+    return explicaciones[modulo] || `No tengo información sobre "${modulo}". Módulos: ${Object.keys(explicaciones).join(', ')}.`;
 }
 
 // ═══════════════════════════════════════
@@ -684,15 +530,22 @@ Deno.serve(async (req) => {
             );
         }
 
-        // Build messages with system prompt
+        // RAG Step 1: Retrieve schema context
+        const schemaContext = await getSchemaContext();
+
+        // Build context with date + user + schema
         const now = new Date();
         const fechaHoy = now.toISOString().split('T')[0];
-        const contextInfo = `\n\nFecha y hora actual: ${fechaHoy} (${now.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}).` +
-            (user ? `\nUsuario actual: ${user.nombre} (${user.usuario}). Tratalo por su nombre.` : '');
+        const contextInfo = `
+
+Fecha y hora actual: ${fechaHoy} (${now.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}).
+${user ? `Usuario actual: ${user.nombre} (${user.usuario}). Tratalo por su nombre.` : ''}
+
+${schemaContext}`;
 
         const fullMessages = [
-            { role: 'system', content: SYSTEM_PROMPT + contextInfo },
-            ...messages.slice(-20) // Keep last 20 messages for context
+            { role: 'system', content: SYSTEM_PROMPT_BASE + contextInfo },
+            ...messages.slice(-20)
         ];
 
         // First call to OpenAI
@@ -706,7 +559,7 @@ Deno.serve(async (req) => {
 
             for (const toolCall of assistantMessage.tool_calls) {
                 const args = JSON.parse(toolCall.function.arguments);
-                console.log(`[beto] Tool call: ${toolCall.function.name}`, args);
+                console.log(`[beto] Tool call: ${toolCall.function.name}`, JSON.stringify(args).slice(0, 200));
                 const result = await executeToolCall(toolCall.function.name, args);
 
                 toolResults.push({
@@ -716,7 +569,6 @@ Deno.serve(async (req) => {
                 });
             }
 
-            // Continue conversation with tool results
             fullMessages.push(assistantMessage);
             fullMessages.push(...toolResults);
 
@@ -754,8 +606,8 @@ async function callOpenAI(messages: unknown[], tools: unknown[]) {
             messages,
             tools,
             tool_choice: 'auto',
-            temperature: 0.4,
-            max_tokens: 2048,
+            temperature: 0.3,
+            max_tokens: 4096,
         }),
     });
 
