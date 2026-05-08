@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import {
     BarChart3, Calendar, Users, Stethoscope, Upload, RefreshCw,
     TrendingUp, Building2, ChevronDown, FileSpreadsheet, Filter,
+    ChevronLeft, ChevronRight, Search, Table2,
 } from 'lucide-react';
 
 const MESES = [
@@ -32,6 +33,15 @@ export default function ConsultasPanel() {
     const [matrizAgrupar, setMatrizAgrupar] = useState('dia'); // dia | semana
     const [matrizColumnas, setMatrizColumnas] = useState('especialidad'); // especialidad | agenda | tipo_visita
     const [colsOcultas, setColsOcultas] = useState(new Set());
+    // Registros (server-side paginated)
+    const [regPage, setRegPage] = useState(0);
+    const [regSize, setRegSize] = useState(50);
+    const [regRows, setRegRows] = useState([]);
+    const [regTotal, setRegTotal] = useState(0);
+    const [regLoading, setRegLoading] = useState(false);
+    const [regSearch, setRegSearch] = useState('');
+    const [regColFilter, setRegColFilter] = useState('todos'); // todos | paciente | cliente | especialidad | agenda | tipo_visita
+    const searchTimer = useRef(null);
 
     // Fetch ALL data (paginated to bypass 1000-row limit)
     const fetchData = useCallback(async () => {
@@ -56,6 +66,42 @@ export default function ConsultasPanel() {
     }, [mes]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
+
+    // Fetch registros (server-side paginated)
+    const fetchRegistros = useCallback(async () => {
+        setRegLoading(true);
+        const from = regPage * regSize;
+        const to = from + regSize - 1;
+        let q = supabase
+            .from('consultas_guardia')
+            .select('id_visita,paciente,cliente,nif,fecha_visita,visita_especialidad,agenda,tipo_visita,grupo_agenda,nhc', { count: 'exact' })
+            .eq('mes_periodo', mes)
+            .order('fecha_visita', { ascending: false })
+            .order('paciente', { ascending: true })
+            .range(from, to);
+        if (regSearch.trim()) {
+            const s = `%${regSearch.trim()}%`;
+            if (regColFilter === 'paciente') q = q.ilike('paciente', s);
+            else if (regColFilter === 'cliente') q = q.ilike('cliente', s);
+            else if (regColFilter === 'especialidad') q = q.ilike('visita_especialidad', s);
+            else if (regColFilter === 'agenda') q = q.ilike('agenda', s);
+            else if (regColFilter === 'tipo_visita') q = q.ilike('tipo_visita', s);
+            else q = q.or(`paciente.ilike.${s},cliente.ilike.${s},visita_especialidad.ilike.${s},agenda.ilike.${s},tipo_visita.ilike.${s}`);
+        }
+        const { data: rows, count, error } = await q;
+        if (!error) { setRegRows(rows || []); setRegTotal(count || 0); }
+        setRegLoading(false);
+    }, [mes, regPage, regSize, regSearch, regColFilter]);
+
+    useEffect(() => { if (vista === 'registros') fetchRegistros(); }, [vista, fetchRegistros]);
+
+    // Debounced search
+    const handleRegSearch = (val) => {
+        setRegSearch(val);
+        setRegPage(0);
+        if (searchTimer.current) clearTimeout(searchTimer.current);
+        searchTimer.current = setTimeout(() => fetchRegistros(), 400);
+    };
 
     // Filtered data
     const filtered = useMemo(() => {
@@ -296,7 +342,7 @@ export default function ConsultasPanel() {
 
                     {/* View toggle */}
                     <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', background: '#F1F5F9', borderRadius: '10px', padding: '3px', width: 'fit-content' }}>
-                        {[{ id: 'dia', label: 'Por Día' }, { id: 'semana', label: 'Por Semana' }, { id: 'matriz', label: '📋 Matriz' }, { id: 'resumen', label: 'Resumen' }].map(v => (
+                        {[{ id: 'matriz', label: '📋 Matriz' }, { id: 'dia', label: 'Por Día' }, { id: 'semana', label: 'Por Semana' }, { id: 'registros', label: '🗂️ Registros' }, { id: 'resumen', label: 'Resumen' }].map(v => (
                             <button key={v.id} onClick={() => setVista(v.id)} style={{
                                 padding: '6px 14px', borderRadius: '8px', border: 'none', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
                                 background: vista === v.id ? '#fff' : 'transparent', color: vista === v.id ? '#4F46E5' : '#64748B',
@@ -589,6 +635,114 @@ export default function ConsultasPanel() {
                             </div>
                         );
                     })()}
+
+                    {/* ═══════ REGISTROS (paginated table) ═══════ */}
+                    {vista === 'registros' && (
+                        <div style={{ background: '#fff', border: '1px solid #F1F5F9', borderRadius: '16px', padding: '20px', marginBottom: '20px' }}>
+                            {/* Header + search */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                                <div>
+                                    <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: 0, color: '#1E293B' }}>🗂️ Registros Individuales</h3>
+                                    <span style={{ fontSize: '0.68rem', color: '#94A3B8' }}>{regTotal.toLocaleString()} registros encontrados</span>
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                        <Search size={14} style={{ position: 'absolute', left: '10px', color: '#94A3B8' }} />
+                                        <input
+                                            type="text" placeholder="Buscar..." value={regSearch}
+                                            onChange={e => handleRegSearch(e.target.value)}
+                                            style={{ padding: '7px 10px 7px 30px', borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '0.75rem', width: '200px', outline: 'none' }}
+                                        />
+                                    </div>
+                                    <select value={regColFilter} onChange={e => { setRegColFilter(e.target.value); setRegPage(0); }} style={{
+                                        padding: '7px 8px', borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '0.7rem', fontWeight: 600, background: '#fff', cursor: 'pointer',
+                                    }}>
+                                        <option value="todos">Todas las columnas</option>
+                                        <option value="paciente">Paciente</option>
+                                        <option value="cliente">Obra Social</option>
+                                        <option value="especialidad">Especialidad</option>
+                                        <option value="agenda">Agenda</option>
+                                        <option value="tipo_visita">Tipo Visita</option>
+                                    </select>
+                                    <select value={regSize} onChange={e => { setRegSize(Number(e.target.value)); setRegPage(0); }} style={{
+                                        padding: '7px 8px', borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '0.7rem', fontWeight: 600, background: '#fff', cursor: 'pointer',
+                                    }}>
+                                        <option value={10}>10 por pág</option>
+                                        <option value={50}>50 por pág</option>
+                                        <option value={100}>100 por pág</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Table */}
+                            <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.7rem' }}>
+                                    <thead>
+                                        <tr style={{ background: '#F8FAFC' }}>
+                                            {['Fecha', 'Paciente', 'DNI', 'Obra Social', 'Especialidad', 'Agenda', 'Tipo Visita', 'NHC'].map(h => (
+                                                <th key={h} style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 700, color: '#475569', borderBottom: '2px solid #E2E8F0', whiteSpace: 'nowrap', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{h}</th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {regLoading ? (
+                                            <tr><td colSpan={8} style={{ padding: '30px', textAlign: 'center', color: '#94A3B8' }}><RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} /> Cargando...</td></tr>
+                                        ) : regRows.length === 0 ? (
+                                            <tr><td colSpan={8} style={{ padding: '30px', textAlign: 'center', color: '#94A3B8' }}>Sin resultados</td></tr>
+                                        ) : regRows.map((r, i) => (
+                                            <tr key={r.id_visita || i} style={{ background: i % 2 === 0 ? '#fff' : '#FAFAFA', borderBottom: '1px solid #F1F5F9' }}>
+                                                <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: '#64748B', fontWeight: 600 }}>{r.fecha_visita ? (() => { const [y,m,d] = r.fecha_visita.split('-'); return `${d}/${m}`; })() : '—'}</td>
+                                                <td style={{ padding: '6px 8px', fontWeight: 600, color: '#1E293B', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.paciente || '—'}</td>
+                                                <td style={{ padding: '6px 8px', color: '#64748B' }}>{r.nif || '—'}</td>
+                                                <td style={{ padding: '6px 8px', color: '#334155', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.cliente || '—'}</td>
+                                                <td style={{ padding: '6px 8px' }}>
+                                                    <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '0.62rem', fontWeight: 700, background: (ESP_COLORS[r.visita_especialidad?.trim()] || '#94A3B8') + '18', color: ESP_COLORS[r.visita_especialidad?.trim()] || '#64748B' }}>{r.visita_especialidad || '—'}</span>
+                                                </td>
+                                                <td style={{ padding: '6px 8px', color: '#64748B', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.agenda || '—'}</td>
+                                                <td style={{ padding: '6px 8px', color: '#64748B', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.tipo_visita || '—'}</td>
+                                                <td style={{ padding: '6px 8px', color: '#94A3B8', textAlign: 'center' }}>{r.nhc || '—'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Pagination */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                                <span style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 600 }}>
+                                    Mostrando {regTotal === 0 ? 0 : regPage * regSize + 1}–{Math.min((regPage + 1) * regSize, regTotal)} de {regTotal.toLocaleString()}
+                                </span>
+                                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                    <button disabled={regPage === 0} onClick={() => setRegPage(p => p - 1)} style={{
+                                        width: '30px', height: '30px', borderRadius: '8px', border: '1px solid #E2E8F0',
+                                        background: regPage === 0 ? '#F8FAFC' : '#fff', cursor: regPage === 0 ? 'default' : 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: regPage === 0 ? '#D1D5DB' : '#4F46E5',
+                                    }}><ChevronLeft size={14} /></button>
+                                    {(() => {
+                                        const totalPages = Math.ceil(regTotal / regSize);
+                                        const pages = [];
+                                        for (let p = Math.max(0, regPage - 2); p < Math.min(totalPages, regPage + 3); p++) pages.push(p);
+                                        return pages.map(p => (
+                                            <button key={p} onClick={() => setRegPage(p)} style={{
+                                                width: '30px', height: '30px', borderRadius: '8px', border: '1px solid',
+                                                fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer',
+                                                background: p === regPage ? '#4F46E5' : '#fff',
+                                                color: p === regPage ? '#fff' : '#64748B',
+                                                borderColor: p === regPage ? '#4F46E5' : '#E2E8F0',
+                                            }}>{p + 1}</button>
+                                        ));
+                                    })()}
+                                    <button disabled={regPage >= Math.ceil(regTotal / regSize) - 1} onClick={() => setRegPage(p => p + 1)} style={{
+                                        width: '30px', height: '30px', borderRadius: '8px', border: '1px solid #E2E8F0',
+                                        background: regPage >= Math.ceil(regTotal / regSize) - 1 ? '#F8FAFC' : '#fff',
+                                        cursor: regPage >= Math.ceil(regTotal / regSize) - 1 ? 'default' : 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        color: regPage >= Math.ceil(regTotal / regSize) - 1 ? '#D1D5DB' : '#4F46E5',
+                                    }}><ChevronRight size={14} /></button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </>
             )}
         </div>
