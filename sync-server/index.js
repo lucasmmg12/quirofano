@@ -1651,7 +1651,7 @@ async function syncConsultasGuardia(db) {
                 AND [Fecha Visita] < '${primerDiaSiguiente}'
                 AND LOWER(LTRIM(RTRIM([Asistencia]))) = 'presente' 
                 AND [Agenda] IN (
-                    'GUARDIA CARDIOLOGICA', 'GUARDIAS CLINICA', 'GUARDIAS GINECOLOGIA', 'GUARDIAS PEDIATR\u00cdA',
+                    'GUARDIA CARDIOLOGICA', 'GUARDIAS CLINICA', 'GUARDIAS GINECOLOGIA', 'GUARDIAS PEDIATRÍA',
                     '(NEO) ROSALES TORRES SILVANA', '(NEO) CASTRO MONICA', '(NEO) VALDEZ MARIA', 
                     '(NEO) DRA. RUARTE, SONIA', '(NEO) DRA. SVRIZ WUCHERER NATALIA ELIZABETH', 
                     '(NEO) DRA. CLAVEL MARISA ANALIA', '(NEO) DR. HERNANDEZ, EDUARDO RAFAEL', 
@@ -1744,15 +1744,13 @@ async function syncConsultasGuardia(db) {
         const { data, error } = await supabase
             .from('consultas_guardia')
             .upsert(batch, { onConflict: 'id_visita', ignoreDuplicates: false })
-            .select('id, created_at, updated_at');
+            .select('id');
 
         if (error) {
             console.error(`   \u274c Batch ${i} error:`, error.message);
             skipped += batch.length;
         } else if (data) {
-            data.forEach(d => {
-                d.created_at === d.updated_at ? inserted++ : updated++;
-            });
+            inserted += data.length;
         }
     }
 
