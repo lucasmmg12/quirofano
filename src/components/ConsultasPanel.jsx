@@ -30,15 +30,25 @@ export default function ConsultasPanel() {
     const [importing, setImporting] = useState(false);
     const [importResult, setImportResult] = useState(null);
 
-    // Fetch data
+    // Fetch ALL data (paginated to bypass 1000-row limit)
     const fetchData = useCallback(async () => {
         setLoading(true);
-        const { data: rows, error } = await supabase
-            .from('consultas_guardia')
-            .select('*')
-            .eq('mes_periodo', mes)
-            .order('fecha_visita', { ascending: true });
-        if (!error) setData(rows || []);
+        let allRows = [];
+        let from = 0;
+        const PAGE = 1000;
+        while (true) {
+            const { data: rows, error } = await supabase
+                .from('consultas_guardia')
+                .select('fecha_visita,visita_especialidad,cliente,grupo_agenda,tipo_visita,agenda')
+                .eq('mes_periodo', mes)
+                .order('fecha_visita', { ascending: true })
+                .range(from, from + PAGE - 1);
+            if (error || !rows) break;
+            allRows = allRows.concat(rows);
+            if (rows.length < PAGE) break;
+            from += PAGE;
+        }
+        setData(allRows);
         setLoading(false);
     }, [mes]);
 
@@ -161,10 +171,12 @@ export default function ConsultasPanel() {
         setImporting(false);
     }, [mes, fetchData]);
 
+    const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
     const formatDate = (d) => {
         if (!d) return '';
         const [y, m, dd] = d.split('-');
-        return `${dd}/${m}`;
+        const dow = DIAS_SEMANA[new Date(d + 'T12:00:00').getDay()];
+        return `${dow} ${dd}`;
     };
 
     const formatWeek = (d) => {
@@ -293,27 +305,35 @@ export default function ConsultasPanel() {
                     {/* Daily chart */}
                     {vista === 'dia' && (
                         <div style={{ background: '#fff', border: '1px solid #F1F5F9', borderRadius: '16px', padding: '20px', marginBottom: '20px' }}>
-                            <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: '0 0 16px', color: '#1E293B' }}>📊 Consultas por Día</h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                {porDia.map(d => (
-                                    <div key={d.fecha} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0' }}>
-                                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748B', width: '42px', flexShrink: 0 }}>{formatDate(d.fecha)}</span>
-                                        <div style={{ flex: 1, height: '24px', background: '#F8FAFC', borderRadius: '6px', overflow: 'hidden', position: 'relative' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                                <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: 0, color: '#1E293B' }}>📊 Consultas por Día</h3>
+                                <span style={{ fontSize: '0.72rem', color: '#94A3B8', fontWeight: 600 }}>{porDia.length} días · {filtered.length.toLocaleString()} consultas</span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                                {porDia.map((d, idx) => {
+                                    const isWeekend = [0, 6].includes(new Date(d.fecha + 'T12:00:00').getDay());
+                                    return (
+                                    <div key={d.fecha} style={{
+                                        display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0',
+                                        background: isWeekend ? '#F8FAFC' : 'transparent', borderRadius: '4px',
+                                    }}>
+                                        <span style={{ fontSize: '0.68rem', fontWeight: isWeekend ? 700 : 600, color: isWeekend ? '#4F46E5' : '#94A3B8', width: '48px', flexShrink: 0, textAlign: 'right' }}>{formatDate(d.fecha)}</span>
+                                        <div style={{ flex: 1, height: '18px', background: '#F1F5F9', borderRadius: '4px', overflow: 'hidden', position: 'relative' }}>
                                             {Object.entries(d.byEsp).map(([esp, cnt], i) => {
                                                 const prevWidth = Object.entries(d.byEsp).slice(0, i).reduce((s, [, v]) => s + (v / maxDia) * 100, 0);
                                                 return (
                                                     <div key={esp} title={`${esp}: ${cnt}`} style={{
                                                         position: 'absolute', top: 0, bottom: 0,
                                                         left: `${prevWidth}%`, width: `${(cnt / maxDia) * 100}%`,
-                                                        background: ESP_COLORS[esp] || '#94A3B8', opacity: 0.8,
-                                                        transition: 'width 0.3s',
+                                                        background: ESP_COLORS[esp] || '#94A3B8', opacity: 0.85,
                                                     }} />
                                                 );
                                             })}
                                         </div>
-                                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1E293B', width: '32px', textAlign: 'right' }}>{d.total}</span>
+                                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1E293B', width: '30px', textAlign: 'right', flexShrink: 0 }}>{d.total}</span>
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                             {/* Legend */}
                             <div style={{ display: 'flex', gap: '12px', marginTop: '12px', flexWrap: 'wrap' }}>
