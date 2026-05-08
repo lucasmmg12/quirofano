@@ -1047,8 +1047,9 @@ ${schemaContext}`;
             }
         }
         const userQuery = messages[messages.length - 1]?.content || '';
+        let interactionId = null;
         try {
-            await supabase.from('beto_interactions').insert({
+            const { data: logData } = await supabase.from('beto_interactions').insert({
                 user_name: user?.nombre || 'unknown',
                 user_id: user?.usuario || 'unknown',
                 user_query: userQuery.substring(0, 500),
@@ -1057,7 +1058,8 @@ ${schemaContext}`;
                 response_ms: Date.now() - startTime,
                 success: true,
                 current_module: currentModule || 'inicio',
-            });
+            }).select('id').single();
+            interactionId = logData?.id || null;
         } catch (logErr) {
             console.warn('[beto] Analytics log failed:', logErr.message);
         }
@@ -1067,6 +1069,7 @@ ${schemaContext}`;
                 success: true,
                 message: assistantMessage.content,
                 usage: response.usage,
+                interaction_id: interactionId,
             }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );

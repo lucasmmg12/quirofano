@@ -10,7 +10,7 @@
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { Send, X, Maximize2, Minimize2, Sparkles, Loader2, Palette, BookOpen, FileSpreadsheet, Printer, Presentation, FileDown } from 'lucide-react';
+import { Send, X, Maximize2, Minimize2, Sparkles, Loader2, Palette, BookOpen, FileSpreadsheet, Printer, Presentation, FileDown, ThumbsUp, ThumbsDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { BetoStatsCard, BetoStatusPipeline, BetoModulePreview, BetoExportBar, BetoInsightCard, parseRichContent } from './BetoComponents';
 import BetoPresentationMode from './BetoPresentationMode';
@@ -178,7 +178,7 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
                 if (navMatch && onNavigate) { content = content.replace(/\[ACTION:navigate:\w+\]/g, ''); setTimeout(() => onNavigate(navMatch[1]), 500); }
                 content = content.replace(/\[ACTION:[^\]]+\]/g, '').trim();
                 setStreamingText('');
-                setMessages(prev => [...prev, { role: 'assistant', content }]);
+                setMessages(prev => [...prev, { role: 'assistant', content, interaction_id: null }]);
             } else {
                 // Fallback: JSON response (non-streaming)
                 const data = await response.json();
@@ -187,7 +187,7 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
                     const navMatch = content.match(/\[ACTION:navigate:(\w+)\]/);
                     if (navMatch && onNavigate) { content = content.replace(/\[ACTION:navigate:\w+\]/g, ''); setTimeout(() => onNavigate(navMatch[1]), 500); }
                     content = content.replace(/\[ACTION:[^\]]+\]/g, '').trim();
-                    setMessages(prev => [...prev, { role: 'assistant', content }]);
+                    setMessages(prev => [...prev, { role: 'assistant', content, interaction_id: data.interaction_id || null }]);
                 } else if (data?.error) {
                     setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${data.message || data.error}` }]);
                 }
@@ -207,6 +207,21 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
         setTheme(newTheme);
         localStorage.setItem('beto_theme', newTheme);
         setShowThemes(false);
+    }, []);
+
+    // Feedback — thumbs up/down
+    const [feedbackGiven, setFeedbackGiven] = useState({});
+    const sendFeedback = useCallback(async (msgIndex, interactionId, feedback) => {
+        setFeedbackGiven(prev => ({ ...prev, [msgIndex]: feedback }));
+        if (!interactionId) return;
+        try {
+            await supabase.from('beto_interactions').update({
+                feedback,
+                feedback_at: new Date().toISOString(),
+            }).eq('id', interactionId);
+        } catch (err) {
+            console.warn('[BetoWidget] Feedback save failed:', err.message);
+        }
     }, []);
 
     const handleKeyDown = useCallback((e) => {
@@ -569,6 +584,46 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
                                 <span>{msg.content}</span>
                             )}
                         </div>
+                        {/* Thumbs up/down feedback — assistant messages only */}
+                        {msg.role === 'assistant' && i > 0 && (
+                            <div style={{
+                                display: 'flex', flexDirection: 'column', gap: '2px',
+                                alignSelf: 'flex-end', marginBottom: '2px', opacity: feedbackGiven[i] ? 1 : 0.4,
+                                transition: 'opacity 0.2s',
+                            }}
+                            onMouseOver={e => e.currentTarget.style.opacity = 1}
+                            onMouseOut={e => { if (!feedbackGiven[i]) e.currentTarget.style.opacity = 0.4; }}
+                            >
+                                <button
+                                    onClick={() => sendFeedback(i, msg.interaction_id, 'up')}
+                                    title="Buena respuesta"
+                                    style={{
+                                        border: 'none', background: 'none', cursor: 'pointer',
+                                        padding: '3px', borderRadius: '6px',
+                                        color: feedbackGiven[i] === 'up' ? '#10B981' : (theme === 'dark' ? '#64748B' : '#94A3B8'),
+                                        transition: 'all 0.15s',
+                                        transform: feedbackGiven[i] === 'up' ? 'scale(1.2)' : 'scale(1)',
+                                    }}
+                                    disabled={!!feedbackGiven[i]}
+                                >
+                                    <ThumbsUp size={13} fill={feedbackGiven[i] === 'up' ? '#10B981' : 'none'} />
+                                </button>
+                                <button
+                                    onClick={() => sendFeedback(i, msg.interaction_id, 'down')}
+                                    title="Mala respuesta"
+                                    style={{
+                                        border: 'none', background: 'none', cursor: 'pointer',
+                                        padding: '3px', borderRadius: '6px',
+                                        color: feedbackGiven[i] === 'down' ? '#EF4444' : (theme === 'dark' ? '#64748B' : '#94A3B8'),
+                                        transition: 'all 0.15s',
+                                        transform: feedbackGiven[i] === 'down' ? 'scale(1.2)' : 'scale(1)',
+                                    }}
+                                    disabled={!!feedbackGiven[i]}
+                                >
+                                    <ThumbsDown size={13} fill={feedbackGiven[i] === 'down' ? '#EF4444' : 'none'} />
+                                </button>
+                            </div>
+                        )}
                     </div>
                     );
                 })}
