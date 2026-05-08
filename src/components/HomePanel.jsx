@@ -387,70 +387,265 @@ export default function HomePanel() {
     const hora = new Date().getHours();
     const saludo = hora < 12 ? 'Buenos días' : hora < 18 ? 'Buenas tardes' : 'Buenas noches';
 
+    const BETO_FEATURES = [
+        { icon: '🔍', title: 'Consultar Datos', desc: 'Preguntale sobre cirugías, deudas, pedidos o cualquier módulo del sistema.', color: '#3B82F6', bg: '#EFF6FF' },
+        { icon: '📊', title: 'Reportes en PDF', desc: 'Genera reportes profesionales al instante con descarga en PDF.', color: '#10B981', bg: '#ECFDF5' },
+        { icon: '📲', title: 'Enviar WhatsApp', desc: 'Pedile que envíe mensajes a pacientes directamente desde el chat.', color: '#25D366', bg: '#F0FDF4' },
+        { icon: '🧭', title: 'Navegación Rápida', desc: 'Decile "Llevame a Cirugías" y te lleva al módulo correcto.', color: '#8B5CF6', bg: '#F5F3FF' },
+        { icon: '✏️', title: 'Modificar Datos', desc: 'Puede actualizar estados de cirugías, datos de pacientes (con tu confirmación).', color: '#F59E0B', bg: '#FFFBEB' },
+        { icon: '🔔', title: 'Alertas Inteligentes', desc: 'Te avisa sobre pendientes, cirugías sin confirmar y deudas urgentes.', color: '#EF4444', bg: '#FEF2F2' },
+        { icon: '📈', title: 'Predicciones', desc: 'Analiza tendencias y te sugiere acciones proactivas.', color: '#06B6D4', bg: '#ECFEFF' },
+        { icon: '📚', title: 'Tutoriales Guiados', desc: 'Pedile "Enseñame a usar cirugías" y te guía paso a paso.', color: '#EC4899', bg: '#FDF2F8' },
+    ];
+
+    const QUICK_STARTS = [
+        '🔔 ¿Qué hay pendiente hoy?',
+        '📊 Reporte de cirugías del día',
+        '💰 Top 10 deudores',
+        '📚 Enseñame a usar el sistema',
+        '🧭 Llevame a Cirugías',
+        '📋 Altas pendientes de hoy',
+    ];
+
     return (
         <div className="content no-print" style={{ maxWidth: '900px', margin: '0 auto' }}>
-            {/* Welcome Card */}
-            <div className="animate-fade-in" style={{
-                background: 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 50%, #60A5FA 100%)',
-                borderRadius: '20px', padding: '36px 40px', color: '#fff',
-                marginBottom: '28px', position: 'relative', overflow: 'hidden',
-            }}>
-                {/* Decorative circles */}
-                <div style={{
-                    position: 'absolute', top: '-30px', right: '-30px',
-                    width: '140px', height: '140px', borderRadius: '50%',
-                    background: 'rgba(255,255,255,0.08)',
-                }} />
-                <div style={{
-                    position: 'absolute', bottom: '-20px', right: '80px',
-                    width: '80px', height: '80px', borderRadius: '50%',
-                    background: 'rgba(255,255,255,0.05)',
-                }} />
 
-                <div style={{ position: 'relative', zIndex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                        <Home size={28} style={{ opacity: 0.9 }} />
-                        <h1 style={{ fontSize: '1.6rem', fontWeight: 800, margin: 0 }}>
-                            {saludo} 👋
-                        </h1>
+            {/* ═══════ HERO — Beto Presentation ═══════ */}
+            <div className="animate-fade-in" style={{
+                background: 'linear-gradient(135deg, #312E81 0%, #4F46E5 40%, #818CF8 100%)',
+                borderRadius: '24px', padding: '0', color: '#fff',
+                marginBottom: '28px', position: 'relative', overflow: 'hidden',
+                display: 'flex', alignItems: 'stretch', minHeight: '220px',
+            }}>
+                {/* Decorative elements */}
+                <div style={{ position: 'absolute', top: '-40px', right: '-40px', width: '180px', height: '180px', borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />
+                <div style={{ position: 'absolute', bottom: '-20px', left: '30%', width: '100px', height: '100px', borderRadius: '50%', background: 'rgba(255,255,255,0.04)' }} />
+                <div style={{ position: 'absolute', top: '20%', left: '10%', width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(255,255,255,0.03)' }} />
+
+                {/* Text content */}
+                <div style={{ flex: 1, padding: '36px 20px 36px 40px', position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.7, marginBottom: '4px' }}>
+                        Tu asistente con IA
                     </div>
-                    <p style={{ fontSize: '1rem', opacity: 0.9, marginBottom: '16px', maxWidth: '600px', lineHeight: 1.6 }}>
-                        Bienvenido al <strong>Sistema de Administración</strong> del Sanatorio Argentino.
-                        Desde acá podés gestionar pedidos médicos, controlar cirugías y comunicarte con los pacientes.
+                    <h1 style={{ fontSize: '1.8rem', fontWeight: 900, margin: '0 0 6px', lineHeight: 1.2 }}>
+                        {saludo} 👋
+                    </h1>
+                    <p style={{ fontSize: '0.95rem', opacity: 0.9, marginBottom: '20px', maxWidth: '420px', lineHeight: 1.6 }}>
+                        Soy <strong>Beto</strong>, tu asistente inteligente del Sanatorio Argentino.
+                        Puedo consultar datos, generar reportes, enviar WhatsApp y mucho más.
                     </p>
-                    <div style={{
-                        display: 'flex', gap: '12px', flexWrap: 'wrap',
-                    }}>
-                        {[
-                            { icon: FileText, label: 'Pedidos', count: '3 módulos' },
-                            { icon: Stethoscope, label: 'Cirugías', count: 'Control total' },
-                            { icon: Banknote, label: 'Deudas', count: 'Seguimiento' },
-                            { icon: MessageSquare, label: 'WhatsApp', count: 'Integrado' },
-                        ].map((item, i) => {
-                            const Icon = item.icon;
-                            return (
-                                <div key={i} style={{
-                                    display: 'flex', alignItems: 'center', gap: '8px',
-                                    padding: '8px 16px', borderRadius: '12px',
-                                    background: 'rgba(255,255,255,0.15)',
-                                    backdropFilter: 'blur(10px)',
-                                    fontSize: '0.82rem', fontWeight: 600,
-                                }}>
-                                    <Icon size={16} />
-                                    <span>{item.label}</span>
-                                    <span style={{
-                                        fontSize: '0.68rem', opacity: 0.7,
-                                        padding: '2px 8px', background: 'rgba(255,255,255,0.15)',
-                                        borderRadius: '8px',
-                                    }}>{item.count}</span>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            padding: '7px 14px', borderRadius: '10px',
+                            background: 'rgba(255,255,255,0.18)',
+                            backdropFilter: 'blur(10px)',
+                            fontSize: '0.78rem', fontWeight: 600,
+                            cursor: 'pointer', transition: 'all 0.2s',
+                        }}
+                        onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.28)'}
+                        onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.18)'}
+                        onClick={() => document.getElementById('beto-fab')?.click()}
+                        >
+                            💬 Hablar con Beto
+                        </div>
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            padding: '7px 14px', borderRadius: '10px',
+                            background: 'rgba(255,255,255,0.1)',
+                            fontSize: '0.75rem', fontWeight: 500, opacity: 0.8,
+                        }}>
+                            ⌨️ Ctrl+K acceso rápido
+                        </div>
+                    </div>
+                </div>
+
+                {/* Beto avatar */}
+                <div style={{
+                    width: '220px', display: 'flex', alignItems: 'flex-end',
+                    justifyContent: 'center', position: 'relative', overflow: 'hidden',
+                    flexShrink: 0,
+                }}>
+                    <img
+                        src="/The_avatar_is_greetings.gif"
+                        alt="Beto saludando"
+                        style={{
+                            width: '200px', height: '200px', objectFit: 'cover',
+                            borderRadius: '20px 20px 0 0',
+                            filter: 'drop-shadow(0 -4px 20px rgba(0,0,0,0.2))',
+                        }}
+                    />
+                </div>
+            </div>
+
+            {/* ═══════ BETO FEATURES GRID ═══════ */}
+            <div style={{ marginBottom: '32px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                    <img src="/beto.jpg" alt="Beto" style={{ width: '32px', height: '32px', borderRadius: '50%', border: '2px solid #E2E8F0' }} />
+                    <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1E293B', margin: 0 }}>
+                        ¿Qué puede hacer Beto?
+                    </h2>
+                </div>
+
+                <div style={{
+                    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                    gap: '12px',
+                }}>
+                    {BETO_FEATURES.map((feat, i) => (
+                        <div key={i} style={{
+                            background: '#fff', border: '1px solid #F1F5F9',
+                            borderRadius: '16px', padding: '18px 16px',
+                            transition: 'all 0.2s', cursor: 'default',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                        }}
+                        onMouseOver={e => {
+                            e.currentTarget.style.transform = 'translateY(-3px)';
+                            e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.08)';
+                            e.currentTarget.style.borderColor = feat.color + '40';
+                        }}
+                        onMouseOut={e => {
+                            e.currentTarget.style.transform = 'translateY(0)';
+                            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)';
+                            e.currentTarget.style.borderColor = '#F1F5F9';
+                        }}
+                        >
+                            <div style={{
+                                width: '40px', height: '40px', borderRadius: '12px',
+                                background: feat.bg, display: 'flex',
+                                alignItems: 'center', justifyContent: 'center',
+                                fontSize: '1.2rem', marginBottom: '10px',
+                            }}>
+                                {feat.icon}
+                            </div>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1E293B', marginBottom: '4px' }}>
+                                {feat.title}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748B', lineHeight: 1.4 }}>
+                                {feat.desc}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* ═══════ CÓMO USAR BETO ═══════ */}
+            <div style={{
+                background: '#F8FAFC', borderRadius: '20px',
+                padding: '28px 32px', marginBottom: '32px',
+                border: '1px solid #E2E8F0',
+            }}>
+                <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1E293B', margin: '0 0 20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Zap size={18} style={{ color: '#4F46E5' }} />
+                    ¿Cómo usar a Beto?
+                </h2>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                    {[
+                        { step: '1', title: 'Abrí el chat', desc: 'Hacé click en el avatar de Beto (abajo a la derecha) o presioná Ctrl+K.', icon: '💬', color: '#4F46E5' },
+                        { step: '2', title: 'Preguntá en español', desc: 'Escribí tu consulta naturalmente: "¿Cuántas cirugías hay hoy?" o "Armame un reporte".', icon: '✍️', color: '#10B981' },
+                        { step: '3', title: 'Recibí la respuesta', desc: 'Beto consulta la base de datos en tiempo real y te responde con datos actualizados.', icon: '⚡', color: '#F59E0B' },
+                        { step: '4', title: 'Descargá o actuá', desc: 'Descargá reportes en PDF, imprimí, o dejá que Beto ejecute acciones por vos.', icon: '📥', color: '#EF4444' },
+                    ].map((s, i) => (
+                        <div key={i} style={{
+                            display: 'flex', gap: '12px',
+                            padding: '14px', borderRadius: '14px',
+                            background: '#fff', border: '1px solid #E2E8F020',
+                        }}>
+                            <div style={{
+                                width: '36px', height: '36px', borderRadius: '10px',
+                                background: s.color + '12', color: s.color,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '1rem', fontWeight: 800, flexShrink: 0,
+                            }}>
+                                {s.icon}
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1E293B', marginBottom: '2px' }}>
+                                    <span style={{ color: s.color, marginRight: '4px' }}>#{s.step}</span>
+                                    {s.title}
                                 </div>
-                            );
-                        })}
+                                <div style={{ fontSize: '0.72rem', color: '#64748B', lineHeight: 1.4 }}>
+                                    {s.desc}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* ═══════ QUICK START CHIPS ═══════ */}
+            <div style={{ marginBottom: '32px' }}>
+                <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1E293B', margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <ArrowRight size={16} style={{ color: '#4F46E5' }} />
+                    Probá ahora — hacé click para preguntarle a Beto
+                </h3>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {QUICK_STARTS.map((q, i) => (
+                        <button
+                            key={i}
+                            onClick={() => {
+                                const fab = document.getElementById('beto-fab');
+                                if (fab) fab.click();
+                                // After Beto opens, inject the query
+                                setTimeout(() => {
+                                    const textarea = document.querySelector('#beto-chat-panel textarea');
+                                    if (textarea) {
+                                        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+                                        nativeInputValueSetter.call(textarea, q);
+                                        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                                    }
+                                }, 2500);
+                            }}
+                            style={{
+                                padding: '8px 14px', borderRadius: '20px',
+                                border: '1px solid #E2E8F0', background: '#fff',
+                                fontSize: '0.78rem', fontWeight: 600, color: '#4F46E5',
+                                cursor: 'pointer', transition: 'all 0.2s',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                            }}
+                            onMouseOver={e => {
+                                e.currentTarget.style.background = '#EEF2FF';
+                                e.currentTarget.style.borderColor = '#C7D2FE';
+                                e.currentTarget.style.transform = 'translateY(-1px)';
+                            }}
+                            onMouseOut={e => {
+                                e.currentTarget.style.background = '#fff';
+                                e.currentTarget.style.borderColor = '#E2E8F0';
+                                e.currentTarget.style.transform = 'translateY(0)';
+                            }}
+                        >
+                            {q}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* ═══════ KEYBOARD SHORTCUT CALLOUT ═══════ */}
+            <div style={{
+                display: 'flex', alignItems: 'center', gap: '16px',
+                background: 'linear-gradient(135deg, #EEF2FF, #F5F3FF)',
+                borderRadius: '16px', padding: '16px 24px',
+                marginBottom: '32px', border: '1px solid #C7D2FE40',
+            }}>
+                <div style={{
+                    width: '44px', height: '44px', borderRadius: '12px',
+                    background: '#4F46E5', color: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '1.1rem', fontWeight: 800, flexShrink: 0,
+                }}>
+                    ⌨️
+                </div>
+                <div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#312E81' }}>
+                        Acceso rápido desde cualquier pantalla
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#6366F1', marginTop: '2px' }}>
+                        Presioná <kbd style={{ background: '#fff', padding: '1px 6px', borderRadius: '4px', border: '1px solid #C7D2FE', fontWeight: 700, fontSize: '0.72rem' }}>Ctrl</kbd> + <kbd style={{ background: '#fff', padding: '1px 6px', borderRadius: '4px', border: '1px solid #C7D2FE', fontWeight: 700, fontSize: '0.72rem' }}>K</kbd> para abrir la paleta de comandos y hablar con Beto sin importar en qué módulo estés.
                     </div>
                 </div>
             </div>
 
-            {/* User Guide */}
+            {/* ═══════ USER GUIDE (existing) ═══════ */}
             <div style={{ marginBottom: '12px' }}>
                 <h2 style={{
                     fontSize: '1.15rem', fontWeight: 800,
