@@ -29,6 +29,9 @@ export default function ConsultasPanel() {
     const [vista, setVista] = useState('dia'); // dia | semana | mes
     const [importing, setImporting] = useState(false);
     const [importResult, setImportResult] = useState(null);
+    const [matrizAgrupar, setMatrizAgrupar] = useState('dia'); // dia | semana
+    const [matrizColumnas, setMatrizColumnas] = useState('especialidad'); // especialidad | agenda | tipo_visita
+    const [colsOcultas, setColsOcultas] = useState(new Set());
 
     // Fetch ALL data (paginated to bypass 1000-row limit)
     const fetchData = useCallback(async () => {
@@ -293,7 +296,7 @@ export default function ConsultasPanel() {
 
                     {/* View toggle */}
                     <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', background: '#F1F5F9', borderRadius: '10px', padding: '3px', width: 'fit-content' }}>
-                        {[{ id: 'dia', label: 'Por Día' }, { id: 'semana', label: 'Por Semana' }, { id: 'resumen', label: 'Resumen' }].map(v => (
+                        {[{ id: 'dia', label: 'Por Día' }, { id: 'semana', label: 'Por Semana' }, { id: 'matriz', label: '📋 Matriz' }, { id: 'resumen', label: 'Resumen' }].map(v => (
                             <button key={v.id} onClick={() => setVista(v.id)} style={{
                                 padding: '6px 14px', borderRadius: '8px', border: 'none', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
                                 background: vista === v.id ? '#fff' : 'transparent', color: vista === v.id ? '#4F46E5' : '#64748B',
@@ -403,6 +406,189 @@ export default function ConsultasPanel() {
                             </div>
                         </div>
                     )}
+
+                    {/* ═══════ MATRIZ (pivot table) ═══════ */}
+                    {vista === 'matriz' && (() => {
+                        // Build column values dynamically
+                        const colField = matrizColumnas;
+                        const getColVal = (r) => {
+                            if (colField === 'especialidad') return r.visita_especialidad?.trim() || 'OTRO';
+                            if (colField === 'agenda') return r.agenda?.trim() || 'OTRO';
+                            if (colField === 'tipo_visita') return r.tipo_visita?.trim() || 'OTRO';
+                            return r.grupo_agenda?.trim() || 'OTRO';
+                        };
+
+                        // Get all unique column values sorted by frequency
+                        const colCounts = {};
+                        filtered.forEach(r => { const v = getColVal(r); colCounts[v] = (colCounts[v] || 0) + 1; });
+                        const allCols = Object.entries(colCounts).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+                        const visibleCols = allCols.filter(c => !colsOcultas.has(c));
+
+                        // Build rows
+                        const rowMap = {};
+                        filtered.forEach(r => {
+                            let key;
+                            if (matrizAgrupar === 'semana') {
+                                const d = new Date(r.fecha_visita + 'T12:00:00');
+                                const day = d.getDay();
+                                const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+                                const monday = new Date(d);
+                                monday.setDate(diff);
+                                key = monday.toISOString().split('T')[0];
+                            } else {
+                                key = r.fecha_visita;
+                            }
+                            if (!rowMap[key]) rowMap[key] = { key, total: 0, cols: {} };
+                            rowMap[key].total++;
+                            const col = getColVal(r);
+                            rowMap[key].cols[col] = (rowMap[key].cols[col] || 0) + 1;
+                        });
+                        const rows = Object.values(rowMap).sort((a, b) => a.key.localeCompare(b.key));
+
+                        // Totals
+                        const totals = {};
+                        let grandTotal = 0;
+                        rows.forEach(r => {
+                            grandTotal += r.total;
+                            visibleCols.forEach(c => { totals[c] = (totals[c] || 0) + (r.cols[c] || 0); });
+                        });
+
+                        const formatRowLabel = (key) => {
+                            if (matrizAgrupar === 'semana') {
+                                const s = new Date(key + 'T12:00:00');
+                                const e = new Date(s); e.setDate(e.getDate() + 6);
+                                return `${s.getDate()}/${s.getMonth() + 1} - ${e.getDate()}/${e.getMonth() + 1}`;
+                            }
+                            return formatDate(key);
+                        };
+
+                        const toggleCol = (col) => {
+                            setColsOcultas(prev => {
+                                const next = new Set(prev);
+                                if (next.has(col)) next.delete(col); else next.add(col);
+                                return next;
+                            });
+                        };
+
+                        return (
+                            <div style={{ background: '#fff', border: '1px solid #F1F5F9', borderRadius: '16px', padding: '20px', marginBottom: '20px' }}>
+                                {/* Controls */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                                    <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: 0, color: '#1E293B' }}>📋 Matriz de Consultas</h3>
+                                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                        {/* Group by toggle */}
+                                        <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 600 }}>Agrupar:</span>
+                                        {[{ id: 'dia', label: 'Día' }, { id: 'semana', label: 'Semana' }].map(g => (
+                                            <button key={g.id} onClick={() => setMatrizAgrupar(g.id)} style={{
+                                                padding: '4px 10px', borderRadius: '6px', border: '1px solid',
+                                                fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer',
+                                                background: matrizAgrupar === g.id ? '#4F46E5' : '#fff',
+                                                color: matrizAgrupar === g.id ? '#fff' : '#64748B',
+                                                borderColor: matrizAgrupar === g.id ? '#4F46E5' : '#E2E8F0',
+                                            }}>{g.label}</button>
+                                        ))}
+                                        <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 600, marginLeft: '8px' }}>Columnas:</span>
+                                        {[{ id: 'especialidad', label: 'Especialidad' }, { id: 'agenda', label: 'Agenda' }, { id: 'tipo_visita', label: 'Tipo Visita' }].map(c => (
+                                            <button key={c.id} onClick={() => { setMatrizColumnas(c.id); setColsOcultas(new Set()); }} style={{
+                                                padding: '4px 10px', borderRadius: '6px', border: '1px solid',
+                                                fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer',
+                                                background: matrizColumnas === c.id ? '#10B981' : '#fff',
+                                                color: matrizColumnas === c.id ? '#fff' : '#64748B',
+                                                borderColor: matrizColumnas === c.id ? '#10B981' : '#E2E8F0',
+                                            }}>{c.label}</button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Column toggles */}
+                                <div style={{ display: 'flex', gap: '4px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                                    <button onClick={() => setColsOcultas(new Set())} style={{
+                                        padding: '3px 8px', borderRadius: '4px', border: '1px solid #E2E8F0',
+                                        fontSize: '0.62rem', fontWeight: 600, cursor: 'pointer',
+                                        background: colsOcultas.size === 0 ? '#EEF2FF' : '#fff',
+                                        color: colsOcultas.size === 0 ? '#4F46E5' : '#94A3B8',
+                                    }}>✓ Todas</button>
+                                    {allCols.map(col => (
+                                        <button key={col} onClick={() => toggleCol(col)} style={{
+                                            padding: '3px 8px', borderRadius: '4px', border: '1px solid',
+                                            fontSize: '0.62rem', fontWeight: 600, cursor: 'pointer',
+                                            background: colsOcultas.has(col) ? '#FEF2F2' : '#F0FDF4',
+                                            color: colsOcultas.has(col) ? '#DC2626' : '#16A34A',
+                                            borderColor: colsOcultas.has(col) ? '#FECACA' : '#BBF7D0',
+                                            textDecoration: colsOcultas.has(col) ? 'line-through' : 'none',
+                                        }}>{col} ({colCounts[col]})</button>
+                                    ))}
+                                </div>
+
+                                {/* Table */}
+                                <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
+                                        <thead>
+                                            <tr style={{ background: 'linear-gradient(135deg, #312E81, #4F46E5)' }}>
+                                                <th style={{ padding: '8px 10px', color: '#fff', fontWeight: 700, textAlign: 'left', position: 'sticky', left: 0, background: '#3730A3', zIndex: 2, minWidth: '70px' }}>
+                                                    {matrizAgrupar === 'semana' ? 'Semana' : 'Fecha'}
+                                                </th>
+                                                {visibleCols.map(col => (
+                                                    <th key={col} style={{ padding: '8px 6px', color: '#fff', fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.65rem' }}>
+                                                        {col.length > 14 ? col.substring(0, 12) + '…' : col}
+                                                    </th>
+                                                ))}
+                                                <th style={{ padding: '8px 10px', color: '#FDE68A', fontWeight: 800, textAlign: 'center', minWidth: '50px' }}>TOTAL</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {rows.map((row, idx) => {
+                                                const isWeekend = matrizAgrupar === 'dia' && [0, 6].includes(new Date(row.key + 'T12:00:00').getDay());
+                                                return (
+                                                    <tr key={row.key} style={{ background: isWeekend ? '#EEF2FF' : idx % 2 === 0 ? '#fff' : '#FAFAFA' }}>
+                                                        <td style={{
+                                                            padding: '6px 10px', fontWeight: isWeekend ? 700 : 600,
+                                                            color: isWeekend ? '#4F46E5' : '#334155',
+                                                            position: 'sticky', left: 0, zIndex: 1,
+                                                            background: isWeekend ? '#EEF2FF' : idx % 2 === 0 ? '#fff' : '#FAFAFA',
+                                                            borderRight: '2px solid #E2E8F0',
+                                                        }}>
+                                                            {formatRowLabel(row.key)}
+                                                        </td>
+                                                        {visibleCols.map(col => {
+                                                            const val = row.cols[col] || 0;
+                                                            const maxInCol = Math.max(...rows.map(r => r.cols[col] || 0), 1);
+                                                            const intensity = val / maxInCol;
+                                                            return (
+                                                                <td key={col} style={{
+                                                                    padding: '6px 6px', textAlign: 'center', fontWeight: val > 0 ? 700 : 400,
+                                                                    color: val > 0 ? '#1E293B' : '#D1D5DB',
+                                                                    background: val > 0 ? `rgba(79,70,229,${intensity * 0.15})` : 'transparent',
+                                                                }}>
+                                                                    {val || '—'}
+                                                                </td>
+                                                            );
+                                                        })}
+                                                        <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 800, color: '#1E293B', background: '#F8FAFC', borderLeft: '2px solid #E2E8F0' }}>
+                                                            {row.total}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr style={{ background: 'linear-gradient(135deg, #F1F5F9, #E2E8F0)' }}>
+                                                <td style={{ padding: '8px 10px', fontWeight: 800, color: '#1E293B', position: 'sticky', left: 0, background: '#E2E8F0', borderRight: '2px solid #CBD5E1', zIndex: 1 }}>TOTAL</td>
+                                                {visibleCols.map(col => (
+                                                    <td key={col} style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 800, color: '#4F46E5' }}>
+                                                        {totals[col] || 0}
+                                                    </td>
+                                                ))}
+                                                <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 900, color: '#1E293B', fontSize: '0.82rem', borderLeft: '2px solid #CBD5E1' }}>
+                                                    {grandTotal.toLocaleString()}
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </>
             )}
         </div>
