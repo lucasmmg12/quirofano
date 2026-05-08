@@ -1601,6 +1601,171 @@ async function syncLaboratorios(db) {
     return summary;
 }
 
+// ═══════════════════════════════════════════════
+// SYNC CONSULTAS GUARDIA — SQL Server → Supabase
+// Fuente: VLISE_Visitas con categoria (mes en curso dinámico)
+// ═══════════════════════════════════════════════
+async function syncConsultasGuardia(db) {
+    console.log('\n\ud83c\udfe5 [CONSULTAS] Extrayendo consultas de guardia de SALUS...');
+
+    // Rango dinámico: mes en curso
+    const hoy = new Date();
+    const y = hoy.getFullYear();
+    const m = String(hoy.getMonth() + 1).padStart(2, '0');
+    const primerDia = `${y}${m}01`;
+    // Primer día del próximo mes
+    const nextMonth = hoy.getMonth() + 2 > 12 ? 1 : hoy.getMonth() + 2;
+    const nextYear = nextMonth === 1 ? y + 1 : y;
+    const primerDiaSiguiente = `${nextYear}${String(nextMonth).padStart(2, '0')}01`;
+    const mesPeriodo = `${y}-${m}`;
+
+    console.log(`   \ud83d\udcc5 Rango: ${primerDia} a ${primerDiaSiguiente} (mes_periodo: ${mesPeriodo})`);
+
+    const req = db.request();
+    req.timeout = 120000;
+    const result = await req.query(`
+        WITH VisitasFiltradas AS (
+            SELECT 
+                [idVisita],
+                [IdPaciente],
+                [Cliente],
+                [Asistencia],
+                [Paciente],
+                [NHC],
+                [NIF],
+                [Agenda],
+                CASE 
+                    WHEN [Agenda] LIKE '(NEO)%' THEN 'NEO'
+                    WHEN [Agenda] LIKE 'GYM%' THEN 'GYM'
+                    ELSE [Agenda] 
+                END AS [Agrupacion_Agenda],
+                [Grupo Agenda],
+                [Tipo Visita],
+                [TiempoPred],
+                [Fecha Visita], 
+                [Visita_Especialidad],
+                ROW_NUMBER() OVER(PARTITION BY [idVisita] ORDER BY [Fecha Visita] DESC) AS rn
+            FROM [SALUS].[dbo].[VLISE_Visitas con categoria]
+            WHERE 
+                [Fecha Visita] >= '${primerDia}' 
+                AND [Fecha Visita] < '${primerDiaSiguiente}'
+                AND LOWER(LTRIM(RTRIM([Asistencia]))) = 'presente' 
+                AND [Agenda] IN (
+                    'GUARDIA CARDIOLOGICA', 'GUARDIAS CLINICA', 'GUARDIAS GINECOLOGIA', 'GUARDIAS PEDIATR\u00cdA',
+                    '(NEO) ROSALES TORRES SILVANA', '(NEO) CASTRO MONICA', '(NEO) VALDEZ MARIA', 
+                    '(NEO) DRA. RUARTE, SONIA', '(NEO) DRA. SVRIZ WUCHERER NATALIA ELIZABETH', 
+                    '(NEO) DRA. CLAVEL MARISA ANALIA', '(NEO) DR. HERNANDEZ, EDUARDO RAFAEL', 
+                    '(NEO) GOMEZ ANDREA', '(NEO) HERNANDEZ, MARIA BELEN', '(NEO) DR. LUNA, HORACIO', 
+                    '(NEO) JOFRE, GASTON MARCELO', '(NEO) DRA. CORREA, ANDREA', '(NEO) POSATINI MARIA FERNANDA', 
+                    '(NEO) MORAN PATRICIA', '(NEO) MALOSCH, GABRIELA', '(NEO) TEJADA, JOSE LUIS', 
+                    '(NEO) DR. RAMELLA, FERNANDO JOSE', '(NEO) DRA. AGUIRRE, VERONICA', 
+                    '(NEO) DRA. CORREA, ANDREA-Baja', '(NEO) URIZAR ANALIA', '(NEO) AGUILAR, MARIA EUGENIA', 
+                    '(NEO)URIZAR ANALIA', '(NEO) MOLINA, BERTHA BEATRIZ', '(NEO) DOMINGUEZ, GLADYS', 
+                    '(NEO) DRA. MATEU MARTA EDITH', '(NEO) DR. FONT GERMAN ALBERTO ', 
+                    '(NEO) MANRIQUE CLAUDIA', '(NEO)  DRA.RAMOS GABRIELA', '(NEO) MARTIN, AGUSTINA', 
+                    'GYM PREPARTO', 'GYM BARIATRICA'
+                )
+        )
+        SELECT 
+            [idVisita],
+            [IdPaciente],
+            [Cliente],
+            [Asistencia],
+            [Paciente],
+            [NHC],
+            [NIF],
+            [Agenda],             
+            [Agrupacion_Agenda],  
+            [Grupo Agenda],
+            [Tipo Visita],
+            [TiempoPred],
+            [Fecha Visita],
+            [Visita_Especialidad]
+        FROM 
+            VisitasFiltradas
+        WHERE 
+            rn = 1
+    `);
+    console.log(`   \ud83d\udce5 ${result.recordset.length} registros extra\u00eddos`);
+
+    if (result.recordset.length === 0) {
+        return { total: 0, inserted: 0, updated: 0, skipped: 0, mesPeriodo };
+    }
+
+    // Crear/actualizar registro de importaci\u00f3n
+    const { data: importRec } = await supabase
+        .from('consultas_imports')
+        .upsert({ mes: mesPeriodo, archivo: 'SALUS Sync Autom\u00e1tico', total_registros: result.recordset.length }, { onConflict: 'mes' })
+        .select('id')
+        .single();
+    const importId = importRec?.id || null;
+
+    // Transformar filas
+    const records = [];
+    for (const r of result.recordset) {
+        const idVisita = r.idVisita ? Number(r.idVisita) : null;
+        if (!idVisita) continue;
+
+        const fecha = formatDate(r['Fecha Visita']);
+        if (!fecha) continue;
+
+        records.push({
+            import_id: importId,
+            id_visita: idVisita,
+            id_paciente: r.IdPaciente ? Number(r.IdPaciente) : null,
+            cliente: (r.Cliente || '').trim(),
+            asistencia: (r.Asistencia || '').trim(),
+            paciente: (r.Paciente || '').trim(),
+            nhc: r.NHC || null,
+            nif: r.NIF ? String(r.NIF).trim() : null,
+            agenda: (r.Agenda || '').trim(),
+            agrupacion_agenda: (r.Agrupacion_Agenda || '').trim(),
+            grupo_agenda: (r['Grupo Agenda'] || '').trim(),
+            tipo_visita: (r['Tipo Visita'] || '').trim(),
+            tiempo_pred: r.TiempoPred || null,
+            fecha_visita: fecha,
+            visita_especialidad: (r.Visita_Especialidad || '').trim(),
+            mes_periodo: mesPeriodo,
+        });
+    }
+
+    // Deduplicar por id_visita
+    const deduped = new Map();
+    for (const row of records) deduped.set(row.id_visita, row);
+    const uniqueRecords = [...deduped.values()];
+    console.log(`   \ud83d\udce6 ${uniqueRecords.length} registros \u00fanicos`);
+
+    // Batch upsert
+    let inserted = 0, updated = 0, skipped = 0;
+    const BATCH = 500;
+
+    for (let i = 0; i < uniqueRecords.length; i += BATCH) {
+        const batch = uniqueRecords.slice(i, i + BATCH);
+        const { data, error } = await supabase
+            .from('consultas_guardia')
+            .upsert(batch, { onConflict: 'id_visita', ignoreDuplicates: false })
+            .select('id, created_at, updated_at');
+
+        if (error) {
+            console.error(`   \u274c Batch ${i} error:`, error.message);
+            skipped += batch.length;
+        } else if (data) {
+            data.forEach(d => {
+                d.created_at === d.updated_at ? inserted++ : updated++;
+            });
+        }
+    }
+
+    // Actualizar total en import
+    if (importId) {
+        await supabase.from('consultas_imports').update({ total_registros: uniqueRecords.length }).eq('id', importId);
+    }
+
+    const summary = { total: result.recordset.length, inserted, updated, skipped, mesPeriodo };
+    console.log(`   \u2705 Consultas Guardia: ${inserted} nuevas, ${updated} actualizadas, ${skipped} errores (${mesPeriodo})`);
+    return summary;
+}
+
 // ENDPOINT PRINCIPAL: SYNC TODO
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 let syncInProgress = false;
@@ -1689,6 +1854,13 @@ app.get('/api/salus/sync-all', async (req, res) => {
             results.laboratorios = { error: err.message };
         }
 
+        try {
+            results.consultasGuardia = await syncConsultasGuardia(db);
+        } catch (err) {
+            console.error('Error en consultas guardia:', err.message);
+            results.consultasGuardia = { error: err.message };
+        }
+
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`\n–… ▬▬▬▬▬ SINCRONIZACIÓN COMPLETADA en ${elapsed}s ▬▬▬▬▬ \n`);
 
@@ -1771,6 +1943,11 @@ app.get('/api/salus/sync/asociaciones', async (req, res) => {
 
 app.get('/api/salus/sync/laboratorios', async (req, res) => {
     try { const db = await getPool(); res.json({ success: true, results: await syncLaboratorios(db) }); }
+    catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+app.get('/api/salus/sync/consultas-guardia', async (req, res) => {
+    try { const db = await getPool(); res.json({ success: true, results: await syncConsultasGuardia(db) }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 

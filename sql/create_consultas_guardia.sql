@@ -1,7 +1,7 @@
 -- Tabla de importaciones
 CREATE TABLE IF NOT EXISTS consultas_imports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  mes TEXT NOT NULL,
+  mes TEXT NOT NULL UNIQUE,
   archivo TEXT,
   total_registros INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT now()
