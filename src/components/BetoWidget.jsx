@@ -10,11 +10,12 @@
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { Send, X, Maximize2, Minimize2, Sparkles, Loader2, Palette, BookOpen, FileSpreadsheet, Printer, Presentation } from 'lucide-react';
+import { Send, X, Maximize2, Minimize2, Sparkles, Loader2, Palette, BookOpen, FileSpreadsheet, Printer, Presentation, FileDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { BetoStatsCard, BetoStatusPipeline, BetoModulePreview, BetoExportBar, BetoInsightCard, parseRichContent } from './BetoComponents';
 import BetoPresentationMode from './BetoPresentationMode';
 import BetoTutorial from './BetoTutorial';
+import { downloadBetoReportPdf, isReportMessage } from '../utils/betoReportPdf';
 
 const BETO_AVATAR = '/beto.jpg';
 const BETO_GIF = '/The_avatar_is_greetings.gif';
@@ -511,6 +512,58 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
                                         if (block.type === 'modulePreview') return <BetoModulePreview key={j} moduleId={block.moduleId} onNavigate={onNavigate} />;
                                         return null;
                                     })}
+                                    {/* PDF Download bar — visible on report messages */}
+                                    {isReportMessage(msg.content) && (
+                                        <div style={{
+                                            display: 'flex', gap: '6px', marginTop: '10px',
+                                            paddingTop: '8px', borderTop: `1px solid ${t.accent}15`,
+                                        }}>
+                                            <button
+                                                onClick={() => downloadBetoReportPdf(msg.content)}
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', gap: '5px',
+                                                    padding: '5px 10px', borderRadius: '8px',
+                                                    border: `1px solid ${t.accent}25`,
+                                                    background: `${t.accent}08`, color: t.accent,
+                                                    fontSize: '0.72rem', fontWeight: 600,
+                                                    cursor: 'pointer', transition: 'all 0.15s',
+                                                }}
+                                                onMouseOver={e => {
+                                                    e.currentTarget.style.background = `${t.accent}18`;
+                                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                                }}
+                                                onMouseOut={e => {
+                                                    e.currentTarget.style.background = `${t.accent}08`;
+                                                    e.currentTarget.style.transform = 'translateY(0)';
+                                                }}
+                                            >
+                                                <FileDown size={13} />
+                                                Descargar PDF
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    const printW = window.open('', '_blank');
+                                                    printW.document.write(`<html><head><title>Reporte Beto</title><style>body{font-family:system-ui,sans-serif;padding:40px;max-width:800px;margin:0 auto;color:#1E293B}table{border-collapse:collapse;width:100%}th,td{border:1px solid #E2E8F0;padding:6px 10px;text-align:left;font-size:13px}th{background:#4F46E5;color:#fff}tr:nth-child(even){background:#F8FAFC}h1,h2,h3{color:#4F46E5}@media print{body{padding:20px}}</style></head><body>${document.querySelector('.beto-markdown')?.innerHTML || cleanText}</body></html>`);
+                                                    printW.document.close();
+                                                    printW.print();
+                                                }}
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', gap: '5px',
+                                                    padding: '5px 10px', borderRadius: '8px',
+                                                    border: '1px solid #E2E8F020',
+                                                    background: 'transparent',
+                                                    color: theme === 'dark' ? '#94A3B8' : '#64748B',
+                                                    fontSize: '0.72rem', fontWeight: 500,
+                                                    cursor: 'pointer', transition: 'all 0.15s',
+                                                }}
+                                                onMouseOver={e => e.currentTarget.style.background = '#F1F5F9'}
+                                                onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                                            >
+                                                <Printer size={13} />
+                                                Imprimir
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             ) : (
                                 <span>{msg.content}</span>
