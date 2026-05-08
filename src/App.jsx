@@ -37,6 +37,8 @@ import PublicLabView from './components/PublicLabView.jsx';
 import LabPortal from './components/LabPortal.jsx';
 import IdleHomerOverlay from './components/IdleHomerOverlay.jsx';
 import BetoWidget from './components/BetoWidget.jsx';
+import CommandPalette from './components/CommandPalette.jsx';
+import BetoAnalyticsPanel from './components/BetoAnalyticsPanel.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -94,6 +96,9 @@ function AppRoot() {
 function App({ currentUser, onLogout }) {
     // Sidebar — persist active view across refreshes
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true');
+    // #4 Command Palette
+    const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+    const betoWidgetRef = useRef(null);
     const [activeView, setActiveViewRaw] = useState(() => localStorage.getItem('active_view') || 'inicio');
 
     const setActiveView = useCallback((view) => {
@@ -212,6 +217,18 @@ function App({ currentUser, onLogout }) {
             };
         }
     }, [activeView]);
+
+    // #4 — Ctrl+K listener for Command Palette
+    useEffect(() => {
+        const handler = (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                setCommandPaletteOpen(prev => !prev);
+            }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, []);
 
     // === CART OPERATIONS (unified: prácticas + internación) ===
     const handleAddToCart = useCallback((practice) => {
@@ -708,6 +725,10 @@ function App({ currentUser, onLogout }) {
                     <AsociacionesEntregaPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
+                {activeView === 'beto_analytics' && (
+                    <BetoAnalyticsPanel addToast={addToast} />
+                )}
+
                 {activeView === 'laboratorios' && (
                     <LaboratoriosPanel addToast={addToast} currentUser={currentUser} />
                 )}
@@ -790,6 +811,32 @@ function App({ currentUser, onLogout }) {
                 currentUser={currentUser}
                 currentModule={activeView}
                 onNavigate={(mod) => setActiveView(mod)}
+            />
+
+            {/* #4 — Command Palette (Ctrl+K) */}
+            <CommandPalette
+                isOpen={commandPaletteOpen}
+                onClose={() => setCommandPaletteOpen(false)}
+                onNavigate={(mod) => { setActiveView(mod); setCommandPaletteOpen(false); }}
+                onBetoQuery={(query) => {
+                    // Open Beto and send the query
+                    const betoFab = document.getElementById('beto-fab');
+                    if (betoFab) betoFab.click();
+                    // Small delay to let Beto open, then type the query
+                    setTimeout(() => {
+                        const betoInput = document.querySelector('#beto-chat-panel textarea');
+                        if (betoInput) {
+                            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+                            nativeInputValueSetter.call(betoInput, query);
+                            betoInput.dispatchEvent(new Event('input', { bubbles: true }));
+                            // Trigger send
+                            setTimeout(() => {
+                                const sendBtn = document.querySelector('#beto-chat-panel button:last-child');
+                                if (sendBtn) sendBtn.click();
+                            }, 200);
+                        }
+                    }, 2500);
+                }}
             />
 
             {/* Easter egg: Homer idle overlay — solo para frojo */}

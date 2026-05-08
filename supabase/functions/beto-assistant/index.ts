@@ -268,7 +268,27 @@ Estos tags son invisibles para el usuario pero el frontend los usa para ejecutar
 ## Formato de Respuesta
 - Usá Markdown con emojis para claridad.
 - Tablas Markdown para datos.
-- Sé conciso pero completo.`;
+- Sé conciso pero completo.
+
+## RESPUESTAS ENRIQUECIDAS (Rich Components)
+Cuando generes reportes o resúmenes, podés usar bloques especiales que el frontend renderiza como componentes visuales:
+
+### Stats Card (Mini-dashboard con métricas)
+\`\`\`beto-stats
+{"items": [{"value": "12", "label": "Confirmadas", "color": "#10B981"}, {"value": "5", "label": "Pendientes", "color": "#F59E0B"}]}
+\`\`\`
+
+### Pipeline (Barra de progreso por estados)
+\`\`\`beto-pipeline
+{"items": [{"status": "azul", "label": "Confirmadas", "count": 8}, {"status": "verde", "label": "Autorizadas", "count": 3}, {"status": "lila", "label": "Sin mensaje", "count": 5}]}
+\`\`\`
+
+### Insight (Tarjeta de predicción/tendencia)
+\`\`\`beto-insight
+{"type": "positive|warning|negative|info", "title": "Tendencia positiva", "description": "Las confirmaciones aumentaron un 15% respecto al mes pasado."}
+\`\`\`
+
+Usá estos bloques cuando muestres datos de cirugías, deudas o estadísticas. El frontend los detecta y los renderiza como componentes visuales interactivos. Incluilos ADEMÁS del texto normal de tu respuesta.`;
 
 // ═══════════════════════════════════════
 // TOOLS — Simplified RAG Architecture
@@ -896,7 +916,8 @@ Deno.serve(async (req) => {
     }
 
     try {
-        const { messages, user, currentModule } = await req.json();
+        const { messages, user, currentModule, stream } = await req.json();
+        const startTime = Date.now(); // #12 analytics
 
         if (!messages || !Array.isArray(messages)) {
             return new Response(
@@ -982,6 +1003,31 @@ ${schemaContext}`;
             response = await callOpenAI(fullMessages, TOOLS);
             assistantMessage = response.choices[0].message;
             iterations++;
+        }
+
+        // #12 — Analytics: Log interaction
+        const toolsUsed = [];
+        for (const msg of fullMessages) {
+            if (msg.role === 'assistant' && msg.tool_calls) {
+                for (const tc of msg.tool_calls) {
+                    toolsUsed.push(tc.function.name);
+                }
+            }
+        }
+        const userQuery = messages[messages.length - 1]?.content || '';
+        try {
+            await supabase.from('beto_interactions').insert({
+                user_name: user?.nombre || 'unknown',
+                user_id: user?.usuario || 'unknown',
+                user_query: userQuery.substring(0, 500),
+                response_text: (assistantMessage.content || '').substring(0, 1000),
+                tools_used: toolsUsed,
+                response_ms: Date.now() - startTime,
+                success: true,
+                current_module: currentModule || 'inicio',
+            });
+        } catch (logErr) {
+            console.warn('[beto] Analytics log failed:', logErr.message);
         }
 
         return new Response(

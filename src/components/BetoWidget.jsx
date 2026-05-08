@@ -3,14 +3,42 @@
  * 
  * Widget flotante (bottom-right) con chat expansible a pantalla completa.
  * Usa Supabase Edge Function "beto-assistant" (OpenAI GPT-4.1 + Function Calling).
+ * 
+ * Features: Smart Suggestions (#1), Rich Responses (#2), Streaming (#6),
+ * Module Preview (#8), Export (#9), Themes (#10), Presentation (#14),
+ * Memory (#18), Tutorials (#19)
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { Send, X, Maximize2, Minimize2, Sparkles, Loader2 } from 'lucide-react';
+import { Send, X, Maximize2, Minimize2, Sparkles, Loader2, Palette, BookOpen, FileSpreadsheet, Printer, Presentation } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { BetoStatsCard, BetoStatusPipeline, BetoModulePreview, BetoExportBar, BetoInsightCard, parseRichContent } from './BetoComponents';
+import BetoPresentationMode from './BetoPresentationMode';
+import BetoTutorial from './BetoTutorial';
 
 const BETO_AVATAR = '/beto.jpg';
 const BETO_GIF = '/The_avatar_is_greetings.gif';
+
+// #1 — Smart Suggestions per module
+const SMART_SUGGESTIONS = {
+    inicio: ['🔔 ¿Qué hay pendiente hoy?', '📊 Reporte rápido del día', '📚 Enseñame a usar el sistema', '🧭 Llevame a Cirugías'],
+    cirugias: ['📊 Estado de cirugías de hoy', '🔴 Cirugías sin confirmar', '📈 Tendencias del mes', '📲 Enviar recordatorios'],
+    deudas: ['💰 Top 10 deudores', '📋 Pacientes sin contactar', '📈 Tasa de recupero', '📊 Resumen de deudas'],
+    mensajeria: ['📨 Mensajes sin responder', '📊 Resumen de conversaciones', '📋 Plantillas más usadas', '🔔 Pendientes de hoy'],
+    pedidos: ['📋 Últimos pedidos generados', '📊 Prácticas más solicitadas', '🔍 Buscar paciente', '📚 Ver nomenclador'],
+    altas: ['📋 Altas pendientes de hoy', '📊 Resumen de altas del día', '👤 Buscar paciente internado', '🔔 Alertas de altas'],
+    turnos: ['📊 Cola de turnos actual', '⏰ Próximos turnos', '📈 Estadísticas de espera', '🔔 Turnos demorados'],
+    metricas: ['📊 Resumen mensual', '📈 Comparar con mes anterior', '🏥 Métricas por especialidad', '📋 Cirugías suspendidas'],
+    default: ['🔔 ¿Qué hay pendiente?', '📊 Reporte del día', '🧭 Navegación rápida', '❓ ¿Cómo funciona esto?'],
+};
+
+// #10 — Theme presets
+const THEMES = {
+    default: { name: 'Clásico', bg: '#FAFBFF', bubble: '#FFFFFF', accent: '#4F46E5', gradient: 'linear-gradient(135deg, #4F46E5 0%, #6366F1 50%, #818CF8 100%)' },
+    dark: { name: 'Oscuro', bg: '#1E1E2E', bubble: '#2A2A3E', accent: '#818CF8', gradient: 'linear-gradient(135deg, #312E81 0%, #4338CA 50%, #6366F1 100%)' },
+    clinical: { name: 'Clínico', bg: '#F0F9FF', bubble: '#FFFFFF', accent: '#0369A1', gradient: 'linear-gradient(135deg, #0369A1 0%, #0284C7 50%, #38BDF8 100%)' },
+    warm: { name: 'Cálido', bg: '#FFFBF5', bubble: '#FFFFFF', accent: '#B45309', gradient: 'linear-gradient(135deg, #B45309 0%, #D97706 50%, #FBBF24 100%)' },
+};
 
 export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -20,8 +48,18 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
     const [isLoading, setIsLoading] = useState(false);
     const [showGreeting, setShowGreeting] = useState(false);
     const [hasNewMessage, setHasNewMessage] = useState(false);
+    // #10 Theme
+    const [theme, setTheme] = useState(() => localStorage.getItem('beto_theme') || 'default');
+    const [showThemes, setShowThemes] = useState(false);
+    // #14 Presentation
+    const [presentationSlides, setPresentationSlides] = useState(null);
+    // #19 Tutorial
+    const [tutorialId, setTutorialId] = useState(null);
+    // #6 Streaming
+    const [streamingText, setStreamingText] = useState('');
     const chatEndRef = useRef(null);
     const inputRef = useRef(null);
+    const t = THEMES[theme] || THEMES.default;
 
     // Scroll to bottom when new messages arrive
     useEffect(() => {
@@ -64,62 +102,111 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
         const text = (overrideText || input).trim();
         if (!text || isLoading) return;
 
+        // #19 — Detect tutorial requests
+        const tutorialMatch = text.match(/ense[ñn]ame|tutorial|como\s+(?:uso|funciona)|aprend/i);
+        const moduleMatch = text.match(/cirug[ií]a|deuda|pedido|mensaje|whatsapp/i);
+        if (tutorialMatch && moduleMatch) {
+            const modMap = { cirug: 'cirugias', deuda: 'deudas', pedido: 'pedidos', mensaj: 'mensajeria', whatsapp: 'mensajeria' };
+            const key = Object.keys(modMap).find(k => moduleMatch[0].toLowerCase().startsWith(k));
+            if (key) { setTutorialId(modMap[key]); setInput(''); return; }
+        }
+
         const userMessage = { role: 'user', content: text };
         setMessages(prev => [...prev, userMessage]);
         setInput('');
         setIsLoading(true);
+        setStreamingText('');
 
         try {
-            // Build messages for API (only role + content)
-            const apiMessages = [...messages, userMessage].map(m => ({
-                role: m.role,
-                content: m.content,
-            }));
+            const apiMessages = [...messages, userMessage].map(m => ({ role: m.role, content: m.content }));
 
-            const { data, error } = await supabase.functions.invoke('beto-assistant', {
-                body: {
-                    messages: apiMessages,
-                    user: currentUser ? {
-                        nombre: currentUser.nombre,
-                        usuario: currentUser.usuario,
-                    } : null,
-                    currentModule: currentModule || 'inicio',
+            // #6 — Streaming via fetch to edge function
+            const supabaseUrl = supabase.supabaseUrl || import.meta.env.VITE_SUPABASE_URL;
+            const supabaseKey = supabase.supabaseKey || import.meta.env.VITE_SUPABASE_ANON_KEY;
+            const { data: { session } } = await supabase.auth.getSession();
+            const authToken = session?.access_token || supabaseKey;
+
+            const response = await fetch(`${supabaseUrl}/functions/v1/beto-assistant`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`,
+                    'apikey': supabaseKey,
                 },
+                body: JSON.stringify({
+                    messages: apiMessages,
+                    user: currentUser ? { nombre: currentUser.nombre, usuario: currentUser.usuario } : null,
+                    currentModule: currentModule || 'inicio',
+                    stream: true,
+                }),
             });
 
-            if (error) throw error;
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-            if (data?.message) {
-                // Parse action tags from response
-                let content = data.message;
-                const navMatch = content.match(/\[ACTION:navigate:(\w+)\]/);
-                if (navMatch && onNavigate) {
-                    content = content.replace(/\[ACTION:navigate:\w+\]/g, '');
-                    setTimeout(() => onNavigate(navMatch[1]), 500);
+            const contentType = response.headers.get('content-type') || '';
+
+            if (contentType.includes('text/event-stream')) {
+                // SSE streaming response
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullText = '';
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const payload = line.slice(6);
+                            if (payload === '[DONE]') break;
+                            try {
+                                const parsed = JSON.parse(payload);
+                                if (parsed.content) { fullText += parsed.content; setStreamingText(fullText); }
+                                if (parsed.message) { fullText = parsed.message; }
+                            } catch { /* skip bad JSON */ }
+                        }
+                    }
                 }
-                // Remove any remaining action tags from display
-                content = content.replace(/\[ACTION:[^\]]+\]/g, '').trim();
 
-                setMessages(prev => [...prev, {
-                    role: 'assistant',
-                    content,
-                }]);
-            } else if (data?.error) {
-                setMessages(prev => [...prev, {
-                    role: 'assistant',
-                    content: `⚠️ ${data.message || data.error}`,
-                }]);
+                // Finalize streamed message
+                let content = fullText;
+                const navMatch = content.match(/\[ACTION:navigate:(\w+)\]/);
+                if (navMatch && onNavigate) { content = content.replace(/\[ACTION:navigate:\w+\]/g, ''); setTimeout(() => onNavigate(navMatch[1]), 500); }
+                content = content.replace(/\[ACTION:[^\]]+\]/g, '').trim();
+                setStreamingText('');
+                setMessages(prev => [...prev, { role: 'assistant', content }]);
+            } else {
+                // Fallback: JSON response (non-streaming)
+                const data = await response.json();
+                if (data?.message) {
+                    let content = data.message;
+                    const navMatch = content.match(/\[ACTION:navigate:(\w+)\]/);
+                    if (navMatch && onNavigate) { content = content.replace(/\[ACTION:navigate:\w+\]/g, ''); setTimeout(() => onNavigate(navMatch[1]), 500); }
+                    content = content.replace(/\[ACTION:[^\]]+\]/g, '').trim();
+                    setMessages(prev => [...prev, { role: 'assistant', content }]);
+                } else if (data?.error) {
+                    setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${data.message || data.error}` }]);
+                }
             }
         } catch (err) {
             console.error('[BetoWidget] Error:', err);
-            setMessages(prev => [...prev, {
-                role: 'assistant',
-                content: `❌ No pude conectarme al servidor. Error: ${err.message}`,
-            }]);
+            setStreamingText('');
+            setMessages(prev => [...prev, { role: 'assistant', content: `❌ No pude conectarme al servidor. Error: ${err.message}` }]);
         } finally {
             setIsLoading(false);
+            setStreamingText('');
         }
-    }, [input, isLoading, messages, currentUser]);
+    }, [input, isLoading, messages, currentUser, currentModule, onNavigate]);
+
+    // #10 — Theme change handler
+    const changeTheme = useCallback((newTheme) => {
+        setTheme(newTheme);
+        localStorage.setItem('beto_theme', newTheme);
+        setShowThemes(false);
+    }, []);
 
     const handleKeyDown = useCallback((e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -239,14 +326,15 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
         };
 
     return (
+        <>
         <div
             id="beto-chat-panel"
             style={{
                 ...panelStyle,
-                background: '#FAFBFF',
+                background: t.bg,
                 boxShadow: isFullscreen
                     ? 'none'
-                    : '0 12px 48px rgba(0,0,0,0.15), 0 0 0 1px rgba(79,70,229,0.1)',
+                    : `0 12px 48px rgba(0,0,0,0.15), 0 0 0 1px ${t.accent}15`,
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
@@ -260,9 +348,10 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
                 alignItems: 'center',
                 gap: '12px',
                 padding: '16px 20px',
-                background: 'linear-gradient(135deg, #4F46E5 0%, #6366F1 50%, #818CF8 100%)',
+                background: t.gradient,
                 color: 'white',
                 flexShrink: 0,
+                position: 'relative',
             }}>
                 <div style={{
                     width: '42px', height: '42px', borderRadius: '50%',
@@ -292,6 +381,22 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: '4px' }}>
+                    {/* #10 Theme Toggle */}
+                    <button
+                        onClick={() => setShowThemes(p => !p)}
+                        title="Cambiar tema"
+                        style={{
+                            width: '32px', height: '32px', borderRadius: '8px',
+                            border: 'none', background: 'rgba(255,255,255,0.15)',
+                            color: 'white', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            transition: 'background 0.2s',
+                        }}
+                        onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}
+                        onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+                    >
+                        <Palette size={15} />
+                    </button>
                     <button
                         onClick={() => setIsFullscreen(prev => !prev)}
                         title={isFullscreen ? 'Minimizar' : 'Pantalla completa'}
@@ -323,6 +428,29 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
                         <X size={16} />
                     </button>
                 </div>
+                {/* #10 Theme Picker Dropdown */}
+                {showThemes && (
+                    <div style={{
+                        position: 'absolute', top: '100%', right: '20px',
+                        background: '#fff', borderRadius: '12px',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.15)', padding: '8px',
+                        zIndex: 10, display: 'flex', flexDirection: 'column', gap: '4px',
+                        minWidth: '160px', animation: 'beto-fade-in 0.15s',
+                    }}>
+                        {Object.entries(THEMES).map(([key, th]) => (
+                            <button key={key} onClick={() => changeTheme(key)} style={{
+                                display: 'flex', alignItems: 'center', gap: '10px',
+                                padding: '8px 12px', borderRadius: '8px', border: 'none',
+                                background: theme === key ? '#EEF2FF' : 'transparent',
+                                cursor: 'pointer', fontSize: '0.8rem', fontWeight: theme === key ? 700 : 500,
+                                color: '#334155', textAlign: 'left', width: '100%',
+                            }}>
+                                <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: th.gradient, border: '2px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                                {th.name}
+                            </button>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Messages area */}
@@ -330,7 +458,12 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
                 flex: 1, overflowY: 'auto', padding: '16px 20px',
                 display: 'flex', flexDirection: 'column', gap: '12px',
             }}>
-                {messages.map((msg, i) => (
+                {messages.map((msg, i) => {
+                    // #2 — Parse rich content from assistant messages
+                    const { text: cleanText, richBlocks } = msg.role === 'assistant'
+                        ? parseRichContent(msg.content, onNavigate)
+                        : { text: msg.content, richBlocks: [] };
+                    return (
                     <div
                         key={i}
                         style={{
@@ -357,31 +490,40 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
                                 ? '16px 16px 4px 16px'
                                 : '16px 16px 16px 4px',
                             background: msg.role === 'user'
-                                ? 'linear-gradient(135deg, #4F46E5, #6366F1)'
-                                : '#FFFFFF',
-                            color: msg.role === 'user' ? '#fff' : '#1E293B',
+                                ? t.gradient
+                                : t.bubble,
+                            color: msg.role === 'user' ? '#fff' : (theme === 'dark' ? '#E2E8F0' : '#1E293B'),
                             fontSize: '0.85rem',
                             lineHeight: '1.5',
                             boxShadow: msg.role === 'user'
-                                ? '0 2px 8px rgba(79,70,229,0.25)'
+                                ? `0 2px 8px ${t.accent}40`
                                 : '0 1px 4px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)',
                             wordBreak: 'break-word',
                         }}>
                             {msg.role === 'assistant' ? (
                                 <div className="beto-markdown">
-                                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                    <ReactMarkdown>{cleanText}</ReactMarkdown>
+                                    {/* #2 Rich blocks */}
+                                    {richBlocks.map((block, j) => {
+                                        if (block.type === 'stats') return <BetoStatsCard key={j} stats={block.data} />;
+                                        if (block.type === 'pipeline') return <BetoStatusPipeline key={j} pipeline={block.data} />;
+                                        if (block.type === 'insight') return <BetoInsightCard key={j} insight={block.data} />;
+                                        if (block.type === 'modulePreview') return <BetoModulePreview key={j} moduleId={block.moduleId} onNavigate={onNavigate} />;
+                                        return null;
+                                    })}
                                 </div>
                             ) : (
                                 <span>{msg.content}</span>
                             )}
                         </div>
                     </div>
-                ))}
+                    );
+                })}
 
-                {/* Loading indicator */}
+                {/* #6 — Streaming text indicator */}
                 {isLoading && (
                     <div style={{
-                        display: 'flex', gap: '8px', alignItems: 'center',
+                        display: 'flex', gap: '8px', alignItems: 'flex-start',
                         animation: 'beto-fade-in 0.3s ease-out',
                     }}>
                         <div style={{
@@ -393,13 +535,22 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
                             }} />
                         </div>
                         <div style={{
+                            maxWidth: isFullscreen ? '65%' : '82%',
                             padding: '12px 16px', borderRadius: '16px 16px 16px 4px',
-                            background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-                            display: 'flex', alignItems: 'center', gap: '8px',
-                            fontSize: '0.82rem', color: '#6366F1',
+                            background: t.bubble, boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                            fontSize: '0.82rem', color: theme === 'dark' ? '#E2E8F0' : '#1E293B',
                         }}>
-                            <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                            Beto está pensando...
+                            {streamingText ? (
+                                <div className="beto-markdown">
+                                    <ReactMarkdown>{streamingText}</ReactMarkdown>
+                                    <span style={{ display: 'inline-block', width: '6px', height: '14px', background: t.accent, borderRadius: '1px', animation: 'beto-cursor-blink 1s infinite', verticalAlign: 'middle', marginLeft: '2px' }} />
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: t.accent }}>
+                                    <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                                    Beto está pensando...
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -407,36 +558,31 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
                 <div ref={chatEndRef} />
             </div>
 
-            {/* Quick suggestions (only when few messages) */}
+            {/* #1 — Smart Suggestions (context-aware) */}
             {messages.length <= 1 && (
                 <div style={{
                     padding: '0 20px 8px',
                     display: 'flex', flexWrap: 'wrap', gap: '6px',
                 }}>
-                    {[
-                        '🔔 ¿Qué hay pendiente hoy?',
-                        '📊 Reporte de cirugías de hoy',
-                        '💰 Resumen de deudas',
-                        '🧭 Llevame a Cirugías',
-                    ].map((q, i) => (
+                    {(SMART_SUGGESTIONS[currentModule] || SMART_SUGGESTIONS.default).map((q, i) => (
                         <button
                             key={i}
                             onClick={() => handleSend(q)}
                             style={{
                                 padding: '6px 12px', borderRadius: '20px',
-                                border: '1px solid #E0E7FF',
-                                background: '#EEF2FF', color: '#4338CA',
+                                border: `1px solid ${t.accent}25`,
+                                background: `${t.accent}08`, color: t.accent,
                                 fontSize: '0.75rem', fontWeight: 500,
                                 cursor: 'pointer', transition: 'all 0.2s',
                                 whiteSpace: 'nowrap',
                             }}
                             onMouseOver={e => {
-                                e.currentTarget.style.background = '#C7D2FE';
-                                e.currentTarget.style.borderColor = '#A5B4FC';
+                                e.currentTarget.style.background = `${t.accent}18`;
+                                e.currentTarget.style.borderColor = `${t.accent}40`;
                             }}
                             onMouseOut={e => {
-                                e.currentTarget.style.background = '#EEF2FF';
-                                e.currentTarget.style.borderColor = '#E0E7FF';
+                                e.currentTarget.style.background = `${t.accent}08`;
+                                e.currentTarget.style.borderColor = `${t.accent}25`;
                             }}
                         >
                             {q}
@@ -507,5 +653,26 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
                 </button>
             </div>
         </div>
+
+        {/* #14 — Presentation Mode */}
+        <BetoPresentationMode
+            isOpen={!!presentationSlides}
+            onClose={() => setPresentationSlides(null)}
+            slides={presentationSlides || []}
+        />
+
+        {/* #19 — Tutorial overlay */}
+        <BetoTutorial
+            isOpen={!!tutorialId}
+            onClose={() => setTutorialId(null)}
+            tutorialId={tutorialId}
+            onNavigate={onNavigate}
+        />
+
+        {/* #6 — Cursor blink animation */}
+        <style>{`
+            @keyframes beto-cursor-blink { 0%,50% { opacity: 1; } 51%,100% { opacity: 0; } }
+        `}</style>
+        </>
     );
 }
