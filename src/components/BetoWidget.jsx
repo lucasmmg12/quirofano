@@ -33,6 +33,48 @@ const SMART_SUGGESTIONS = {
     default: ['🔔 ¿Qué hay pendiente?', '📊 Reporte del día', '🧭 Navegación rápida', '❓ ¿Cómo funciona esto?'],
 };
 
+// Proactive notifications — contextual nudges per module + time
+const PROACTIVE_NUDGES = {
+    cirugias: [
+        '📋 ¿Querés que revise las cirugías de hoy?',
+        '🔔 Puedo verificar si hay cirugías sin confirmar',
+        '📊 Te armo un reporte rápido de cirugías si querés',
+    ],
+    deudas: [
+        '💰 ¿Necesitás un reporte de deudas pendientes?',
+        '📲 Puedo ayudarte a enviar recordatorios de pago',
+        '📊 ¿Querés ver el top 10 de deudores?',
+    ],
+    mensajeria: [
+        '📨 ¿Hay mensajes que necesités responder?',
+        '📋 Puedo sugerirte plantillas para responder rápido',
+    ],
+    pedidos: [
+        '📝 ¿Necesitás generar un pedido nuevo?',
+        '🔍 Puedo buscar prácticas o pacientes por vos',
+    ],
+    altas: [
+        '🏥 ¿Querés ver las altas pendientes de hoy?',
+        '📋 Puedo armar un resumen de altas del día',
+    ],
+    turnos: [
+        '⏰ ¿Querés ver el estado de la cola de turnos?',
+        '📊 Puedo mostrarte estadísticas de espera',
+    ],
+    default: [
+        '👋 ¡Hola! ¿Sabías que puedo generar reportes en PDF?',
+        '🚀 Probá preguntarme algo con Ctrl+K',
+        '💡 Puedo ayudarte con cualquier dato del sistema',
+        '📊 Pedime un reporte y te lo armo al instante',
+        '🧭 Decime a dónde querés ir y te llevo',
+    ],
+};
+const TIME_NUDGES = {
+    morning: ['☀️ ¡Buen día! ¿Arrancamos revisando los pendientes?', '📋 Buenos días — ¿querés un resumen del día?'],
+    afternoon: ['☕ ¿Necesitás ayuda con algo esta tarde?', '📊 ¿Te armo un reporte del avance del día?'],
+    evening: ['🌙 Último tramo del día — ¿cerramos algo pendiente?'],
+};
+
 // #10 — Theme presets
 const THEMES = {
     default: { name: 'Clásico', bg: '#FAFBFF', bubble: '#FFFFFF', accent: '#4F46E5', gradient: 'linear-gradient(135deg, #4F46E5 0%, #6366F1 50%, #818CF8 100%)' },
@@ -58,6 +100,9 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
     const [tutorialId, setTutorialId] = useState(null);
     // #6 Streaming
     const [streamingText, setStreamingText] = useState('');
+    // Proactive notifications
+    const [proactiveNudge, setProactiveNudge] = useState(null);
+    const nudgeTimerRef = useRef(null);
     const chatEndRef = useRef(null);
     const inputRef = useRef(null);
     const t = THEMES[theme] || THEMES.default;
@@ -73,6 +118,67 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
             setTimeout(() => inputRef.current?.focus(), 300);
         }
     }, [isOpen]);
+
+    // ─── Proactive nudge system ───
+    useEffect(() => {
+        // Don't show nudges if chat is open
+        if (isOpen || showGreeting) { setProactiveNudge(null); return; }
+
+        const scheduleNudge = () => {
+            // Check cooldown — don't nudge more than every 3 minutes
+            const lastNudge = parseInt(localStorage.getItem('beto_last_nudge') || '0', 10);
+            const elapsed = Date.now() - lastNudge;
+            if (elapsed < 180000) return; // 3 min cooldown
+
+            // Pick a nudge: prefer module-specific, fallback to time-based, then generic
+            const hour = new Date().getHours();
+            let pool = [];
+
+            // Module-specific nudges
+            const modulePool = PROACTIVE_NUDGES[currentModule] || [];
+            pool.push(...modulePool);
+
+            // Time-based nudges
+            if (hour >= 6 && hour < 12) pool.push(...TIME_NUDGES.morning);
+            else if (hour >= 12 && hour < 18) pool.push(...TIME_NUDGES.afternoon);
+            else pool.push(...TIME_NUDGES.evening);
+
+            // Generic fallbacks
+            pool.push(...PROACTIVE_NUDGES.default);
+
+            // Don't repeat last nudge
+            const lastText = localStorage.getItem('beto_last_nudge_text') || '';
+            pool = pool.filter(n => n !== lastText);
+            if (pool.length === 0) pool = PROACTIVE_NUDGES.default;
+
+            const chosen = pool[Math.floor(Math.random() * pool.length)];
+            setProactiveNudge(chosen);
+            setHasNewMessage(true);
+            localStorage.setItem('beto_last_nudge', Date.now().toString());
+            localStorage.setItem('beto_last_nudge_text', chosen);
+
+            // Auto-dismiss after 8 seconds
+            setTimeout(() => {
+                setProactiveNudge(null);
+                setHasNewMessage(false);
+            }, 8000);
+        };
+
+        // First nudge after 45 seconds, then every 5 minutes
+        const initialDelay = setTimeout(scheduleNudge, 45000);
+        nudgeTimerRef.current = setInterval(scheduleNudge, 300000);
+
+        return () => {
+            clearTimeout(initialDelay);
+            if (nudgeTimerRef.current) clearInterval(nudgeTimerRef.current);
+        };
+    }, [isOpen, showGreeting, currentModule]);
+
+    const dismissNudge = useCallback((e) => {
+        e?.stopPropagation();
+        setProactiveNudge(null);
+        setHasNewMessage(false);
+    }, []);
 
     // Welcome message when first opened
     const handleOpen = useCallback(() => {
@@ -233,50 +339,106 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
 
     // ─── RENDER ───
 
-    // Floating button (minimized state)
+    // Floating button (minimized state) + proactive nudge bubble
     if (!isOpen && !showGreeting) {
         return (
-            <button
-                id="beto-fab"
-                onClick={handleOpen}
-                style={{
-                    position: 'fixed',
-                    bottom: '24px',
-                    right: '24px',
-                    width: '60px',
-                    height: '60px',
-                    borderRadius: '50%',
-                    border: 'none',
-                    padding: '0',
-                    cursor: 'pointer',
-                    zIndex: 9998,
-                    background: '#fff',
-                    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08)',
-                    transition: 'all 0.3s ease',
-                    overflow: 'hidden',
-                    animation: hasNewMessage ? 'beto-pulse 2s infinite' : 'none',
-                }}
-                onMouseOver={e => {
-                    e.currentTarget.style.transform = 'scale(1.1)';
-                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.18)';
-                }}
-                onMouseOut={e => {
-                    e.currentTarget.style.transform = 'scale(1)';
-                    e.currentTarget.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08)';
-                }}
-                title="Hablar con Beto"
-            >
-                <img
-                    src={BETO_AVATAR}
-                    alt="Beto"
+            <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9998, display: 'flex', alignItems: 'flex-end', gap: '10px' }}>
+                {/* Proactive notification bubble */}
+                {proactiveNudge && (
+                    <div
+                        onClick={() => { dismissNudge(); handleOpen(); }}
+                        style={{
+                            background: '#fff',
+                            border: '1px solid #E2E8F0',
+                            borderRadius: '16px 16px 4px 16px',
+                            padding: '10px 14px',
+                            maxWidth: '240px',
+                            boxShadow: '0 8px 24px rgba(79, 70, 229, 0.15), 0 2px 8px rgba(0,0,0,0.06)',
+                            cursor: 'pointer',
+                            animation: 'beto-nudge-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                            position: 'relative',
+                            transition: 'transform 0.2s',
+                        }}
+                        onMouseOver={e => e.currentTarget.style.transform = 'scale(1.03)'}
+                        onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
+                    >
+                        {/* Close button */}
+                        <button
+                            onClick={dismissNudge}
+                            style={{
+                                position: 'absolute', top: '-6px', right: '-6px',
+                                width: '18px', height: '18px', borderRadius: '50%',
+                                background: '#EF4444', border: '2px solid #fff',
+                                color: '#fff', fontSize: '10px', fontWeight: 700,
+                                cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                justifyContent: 'center', lineHeight: 1, padding: 0,
+                            }}
+                        >
+                            ×
+                        </button>
+                        <div style={{ fontSize: '0.78rem', color: '#1E293B', lineHeight: 1.4, fontWeight: 500 }}>
+                            {proactiveNudge}
+                        </div>
+                        <div style={{ fontSize: '0.65rem', color: '#94A3B8', marginTop: '4px', fontWeight: 600 }}>
+                            Click para hablar con Beto →
+                        </div>
+                        {/* Progress bar (auto-dismiss timer visual) */}
+                        <div style={{
+                            position: 'absolute', bottom: 0, left: 0, right: 0,
+                            height: '3px', borderRadius: '0 0 16px 16px', overflow: 'hidden',
+                        }}>
+                            <div style={{
+                                width: '100%', height: '100%',
+                                background: 'linear-gradient(90deg, #4F46E5, #818CF8)',
+                                animation: 'beto-nudge-timer 8s linear forwards',
+                            }} />
+                        </div>
+                    </div>
+                )}
+                {/* FAB button */}
+                <button
+                    id="beto-fab"
+                    onClick={handleOpen}
                     style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
+                        width: '60px',
+                        height: '60px',
                         borderRadius: '50%',
+                        border: 'none',
+                        padding: '0',
+                        cursor: 'pointer',
+                        background: '#fff',
+                        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08)',
+                        transition: 'all 0.3s ease',
+                        overflow: 'hidden',
+                        flexShrink: 0,
+                        animation: hasNewMessage ? 'beto-pulse 2s infinite' : 'none',
                     }}
-                />
-            </button>
+                    onMouseOver={e => {
+                        e.currentTarget.style.transform = 'scale(1.1)';
+                        e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.18)';
+                    }}
+                    onMouseOut={e => {
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08)';
+                    }}
+                    title="Hablar con Beto"
+                >
+                    <img
+                        src={BETO_AVATAR}
+                        alt="Beto"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+                    />
+                    {/* Notification dot */}
+                    {proactiveNudge && (
+                        <div style={{
+                            position: 'absolute', top: '-2px', right: '-2px',
+                            width: '14px', height: '14px', borderRadius: '50%',
+                            background: '#EF4444', border: '2px solid #fff',
+                            animation: 'beto-pulse 1.5s infinite',
+                        }} />
+                    )}
+                </button>
+            </div>
         );
     }
 
