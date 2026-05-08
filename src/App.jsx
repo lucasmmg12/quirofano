@@ -30,6 +30,7 @@ import TurnoAdminPanel from './components/TurnoAdminPanel.jsx';
 import DeudasPanel from './components/DeudasPanel.jsx';
 import AltasPanel from './components/AltasPanel.jsx';
 import AsignacionPanel from './components/AsignacionPanel.jsx';
+import ConsultasPanel from './components/ConsultasPanel.jsx';
 import SimonPanel from './components/SimonPanel.jsx';
 import AsociacionesEntregaPanel from './components/AsociacionesEntregaPanel.jsx';
 import LaboratoriosPanel from './components/LaboratoriosPanel.jsx';
@@ -699,6 +700,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'deudas' && (
                     <DeudasPanel addToast={addToast} currentUser={currentUser} />
+                )}
+
+                {activeView === 'consultas' && (
+                    <ConsultasPanel />
                 )}
 
                 {activeView === 'altas' && (
