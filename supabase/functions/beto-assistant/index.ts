@@ -93,7 +93,7 @@ function getFallbackSchema(): string {
 - \`fecha_cirugia\` (date) — Formato YYYY-MM-DD
 - \`medico\` (text) — Cirujano
 - \`modulo\` (text) — Módulo/especialidad
-- \`status\` (text) — lila, amarillo, verde, azul, rojo, precaucion
+- \`status\` (text) — VALORES POSIBLES: 'lila', 'amarillo', 'verde', 'azul', 'rojo', 'precaucion'
 - \`excluido\` (boolean) — Si el módulo está excluido del bot
 - \`ausente\` (text) — null=pendiente, '0'=realizada, '1'=suspendida
 - \`notas\` (text)
@@ -101,6 +101,32 @@ function getFallbackSchema(): string {
 - \`notificado_at\`, \`autorizado_at\`, \`confirmado_at\` (timestamptz)
 - \`descripcion\` (text)
 - \`instrucciones\` (text)
+
+**FLUJO DE ESTADOS (CRÍTICO — leé con atención):**
+Los estados de cirugía son colores que representan un pipeline de gestión:
+1. \`lila\` = Sin mensaje enviado (estado inicial, todavía no se contactó al paciente)
+2. \`amarillo\` = En Revisión (se envió mensaje, documentación en revisión)
+3. \`verde\` = Autorizada (admin aprobó, esperando confirmación del paciente)
+4. \`azul\` = Confirmada (paciente confirmó asistencia ✅)
+5. \`rojo\` = Problema (documentación faltante, paciente no responde, etc.)
+6. \`precaucion\` = Requiere atención especial
+
+**Columna \`ausente\` (resultado final de la cirugía):**
+- NULL = cirugía aún pendiente/activa (no se realizó todavía)
+- '0' = cirugía REALIZADA exitosamente
+- '1' = cirugía SUSPENDIDA
+
+**REGLAS para evaluar estado de confirmación:**
+- Una cirugía está "CONFIRMADA" si \`status = 'azul'\`
+- Una cirugía está "AUTORIZADA" (pero aún no confirmada) si \`status = 'verde'\`
+- Una cirugía está "EN PROCESO" (notificada, en gestión) si \`status = 'amarillo'\`
+- Una cirugía está "SIN GESTIONAR" si \`status = 'lila'\`
+- Una cirugía está "CON PROBLEMA" si \`status = 'rojo'\`
+- Cuando pregunten "cirugías confirmadas" → filtrar por \`status = 'azul'\`
+- Cuando pregunten "cirugías sin confirmar" → filtrar por \`status != 'azul'\` (o listar las que NO son azul)
+- Para cirugías "en buen camino" considerá verde + azul como avanzadas
+- SIEMPRE excluí las excluidas: \`excluido = false\`
+- Para cirugías "activas" (no finalizadas): \`ausente IS NULL\`
 
 ### \`deudas_pacientes\` (Deudas de pacientes)
 - \`id\` (uuid PK)
@@ -169,7 +195,7 @@ Sistema integral de administración del Sanatorio Argentino. Módulos del menú 
 4. **📤 Altas Adm** — Control de altas médicas (ingreso, alta, responsable, diagnóstico)
 5. **🕐 Cola de Turnos** — Gestión de cola de turnos del día
 6. **💰 Deudas** — Seguimiento de deuda por paciente y obra social (categorías: sin_gestionar, en_gestion, comprometido, cuenta_corriente, incobrable, descuento_liquidacion, sin_deuda_salus)
-7. **🔪 Cirugías** — Panel de cirugías con bot WhatsApp. Estados: lila→amarillo→verde→azul (+ rojo, precaución)
+7. **🔪 Cirugías** — Panel de cirugías con bot WhatsApp. Pipeline: lila(sin mensaje) → amarillo(en revisión) → verde(autorizada) → azul(CONFIRMADA). Extras: rojo(problema), precaución.
 8. **🤖 Simón IA** — Procesamiento de documentos con inteligencia artificial
 9. **⚙️ Configuración** — Usuarios, líneas WhatsApp, templates, parámetros
 10. **🏥 Asociaciones** — Cirugías de asociaciones médicas con documentación pendiente
@@ -180,6 +206,27 @@ Sistema integral de administración del Sanatorio Argentino. Módulos del menú 
 - Los nombres de pacientes están en MAYÚSCULAS en la DB. Siempre buscá con ILIKE para ser flexible.
 - Para búsquedas parciales usá: \`WHERE nombre ILIKE '%texto%'\`
 - Si buscás por nombre y no encontrás, probá solo con el apellido.
+
+## CONSULTAS DE CIRUGÍAS (MUY IMPORTANTE)
+Cuando te pregunten sobre cirugías, SIEMPRE usá el campo \`status\` para determinar el estado.
+El campo \`status\` contiene COLORES que representan estados del pipeline:
+- \`status = 'azul'\` → CONFIRMADA ✅ (el paciente confirmó asistencia)
+- \`status = 'verde'\` → AUTORIZADA (aprobada por admin, aún sin confirmación del paciente)
+- \`status = 'amarillo'\` → EN REVISIÓN (documentación enviada, en proceso)
+- \`status = 'lila'\` → SIN MENSAJE (estado inicial, no se contactó al paciente)
+- \`status = 'rojo'\` → PROBLEMA
+- \`status = 'precaucion'\` → PRECAUCIÓN
+
+PATRONES SQL correctos:
+- Cirugías confirmadas: \`SELECT ... FROM surgeries WHERE status = 'azul' AND excluido = false\`
+- Cirugías SIN confirmar: \`SELECT ... FROM surgeries WHERE status != 'azul' AND excluido = false\`
+- Cirugías autorizadas (verde + azul): \`SELECT ... FROM surgeries WHERE status IN ('verde','azul') AND excluido = false\`
+- Resumen de estados: \`SELECT status, COUNT(*) FROM surgeries WHERE fecha_cirugia = 'YYYY-MM-DD' AND excluido = false AND (ausente IS NULL) GROUP BY status\`
+- Cirugías activas (no finalizadas): agregar \`AND (ausente IS NULL)\` para excluir realizadas/suspendidas
+- Cirugías realizadas: \`ausente = '0'\`
+- Cirugías suspendidas: \`ausente = '1'\`
+
+**NUNCA** uses \`confirmado_at\` como indicador principal de confirmación. El campo que define si una cirugía está confirmada es \`status = 'azul'\`. El \`confirmado_at\` es solo un timestamp auxiliar.
 
 ## MODIFICAR DATOS (Human-in-the-loop)
 - Para ESCRITURA: usá \`modify_database\`.
@@ -620,27 +667,39 @@ async function getAlerts(): Promise<string> {
     const alerts: { type: string; icon: string; message: string; count?: number }[] = [];
 
     try {
-        // 1. Cirugías de hoy sin notificar
+        // 1. Cirugías de hoy — conteo total y desglose por estado
         const { count: cirugiasHoy } = await supabase.from('surgeries')
             .select('*', { count: 'exact', head: true })
-            .eq('excluido', false).eq('fecha_cirugia', hoy);
+            .eq('excluido', false).eq('fecha_cirugia', hoy)
+            .is('ausente', null);
 
+        // Cirugías de hoy confirmadas (status = 'azul')
+        const { count: confirmadasHoy } = await supabase.from('surgeries')
+            .select('*', { count: 'exact', head: true })
+            .eq('excluido', false).eq('fecha_cirugia', hoy)
+            .eq('status', 'azul')
+            .is('ausente', null);
+
+        // Cirugías de hoy sin notificar (status = 'lila', aún no se contactó al paciente)
         const { count: sinNotificar } = await supabase.from('surgeries')
             .select('*', { count: 'exact', head: true })
             .eq('excluido', false).eq('fecha_cirugia', hoy)
-            .is('notificado_at', null);
+            .eq('status', 'lila')
+            .is('ausente', null);
 
         if (cirugiasHoy && cirugiasHoy > 0) {
+            const confirmadas = confirmadasHoy || 0;
+            const sinConfirmar = cirugiasHoy - confirmadas;
             alerts.push({
                 type: 'info', icon: '🔪',
-                message: `${cirugiasHoy} cirugías programadas para hoy`,
+                message: `${cirugiasHoy} cirugías para hoy: ${confirmadas} confirmadas ✅, ${sinConfirmar} sin confirmar`,
                 count: cirugiasHoy
             });
         }
         if (sinNotificar && sinNotificar > 0) {
             alerts.push({
                 type: 'warning', icon: '⚠️',
-                message: `${sinNotificar} cirugías de hoy SIN notificar al paciente`,
+                message: `${sinNotificar} cirugías de hoy SIN notificar al paciente (estado lila)`,
                 count: sinNotificar
             });
         }
@@ -672,19 +731,31 @@ async function getAlerts(): Promise<string> {
             });
         }
 
-        // 4. Cirugías próximas (próximos 3 días)
+        // 4. Cirugías próximas (próximos 3 días) con desglose de confirmadas
         const tresDias = new Date();
         tresDias.setDate(tresDias.getDate() + 3);
+        const tresDiasStr = tresDias.toISOString().split('T')[0];
+
         const { count: proximas } = await supabase.from('surgeries')
             .select('*', { count: 'exact', head: true })
             .eq('excluido', false)
             .gt('fecha_cirugia', hoy)
-            .lte('fecha_cirugia', tresDias.toISOString().split('T')[0]);
+            .lte('fecha_cirugia', tresDiasStr)
+            .is('ausente', null);
+
+        const { count: proximasConfirmadas } = await supabase.from('surgeries')
+            .select('*', { count: 'exact', head: true })
+            .eq('excluido', false)
+            .gt('fecha_cirugia', hoy)
+            .lte('fecha_cirugia', tresDiasStr)
+            .eq('status', 'azul')
+            .is('ausente', null);
 
         if (proximas && proximas > 0) {
+            const confProx = proximasConfirmadas || 0;
             alerts.push({
                 type: 'info', icon: '📅',
-                message: `${proximas} cirugías programadas en los próximos 3 días`,
+                message: `${proximas} cirugías en los próximos 3 días (${confProx} confirmadas, ${proximas - confProx} pendientes)`,
                 count: proximas
             });
         }
