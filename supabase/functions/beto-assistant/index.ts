@@ -42,6 +42,7 @@ async function getSchemaContext(): Promise<string> {
                 'admqui_usuarios',
                 'altas_medicas',
                 'whatsapp_messages', 'whatsapp_templates',
+                'consultas_guardia', 'consultas_imports',
             ];
             const filtered = columns.filter((c: any) => relevantTables.includes(c.table_name));
             schemaCache = formatSchemaFromColumns(filtered);
@@ -169,6 +170,38 @@ Los estados de cirugía son colores que representan un pipeline de gestión:
 - \`nombre\` (text) — Nombre completo
 - \`iniciales\` (text)
 - \`activo\` (boolean)
+
+### \`consultas_guardia\` (Consultas de guardia ambulatorias — ~5800 por mes)
+- \`id\` (bigint PK)
+- \`import_id\` (uuid FK → consultas_imports)
+- \`id_visita\` (bigint UNIQUE) — ID de la visita en SALUS
+- \`id_paciente\` (bigint)
+- \`cliente\` (text) — Obra social completa, ej: "001 - PROVINCIA"
+- \`paciente\` (text) — Nombre completo del paciente
+- \`nhc\` (int) — Número de historia clínica
+- \`nif\` (text) — DNI del paciente
+- \`agenda\` (text) — Agenda médica, ej: "GUARDIAS PEDIATRÍA", "GUARDIAS CLINICA"
+- \`agrupacion_agenda\` (text)
+- \`grupo_agenda\` (text) — Grupo: "GUARDIAS", "GUARDIA CLINICA", "CARDIOLOGÍA", etc.
+- \`tipo_visita\` (text) — Tipo específico: "(PED) CONSULTAS", "(CARD) ELECTROCARDIOGRAMA", etc.
+- \`tiempo_pred\` (int) — Tiempo predeterminado en minutos
+- \`fecha_visita\` (date) — Fecha de la consulta
+- \`visita_especialidad\` (text) — VALORES: 'PEDIATRIA', 'CLINICO', 'GINECOLOGIA', 'CARDIOLOGIA', 'PREPARTO', 'NEONATOLOGIA'
+- \`mes_periodo\` (text) — Formato: '2026-04', '2026-05'. Usar para filtrar por mes.
+
+### \`consultas_imports\` (Registro de importaciones mensuales)
+- \`id\` (uuid PK)
+- \`mes\` (text) — Período, ej: '2026-04'
+- \`archivo\` (text) — Nombre del archivo importado
+- \`total_registros\` (int)
+- \`created_at\` (timestamptz)
+
+**REGLAS para consultas de guardia:**
+- Filtrar SIEMPRE por mes_periodo, ej: \`WHERE mes_periodo = '2026-04'\`
+- Especialidades: PEDIATRIA (~61%), CLINICO (~20%), GINECOLOGIA (~13%), CARDIOLOGIA (~5%)
+- Obras sociales principales: PROVINCIA (~34%), OSDE BINARIO (~15%), JERARQUICOS (~7%)
+- Promedio: ~195 consultas/día
+- Los datos son de guardias (consultas ambulatorias de emergencia)
 `;
 }
 
@@ -200,6 +233,7 @@ Sistema integral de administración del Sanatorio Argentino. Módulos del menú 
 9. **⚙️ Configuración** — Usuarios, líneas WhatsApp, templates, parámetros
 10. **🏥 Asociaciones** — Cirugías de asociaciones médicas con documentación pendiente
 11. **🔬 Laboratorios** — Biopsias de anatomía patológica por laboratorio
+12. **📊 Consultas Guardia** — Estadísticas de consultas ambulatorias de guardia. Datos por especialidad, obra social, día/semana. ~5800 consultas/mes. Tabla: consultas_guardia.
 
 ## CÓMO BUSCAR DATOS
 - Usá la tool \`query_database\` para CUALQUIER consulta de datos. Generá SQL SELECT válido.

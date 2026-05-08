@@ -26,7 +26,7 @@ export default function ConsultasPanel() {
     const [loading, setLoading] = useState(true);
     const [mes, setMes] = useState('2026-04');
     const [filtroEsp, setFiltroEsp] = useState('todas');
-    const [vista, setVista] = useState('dia'); // dia | semana | mes
+    const [vista, setVista] = useState('matriz'); // matriz | dia | semana | resumen
     const [importing, setImporting] = useState(false);
     const [importResult, setImportResult] = useState(null);
     const [matrizAgrupar, setMatrizAgrupar] = useState('dia'); // dia | semana
