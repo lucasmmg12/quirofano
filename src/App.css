@@ -3158,12 +3158,13 @@
 
 /* Beto Markdown content styling */
 .beto-markdown h1, .beto-markdown h2, .beto-markdown h3, .beto-markdown h4 {
-    margin: 8px 0 4px;
+    margin: 10px 0 4px;
     line-height: 1.3;
+    color: #312E81;
 }
-.beto-markdown h2 { font-size: 0.95rem; }
-.beto-markdown h3 { font-size: 0.88rem; }
-.beto-markdown p { margin: 4px 0; }
+.beto-markdown h2 { font-size: 0.95rem; border-bottom: 2px solid #EEF2FF; padding-bottom: 4px; }
+.beto-markdown h3 { font-size: 0.88rem; color: #4338CA; }
+.beto-markdown p { margin: 4px 0; font-size: 0.84rem; }
 .beto-markdown ul, .beto-markdown ol {
     margin: 4px 0;
     padding-left: 20px;
@@ -3192,31 +3193,96 @@
     color: inherit;
     padding: 0;
 }
+
+/* ─── Table wrapper for horizontal scroll ─── */
 .beto-markdown table {
     width: 100%;
-    border-collapse: collapse;
-    margin: 6px 0;
-    font-size: 0.8rem;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 8px 0;
+    font-size: 0.76rem;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+    overflow: hidden;
+    display: table;
 }
+
+/* Ensure the parent scrolls */
+.beto-markdown {
+    overflow-x: auto;
+}
+
+.beto-markdown thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
 .beto-markdown th {
-    background: #EEF2FF;
-    padding: 6px 10px;
+    background: linear-gradient(135deg, #4F46E5, #6366F1);
+    padding: 8px 10px;
     text-align: left;
-    font-weight: 600;
-    font-size: 0.75rem;
-    color: #4338CA;
-    border-bottom: 2px solid #C7D2FE;
+    font-weight: 700;
+    font-size: 0.7rem;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    border: none;
 }
+
+.beto-markdown th:first-child {
+    border-radius: 9px 0 0 0;
+}
+
+.beto-markdown th:last-child {
+    border-radius: 0 9px 0 0;
+}
+
 .beto-markdown td {
-    padding: 5px 10px;
+    padding: 7px 10px;
     border-bottom: 1px solid #F1F5F9;
+    color: #334155;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    vertical-align: middle;
 }
+
+.beto-markdown tr:last-child td {
+    border-bottom: none;
+}
+
+.beto-markdown tbody tr:nth-child(even) {
+    background: #F8FAFC;
+}
+
+.beto-markdown tbody tr:hover {
+    background: #EEF2FF;
+}
+
+/* Status color coding in cells */
+.beto-markdown td:last-child {
+    font-weight: 600;
+}
+
 .beto-markdown blockquote {
     border-left: 3px solid #818CF8;
     padding-left: 12px;
     margin: 6px 0;
     color: #475569;
     font-style: italic;
+    background: #F8FAFC;
+    border-radius: 0 8px 8px 0;
+    padding: 8px 12px;
+}
+
+/* Metric summary line (contains emojis + numbers) */
+.beto-markdown p:has(strong) {
+    background: #F8FAFC;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border-left: 3px solid #6366F1;
+    font-size: 0.82rem;
 }
 
 /* Hide Beto from print */
