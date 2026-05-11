@@ -410,7 +410,17 @@ export async function fetchMetricasDeudas() {
 
     const all = pacientes || [];
     const total = all.length;
-    const deudaTotal = all.reduce((s, p) => s + Number(p.deuda_total), 0);
+
+    // Categorías que descuentan de la deuda activa
+    const CATEGORIAS_DESCUENTO = ['sin_deuda_salus', 'descuento_liquidacion'];
+
+    const deudaBruta = all.reduce((s, p) => s + Number(p.deuda_total), 0);
+    const deudaDescontada = all
+        .filter(p => CATEGORIAS_DESCUENTO.includes(p.categoria))
+        .reduce((s, p) => s + Number(p.deuda_total), 0);
+    const deudaTotal = deudaBruta - deudaDescontada;
+    const deudoresActivos = all.filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria)).length;
+
     const conTelefono = all.filter(p => p.telefono).length;
     const sinTelefono = total - conTelefono;
 
@@ -423,7 +433,7 @@ export async function fetchMetricasDeudas() {
         }
     });
 
-    const top10 = all.slice(0, 10);
+    const top10 = all.filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria)).slice(0, 10);
 
     // ─── Contactados y Respondieron: cruzar con whatsapp_messages ───
     // Obtener teléfonos únicos de deudores que tienen teléfono
@@ -459,13 +469,16 @@ export async function fetchMetricasDeudas() {
     const sinContactar = total - contactados;
 
     // Derivados
-    const promedioPorPaciente = total > 0 ? deudaTotal / total : 0;
+    const promedioPorPaciente = deudoresActivos > 0 ? deudaTotal / deudoresActivos : 0;
     const tasaContactabilidad = conTelefono > 0 ? Math.round((contactados / conTelefono) * 100) : 0;
     const tasaRespuesta = contactados > 0 ? Math.round((respondieron / contactados) * 100) : 0;
 
     return {
         total,
         deudaTotal,
+        deudaBruta,
+        deudaDescontada,
+        deudoresActivos,
         conTelefono,
         sinTelefono,
         porCategoria,

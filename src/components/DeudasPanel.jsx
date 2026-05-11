@@ -553,12 +553,18 @@ export default function DeudasPanel({ addToast, currentUser }) {
                     <div style={st.quickStats}>
                         <div style={st.statCard}>
                             <Users size={18} style={{ color: '#3B82F6' }} />
-                            <div><span style={st.statValue}>{metricas.total}</span><span style={st.statLabel}>Deudores</span></div>
+                            <div><span style={st.statValue}>{metricas.deudoresActivos}</span><span style={st.statLabel}>Deudores Activos</span></div>
                         </div>
                         <div style={st.statCard}>
                             <DollarSign size={18} style={{ color: '#F59E0B' }} />
-                            <div><span style={st.statValue}>{formatMoney(metricas.deudaTotal)}</span><span style={st.statLabel}>Deuda Total</span></div>
+                            <div><span style={st.statValue}>{formatMoney(metricas.deudaTotal)}</span><span style={st.statLabel}>Deuda Activa</span></div>
                         </div>
+                        {metricas.deudaDescontada > 0 && (
+                            <div style={{ ...st.statCard, borderColor: '#0D948820' }}>
+                                <CheckCircle size={18} style={{ color: '#0D9488' }} />
+                                <div><span style={{ ...st.statValue, color: '#0D9488' }}>-{formatMoney(metricas.deudaDescontada)}</span><span style={st.statLabel}>Descontada</span></div>
+                            </div>
+                        )}
                         <div style={st.statCard}>
                             <Phone size={18} style={{ color: '#16A34A' }} />
                             <div><span style={st.statValue}>{metricas.conTelefono}</span><span style={st.statLabel}>Con teléfono</span></div>
