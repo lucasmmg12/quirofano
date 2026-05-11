@@ -36,7 +36,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
     const [search, setSearch] = useState('');
     const [catFilter, setCatFilter] = useState(null);
     const [telFilter, setTelFilter] = useState(null); // null=todos, true=con, false=sin
-    const [sortBy, setSortBy] = useState('balance_neto');
+    const [sortBy, setSortBy] = useState('deuda_total');
     const [sortDir, setSortDir] = useState('desc');
     const [metricas, setMetricas] = useState(null);
     const [showMetricas, setShowMetricas] = useState(false);
@@ -387,7 +387,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
     // ─── Exportación ───
     const exportToExcel = useCallback(() => {
         if (!deudores.length) return;
-        const headers = ['Paciente', 'NHC', 'Teléfono', 'Deuda Bruta', 'Cobros', 'Notas Crédito', 'Balance Neto', 'Facturas', 'Categoría', 'Cobertura', 'Última Factura', 'Último Contacto'];
+        const headers = ['Paciente', 'NHC', 'Teléfono', 'Deuda Total', 'Cobros', 'Notas Crédito', 'Facturas', 'Categoría', 'Cobertura', 'Última Factura', 'Último Contacto'];
         const rows = deudores.map(d => {
             const cat = CATEGORIAS_DEUDOR[d.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
             return [
@@ -397,7 +397,6 @@ export default function DeudasPanel({ addToast, currentUser }) {
                 Number(d.deuda_total),
                 Number(d.total_cobros) || 0,
                 Number(d.total_notas_credito) || 0,
-                Number(d.balance_neto) || Number(d.deuda_total),
                 d.cantidad_facturas, 
                 cat.label, 
                 d.obra_social || 'Sin datos',
@@ -597,7 +596,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                             <span style={st.topName}>{p.nombre}</span>
                                             <span style={st.topNhc}>NHC: {p.nhc}</span>
                                         </div>
-                                        <span style={st.topAmount}>{formatMoney(Number(p.balance_neto) || p.deuda_total)}</span>
+                                        <span style={st.topAmount}>{formatMoney(p.deuda_total)}</span>
                                     </div>
                                 ))}
                             </div>
@@ -734,11 +733,11 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                     </th>
                                     <th style={{ ...st.th, width: '130px', textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}
                                         onClick={() => {
-                                            if (sortBy === 'balance_neto') setSortDir(p => p === 'desc' ? 'asc' : 'desc');
-                                            else { setSortBy('balance_neto'); setSortDir('desc'); }
+                                            if (sortBy === 'deuda_total') setSortDir(p => p === 'desc' ? 'asc' : 'desc');
+                                            else { setSortBy('deuda_total'); setSortDir('desc'); }
                                         }}
                                     >
-                                        Balance {sortBy === 'balance_neto' ? (sortDir === 'desc' ? '▼' : '▲') : ''}
+                                        Deuda {sortBy === 'deuda_total' ? (sortDir === 'desc' ? '▼' : '▲') : ''}
                                     </th>
                                     <th style={{ ...st.th, width: '50px', textAlign: 'center' }}>Fact.</th>
                                     <th style={{ ...st.th, width: '120px' }}>Cobertura</th>
@@ -765,7 +764,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                                 {d.fecha_ultima_factura ? new Date(d.fecha_ultima_factura).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
                                             </td>
                                             <td style={{ ...st.td, textAlign: 'right', fontWeight: 800, color: '#D97706', fontSize: '0.88rem' }}>
-                                                {formatMoney(Number(d.balance_neto) || d.deuda_total)}
+                                                {formatMoney(d.deuda_total)}
                                             </td>
                                             <td style={{ ...st.td, textAlign: 'center', fontSize: '0.82rem', color: '#475569' }}>{d.cantidad_facturas}</td>
                                             <td style={{ ...st.td, fontSize: '0.72rem', color: '#64748B' }}>
@@ -898,21 +897,12 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                        {(() => {
-                            const totalCobrosCalc = cobros.reduce((s, c) => s + (Number(c.importe) || 0), 0);
-                            const totalNCCalc = notasCredito.reduce((s, n) => s + (Number(n.importe_total) || 0), 0);
-                            const balanceCalc = (Number(selectedDeudor.deuda_total) || 0) - totalCobrosCalc - totalNCCalc;
-                            return (
-                                <>
-                                    <div style={{ fontSize: '1.8rem', fontWeight: 900, color: balanceCalc > 0 ? '#D97706' : '#16A34A', letterSpacing: '-1px' }}>
-                                        {formatMoney(balanceCalc)}
-                                    </div>
-                                    <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
-                                        Balance Neto
-                                    </div>
-                                </>
-                            );
-                        })()}
+                        <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#D97706', letterSpacing: '-1px' }}>
+                            {formatMoney(selectedDeudor.deuda_total)}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
+                            Deuda Total
+                        </div>
                     </div>
                 </div>
 
@@ -1045,25 +1035,21 @@ export default function DeudasPanel({ addToast, currentUser }) {
                             </div>
                         )}
 
-                        {/* Balance Financiero */}
+                        {/* Resumen Financiero */}
                         <div style={{ ...st.card, background: 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)' }}>
                             <h4 style={st.cardTitle}><DollarSign size={14} /> Resumen Financiero</h4>
                             <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginBottom: '10px', lineHeight: '1.5' }}>
-                                Cálculo en tiempo real basado en las facturas, cobros y notas de crédito registradas en SALUS para este paciente.
-                                <br />
-                                <strong style={{ color: '#64748B' }}>Balance Neto = Deuda Bruta − Cobros − Notas de Crédito</strong>
+                                Datos basados en las facturas, cobros y notas de crédito registradas en SALUS para este paciente.
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
                                 {(() => {
                                     const totalCobrosCalc = cobros.reduce((s, c) => s + (Number(c.importe) || 0), 0);
                                     const totalNCCalc = notasCredito.reduce((s, n) => s + (Number(n.importe_total) || 0), 0);
-                                    const deudaBruta = Number(selectedDeudor.deuda_total) || 0;
-                                    const balanceCalc = deudaBruta - totalCobrosCalc - totalNCCalc;
+                                    const deudaTotal = Number(selectedDeudor.deuda_total) || 0;
                                     return [
-                                        { label: 'Deuda Bruta', desc: 'Total facturado pendiente', value: deudaBruta, color: '#EF4444', bg: '#FEF2F2', icon: '🔴' },
+                                        { label: 'Deuda Total', desc: 'Total facturado pendiente', value: deudaTotal, color: '#EF4444', bg: '#FEF2F2', icon: '🔴' },
                                         { label: 'Cobros', desc: 'Pagos realizados', value: totalCobrosCalc, color: '#16A34A', bg: '#F0FDF4', icon: '🟢' },
                                         { label: 'Notas Crédito', desc: 'Ajustes a favor', value: totalNCCalc, color: '#3B82F6', bg: '#EFF6FF', icon: '🔵' },
-                                        { label: 'Balance Neto', desc: 'Lo que realmente debe', value: balanceCalc, color: balanceCalc > 0 ? '#D97706' : '#16A34A', bg: '#FFFBEB', icon: '🟠' },
                                     ];
                                 })().map((item, idx) => (
                                     <div key={idx} style={{

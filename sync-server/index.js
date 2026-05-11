@@ -763,13 +763,8 @@ async function syncCobros(db) {
     let pacientesActualizados = 0;
     for (const [nhc, data] of Object.entries(porNhc)) {
         if (!data.pacienteId) continue;
-        const { data: pac } = await supabase.from('deudas_pacientes')
-            .select('deuda_total, total_notas_credito').eq('id', data.pacienteId).single();
-        const deudaTotal = Number(pac?.deuda_total) || 0;
-        const totalNC = Number(pac?.total_notas_credito) || 0;
         await supabase.from('deudas_pacientes').update({
             total_cobros: data.total, cantidad_cobros: data.count,
-            balance_neto: deudaTotal - data.total - totalNC,
             updated_at: now,
         }).eq('id', data.pacienteId);
         pacientesActualizados++;
@@ -862,13 +857,8 @@ async function syncNotasCredito(db) {
     let pacientesActualizados = 0;
     for (const [nhc, data] of Object.entries(porNhc)) {
         if (!data.pacienteId) continue;
-        const { data: pac } = await supabase.from('deudas_pacientes')
-            .select('deuda_total, total_cobros').eq('id', data.pacienteId).single();
-        const deudaTotal = Number(pac?.deuda_total) || 0;
-        const totalCobros = Number(pac?.total_cobros) || 0;
         await supabase.from('deudas_pacientes').update({
             total_notas_credito: data.total, cantidad_notas_credito: data.count,
-            balance_neto: deudaTotal - totalCobros - data.total,
             updated_at: now,
         }).eq('id', data.pacienteId);
         pacientesActualizados++;
