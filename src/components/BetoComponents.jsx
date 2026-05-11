@@ -391,44 +391,60 @@ export function parseRichContent(text, onNavigate) {
     let cleanText = text;
 
     // Parse ```beto-stats JSON blocks
-    const statsRegex = /```beto-stats\n([\s\S]*?)\n```/g;
+    const statsRegex = /```beto-stats\s*\n([\s\S]*?)\n\s*```/g;
     let match;
     while ((match = statsRegex.exec(text)) !== null) {
         try {
-            const data = JSON.parse(match[1]);
+            const data = JSON.parse(match[1].trim());
             richBlocks.push({ type: 'stats', data, position: match.index });
             cleanText = cleanText.replace(match[0], '');
         } catch (e) { /* ignore invalid JSON */ }
     }
 
     // Parse ```beto-pipeline JSON blocks
-    const pipelineRegex = /```beto-pipeline\n([\s\S]*?)\n```/g;
+    const pipelineRegex = /```beto-pipeline\s*\n([\s\S]*?)\n\s*```/g;
     while ((match = pipelineRegex.exec(text)) !== null) {
         try {
-            const data = JSON.parse(match[1]);
+            const data = JSON.parse(match[1].trim());
             richBlocks.push({ type: 'pipeline', data, position: match.index });
             cleanText = cleanText.replace(match[0], '');
         } catch (e) { /* ignore */ }
     }
 
     // Parse ```beto-insight JSON blocks
-    const insightRegex = /```beto-insight\n([\s\S]*?)\n```/g;
+    const insightRegex = /```beto-insight\s*\n([\s\S]*?)\n\s*```/g;
     while ((match = insightRegex.exec(text)) !== null) {
         try {
-            const data = JSON.parse(match[1]);
+            const data = JSON.parse(match[1].trim());
             richBlocks.push({ type: 'insight', data, position: match.index });
             cleanText = cleanText.replace(match[0], '');
         } catch (e) { /* ignore */ }
     }
 
-    // Parse ```beto-excel JSON blocks (NEW — Excel download)
-    const excelRegex = /```beto-excel\n([\s\S]*?)\n```/g;
+    // Parse ```beto-excel JSON blocks (handles variations: beto-excel, json beto-excel, etc.)
+    const excelRegex = /```(?:beto-excel|json\s*beto-excel|beto-excel\s*json)\s*\n([\s\S]*?)\n\s*```/g;
     while ((match = excelRegex.exec(text)) !== null) {
         try {
-            const data = JSON.parse(match[1]);
-            richBlocks.push({ type: 'excel', data, position: match.index });
-            cleanText = cleanText.replace(match[0], '');
+            const data = JSON.parse(match[1].trim());
+            if (data.reportName || data.columns || data.data) {
+                richBlocks.push({ type: 'excel', data, position: match.index });
+                cleanText = cleanText.replace(match[0], '');
+            }
         } catch (e) { /* ignore invalid JSON */ }
+    }
+
+    // Fallback: detect ```json blocks containing Excel report structure
+    if (!richBlocks.some(b => b.type === 'excel')) {
+        const jsonBlockRegex = /```json?\s*\n([\s\S]*?)\n\s*```/g;
+        while ((match = jsonBlockRegex.exec(cleanText)) !== null) {
+            try {
+                const data = JSON.parse(match[1].trim());
+                if (data.reportName && data.columns && data.data && Array.isArray(data.data)) {
+                    richBlocks.push({ type: 'excel', data, position: match.index });
+                    cleanText = cleanText.replace(match[0], '');
+                }
+            } catch (e) { /* ignore */ }
+        }
     }
 
     // Detect [ACTION:navigate:module] tags for preview cards
