@@ -293,7 +293,12 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
                     const navMatch = content.match(/\[ACTION:navigate:(\w+)\]/);
                     if (navMatch && onNavigate) { content = content.replace(/\[ACTION:navigate:\w+\]/g, ''); setTimeout(() => onNavigate(navMatch[1]), 500); }
                     content = content.replace(/\[ACTION:[^\]]+\]/g, '').trim();
-                    setMessages(prev => [...prev, { role: 'assistant', content, interaction_id: data.interaction_id || null }]);
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content,
+                        interaction_id: data.interaction_id || null,
+                        excel_data: data.excel_data || null,
+                    }]);
                 } else if (data?.error) {
                     setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${data.message || data.error}` }]);
                 }
@@ -681,13 +686,17 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
                             {msg.role === 'assistant' ? (
                                 <div className="beto-markdown">
                                     <ReactMarkdown>{cleanText}</ReactMarkdown>
-                                    {/* #2 Rich blocks */}
+                                    {/* Direct Excel download from API response (primary mechanism) */}
+                                    {msg.excel_data && (
+                                        <BetoExcelDownload excelData={msg.excel_data} />
+                                    )}
+                                    {/* #2 Rich blocks (text-parsed fallback) */}
                                     {richBlocks.map((block, j) => {
                                         if (block.type === 'stats') return <BetoStatsCard key={j} stats={block.data} />;
                                         if (block.type === 'pipeline') return <BetoStatusPipeline key={j} pipeline={block.data} />;
                                         if (block.type === 'insight') return <BetoInsightCard key={j} insight={block.data} />;
                                         if (block.type === 'modulePreview') return <BetoModulePreview key={j} moduleId={block.moduleId} onNavigate={onNavigate} />;
-                                        if (block.type === 'excel') return <BetoExcelDownload key={j} excelData={block.data} />;
+                                        if (block.type === 'excel' && !msg.excel_data) return <BetoExcelDownload key={j} excelData={block.data} />;
                                         return null;
                                     })}
                                     {/* PDF Download bar — visible on report messages */}

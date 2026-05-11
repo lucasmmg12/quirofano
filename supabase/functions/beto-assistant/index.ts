@@ -1199,6 +1199,7 @@ ${schemaContext}`;
 
         // Handle tool calls (loop for multi-tool)
         let iterations = 0;
+        let excelData = null; // Capture Excel report data from tool calls
         while (assistantMessage.tool_calls && iterations < 5) {
             const toolResults = [];
 
@@ -1206,6 +1207,26 @@ ${schemaContext}`;
                 const args = JSON.parse(toolCall.function.arguments);
                 console.log(`[beto] Tool call: ${toolCall.function.name}`, JSON.stringify(args).slice(0, 200));
                 const result = await executeToolCall(toolCall.function.name, args);
+
+                // Capture Excel data directly from tool result
+                if (toolCall.function.name === 'generate_excel_report') {
+                    try {
+                        const parsed = JSON.parse(result);
+                        if (parsed.success && parsed.data) {
+                            excelData = {
+                                reportName: parsed.report_name,
+                                sheetName: parsed.sheet_name,
+                                columns: parsed.columns,
+                                data: parsed.data,
+                                filters: parsed.filters || '',
+                                totalRows: parsed.total_rows,
+                            };
+                            console.log(`[beto] Excel data captured: ${parsed.total_rows} rows for ${parsed.report_name}`);
+                        }
+                    } catch (e) {
+                        console.warn('[beto] Failed to parse excel result:', e.message);
+                    }
+                }
 
                 toolResults.push({
                     role: 'tool',
@@ -1249,12 +1270,24 @@ ${schemaContext}`;
             console.warn('[beto] Analytics log failed:', logErr.message);
         }
 
+        // Clean AI text: remove any raw JSON blocks the AI included for Excel
+        // (since we're sending excel_data separately)
+        let cleanMessage = assistantMessage.content || '';
+        if (excelData) {
+            // Remove ```beto-excel, ```json, or raw JSON blocks with reportName
+            cleanMessage = cleanMessage
+                .replace(/```(?:beto-excel|json)?\s*\n[\s\S]*?"reportName"[\s\S]*?\n\s*```/g, '')
+                .replace(/\{[\s\S]*?"reportName"[\s\S]*?"data"[\s\S]*?\}/g, '')
+                .trim();
+        }
+
         return new Response(
             JSON.stringify({
                 success: true,
-                message: assistantMessage.content,
+                message: cleanMessage,
                 usage: response.usage,
                 interaction_id: interactionId,
+                ...(excelData ? { excel_data: excelData } : {}),
             }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
