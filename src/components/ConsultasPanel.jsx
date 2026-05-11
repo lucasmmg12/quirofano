@@ -42,6 +42,24 @@ export default function ConsultasPanel() {
     const [regSearch, setRegSearch] = useState('');
     const [regColFilter, setRegColFilter] = useState('todos'); // todos | paciente | cliente | especialidad | agenda | tipo_visita
     const searchTimer = useRef(null);
+    // Excel-style per-column filters
+    const [colFilters, setColFilters] = useState({});      // { especialidad: Set(['PEDIATRIA']), agenda: Set([...]) }
+    const [colFilterOpen, setColFilterOpen] = useState(null);  // which column dropdown is open
+    const [colFilterSearch, setColFilterSearch] = useState(''); // search within filter dropdown
+    const [colFilterOptions, setColFilterOptions] = useState({}); // cached unique values per column
+    const colFilterRef = useRef(null);
+
+    // Close dropdown on click outside
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (colFilterRef.current && !colFilterRef.current.contains(e.target)) {
+                setColFilterOpen(null);
+                setColFilterSearch('');
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // Fetch ALL data (paginated to bypass 1000-row limit)
     const fetchData = useCallback(async () => {
@@ -67,6 +85,24 @@ export default function ConsultasPanel() {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
+    // Fetch unique column values for filter dropdowns
+    const fetchColFilterOptions = useCallback(async (colKey) => {
+        if (colFilterOptions[colKey]) return; // Already cached
+        const dbCol = { especialidad: 'visita_especialidad', agenda: 'agenda', tipo_visita: 'tipo_visita', cliente: 'cliente' }[colKey];
+        if (!dbCol) return;
+        const { data: rows } = await supabase
+            .from('consultas_guardia')
+            .select(dbCol)
+            .eq('mes_periodo', mes)
+            .order(dbCol, { ascending: true })
+            .limit(5000);
+        const unique = [...new Set((rows || []).map(r => r[dbCol]?.trim()).filter(Boolean))].sort();
+        setColFilterOptions(prev => ({ ...prev, [colKey]: unique }));
+    }, [mes, colFilterOptions]);
+
+    // Reset column filter options when month changes
+    useEffect(() => { setColFilterOptions({}); setColFilters({}); }, [mes]);
+
     // Fetch registros (server-side paginated)
     const fetchRegistros = useCallback(async () => {
         setRegLoading(true);
@@ -88,10 +124,17 @@ export default function ConsultasPanel() {
             else if (regColFilter === 'tipo_visita') q = q.ilike('tipo_visita', s);
             else q = q.or(`paciente.ilike.${s},cliente.ilike.${s},visita_especialidad.ilike.${s},agenda.ilike.${s},tipo_visita.ilike.${s}`);
         }
+        // Apply per-column filters
+        const colDbMap = { especialidad: 'visita_especialidad', agenda: 'agenda', tipo_visita: 'tipo_visita', cliente: 'cliente' };
+        Object.entries(colFilters).forEach(([colKey, selectedSet]) => {
+            if (selectedSet.size > 0 && colDbMap[colKey]) {
+                q = q.in(colDbMap[colKey], [...selectedSet]);
+            }
+        });
         const { data: rows, count, error } = await q;
         if (!error) { setRegRows(rows || []); setRegTotal(count || 0); }
         setRegLoading(false);
-    }, [mes, regPage, regSize, regSearch, regColFilter]);
+    }, [mes, regPage, regSize, regSearch, regColFilter, colFilters]);
 
     useEffect(() => { if (vista === 'registros') fetchRegistros(); }, [vista, fetchRegistros]);
 
@@ -674,14 +717,165 @@ export default function ConsultasPanel() {
                                 </div>
                             </div>
 
+                            {/* Active column filters display */}
+                            {Object.entries(colFilters).some(([, s]) => s.size > 0) && (
+                                <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <Filter size={12} style={{ color: '#4F46E5' }} />
+                                    <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 600 }}>Filtros activos:</span>
+                                    {Object.entries(colFilters).map(([colKey, selectedSet]) => {
+                                        if (selectedSet.size === 0) return null;
+                                        const labels = { especialidad: 'Especialidad', agenda: 'Agenda', tipo_visita: 'Tipo Visita', cliente: 'Obra Social' };
+                                        return (
+                                            <div key={colKey} style={{
+                                                display: 'flex', alignItems: 'center', gap: '4px', padding: '3px 8px',
+                                                borderRadius: '6px', background: '#EEF2FF', border: '1px solid #C7D2FE',
+                                                fontSize: '0.65rem', fontWeight: 600, color: '#4F46E5',
+                                            }}>
+                                                {labels[colKey]}: {selectedSet.size} sel.
+                                                <button onClick={() => { setColFilters(prev => { const next = { ...prev }; delete next[colKey]; return next; }); setRegPage(0); }}
+                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4F46E5', fontWeight: 800, fontSize: '0.7rem', padding: '0 2px' }}>×</button>
+                                            </div>
+                                        );
+                                    })}
+                                    <button onClick={() => { setColFilters({}); setRegPage(0); }}
+                                        style={{ padding: '3px 8px', borderRadius: '6px', border: '1px solid #FECACA', background: '#FEF2F2', color: '#DC2626', fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer' }}>
+                                        Limpiar todos
+                                    </button>
+                                </div>
+                            )}
+
                             {/* Table */}
-                            <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
+                            <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid #E2E8F0', overflow: 'visible' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.7rem' }}>
                                     <thead>
                                         <tr style={{ background: '#F8FAFC' }}>
-                                            {['Fecha', 'Paciente', 'DNI', 'Obra Social', 'Especialidad', 'Agenda', 'Tipo Visita', 'NHC'].map(h => (
-                                                <th key={h} style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 700, color: '#475569', borderBottom: '2px solid #E2E8F0', whiteSpace: 'nowrap', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{h}</th>
-                                            ))}
+                                            {[
+                                                { key: 'fecha', label: 'Fecha', filterable: false },
+                                                { key: 'paciente', label: 'Paciente', filterable: false },
+                                                { key: 'dni', label: 'DNI', filterable: false },
+                                                { key: 'cliente', label: 'Obra Social', filterable: true },
+                                                { key: 'especialidad', label: 'Especialidad', filterable: true },
+                                                { key: 'agenda', label: 'Agenda', filterable: true },
+                                                { key: 'tipo_visita', label: 'Tipo Visita', filterable: true },
+                                                { key: 'nhc', label: 'NHC', filterable: false },
+                                            ].map(col => {
+                                                const isActive = colFilters[col.key]?.size > 0;
+                                                return (
+                                                    <th key={col.key} style={{
+                                                        padding: '8px 8px', textAlign: 'left', fontWeight: 700, color: '#475569',
+                                                        borderBottom: '2px solid #E2E8F0', whiteSpace: 'nowrap',
+                                                        fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em',
+                                                        position: 'relative',
+                                                    }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            {col.label}
+                                                            {col.filterable && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (colFilterOpen === col.key) { setColFilterOpen(null); setColFilterSearch(''); }
+                                                                        else { setColFilterOpen(col.key); setColFilterSearch(''); fetchColFilterOptions(col.key); }
+                                                                    }}
+                                                                    style={{
+                                                                        background: isActive ? '#4F46E5' : 'transparent', border: 'none', cursor: 'pointer',
+                                                                        padding: '2px', borderRadius: '4px', display: 'flex', alignItems: 'center',
+                                                                        color: isActive ? '#fff' : '#94A3B8',
+                                                                    }}
+                                                                >
+                                                                    <ChevronDown size={12} />
+                                                                </button>
+                                                            )}
+                                                            {isActive && (
+                                                                <span style={{
+                                                                    fontSize: '0.55rem', fontWeight: 800, color: '#fff', background: '#4F46E5',
+                                                                    borderRadius: '50%', width: '14px', height: '14px', display: 'flex',
+                                                                    alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+                                                                }}>
+                                                                    {colFilters[col.key].size}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {/* Dropdown */}
+                                                        {col.filterable && colFilterOpen === col.key && (
+                                                            <div ref={colFilterRef} style={{
+                                                                position: 'absolute', top: '100%', left: 0, zIndex: 50,
+                                                                background: '#fff', borderRadius: '10px', border: '1px solid #E2E8F0',
+                                                                boxShadow: '0 8px 24px rgba(0,0,0,0.12)', width: '220px',
+                                                                maxHeight: '320px', display: 'flex', flexDirection: 'column',
+                                                            }} onClick={e => e.stopPropagation()}>
+                                                                {/* Search in dropdown */}
+                                                                <div style={{ padding: '8px', borderBottom: '1px solid #F1F5F9' }}>
+                                                                    <input
+                                                                        type="text" placeholder="Buscar..." value={colFilterSearch}
+                                                                        onChange={e => setColFilterSearch(e.target.value)}
+                                                                        autoFocus
+                                                                        style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #E2E8F0', fontSize: '0.72rem', outline: 'none' }}
+                                                                    />
+                                                                </div>
+                                                                {/* Select all / Clear */}
+                                                                <div style={{ display: 'flex', gap: '4px', padding: '6px 8px', borderBottom: '1px solid #F1F5F9' }}>
+                                                                    <button onClick={() => {
+                                                                        const all = new Set(colFilterOptions[col.key] || []);
+                                                                        setColFilters(prev => ({ ...prev, [col.key]: all }));
+                                                                        setRegPage(0);
+                                                                    }} style={{ flex: 1, padding: '4px', borderRadius: '4px', border: '1px solid #E2E8F0', background: '#F8FAFC', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600, color: '#4F46E5' }}>
+                                                                        Todos
+                                                                    </button>
+                                                                    <button onClick={() => {
+                                                                        setColFilters(prev => { const next = { ...prev }; delete next[col.key]; return next; });
+                                                                        setRegPage(0);
+                                                                    }} style={{ flex: 1, padding: '4px', borderRadius: '4px', border: '1px solid #E2E8F0', background: '#F8FAFC', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600, color: '#DC2626' }}>
+                                                                        Limpiar
+                                                                    </button>
+                                                                </div>
+                                                                {/* Options list */}
+                                                                <div style={{ overflowY: 'auto', flex: 1, padding: '4px 0' }}>
+                                                                    {(colFilterOptions[col.key] || [])
+                                                                        .filter(v => !colFilterSearch || v.toLowerCase().includes(colFilterSearch.toLowerCase()))
+                                                                        .map(val => {
+                                                                            const isChecked = colFilters[col.key]?.has(val);
+                                                                            return (
+                                                                                <label key={val} style={{
+                                                                                    display: 'flex', alignItems: 'center', gap: '8px',
+                                                                                    padding: '5px 10px', cursor: 'pointer', fontSize: '0.72rem',
+                                                                                    color: '#334155', fontWeight: isChecked ? 700 : 400,
+                                                                                    background: isChecked ? '#EEF2FF' : 'transparent',
+                                                                                }} onMouseOver={e => e.currentTarget.style.background = '#F8FAFC'}
+                                                                                   onMouseOut={e => e.currentTarget.style.background = isChecked ? '#EEF2FF' : 'transparent'}>
+                                                                                    <input
+                                                                                        type="checkbox" checked={!!isChecked}
+                                                                                        onChange={() => {
+                                                                                            setColFilters(prev => {
+                                                                                                const set = new Set(prev[col.key] || []);
+                                                                                                if (set.has(val)) set.delete(val); else set.add(val);
+                                                                                                const next = { ...prev };
+                                                                                                if (set.size === 0) delete next[col.key]; else next[col.key] = set;
+                                                                                                return next;
+                                                                                            });
+                                                                                            setRegPage(0);
+                                                                                        }}
+                                                                                        style={{ width: '14px', height: '14px', accentColor: '#4F46E5', cursor: 'pointer' }}
+                                                                                    />
+                                                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{val}</span>
+                                                                                </label>
+                                                                            );
+                                                                        })}
+                                                                    {(colFilterOptions[col.key] || []).filter(v => !colFilterSearch || v.toLowerCase().includes(colFilterSearch.toLowerCase())).length === 0 && (
+                                                                        <div style={{ padding: '12px', textAlign: 'center', color: '#94A3B8', fontSize: '0.7rem' }}>Sin resultados</div>
+                                                                    )}
+                                                                </div>
+                                                                {/* Apply button */}
+                                                                <div style={{ padding: '8px', borderTop: '1px solid #F1F5F9' }}>
+                                                                    <button onClick={() => { setColFilterOpen(null); setColFilterSearch(''); }}
+                                                                        style={{ width: '100%', padding: '6px', borderRadius: '6px', border: 'none', background: '#4F46E5', color: '#fff', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>
+                                                                        Aplicar
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </th>
+                                                );
+                                            })}
                                         </tr>
                                     </thead>
                                     <tbody>
