@@ -12,7 +12,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { Send, X, Maximize2, Minimize2, Sparkles, Loader2, Palette, BookOpen, FileSpreadsheet, Printer, Presentation, FileDown, ThumbsUp, ThumbsDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { BetoStatsCard, BetoStatusPipeline, BetoModulePreview, BetoExportBar, BetoInsightCard, parseRichContent } from './BetoComponents';
+import { BetoStatsCard, BetoStatusPipeline, BetoModulePreview, BetoExportBar, BetoInsightCard, BetoExcelDownload, parseRichContent } from './BetoComponents';
 import BetoPresentationMode from './BetoPresentationMode';
 import BetoTutorial from './BetoTutorial';
 import { downloadBetoReportPdf, isReportMessage } from '../utils/betoReportPdf';
@@ -23,14 +23,14 @@ const BETO_GIF = '/The_avatar_is_greetings.gif';
 // #1 — Smart Suggestions per module
 const SMART_SUGGESTIONS = {
     inicio: ['🔔 ¿Qué hay pendiente hoy?', '📊 Reporte rápido del día', '📚 Enseñame a usar el sistema', '🧭 Llevame a Cirugías'],
-    cirugias: ['📊 Estado de cirugías de hoy', '🔴 Cirugías sin confirmar', '📈 Tendencias del mes', '📲 Enviar recordatorios'],
-    deudas: ['💰 Top 10 deudores', '📋 Pacientes sin contactar', '📈 Tasa de recupero', '📊 Resumen de deudas'],
+    cirugias: ['📊 Estado de cirugías de hoy', '🔴 Cirugías sin confirmar', '📈 Tendencias del mes', '📥 Exportar cirugías a Excel'],
+    deudas: ['💰 Top 10 deudores', '📋 Pacientes sin contactar', '📥 Exportar deudas a Excel', '📊 Resumen de deudas'],
     mensajeria: ['📨 Mensajes sin responder', '📊 Resumen de conversaciones', '📋 Plantillas más usadas', '🔔 Pendientes de hoy'],
     pedidos: ['📋 Últimos pedidos generados', '📊 Prácticas más solicitadas', '🔍 Buscar paciente', '📚 Ver nomenclador'],
-    altas: ['📋 Altas pendientes de hoy', '📊 Resumen de altas del día', '👤 Buscar paciente internado', '🔔 Alertas de altas'],
+    altas: ['📋 Altas pendientes de hoy', '📊 Resumen de altas del día', '👤 Buscar paciente internado', '📥 Exportar altas a Excel'],
     turnos: ['📊 Cola de turnos actual', '⏰ Próximos turnos', '📈 Estadísticas de espera', '🔔 Turnos demorados'],
-    metricas: ['📊 Resumen mensual', '📈 Comparar con mes anterior', '🏥 Métricas por especialidad', '📋 Cirugías suspendidas'],
-    default: ['🔔 ¿Qué hay pendiente?', '📊 Reporte del día', '🧭 Navegación rápida', '❓ ¿Cómo funciona esto?'],
+    metricas: ['📊 Resumen mensual', '📈 Comparar con mes anterior', '🏥 Métricas por especialidad', '📥 Exportar métricas a Excel'],
+    default: ['🔔 ¿Qué hay pendiente?', '📊 Reporte del día', '📥 Exportar datos a Excel', '❓ ¿Cómo funciona esto?'],
 };
 
 // Proactive notifications — contextual nudges per module + time
@@ -687,6 +687,7 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
                                         if (block.type === 'pipeline') return <BetoStatusPipeline key={j} pipeline={block.data} />;
                                         if (block.type === 'insight') return <BetoInsightCard key={j} insight={block.data} />;
                                         if (block.type === 'modulePreview') return <BetoModulePreview key={j} moduleId={block.moduleId} onNavigate={onNavigate} />;
+                                        if (block.type === 'excel') return <BetoExcelDownload key={j} excelData={block.data} />;
                                         return null;
                                     })}
                                     {/* PDF Download bar — visible on report messages */}

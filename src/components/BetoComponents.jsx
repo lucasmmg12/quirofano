@@ -4,14 +4,15 @@
  * Estos componentes se renderizan inline en las burbujas del chat de Beto
  * cuando las respuestas contienen datos estructurados.
  * 
- * Ideas: #2 (Mini-Dashboard), #8 (Navigation Preview), #9 (Export)
+ * Ideas: #2 (Mini-Dashboard), #8 (Navigation Preview), #9 (Export), #20 (Excel Download)
  */
+import { useState } from 'react';
 import {
     Download, Printer, FileSpreadsheet, ArrowRight,
     Stethoscope, DollarSign, MessageCircle, ClipboardCheck,
     Ticket, Brain, Settings, Home, BarChart3, PackageCheck, Microscope,
     FileText, TrendingUp, TrendingDown, Minus, CheckCircle, AlertTriangle, XCircle,
-    Presentation,
+    Presentation, Loader2,
 } from 'lucide-react';
 
 // ─── MODULE METADATA (for #8 Navigation Preview) ───
@@ -242,6 +243,146 @@ export function BetoInsightCard({ insight }) {
     );
 }
 
+// ─── #20: Excel Download Component ───
+export function BetoExcelDownload({ excelData }) {
+    if (!excelData || !excelData.columns || !excelData.data) return null;
+    const [downloading, setDownloading] = useState(false);
+    const [downloaded, setDownloaded] = useState(false);
+
+    const handleDownload = async () => {
+        setDownloading(true);
+        try {
+            const XLSX = await import('xlsx');
+
+            // Build header row with filters subtitle
+            const headerRows = [];
+            if (excelData.filters) {
+                headerRows.push([`Reporte: ${excelData.reportName || 'Datos'}`]);
+                headerRows.push([`Filtros: ${excelData.filters}`]);
+                headerRows.push([`Generado: ${new Date().toLocaleDateString('es-AR')} por Beto IA`]);
+                headerRows.push([]); // Empty row separator
+            }
+            headerRows.push(excelData.columns);
+
+            // Build worksheet data
+            const wsData = [...headerRows, ...excelData.data];
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+            // Style column widths based on header lengths
+            ws['!cols'] = excelData.columns.map((col, i) => {
+                const maxLen = Math.max(
+                    col.length,
+                    ...excelData.data.slice(0, 50).map(row => String(row[i] || '').length)
+                );
+                return { wch: Math.min(Math.max(maxLen + 2, 10), 40) };
+            });
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, excelData.sheetName || 'Datos');
+
+            const fileName = `${excelData.reportName || 'Reporte_Beto'}_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+
+            setDownloaded(true);
+            setTimeout(() => setDownloaded(false), 4000);
+        } catch (err) {
+            console.error('[BetoExcelDownload] Error:', err);
+        } finally {
+            setDownloading(false);
+        }
+    };
+
+    const rowCount = excelData.data?.length || 0;
+
+    return (
+        <div style={{
+            margin: '10px 0',
+            padding: '12px 14px',
+            borderRadius: '12px',
+            background: 'linear-gradient(135deg, #10B98108 0%, #10B98103 100%)',
+            border: '1px solid #10B98125',
+        }}>
+            {/* File info */}
+            <div style={{
+                display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px',
+            }}>
+                <div style={{
+                    width: '36px', height: '36px', borderRadius: '10px',
+                    background: '#10B98118',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                }}>
+                    <FileSpreadsheet size={18} style={{ color: '#10B981' }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                        fontSize: '0.82rem', fontWeight: 700, color: '#1E293B',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                        {excelData.reportName?.replace(/_/g, ' ') || 'Reporte Excel'}
+                    </div>
+                    <div style={{
+                        fontSize: '0.68rem', color: '#64748B', marginTop: '1px',
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                    }}>
+                        <span>📊 {rowCount} registros</span>
+                        {excelData.filters && <span>• {excelData.filters}</span>}
+                    </div>
+                </div>
+            </div>
+
+            {/* Download button */}
+            <button
+                onClick={handleDownload}
+                disabled={downloading}
+                style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    gap: '8px', width: '100%',
+                    padding: '8px 16px', borderRadius: '10px',
+                    border: 'none',
+                    background: downloaded
+                        ? 'linear-gradient(135deg, #10B981, #059669)'
+                        : downloading
+                            ? '#E2E8F0'
+                            : 'linear-gradient(135deg, #10B981, #059669)',
+                    color: downloading ? '#64748B' : '#fff',
+                    fontSize: '0.8rem', fontWeight: 700,
+                    cursor: downloading ? 'wait' : 'pointer',
+                    transition: 'all 0.2s',
+                    boxShadow: downloading ? 'none' : '0 2px 8px rgba(16, 185, 129, 0.3)',
+                }}
+                onMouseOver={e => {
+                    if (!downloading) {
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.4)';
+                    }
+                }}
+                onMouseOut={e => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = downloading ? 'none' : '0 2px 8px rgba(16, 185, 129, 0.3)';
+                }}
+            >
+                {downloading ? (
+                    <>
+                        <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                        Generando Excel...
+                    </>
+                ) : downloaded ? (
+                    <>
+                        <CheckCircle size={14} />
+                        ¡Descargado! ✅
+                    </>
+                ) : (
+                    <>
+                        <Download size={14} />
+                        📥 Descargar Excel ({rowCount} registros)
+                    </>
+                )}
+            </button>
+        </div>
+    );
+}
+
 // ─── Rich Response Parser ───
 // Parses Beto's response text for embedded JSON blocks and renders rich components
 export function parseRichContent(text, onNavigate) {
@@ -280,6 +421,16 @@ export function parseRichContent(text, onNavigate) {
         } catch (e) { /* ignore */ }
     }
 
+    // Parse ```beto-excel JSON blocks (NEW — Excel download)
+    const excelRegex = /```beto-excel\n([\s\S]*?)\n```/g;
+    while ((match = excelRegex.exec(text)) !== null) {
+        try {
+            const data = JSON.parse(match[1]);
+            richBlocks.push({ type: 'excel', data, position: match.index });
+            cleanText = cleanText.replace(match[0], '');
+        } catch (e) { /* ignore invalid JSON */ }
+    }
+
     // Detect [ACTION:navigate:module] tags for preview cards
     const navRegex = /\[ACTION:navigate:(\w+)\]/g;
     while ((match = navRegex.exec(text)) !== null) {
@@ -289,3 +440,4 @@ export function parseRichContent(text, onNavigate) {
 
     return { text: cleanText.trim(), richBlocks };
 }
+

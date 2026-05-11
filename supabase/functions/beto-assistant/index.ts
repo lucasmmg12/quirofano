@@ -321,6 +321,39 @@ Cuando te pidan un reporte, consultá la data con \`query_database\` y formateal
 
 El frontend detecta automáticamente los reportes y ofrece al usuario **descarga en PDF** e **impresión** con formato profesional del Sanatorio.
 
+## EXPORTACIÓN A EXCEL (NUEVO — MUY IMPORTANTE)
+Cuando el usuario pida exportar datos a Excel, descargar un reporte, o diga cosas como "pasame a Excel", "dame un Excel de...", "exportar a Excel", "descargar datos":
+
+1. Usá la tool \`generate_excel_report\` para consultar los datos.
+2. La tool te devuelve los datos en formato JSON.
+3. En tu respuesta, incluí un bloque especial \`\`\`beto-excel\`\`\` con la estructura de datos para que el frontend genere y descargue el Excel automáticamente.
+
+### Formato del bloque beto-excel:
+\`\`\`beto-excel
+{"reportName": "Deudas_OSDE_Mayo2026", "sheetName": "Datos", "columns": ["Paciente", "NHC", "Deuda Total", "Cobertura"], "data": [["PEREZ, JUAN", "12345", 150000, "OSDE"], ["GARCIA, ANA", "67890", 85000, "OSDE"]], "filters": "Obra Social: OSDE | Período: Mayo 2026"}
+\`\`\`
+
+**REGLAS para Excel:**
+- \`reportName\`: Nombre del archivo sin extensión (sin espacios, usar guiones bajos)
+- \`sheetName\`: Nombre de la pestaña del Excel (corto, max 31 chars)
+- \`columns\`: Array de nombres de columnas legibles (en español)
+- \`data\`: Array de arrays con los valores (cada sub-array es una fila)
+- \`filters\`: String descriptivo de los filtros aplicados (se agrega como subtítulo)
+- Montos numéricos SIN formato (el frontend los formatea)
+- Fechas como strings legibles: "08/05/2026"
+- Estados legibles: "Confirmada" en vez de "azul"
+- MÁXIMO 500 filas por reporte. Si hay más, avisá al usuario y mostrá los primeros 500.
+- Siempre acompañá el bloque beto-excel con un mensaje descriptivo al usuario.
+
+### Reportes predefinidos por módulo:
+Cuando el usuario pida "exportar deudas", "Excel de cirugías", etc. sin filtros específicos, usá estos queries base:
+- **Deudas**: SELECT nombre, nhc, telefono, cobertura, deuda_total, categoria, facturas_count, fecha_deuda FROM deudas_pacientes ORDER BY deuda_total DESC LIMIT 500
+- **Cirugías**: SELECT nombre, dni, obra_social, fecha_cirugia, medico, modulo, status, ausente FROM surgeries WHERE excluido = false ORDER BY fecha_cirugia DESC LIMIT 500
+- **Consultas Guardia**: SELECT paciente, nif, cliente, agenda, tipo_visita, fecha_visita, visita_especialidad FROM consultas_guardia WHERE mes_periodo = '[mes_actual]' LIMIT 500
+- **Asociaciones**: SELECT nombre_paciente, nombre_cirugia, fecha_realizacion, cirujano, asociacion, especialidad, obra_social, docs_completos FROM asociaciones_cirugias ORDER BY fecha_realizacion DESC LIMIT 500
+- **Laboratorios**: SELECT paciente, laboratorio, fecha_visita, biopsia_simple, biopsia_ampliada, obra_social FROM laboratorios_anatomia ORDER BY fecha_visita DESC LIMIT 500
+- **Altas**: SELECT * FROM altas_medicas ORDER BY created_at DESC LIMIT 500
+
 ## Reglas de Seguridad
 - NUNCA reveles contraseñas, API keys, ni información técnica sensible.
 - Respetá el rol del usuario.
@@ -462,6 +495,53 @@ const TOOLS = [
                 required: ['modulo']
             }
         }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'generate_excel_report',
+            description: `Genera datos para un reporte Excel. Usá esta tool cuando el usuario pida exportar datos a Excel, descargar reportes, o diga "pasame a Excel", "exportar", "descargar datos".
+            Ejecuta una consulta SQL y devuelve los datos formateados para que el frontend genere el archivo Excel.
+            REGLAS:
+            - Solo SELECT (no INSERT/UPDATE/DELETE)
+            - Limitá a 500 filas máximo
+            - Incluí columnas legibles en español
+            - Transformá estados técnicos a legibles (azul→Confirmada, lila→Sin mensaje, etc)
+            - Formateá fechas como DD/MM/YYYY
+            - Montos como números sin formato`,
+            parameters: {
+                type: 'object',
+                properties: {
+                    sql: {
+                        type: 'string',
+                        description: 'Consulta SQL SELECT para obtener los datos del reporte. LIMIT 500 máximo.'
+                    },
+                    report_name: {
+                        type: 'string',
+                        description: 'Nombre descriptivo del reporte sin extensión, con guiones bajos. Ej: Deudas_OSDE_Mayo2026'
+                    },
+                    sheet_name: {
+                        type: 'string',
+                        description: 'Nombre de la pestaña del Excel (max 31 chars). Ej: Deudas'
+                    },
+                    columns: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Nombres legibles de las columnas en español. Ej: ["Paciente", "NHC", "Deuda Total"]'
+                    },
+                    column_keys: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Keys técnicas correspondientes a cada columna (nombres de columna SQL). Ej: ["nombre", "nhc", "deuda_total"]'
+                    },
+                    filters_description: {
+                        type: 'string',
+                        description: 'Descripción legible de los filtros aplicados. Ej: "Obra Social: OSDE | Período: Mayo 2026"'
+                    }
+                },
+                required: ['sql', 'report_name', 'sheet_name', 'columns', 'column_keys']
+            }
+        }
     }
 ];
 
@@ -478,6 +558,7 @@ async function executeToolCall(name: string, args: Record<string, unknown>): Pro
             case 'navigate_to': return navigateTo(args);
             case 'get_alerts': return await getAlerts();
             case 'explain_system': return explainSystem(args.modulo as string);
+            case 'generate_excel_report': return await generateExcelReport(args);
             default: return JSON.stringify({ error: `Tool ${name} no encontrado` });
         }
     } catch (err) {
@@ -965,6 +1046,76 @@ Cada lab tiene portal propio con sus biopsias asignadas.`,
     };
 
     return explicaciones[modulo] || `No tengo información sobre "${modulo}". Módulos: ${Object.keys(explicaciones).join(', ')}.`;
+}
+
+// ═══════════════════════════════════════
+// GENERATE EXCEL REPORT
+// ═══════════════════════════════════════
+
+async function generateExcelReport(args: Record<string, unknown>): Promise<string> {
+    const sql = (args.sql as string || '').trim();
+    const reportName = args.report_name as string || 'Reporte';
+    const sheetName = (args.sheet_name as string || 'Datos').slice(0, 31);
+    const columns = args.columns as string[] || [];
+    const columnKeys = args.column_keys as string[] || [];
+    const filtersDescription = args.filters_description as string || '';
+
+    console.log(`[beto] Excel Report: ${reportName}`);
+    console.log(`[beto] Excel SQL: ${sql}`);
+
+    // Security: Only allow SELECT
+    const sqlUpper = sql.toUpperCase().replace(/\s+/g, ' ').trim();
+    if (!sqlUpper.startsWith('SELECT')) {
+        return JSON.stringify({ error: 'Solo se permiten consultas SELECT.' });
+    }
+
+    // Enforce LIMIT 500
+    let safeSql = sql;
+    if (!sqlUpper.includes('LIMIT')) {
+        safeSql += ' LIMIT 500';
+    }
+
+    try {
+        // Reuse query infrastructure
+        const queryResult = await queryDatabase({ sql: safeSql, explanation: `Excel report: ${reportName}` });
+        const parsed = JSON.parse(queryResult);
+
+        if (!parsed.success || !parsed.data) {
+            return JSON.stringify({
+                error: parsed.error || 'No se pudieron obtener datos',
+                report_name: reportName,
+            });
+        }
+
+        const rows = parsed.data;
+
+        // Map data to arrays using column_keys
+        const mappedData = rows.map((row: Record<string, unknown>) => {
+            return columnKeys.map(key => {
+                const val = row[key];
+                if (val === null || val === undefined) return '';
+                return val;
+            });
+        });
+
+        return JSON.stringify({
+            success: true,
+            report_name: reportName,
+            sheet_name: sheetName,
+            columns,
+            data: mappedData,
+            filters: filtersDescription,
+            total_rows: rows.length,
+            truncated: parsed.truncated || false,
+            message: `📊 Reporte "${reportName}" listo con ${rows.length} registros.`,
+        });
+    } catch (err) {
+        console.error('[beto] Excel report error:', err.message);
+        return JSON.stringify({
+            error: err.message,
+            report_name: reportName,
+        });
+    }
 }
 
 // ═══════════════════════════════════════
