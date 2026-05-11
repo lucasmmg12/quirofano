@@ -994,52 +994,6 @@ export default function DeudasPanel({ addToast, currentUser }) {
                             </div>
                         </div>
 
-                        {/* Resumen Financiero */}
-                        <div style={st.card}>
-                            <h4 style={st.cardTitle}>
-                                <CreditCard size={14} /> Resumen Financiero
-                            </h4>
-                            <p style={{ margin: '0 0 8px', fontSize: '0.72rem', color: '#94A3B8' }}>
-                                Detallá facturas adeudadas, pagos a cuenta, notas de crédito y cualquier observación financiera.
-                            </p>
-                            <textarea
-                                value={selectedDeudor.resumen_financiero || ''}
-                                onChange={(e) => setSelectedDeudor(prev => ({ ...prev, resumen_financiero: e.target.value }))}
-                                onBlur={async () => {
-                                    try {
-                                        await updateDeudor(selectedDeudor.id, { resumen_financiero: selectedDeudor.resumen_financiero || '' });
-                                        addToast?.('Resumen financiero guardado', 'success');
-                                    } catch (err) {
-                                        addToast?.('Error al guardar resumen', 'error');
-                                    }
-                                }}
-                                placeholder={`Ej: Factura adeudada por $150.000 (Fact. A-0001234)\nPago a cuenta: $50.000 del 15/04/2026\nNota de crédito: $20.000 (NC B-0005678)\nSaldo pendiente real: $80.000`}
-                                style={{
-                                    width: '100%', minHeight: '100px', padding: '12px 14px',
-                                    borderRadius: '10px', border: '1px solid #E2E8F0',
-                                    fontSize: '0.82rem', lineHeight: '1.6', fontFamily: 'inherit',
-                                    resize: 'vertical', outline: 'none', color: '#1E293B',
-                                    background: selectedDeudor.resumen_financiero ? '#FAFBFC' : '#fff',
-                                    transition: 'border-color 0.2s, box-shadow 0.2s',
-                                }}
-                                onFocus={(e) => {
-                                    e.target.style.borderColor = '#4F46E5';
-                                    e.target.style.boxShadow = '0 0 0 3px rgba(79,70,229,0.1)';
-                                }}
-                                onBlurCapture={(e) => {
-                                    e.target.style.borderColor = '#E2E8F0';
-                                    e.target.style.boxShadow = 'none';
-                                }}
-                            />
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
-                                <span style={{ fontSize: '0.65rem', color: '#CBD5E1' }}>
-                                    💾 Se guarda automáticamente al salir del campo
-                                </span>
-                                <span style={{ fontSize: '0.65rem', color: '#CBD5E1' }}>
-                                    {(selectedDeudor.resumen_financiero || '').length} caracteres
-                                </span>
-                            </div>
-                        </div>
 
                         {/* WhatsApp Tracking */}
                         {selectedDeudor.telefono && (
