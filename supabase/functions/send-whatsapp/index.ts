@@ -81,7 +81,86 @@ Deno.serve(async (req) => {
     }
 
     try {
-        const { content, number, mediaUrl, lineId } = await req.json();
+        const body = await req.json();
+        const { action, lineId } = body;
+
+        // ========================================
+        // ACTION: list_templates — Listar plantillas Meta
+        // ========================================
+        if (action === 'list_templates') {
+            const config = await getBuilderBotConfig(lineId);
+            const url = `https://app.builderbot.cloud/api/v2/${config.projectId}/whatsapp-template?limit=50`;
+            
+            console.log(`[send-whatsapp] list_templates | Línea: ${lineId}`);
+            
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: { 'x-api-builderbot': config.apiKey },
+            });
+            
+            const data = await response.json();
+            const templates = Array.isArray(data) ? data : data?.templates || data?.data || [];
+            
+            return new Response(
+                JSON.stringify({ success: true, templates }),
+                { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
+
+        // ========================================
+        // ACTION: send_template — Enviar plantilla Meta
+        // ========================================
+        if (action === 'send_template') {
+            const { to, templateName, languageCode, components } = body;
+            
+            if (!to || !templateName) {
+                return new Response(
+                    JSON.stringify({ error: 'to and templateName are required' }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+            
+            const config = await getBuilderBotConfig(lineId);
+            const url = `https://app.builderbot.cloud/api/v2/${config.projectId}/whatsapp-template`;
+            
+            const templateBody: Record<string, unknown> = {
+                to,
+                templateName,
+                languageCode: languageCode || 'es',
+            };
+            if (components) templateBody.components = components;
+            
+            console.log(`[send-whatsapp] send_template | Línea: ${lineId} | Template: ${templateName} → ${to}`);
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-builderbot': config.apiKey,
+                },
+                body: JSON.stringify(templateBody),
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+                console.error('[send-whatsapp] Template send error:', data);
+                return new Response(
+                    JSON.stringify({ success: false, error: data?.message || data?.error || `HTTP ${response.status}` }),
+                    { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+            
+            return new Response(
+                JSON.stringify({ success: true, data }),
+                { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
+
+        // ========================================
+        // DEFAULT: Enviar mensaje de texto (lógica existente)
+        // ========================================
+        const { content, number, mediaUrl } = body;
 
         if (!content || !number) {
             return new Response(
@@ -94,7 +173,7 @@ Deno.serve(async (req) => {
         const config = await getBuilderBotConfig(lineId);
         const BUILDERBOT_URL = `https://app.builderbot.cloud/api/v2/${config.projectId}/messages`;
 
-        const body = {
+        const msgBody = {
             messages: {
                 content,
                 ...(mediaUrl && { mediaUrl }),
@@ -111,7 +190,7 @@ Deno.serve(async (req) => {
                 'Content-Type': 'application/json',
                 'x-api-builderbot': config.apiKey,
             },
-            body: JSON.stringify(body),
+            body: JSON.stringify(msgBody),
         });
 
         const data = await response.json();
@@ -128,3 +207,4 @@ Deno.serve(async (req) => {
         );
     }
 });
+

@@ -16,7 +16,7 @@ export async function fetchConversations() {
     const { data, error } = await supabase
         .from('whatsapp_messages')
         .select('phone, content, direction, sender_name, is_read, created_at, media_type, line_id')
-        .or('line_id.in.(line_a,line_b,line_c),line_id.is.null')
+        .or('line_id.in.(line_a,line_b,line_c,line_meta),line_id.is.null')
         .order('created_at', { ascending: false })
         .limit(50000);
 
@@ -72,7 +72,7 @@ export async function fetchMessages(phone) {
         .from('whatsapp_messages')
         .select('*')
         .eq('phone', normalized)
-        .or('line_id.in.(line_a,line_b,line_c),line_id.is.null')
+        .or('line_id.in.(line_a,line_b,line_c,line_meta),line_id.is.null')
         .order('created_at', { ascending: true });
 
     if (error) {
@@ -95,7 +95,7 @@ export async function markAsRead(phone) {
         .eq('phone', normalized)
         .eq('direction', 'incoming')
         .eq('is_read', false)
-        .or('line_id.in.(line_a,line_b,line_c),line_id.is.null');
+        .or('line_id.in.(line_a,line_b,line_c,line_meta),line_id.is.null');
 
     if (error) {
         console.error('Error marking messages as read:', error);
@@ -111,7 +111,7 @@ export async function markAllAsRead() {
         .update({ is_read: true })
         .eq('direction', 'incoming')
         .eq('is_read', false)
-        .or('line_id.in.(line_a,line_b,line_c),line_id.is.null');
+        .or('line_id.in.(line_a,line_b,line_c,line_meta),line_id.is.null');
 
     if (error) {
         console.error('Error marking all messages as read:', error);
@@ -134,7 +134,7 @@ export async function fetchUnreadCounts() {
         .select('phone')
         .eq('direction', 'incoming')
         .eq('is_read', false)
-        .or('line_id.in.(line_a,line_b,line_c),line_id.is.null')
+        .or('line_id.in.(line_a,line_b,line_c,line_meta),line_id.is.null')
         .limit(5000);
 
     if (error) {
@@ -335,9 +335,9 @@ export async function getCrmContactByPhone(phone) {
 export async function fetchWhatsAppLines() {
     const { data, error } = await supabase
         .from('whatsapp_lines')
-        .select('id, label, phone, is_active, color, icon')
+        .select('id, label, phone, is_active, color, icon, is_meta')
         .eq('is_active', true)
-        .in('id', ['line_a', 'line_b', 'line_c'])
+        .in('id', ['line_a', 'line_b', 'line_c', 'line_meta'])
         .order('id', { ascending: true });
 
     if (error) {

@@ -4,15 +4,17 @@
  * Features: Emojis, envío de imágenes, grabación de audio, polling + realtime
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
     X, Send, Paperclip, Mic, Image as ImageIcon, Play, Pause,
     Phone, MessageSquare, Clock, CheckCheck, Check, Volume2,
-    Download, Smile, Square, Loader, Zap, Settings
+    Download, Smile, Square, Loader, Zap, Settings,
+    Shield, AlertTriangle, FileText, RefreshCw,
 } from 'lucide-react';
 import { fetchMessages, markAsRead, saveOutgoingMessage, subscribeToMessages, upsertCrmContact, fetchWhatsAppLines, getAssignedLine, assignLine } from '../services/chatService';
 import { sendWhatsAppMessage } from '../services/builderbotApi';
 import { fetchShortcuts } from '../services/shortcutService';
+import { fetchMetaTemplates, sendMetaTemplate } from '../services/metaTemplateService';
 import { supabase } from '../lib/supabase';
 import ShortcutManager from './ShortcutManager';
 
@@ -47,6 +49,11 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
     const [assignedLineId, setAssignedLineId] = useState(null);
     const [showLineSelector, setShowLineSelector] = useState(false);
     const [showChangeLineModal, setShowChangeLineModal] = useState(false);
+    // Meta WhatsApp 24h window state
+    const [metaTemplates, setMetaTemplates] = useState([]);
+    const [showMetaTemplatePicker, setShowMetaTemplatePicker] = useState(false);
+    const [pendingMetaTemplate, setPendingMetaTemplate] = useState(null);
+    const [sendingMetaTemplate, setSendingMetaTemplate] = useState(false);
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
@@ -145,6 +152,24 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
     // Get current line info
     const currentLine = whatsappLines.find(l => l.id === assignedLineId) || null;
 
+    // === META 24H WINDOW LOGIC ===
+    const isMetaLine = currentLine?.is_meta === true;
+    const isWindowExpired = useMemo(() => {
+        if (!isMetaLine || messages.length === 0) return false;
+        const lastIncoming = [...messages].reverse().find(m => m.direction === 'incoming');
+        if (!lastIncoming) return true; // No incoming messages = window never opened
+        const diff = Date.now() - new Date(lastIncoming.created_at).getTime();
+        return diff > 24 * 60 * 60 * 1000; // > 24 hours
+    }, [isMetaLine, messages]);
+
+    // Fetch Meta templates when line is Meta
+    useEffect(() => {
+        if (!isMetaLine || !open) return;
+        fetchMetaTemplates('line_meta').then(setMetaTemplates).catch(err => {
+            console.warn('[ChatWindow] Error fetching Meta templates:', err);
+        });
+    }, [isMetaLine, open]);
+
     // Handle line selection
     const handleSelectLine = async (lineId) => {
         setAssignedLineId(lineId);
@@ -155,6 +180,41 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
         } catch (err) {
             console.error('Error assigning line:', err);
             addToast?.('Error asignando línea', 'error');
+        }
+    };
+
+    // === SEND META TEMPLATE ===
+    const handleSelectMetaTemplate = (tpl) => {
+        setPendingMetaTemplate(tpl);
+        setShowMetaTemplatePicker(false);
+    };
+
+    const confirmSendMetaTemplate = async () => {
+        if (!pendingMetaTemplate || !patientPhone || sendingMetaTemplate) return;
+        setSendingMetaTemplate(true);
+        try {
+            const normalizedPhone = patientPhone.startsWith('549') ? patientPhone : `549${patientPhone}`;
+            await sendMetaTemplate({
+                to: normalizedPhone,
+                templateName: pendingMetaTemplate.name || pendingMetaTemplate.templateName,
+                languageCode: pendingMetaTemplate.language || 'es',
+                lineId: 'line_meta',
+            });
+            // Save to message history
+            const templateBody = pendingMetaTemplate.components?.find(c => c.type === 'BODY')?.text || pendingMetaTemplate.name;
+            await saveOutgoingMessage({
+                phone: patientPhone,
+                content: `📋 [Plantilla Meta] ${templateBody}`,
+                mediaType: 'text',
+                lineId: 'line_meta',
+            });
+            addToast?.('Plantilla enviada exitosamente ✅', 'success');
+            setPendingMetaTemplate(null);
+        } catch (err) {
+            console.error('Error sending Meta template:', err);
+            addToast?.('Error enviando plantilla: ' + err.message, 'error');
+        } finally {
+            setSendingMetaTemplate(false);
         }
     };
 
@@ -212,6 +272,11 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
     // ==========================================
     const handleSend = useCallback(async () => {
         if (!inputText.trim() || sending || !patientPhone) return;
+        // Block free-text sending when Meta line window expired
+        if (isMetaLine && isWindowExpired) {
+            addToast?.('⚠️ Ventana de 24hs expirada. Usá una plantilla oficial.', 'error');
+            return;
+        }
 
         const text = inputText.trim();
         setInputText('');
@@ -235,7 +300,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
         } finally {
             setSending(false);
         }
-    }, [inputText, sending, patientPhone, addToast, assignedLineId]);
+    }, [inputText, sending, patientPhone, addToast, assignedLineId, isMetaLine, isWindowExpired]);
 
     // ==========================================
     // ENVIAR IMAGEN
@@ -909,12 +974,47 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                     </div>
                 )}
 
+                {/* ===== META 24H EXPIRED BANNER ===== */}
+                {isMetaLine && isWindowExpired && (
+                    <div style={{
+                        background: 'linear-gradient(135deg, #FEF3C7, #FFFBEB)',
+                        borderTop: '1px solid #FDE68A',
+                        padding: '10px 16px',
+                        display: 'flex', alignItems: 'center', gap: '10px',
+                    }}>
+                        <AlertTriangle size={16} style={{ color: '#D97706', flexShrink: 0 }} />
+                        <div style={{ flex: 1 }}>
+                            <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 700, color: '#92400E' }}>
+                                Ventana de 24hs expirada — Línea Meta Business
+                            </p>
+                            <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#A16207' }}>
+                                Solo podés iniciar conversación con una plantilla oficial aprobada.
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setShowMetaTemplatePicker(true)}
+                            style={{
+                                padding: '6px 14px', borderRadius: '8px',
+                                background: 'linear-gradient(135deg, #25D366, #128C7E)',
+                                color: '#fff', border: 'none', cursor: 'pointer',
+                                fontSize: '0.75rem', fontWeight: 700,
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                boxShadow: '0 2px 6px rgba(37,211,102,0.3)',
+                                transition: 'all 0.15s',
+                            }}
+                        >
+                            <FileText size={14} /> Usar Plantilla
+                        </button>
+                    </div>
+                )}
+
                 {/* ===== COMPOSER ===== */}
                 <div style={{
                     background: '#F0F2F5',
                     padding: '10px 16px',
                     display: 'flex', alignItems: 'flex-end', gap: '8px',
                     borderTop: '1px solid #E9EDEF',
+                    ...(isMetaLine && isWindowExpired ? { opacity: 0.5, pointerEvents: 'none' } : {}),
                 }}>
                     {/* Hidden file input */}
                     <input
@@ -1406,6 +1506,229 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                         >
                             Cancelar
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* ===== META TEMPLATE PICKER ===== */}
+            {showMetaTemplatePicker && (
+                <div
+                    onClick={() => setShowMetaTemplatePicker(false)}
+                    style={{
+                        position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10020,
+                        background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(6px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                >
+                    <div
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                            background: '#fff', borderRadius: '16px',
+                            width: 'min(460px, 92vw)', maxHeight: '70vh',
+                            boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+                            animation: 'scaleIn 0.2s ease-out',
+                            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+                        }}
+                    >
+                        {/* Header */}
+                        <div style={{
+                            padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '10px',
+                            borderBottom: '1px solid #E2E8F0',
+                            background: 'linear-gradient(135deg, #25D366, #128C7E)',
+                        }}>
+                            <Shield size={20} color="#fff" />
+                            <div style={{ flex: 1 }}>
+                                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#fff' }}>
+                                    Plantillas Meta Oficiales
+                                </h3>
+                                <p style={{ margin: 0, fontSize: '0.72rem', color: 'rgba(255,255,255,0.8)' }}>
+                                    Seleccioná una plantilla para iniciar la conversación
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setShowMetaTemplatePicker(false)}
+                                style={{
+                                    width: '30px', height: '30px', borderRadius: '8px',
+                                    background: 'rgba(255,255,255,0.2)', border: 'none',
+                                    color: '#fff', cursor: 'pointer', display: 'flex',
+                                    alignItems: 'center', justifyContent: 'center',
+                                }}
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        {/* Template list */}
+                        <div style={{ overflowY: 'auto', flex: 1, padding: '12px' }}>
+                            {metaTemplates.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '30px', color: '#8696A0' }}>
+                                    <FileText size={32} style={{ opacity: 0.3, marginBottom: '10px' }} />
+                                    <p style={{ margin: 0, fontSize: '0.85rem' }}>No se encontraron plantillas</p>
+                                    <p style={{ margin: '4px 0 0', fontSize: '0.75rem', opacity: 0.7 }}>
+                                        Verificá las credenciales de la línea Meta
+                                    </p>
+                                </div>
+                            ) : (
+                                metaTemplates.map((tpl, idx) => (
+                                    <button
+                                        key={tpl.id || tpl.name || idx}
+                                        onClick={() => handleSelectMetaTemplate(tpl)}
+                                        style={{
+                                            width: '100%', textAlign: 'left',
+                                            padding: '12px 14px', marginBottom: '8px',
+                                            borderRadius: '12px', border: '1px solid #E2E8F0',
+                                            background: '#FAFBFC', cursor: 'pointer',
+                                            transition: 'all 0.15s',
+                                        }}
+                                        onMouseOver={e => { e.currentTarget.style.background = '#F0FFF4'; e.currentTarget.style.borderColor = '#25D366'; }}
+                                        onMouseOut={e => { e.currentTarget.style.background = '#FAFBFC'; e.currentTarget.style.borderColor = '#E2E8F0'; }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                            <FileText size={14} style={{ color: '#25D366' }} />
+                                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1E293B' }}>
+                                                {tpl.name || tpl.templateName}
+                                            </span>
+                                            <span style={{
+                                                fontSize: '0.62rem', padding: '1px 6px', borderRadius: '4px',
+                                                background: '#E2E8F0', color: '#64748B', fontWeight: 600,
+                                                textTransform: 'uppercase', marginLeft: 'auto',
+                                            }}>
+                                                {tpl.language || 'es'}
+                                            </span>
+                                        </div>
+                                        <p style={{
+                                            margin: 0, fontSize: '0.75rem', color: '#667781',
+                                            lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis',
+                                            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                                        }}>
+                                            {tpl.components?.find(c => c.type === 'BODY')?.text || 'Sin preview'}
+                                        </p>
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ===== META TEMPLATE COST CONFIRMATION MODAL ===== */}
+            {pendingMetaTemplate && (
+                <div
+                    onClick={() => setPendingMetaTemplate(null)}
+                    style={{
+                        position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10030,
+                        background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(6px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                >
+                    <div
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                            background: '#fff', borderRadius: '16px',
+                            width: 'min(440px, 90vw)',
+                            boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+                            animation: 'scaleIn 0.2s ease-out',
+                            overflow: 'hidden',
+                        }}
+                    >
+                        {/* Header */}
+                        <div style={{
+                            background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+                            padding: '14px 20px', display: 'flex', alignItems: 'center', gap: '10px',
+                        }}>
+                            <AlertTriangle size={20} color="#fff" />
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 700, color: '#fff' }}>
+                                    Confirmar Envío de Plantilla
+                                </h3>
+                                <p style={{ margin: 0, fontSize: '0.68rem', color: 'rgba(255,255,255,0.85)' }}>
+                                    WhatsApp Business API — Con Costo
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Body */}
+                        <div style={{ padding: '16px 20px' }}>
+                            {/* Template preview */}
+                            <div style={{
+                                background: '#F0FFF4', border: '1px solid #BBF7D0',
+                                borderRadius: '10px', padding: '12px 14px', marginBottom: '12px',
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                                    <FileText size={14} style={{ color: '#25D366' }} />
+                                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#166534' }}>
+                                        {pendingMetaTemplate.name || pendingMetaTemplate.templateName}
+                                    </span>
+                                </div>
+                                <p style={{ margin: 0, fontSize: '0.78rem', color: '#15803D', lineHeight: 1.4 }}>
+                                    {pendingMetaTemplate.components?.find(c => c.type === 'BODY')?.text || 'Sin preview'}
+                                </p>
+                            </div>
+
+                            {/* Cost warning */}
+                            <div style={{
+                                background: '#FFFBEB', border: '1px solid #FDE68A',
+                                borderRadius: '10px', padding: '12px 14px', marginBottom: '12px',
+                                display: 'flex', alignItems: 'flex-start', gap: '10px',
+                            }}>
+                                <AlertTriangle size={14} style={{ color: '#D97706', marginTop: '2px', flexShrink: 0 }} />
+                                <p style={{ margin: 0, fontSize: '0.75rem', color: '#92400E', lineHeight: 1.4 }}>
+                                    Esta plantilla tiene un <strong>costo por conversación</strong>.
+                                    Enviala <strong>una sola vez</strong> — cuando el paciente responda,
+                                    la ventana de 24hs se reabre y los mensajes son gratuitos.
+                                </p>
+                            </div>
+
+                            {/* Destination */}
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                padding: '8px 12px', background: '#F8FAFC', borderRadius: '8px',
+                                border: '1px solid #E2E8F0', fontSize: '0.78rem', color: '#64748B',
+                            }}>
+                                <Phone size={14} />
+                                <span>Destinatario: <strong style={{ color: '#1E293B' }}>{patientName || patientPhone}</strong></span>
+                            </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div style={{
+                            padding: '12px 20px 16px', display: 'flex',
+                            justifyContent: 'flex-end', gap: '10px',
+                            borderTop: '1px solid #F1F5F9',
+                        }}>
+                            <button
+                                onClick={() => setPendingMetaTemplate(null)}
+                                style={{
+                                    padding: '8px 18px', borderRadius: '10px',
+                                    background: 'none', border: '1px solid #E2E8F0',
+                                    cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
+                                    color: '#64748B', transition: 'all 0.15s',
+                                }}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={confirmSendMetaTemplate}
+                                disabled={sendingMetaTemplate}
+                                style={{
+                                    padding: '8px 20px', borderRadius: '10px',
+                                    background: sendingMetaTemplate
+                                        ? '#94A3B8'
+                                        : 'linear-gradient(135deg, #25D366, #128C7E)',
+                                    color: '#fff', border: 'none', cursor: sendingMetaTemplate ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.82rem', fontWeight: 700,
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                    boxShadow: '0 2px 6px rgba(37,211,102,0.3)',
+                                    transition: 'all 0.15s',
+                                }}
+                            >
+                                {sendingMetaTemplate ? (
+                                    <><RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> Enviando...</>
+                                ) : (
+                                    <><Send size={14} /> Sí, enviar plantilla</>
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
