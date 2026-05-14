@@ -1798,42 +1798,63 @@ export default function MessagingPanel({ addToast, currentUser }) {
                                     <p style={{ margin: 0, fontSize: '0.82rem' }}>No se encontraron plantillas</p>
                                 </div>
                             ) : (
-                                metaTemplates.map((tpl, idx) => (
-                                    <button
-                                        key={tpl.id || tpl.name || idx}
-                                        onClick={() => handleSelectMetaTemplate(tpl)}
-                                        style={{
-                                            width: '100%', textAlign: 'left',
-                                            padding: '10px 12px', marginBottom: '6px',
-                                            borderRadius: '10px', border: '1px solid #E2E8F0',
-                                            background: '#FAFBFC', cursor: 'pointer',
-                                            transition: 'all 0.15s',
-                                        }}
-                                        onMouseOver={e => { e.currentTarget.style.background = '#F0FFF4'; e.currentTarget.style.borderColor = '#25D366'; }}
-                                        onMouseOut={e => { e.currentTarget.style.background = '#FAFBFC'; e.currentTarget.style.borderColor = '#E2E8F0'; }}
-                                    >
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                                            <FileText size={13} style={{ color: '#25D366' }} />
-                                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1E293B' }}>
-                                                {tpl.name || tpl.templateName}
-                                            </span>
-                                            <span style={{
-                                                fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px',
-                                                background: '#E2E8F0', color: '#64748B', fontWeight: 600,
-                                                textTransform: 'uppercase', marginLeft: 'auto',
+                                metaTemplates.map((tpl, idx) => {
+                                    const isApproved = tpl.status === 'APPROVED';
+                                    const isPending = tpl.status === 'PENDING';
+                                    const statusCfg = isApproved
+                                        ? { label: 'Aprobada', bg: '#DCFCE7', color: '#166534' }
+                                        : isPending
+                                            ? { label: 'Pendiente', bg: '#FEF3C7', color: '#92400E' }
+                                            : { label: tpl.status || '?', bg: '#FEE2E2', color: '#991B1B' };
+
+                                    return (
+                                        <button
+                                            key={tpl.id || tpl.name || idx}
+                                            onClick={() => isApproved && handleSelectMetaTemplate(tpl)}
+                                            disabled={!isApproved}
+                                            style={{
+                                                width: '100%', textAlign: 'left',
+                                                padding: '10px 12px', marginBottom: '6px',
+                                                borderRadius: '10px',
+                                                border: `1px solid ${isApproved ? '#E2E8F0' : '#F1F5F9'}`,
+                                                background: isApproved ? '#FAFBFC' : '#F8FAFC',
+                                                cursor: isApproved ? 'pointer' : 'not-allowed',
+                                                opacity: isApproved ? 1 : 0.6,
+                                                transition: 'all 0.15s',
+                                            }}
+                                            onMouseOver={e => { if (isApproved) { e.currentTarget.style.background = '#F0FFF4'; e.currentTarget.style.borderColor = '#25D366'; } }}
+                                            onMouseOut={e => { if (isApproved) { e.currentTarget.style.background = '#FAFBFC'; e.currentTarget.style.borderColor = '#E2E8F0'; } }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                                <FileText size={13} style={{ color: isApproved ? '#25D366' : '#94A3B8' }} />
+                                                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: isApproved ? '#1E293B' : '#94A3B8' }}>
+                                                    {tpl.name || tpl.templateName}
+                                                </span>
+                                                <span style={{
+                                                    fontSize: '0.55rem', padding: '1px 5px', borderRadius: '4px',
+                                                    background: statusCfg.bg, color: statusCfg.color, fontWeight: 700,
+                                                    textTransform: 'uppercase', marginLeft: 'auto',
+                                                }}>
+                                                    {statusCfg.label}
+                                                </span>
+                                                <span style={{
+                                                    fontSize: '0.55rem', padding: '1px 5px', borderRadius: '4px',
+                                                    background: '#E2E8F0', color: '#64748B', fontWeight: 600,
+                                                    textTransform: 'uppercase',
+                                                }}>
+                                                    {tpl.language || 'es'}
+                                                </span>
+                                            </div>
+                                            <p style={{
+                                                margin: 0, fontSize: '0.72rem', color: isApproved ? '#667781' : '#CBD5E1',
+                                                lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis',
+                                                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
                                             }}>
-                                                {tpl.language || 'es'}
-                                            </span>
-                                        </div>
-                                        <p style={{
-                                            margin: 0, fontSize: '0.72rem', color: '#667781',
-                                            lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis',
-                                            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-                                        }}>
-                                            {tpl.components?.find(c => c.type === 'BODY')?.text || 'Sin preview'}
-                                        </p>
-                                    </button>
-                                ))
+                                                {tpl.components?.find(c => c.type === 'BODY')?.text || 'Sin preview'}
+                                            </p>
+                                        </button>
+                                    );
+                                })
                             )}
                         </div>
                     </div>

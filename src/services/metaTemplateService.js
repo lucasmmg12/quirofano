@@ -24,7 +24,16 @@ export async function fetchMetaTemplates(lineId = 'line_b') {
         if (error) throw error;
         if (!data?.success) throw new Error(data?.error || 'Error desconocido');
 
-        return data.templates || [];
+        const templates = data.templates || [];
+        // Ordenar: APPROVED primero, luego el resto (PENDING, REJECTED, etc.)
+        const statusOrder = { APPROVED: 0, PENDING: 1, REJECTED: 2 };
+        templates.sort((a, b) => {
+            const orderA = statusOrder[a.status] ?? 3;
+            const orderB = statusOrder[b.status] ?? 3;
+            return orderA - orderB;
+        });
+
+        return templates;
     } catch (err) {
         console.error('[metaTemplateService] Error fetching templates:', err);
         throw err;
