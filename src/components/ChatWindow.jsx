@@ -976,47 +976,48 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                     </div>
                 )}
 
-                {/* ===== META 24H EXPIRED BANNER ===== */}
-                {isMetaLine && isWindowExpired && (
+                {/* ===== META 24H EXPIRED — FULL CTA REPLACEMENT ===== */}
+                {isMetaLine && isWindowExpired ? (
                     <div style={{
-                        background: 'linear-gradient(135deg, #FEF3C7, #FFFBEB)',
-                        borderTop: '1px solid #FDE68A',
-                        padding: '10px 16px',
-                        display: 'flex', alignItems: 'center', gap: '10px',
+                        borderTop: '2px solid #FDE68A',
+                        background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
+                        padding: '16px 20px',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px',
                     }}>
-                        <AlertTriangle size={16} style={{ color: '#D97706', flexShrink: 0 }} />
-                        <div style={{ flex: 1 }}>
-                            <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 700, color: '#92400E' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <AlertTriangle size={16} style={{ color: '#D97706' }} />
+                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#92400E' }}>
                                 Ventana de 24hs expirada — Línea Meta Business
-                            </p>
-                            <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#A16207' }}>
-                                Solo podés iniciar conversación con una plantilla oficial aprobada.
-                            </p>
+                            </span>
                         </div>
+                        <p style={{ margin: 0, fontSize: '0.72rem', color: '#A16207', textAlign: 'center', lineHeight: 1.4 }}>
+                            Pasaron más de 24hs desde el último mensaje del paciente. Solo podés reanudar la conversación con una plantilla oficial aprobada por Meta.
+                        </p>
                         <button
                             onClick={() => setShowMetaTemplatePicker(true)}
                             style={{
-                                padding: '6px 14px', borderRadius: '8px',
-                                background: 'linear-gradient(135deg, #25D366, #128C7E)',
+                                padding: '10px 28px', borderRadius: '10px',
+                                background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
                                 color: '#fff', border: 'none', cursor: 'pointer',
-                                fontSize: '0.75rem', fontWeight: 700,
-                                display: 'flex', alignItems: 'center', gap: '6px',
-                                boxShadow: '0 2px 6px rgba(37,211,102,0.3)',
-                                transition: 'all 0.15s',
+                                fontSize: '0.85rem', fontWeight: 700,
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                boxShadow: '0 4px 12px rgba(37,211,102,0.35)',
+                                transition: 'all 0.2s',
                             }}
+                            onMouseOver={e => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(37,211,102,0.45)'; }}
+                            onMouseOut={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(37,211,102,0.35)'; }}
                         >
-                            <FileText size={14} /> Usar Plantilla
+                            <FileText size={16} />
+                            Enviar Plantilla Oficial
                         </button>
                     </div>
-                )}
-
-                {/* ===== COMPOSER ===== */}
+                ) : (
+                /* ===== NORMAL COMPOSER ===== */
                 <div style={{
                     background: '#F0F2F5',
                     padding: '10px 16px',
                     display: 'flex', alignItems: 'flex-end', gap: '8px',
                     borderTop: '1px solid #E9EDEF',
-                    ...(isMetaLine && isWindowExpired ? { opacity: 0.5, pointerEvents: 'none' } : {}),
                 }}>
                     {/* Hidden file input */}
                     <input
@@ -1295,6 +1296,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                         </>
                     )}
                 </div>
+                )}
             </div>
 
             {/* ===== IMAGE LIGHTBOX ===== */}
