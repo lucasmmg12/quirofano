@@ -273,6 +273,30 @@ PATRONES SQL correctos:
 - SIEMPRE mostrá el mensaje antes de enviar y pedí confirmación.
 - Buscá primero el teléfono del paciente en la DB.
 
+## LÍNEAS WHATSAPP Y META BUSINESS API (MUY IMPORTANTE)
+El sistema tiene múltiples líneas de WhatsApp. Las principales son:
+- **line_a** (terminación 1691) — Línea estándar BuilderBot. Sin restricciones de ventana.
+- **line_b** (terminación 9077) — **Línea Meta WhatsApp Business API**. Tiene restricción de ventana de 24hs.
+
+### Regla de la Ventana de 24hs (Meta Policy)
+Meta exige que después de **24 horas sin respuesta del paciente**, NO se pueden enviar mensajes de texto libre por la línea 9077 (line_b).
+- Si el paciente respondió en las últimas 24hs → se puede enviar texto libre normalmente.
+- Si pasaron más de 24hs sin respuesta → **SOLO se puede enviar una plantilla oficial** aprobada por Meta.
+- Las plantillas oficiales son mensajes pre-aprobados por Meta para re-iniciar conversaciones.
+
+### Cómo se maneja en el sistema:
+1. En el módulo de **Mensajería**, cuando un operador abre un chat asignado a line_b y la ventana está expirada:
+   - El campo de texto se reemplaza por un botón **"Enviar Plantilla Oficial"**.
+   - Al hacer click, se abre un selector con las plantillas disponibles (solo las que tienen status **APPROVED** se pueden usar).
+2. Las plantillas actuales son: `continuar_gestion`, `meta_reitero`, `meta_confirmacion`.
+3. Las plantillas con status **PENDING** están esperando aprobación de Meta y no se pueden enviar.
+
+### Cuando el usuario pregunte sobre esto:
+- Explicale que la línea 9077 es Meta API y tiene la restricción de 24hs.
+- Si quiere enviar un mensaje a alguien que no respondió hace más de 24hs en esa línea, debe ir a **Mensajería**, abrir el chat del paciente, y usar el botón **"Enviar Plantilla Oficial"**.
+- **Desde Beto NO se pueden enviar mensajes por line_b si la ventana expiró** — el sistema lo bloqueará automáticamente y le dirá al usuario que use Mensajería.
+- Si el paciente está en line_a (1691), no hay restricción de ventana.
+
 ## NAVEGACIÓN
 - Si el usuario pide ir a un módulo, usá \`navigate_to\`.
 - Tu respuesta debe incluir: \`[ACTION:navigate:modulo]\` para que el frontend redirija.
@@ -766,11 +790,66 @@ async function sendWhatsApp(args: Record<string, unknown>): Promise<string> {
     if (phone.length === 11 && phone.startsWith('0')) phone = '549' + phone.slice(1);
 
     try {
-        // Call the existing WhatsApp send function
+        // ── META 24H WINDOW CHECK ──
+        // Check if this contact is assigned to a Meta API line (line_b)
+        // and if the 24h interaction window has expired
+        const { data: contactData } = await supabase
+            .from('crm_contacts')
+            .select('assigned_line_id')
+            .eq('phone', phone)
+            .maybeSingle();
+
+        const assignedLine = contactData?.assigned_line_id || 'line_a';
+
+        // Check if the assigned line is a Meta API line
+        if (assignedLine) {
+            const { data: lineData } = await supabase
+                .from('whatsapp_lines')
+                .select('is_meta, label, phone')
+                .eq('id', assignedLine)
+                .maybeSingle();
+
+            if (lineData?.is_meta) {
+                // Check the 24h window: find the last incoming message from this contact
+                const { data: lastIncoming } = await supabase
+                    .from('whatsapp_messages')
+                    .select('created_at')
+                    .eq('phone', phone)
+                    .eq('direction', 'incoming')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                const isWindowExpired = !lastIncoming ||
+                    (Date.now() - new Date(lastIncoming.created_at).getTime() > 24 * 60 * 60 * 1000);
+
+                if (isWindowExpired) {
+                    return JSON.stringify({
+                        error: 'meta_24h_expired',
+                        action: 'meta_window_blocked',
+                        message: `⚠️ No se puede enviar mensaje de texto libre a este paciente.\n\n` +
+                            `El contacto está asignado a la línea **${lineData.label}** (+${lineData.phone}) que es **Meta WhatsApp Business API**.\n\n` +
+                            `Pasaron más de 24hs desde el último mensaje del paciente, por lo que Meta bloquea los mensajes de texto libre.\n\n` +
+                            `**¿Qué hacer?**\n` +
+                            `1. Andá al módulo de **Mensajería** [ACTION:navigate:mensajeria]\n` +
+                            `2. Buscá al paciente en la lista\n` +
+                            `3. Hacé click en el botón verde **"Enviar Plantilla Oficial"**\n` +
+                            `4. Seleccioná una de las plantillas aprobadas por Meta\n\n` +
+                            `Una vez que el paciente responda, la ventana de 24hs se reabre y se puede chatear normalmente.`,
+                        paciente,
+                        telefono: phone,
+                        linea: lineData.label,
+                    });
+                }
+            }
+        }
+
+        // ── SEND MESSAGE (window is open or non-Meta line) ──
         const { data, error } = await supabase.functions.invoke('send-whatsapp', {
             body: {
                 to: phone,
                 message: mensaje,
+                lineId: assignedLine,
                 context: `Enviado por Beto para ${paciente}`
             }
         });
