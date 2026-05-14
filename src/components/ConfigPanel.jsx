@@ -352,8 +352,26 @@ export default function ConfigPanel({ addToast }) {
                                             }
                                         </div>
                                         <div style={{ flex: 1 }}>
-                                            <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1E293B' }}>
-                                                {line.label}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1E293B' }}>
+                                                    {line.label}
+                                                </span>
+                                                {line.is_meta && (
+                                                    <span
+                                                        title="Línea vinculada a Meta WhatsApp Business API — Requiere plantillas si la ventana de 24hs expiró"
+                                                        style={{
+                                                            display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                            padding: '2px 8px', borderRadius: '6px',
+                                                            background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                                                            color: '#fff', fontSize: '0.6rem', fontWeight: 800,
+                                                            letterSpacing: '0.3px', textTransform: 'uppercase',
+                                                            boxShadow: '0 1px 4px rgba(37,211,102,0.3)',
+                                                        }}
+                                                    >
+                                                        <Shield size={9} />
+                                                        Meta API
+                                                    </span>
+                                                )}
                                             </div>
                                             <div style={{ fontSize: '0.73rem', color: '#64748B', fontFamily: 'monospace' }}>
                                                 +{line.phone} · {line.id}
@@ -508,6 +526,26 @@ export default function ConfigPanel({ addToast }) {
                                                 </button>
                                             </div>
                                         </div>
+
+                                        {/* Meta API info note */}
+                                        {line.is_meta && (
+                                            <div style={{
+                                                display: 'flex', alignItems: 'flex-start', gap: '8px',
+                                                padding: '10px 12px', borderRadius: '8px',
+                                                background: 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%)',
+                                                border: '1px solid #BBF7D0',
+                                            }}>
+                                                <Shield size={14} style={{ color: '#16A34A', marginTop: '1px', flexShrink: 0 }} />
+                                                <div>
+                                                    <p style={{ margin: 0, fontSize: '0.72rem', fontWeight: 700, color: '#166534' }}>
+                                                        Línea Meta WhatsApp Business API
+                                                    </p>
+                                                    <p style={{ margin: '2px 0 0', fontSize: '0.68rem', color: '#15803D', lineHeight: 1.4 }}>
+                                                        Si pasan más de 24hs sin respuesta del paciente, solo se podrá enviar una plantilla oficial aprobada por Meta. Los mensajes de texto libre se bloquean automáticamente.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             );
