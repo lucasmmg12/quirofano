@@ -288,7 +288,7 @@ Meta exige que después de **24 horas sin respuesta del paciente**, NO se pueden
 1. En el módulo de **Mensajería**, cuando un operador abre un chat asignado a line_b y la ventana está expirada:
    - El campo de texto se reemplaza por un botón **"Enviar Plantilla Oficial"**.
    - Al hacer click, se abre un selector con las plantillas disponibles (solo las que tienen status **APPROVED** se pueden usar).
-2. Las plantillas actuales son: `continuar_gestion`, `meta_reitero`, `meta_confirmacion`.
+2. Las plantillas actuales son: "continuar_gestion", "meta_reitero", "meta_confirmacion".
 3. Las plantillas con status **PENDING** están esperando aprobación de Meta y no se pueden enviar.
 
 ### Cuando el usuario pregunte sobre esto:
