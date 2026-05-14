@@ -155,7 +155,9 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
     // === META 24H WINDOW LOGIC ===
     const isMetaLine = currentLine?.is_meta === true;
     const isWindowExpired = useMemo(() => {
-        if (!isMetaLine || messages.length === 0) return false;
+        if (!isMetaLine) return false;
+        // Sin mensajes en línea Meta = nunca hubo conversación = ventana expirada
+        if (messages.length === 0) return true;
         const lastIncoming = [...messages].reverse().find(m => m.direction === 'incoming');
         if (!lastIncoming) return true; // No incoming messages = window never opened
         const diff = Date.now() - new Date(lastIncoming.created_at).getTime();
@@ -165,10 +167,10 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
     // Fetch Meta templates when line is Meta
     useEffect(() => {
         if (!isMetaLine || !open) return;
-        fetchMetaTemplates('line_meta').then(setMetaTemplates).catch(err => {
+        fetchMetaTemplates(assignedLineId).then(setMetaTemplates).catch(err => {
             console.warn('[ChatWindow] Error fetching Meta templates:', err);
         });
-    }, [isMetaLine, open]);
+    }, [isMetaLine, open, assignedLineId]);
 
     // Handle line selection
     const handleSelectLine = async (lineId) => {
@@ -198,7 +200,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                 to: normalizedPhone,
                 templateName: pendingMetaTemplate.name || pendingMetaTemplate.templateName,
                 languageCode: pendingMetaTemplate.language || 'es',
-                lineId: 'line_meta',
+                lineId: assignedLineId,
             });
             // Save to message history
             const templateBody = pendingMetaTemplate.components?.find(c => c.type === 'BODY')?.text || pendingMetaTemplate.name;
@@ -206,7 +208,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                 phone: patientPhone,
                 content: `📋 [Plantilla Meta] ${templateBody}`,
                 mediaType: 'text',
-                lineId: 'line_meta',
+                lineId: assignedLineId,
             });
             addToast?.('Plantilla enviada exitosamente ✅', 'success');
             setPendingMetaTemplate(null);

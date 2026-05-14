@@ -12,7 +12,7 @@ import { supabase } from '../lib/supabase';
  * @param {string} lineId — ID de la línea Meta (ej: 'line_meta')
  * @returns {Promise<Array>} — Lista de templates aprobadas
  */
-export async function fetchMetaTemplates(lineId = 'line_meta') {
+export async function fetchMetaTemplates(lineId = 'line_b') {
     try {
         const { data, error } = await supabase.functions.invoke('send-whatsapp', {
             body: {
@@ -41,7 +41,7 @@ export async function fetchMetaTemplates(lineId = 'line_meta') {
  * @param {string} [params.lineId] — ID de la línea Meta (default: 'line_meta')
  * @returns {Promise<Object>} — Respuesta del envío
  */
-export async function sendMetaTemplate({ to, templateName, languageCode = 'es', components, lineId = 'line_meta' }) {
+export async function sendMetaTemplate({ to, templateName, languageCode = 'es', components, lineId = 'line_b' }) {
     try {
         const { data, error } = await supabase.functions.invoke('send-whatsapp', {
             body: {
