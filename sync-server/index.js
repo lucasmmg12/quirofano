@@ -1754,6 +1754,162 @@ async function syncConsultasGuardia(db) {
     return summary;
 }
 
+// ═══════════════════════════════════════════════════
+// SYNC RECEPCIONES VISITAS — SQL Server → Supabase
+// Fuente: TABLEAU_Visitas ordenadas por agenda (CHQ + ECO)
+// ═══════════════════════════════════════════════════
+async function syncRecepcionesVisitas(db) {
+    console.log('\n🏥 [RECEPCIONES] Extrayendo visitas CHQ/ECO de SALUS...');
+
+    const req = db.request();
+    req.timeout = 120000;
+    const result = await req.query(`
+        SELECT 
+              [TIPO AGENDA]
+              ,[FECHA]
+              ,[HORA]
+              ,REPLACE(REPLACE([TIPO VISITA], CHAR(13), ' '), CHAR(10), ' ') AS [TIPO VISITA]
+              ,[NHC]
+              ,[NIF] AS [DNI]
+              ,[PACIENTE]
+              ,[CLIENTE] AS [Obra Social]
+              ,REPLACE(REPLACE([MOTIVO], CHAR(13), ' '), CHAR(10), ' ') AS [MOTIVO]
+              
+              -- LÓGICA DE ASISTENCIA: si ayer y nula → Ausente
+              ,CASE 
+                  WHEN CAST([FECHA] AS DATE) = CAST(DATEADD(day, -1, GETDATE()) AS DATE) AND [ASISTENCIA] IS NULL THEN 'Ausente'
+                  ELSE [ASISTENCIA] 
+               END AS [ASISTENCIA]
+
+              ,[MEDICO]
+              ,[DIRECCION PACIENTE]
+              ,[POBLACION PACIENTE] AS [Departamento]
+              
+              -- LIMPIEZA TELEFONO 1
+              ,CASE 
+                  WHEN NULLIF(LTRIM(RTRIM([TELEFONO1 PACIENTE])), '') IS NULL THEN [TELEFONO1 PACIENTE] 
+                  WHEN [TELEFONO1 PACIENTE] LIKE '549%' THEN [TELEFONO1 PACIENTE] 
+                  WHEN [TELEFONO1 PACIENTE] LIKE '15%' THEN STUFF([TELEFONO1 PACIENTE], 1, 2, '549264') 
+                  ELSE '549' + [TELEFONO1 PACIENTE] 
+               END AS [TELEFONO1 PACIENTE]
+               
+              -- LIMPIEZA TELEFONO 2
+              ,CASE 
+                  WHEN NULLIF(LTRIM(RTRIM([TELEFONO2 PACIENTE])), '') IS NULL THEN [TELEFONO2 PACIENTE] 
+                  WHEN [TELEFONO2 PACIENTE] LIKE '549%' THEN [TELEFONO2 PACIENTE] 
+                  WHEN [TELEFONO2 PACIENTE] LIKE '15%' THEN STUFF([TELEFONO2 PACIENTE], 1, 2, '549264') 
+                  ELSE '549' + [TELEFONO2 PACIENTE] 
+               END AS [TELEFONO2 PACIENTE]
+
+              ,REPLACE(REPLACE([COMENTARIOS], CHAR(13), ' '), CHAR(10), ' ') AS [COMENTARIOS]
+              ,[ESPECIALIDAD]
+              ,[Centro]
+          FROM [SALUS].[dbo].[TABLEAU_Visitas ordenadas por agenda]
+          WHERE [FECHA] >= '20260515'
+            AND (
+                  [TIPO VISITA] LIKE '%(CHQ) CHEQUEO PREVENTIVO%' 
+                  OR [TIPO VISITA] LIKE '%(ECO)%'
+                );
+    `);
+    console.log(`   📥 ${result.recordset.length} registros extraídos`);
+
+    if (result.recordset.length === 0) {
+        return { total: 0, inserted: 0, skipped: 0 };
+    }
+
+    // Transformar filas
+    const records = [];
+    for (const r of result.recordset) {
+        const paciente = r.PACIENTE?.trim();
+        if (!paciente) continue;
+
+        const fecha = formatDate(r.FECHA);
+        if (!fecha) continue;
+
+        // Normalizar teléfonos (ya vienen limpios del SQL, pero aseguramos formato)
+        const tel1Raw = r['TELEFONO1 PACIENTE'] ? String(r['TELEFONO1 PACIENTE']).replace(/\D/g, '') : null;
+        const tel2Raw = r['TELEFONO2 PACIENTE'] ? String(r['TELEFONO2 PACIENTE']).replace(/\D/g, '') : null;
+
+        // Extraer hora como string
+        let hora = null;
+        if (r.HORA) {
+            if (r.HORA instanceof Date) {
+                const h = r.HORA.getUTCHours();
+                const mn = r.HORA.getUTCMinutes();
+                hora = `${String(h).padStart(2, '0')}:${String(mn).padStart(2, '0')}`;
+            } else {
+                const timeStr = String(r.HORA);
+                const hMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
+                if (hMatch) hora = `${hMatch[1].padStart(2, '0')}:${hMatch[2]}`;
+            }
+        }
+
+        records.push({
+            tipo_agenda: r['TIPO AGENDA']?.trim() || null,
+            fecha,
+            hora,
+            tipo_visita: r['TIPO VISITA']?.trim() || null,
+            nhc: r.NHC ? String(r.NHC).trim() : null,
+            dni: r.DNI ? String(r.DNI).trim() : null,
+            paciente,
+            obra_social: r['Obra Social']?.trim() || null,
+            motivo: r.MOTIVO?.trim() || null,
+            asistencia: r.ASISTENCIA?.trim() || null,
+            medico: r.MEDICO?.trim() || null,
+            direccion: r['DIRECCION PACIENTE']?.trim() || null,
+            departamento: r.Departamento?.trim() || null,
+            telefono1: tel1Raw || null,
+            telefono2: tel2Raw || null,
+            comentarios: r.COMENTARIOS?.trim() || null,
+            especialidad: r.ESPECIALIDAD?.trim() || null,
+            centro: r.Centro?.trim() || null,
+        });
+    }
+
+    console.log(`   📦 ${records.length} registros válidos`);
+
+    // Estrategia: delete-insert para el rango de fechas activo
+    // Detectar rango de fechas en los datos
+    const fechas = [...new Set(records.map(r => r.fecha))].sort();
+    const fechaMin = fechas[0];
+    const fechaMax = fechas[fechas.length - 1];
+
+    const { error: delError } = await supabase
+        .from('recepciones_visitas')
+        .delete()
+        .gte('fecha', fechaMin)
+        .lte('fecha', fechaMax);
+
+    if (delError) {
+        console.error(`   ⚠️ Error al limpiar rango:`, delError.message);
+    } else {
+        console.log(`   🗑️ Datos limpiados (${fechaMin} a ${fechaMax})`);
+    }
+
+    // Insert en lotes
+    let inserted = 0, skipped = 0;
+    const BATCH = 100;
+
+    for (let i = 0; i < records.length; i += BATCH) {
+        const batch = records.slice(i, i + BATCH);
+        const { data, error } = await supabase
+            .from('recepciones_visitas')
+            .insert(batch)
+            .select('id');
+
+        if (error) {
+            console.error(`   ❌ Batch ${Math.floor(i / BATCH) + 1} error:`, error.message);
+            skipped += batch.length;
+        } else if (data) {
+            inserted += data.length;
+        }
+    }
+
+    const summary = { total: result.recordset.length, inserted, skipped, fechaMin, fechaMax };
+    console.log(`   ✅ Recepciones: ${inserted} registros sincronizados, ${skipped} errores (${fechaMin} a ${fechaMax})`);
+    return summary;
+}
+
 // ENDPOINT PRINCIPAL: SYNC TODO
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 let syncInProgress = false;
@@ -1849,6 +2005,13 @@ app.get('/api/salus/sync-all', async (req, res) => {
             results.consultasGuardia = { error: err.message };
         }
 
+        try {
+            results.recepciones = await syncRecepcionesVisitas(db);
+        } catch (err) {
+            console.error('Error en recepciones:', err.message);
+            results.recepciones = { error: err.message };
+        }
+
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`\n–… ▬▬▬▬▬ SINCRONIZACIÓN COMPLETADA en ${elapsed}s ▬▬▬▬▬ \n`);
 
@@ -1936,6 +2099,11 @@ app.get('/api/salus/sync/laboratorios', async (req, res) => {
 
 app.get('/api/salus/sync/consultas-guardia', async (req, res) => {
     try { const db = await getPool(); res.json({ success: true, results: await syncConsultasGuardia(db) }); }
+    catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+app.get('/api/salus/sync/recepciones', async (req, res) => {
+    try { const db = await getPool(); res.json({ success: true, results: await syncRecepcionesVisitas(db) }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
