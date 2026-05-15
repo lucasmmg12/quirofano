@@ -162,6 +162,21 @@ export default function ConsultasPanel() {
         return { total, especialidades: especialidades.length, obrasSociales: obrasSociales.length, promDiario, dias: diasUnicos.length };
     }, [filtered]);
 
+    // Helper: normalizar especialidad agrupando (NEO) como NEONATOLOGIA
+    const normalizeEsp = (r) => {
+        if (r.agenda?.trim().startsWith('(NEO)')) return 'NEONATOLOGIA';
+        return r.visita_especialidad?.trim() || 'OTRO';
+    };
+
+    // Helper: normalizar obra social en 3 categorías
+    const normalizeOS = (cliente) => {
+        if (!cliente) return 'Particulares';
+        const trimmed = cliente.trim();
+        if (trimmed === '001 - PROVINCIA') return 'OSP';
+        if (/^\d/.test(trimmed)) return 'Prepagas';
+        return 'Particulares';
+    };
+
     // Group by date
     const porDia = useMemo(() => {
         const map = {};
@@ -169,9 +184,9 @@ export default function ConsultasPanel() {
             const key = r.fecha_visita;
             if (!map[key]) map[key] = { fecha: key, total: 0, byEsp: {}, byOS: {} };
             map[key].total++;
-            const esp = r.visita_especialidad?.trim() || 'OTRO';
+            const esp = normalizeEsp(r);
             map[key].byEsp[esp] = (map[key].byEsp[esp] || 0) + 1;
-            const os = r.cliente || 'SIN OS';
+            const os = normalizeOS(r.cliente);
             map[key].byOS[os] = (map[key].byOS[os] || 0) + 1;
         });
         return Object.values(map).sort((a, b) => a.fecha.localeCompare(b.fecha));
@@ -186,25 +201,27 @@ export default function ConsultasPanel() {
             const diff = d.getDate() - day + (day === 0 ? -6 : 1);
             const monday = new Date(d.setDate(diff));
             const key = monday.toISOString().split('T')[0];
-            if (!map[key]) map[key] = { semana: key, total: 0, byEsp: {} };
+            if (!map[key]) map[key] = { semana: key, total: 0, byEsp: {}, byOS: {} };
             map[key].total++;
-            const esp = r.visita_especialidad?.trim() || 'OTRO';
+            const esp = normalizeEsp(r);
             map[key].byEsp[esp] = (map[key].byEsp[esp] || 0) + 1;
+            const os = normalizeOS(r.cliente);
+            map[key].byOS[os] = (map[key].byOS[os] || 0) + 1;
         });
         return Object.values(map).sort((a, b) => a.semana.localeCompare(b.semana));
     }, [filtered]);
 
-    // Top OS
+    // Top OS (agrupado en 3 categorías)
     const topOS = useMemo(() => {
         const map = {};
-        filtered.forEach(r => { map[r.cliente] = (map[r.cliente] || 0) + 1; });
-        return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 10);
+        filtered.forEach(r => { const os = normalizeOS(r.cliente); map[os] = (map[os] || 0) + 1; });
+        return Object.entries(map).sort((a, b) => b[1] - a[1]);
     }, [filtered]);
 
-    // Especialidades list
+    // Especialidades list (NEO agrupado)
     const especialidades = useMemo(() => {
         const map = {};
-        data.forEach(r => { const e = r.visita_especialidad?.trim(); if (e) map[e] = (map[e] || 0) + 1; });
+        data.forEach(r => { const e = normalizeEsp(r); if (e) map[e] = (map[e] || 0) + 1; });
         return Object.entries(map).sort((a, b) => b[1] - a[1]);
     }, [data]);
 
@@ -439,29 +456,83 @@ export default function ConsultasPanel() {
                         </div>
                     )}
 
-                    {/* Weekly view */}
-                    {vista === 'semana' && (
-                        <div style={{ background: '#fff', border: '1px solid #F1F5F9', borderRadius: '16px', padding: '20px', marginBottom: '20px' }}>
-                            <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: '0 0 16px', color: '#1E293B' }}>📅 Consultas por Semana</h3>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-                                {porSemana.map(s => (
-                                    <div key={s.semana} style={{ background: '#F8FAFC', borderRadius: '12px', padding: '14px', border: '1px solid #E2E8F0' }}>
-                                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#4F46E5', marginBottom: '6px' }}>Sem. {formatWeek(s.semana)}</div>
-                                        <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1E293B' }}>{s.total}</div>
-                                        <div style={{ fontSize: '0.68rem', color: '#94A3B8' }}>consultas</div>
-                                        <div style={{ marginTop: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                            {Object.entries(s.byEsp).sort((a, b) => b[1] - a[1]).map(([esp, cnt]) => (
-                                                <span key={esp} style={{
-                                                    padding: '2px 6px', borderRadius: '4px', fontSize: '0.62rem', fontWeight: 600,
-                                                    background: (ESP_COLORS[esp] || '#94A3B8') + '18', color: ESP_COLORS[esp] || '#64748B',
-                                                }}>{esp.substring(0, 4)} {cnt}</span>
+                    {/* Weekly view — tabla estilo Excel */}
+                    {vista === 'semana' && (() => {
+                        const allEsps = [...new Set(porSemana.flatMap(s => Object.keys(s.byEsp)))];
+                        const espTotals = {};
+                        porSemana.forEach(s => { Object.entries(s.byEsp).forEach(([e, c]) => { espTotals[e] = (espTotals[e] || 0) + c; }); });
+                        const sortedEsps = allEsps.sort((a, b) => (espTotals[b] || 0) - (espTotals[a] || 0));
+                        const OS_CATS = ['OSP', 'Prepagas', 'Particulares'];
+                        const osTotals = {};
+                        porSemana.forEach(s => { Object.entries(s.byOS || {}).forEach(([o, c]) => { osTotals[o] = (osTotals[o] || 0) + c; }); });
+                        return (
+                            <div style={{ background: '#fff', border: '1px solid #F1F5F9', borderRadius: '16px', padding: '20px', marginBottom: '20px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                                    <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: 0, color: '#1E293B' }}>📅 Consultas por Semana</h3>
+                                    <span style={{ fontSize: '0.72rem', color: '#94A3B8', fontWeight: 600 }}>{porSemana.length} semanas · {filtered.length.toLocaleString()} consultas</span>
+                                </div>
+                                <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
+                                        <thead>
+                                            <tr style={{ background: 'linear-gradient(135deg, #312E81, #4F46E5)' }}>
+                                                <th style={{ padding: '8px 10px', color: '#fff', fontWeight: 700, textAlign: 'left', minWidth: '100px', position: 'sticky', left: 0, background: '#3730A3', zIndex: 2 }}>Semana</th>
+                                                {sortedEsps.map(esp => (
+                                                    <th key={esp} style={{ padding: '8px 6px', color: '#fff', fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.65rem' }}>
+                                                        {esp.length > 12 ? esp.substring(0, 10) + '…' : esp}
+                                                    </th>
+                                                ))}
+                                                <th style={{ padding: '8px 10px', color: '#FDE68A', fontWeight: 800, textAlign: 'center', borderLeft: '2px solid rgba(255,255,255,0.2)' }}>TOTAL</th>
+                                                {OS_CATS.map(os => (
+                                                    <th key={os} style={{ padding: '8px 6px', color: '#A5F3FC', fontWeight: 600, textAlign: 'center', fontSize: '0.65rem', borderLeft: os === 'OSP' ? '2px solid rgba(255,255,255,0.2)' : 'none' }}>{os}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {porSemana.map((s, idx) => (
+                                                <tr key={s.semana} style={{ background: idx % 2 === 0 ? '#fff' : '#FAFAFA' }}>
+                                                    <td style={{ padding: '6px 10px', fontWeight: 700, color: '#4F46E5', borderRight: '2px solid #E2E8F0', position: 'sticky', left: 0, background: idx % 2 === 0 ? '#fff' : '#FAFAFA', zIndex: 1 }}>
+                                                        {formatWeek(s.semana)}
+                                                    </td>
+                                                    {sortedEsps.map(esp => {
+                                                        const val = s.byEsp[esp] || 0;
+                                                        const maxInCol = Math.max(...porSemana.map(r => r.byEsp[esp] || 0), 1);
+                                                        return (
+                                                            <td key={esp} style={{ padding: '6px 6px', textAlign: 'center', fontWeight: val > 0 ? 700 : 400, color: val > 0 ? '#1E293B' : '#D1D5DB', background: val > 0 ? `rgba(79,70,229,${(val / maxInCol) * 0.15})` : 'transparent' }}>
+                                                                {val || '—'}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                    <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 800, color: '#1E293B', background: '#F8FAFC', borderLeft: '2px solid #E2E8F0', borderRight: '2px solid #E2E8F0' }}>{s.total}</td>
+                                                    {OS_CATS.map(os => {
+                                                        const val = s.byOS?.[os] || 0;
+                                                        return (
+                                                            <td key={os} style={{ padding: '6px 6px', textAlign: 'center', fontWeight: val > 0 ? 700 : 400, color: val > 0 ? '#0E7490' : '#D1D5DB', borderLeft: os === 'OSP' ? '2px solid #E2E8F0' : 'none' }}>
+                                                                {val || '—'}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
                                             ))}
-                                        </div>
-                                    </div>
-                                ))}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr style={{ background: 'linear-gradient(135deg, #F1F5F9, #E2E8F0)' }}>
+                                                <td style={{ padding: '8px 10px', fontWeight: 800, color: '#1E293B', borderRight: '2px solid #CBD5E1', position: 'sticky', left: 0, background: '#E2E8F0', zIndex: 1 }}>TOTAL</td>
+                                                {sortedEsps.map(esp => (
+                                                    <td key={esp} style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 800, color: '#4F46E5' }}>{espTotals[esp] || 0}</td>
+                                                ))}
+                                                <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 900, color: '#1E293B', fontSize: '0.82rem', borderLeft: '2px solid #CBD5E1', borderRight: '2px solid #CBD5E1' }}>
+                                                    {porSemana.reduce((sum, w) => sum + w.total, 0).toLocaleString()}
+                                                </td>
+                                                {OS_CATS.map(os => (
+                                                    <td key={os} style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 800, color: '#0E7490', borderLeft: os === 'OSP' ? '2px solid #CBD5E1' : 'none' }}>{osTotals[os] || 0}</td>
+                                                ))}
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
                     {/* Summary view */}
                     {vista === 'resumen' && (
@@ -501,7 +572,7 @@ export default function ConsultasPanel() {
                         // Build column values dynamically
                         const colField = matrizColumnas;
                         const getColVal = (r) => {
-                            if (colField === 'especialidad') return r.visita_especialidad?.trim() || 'OTRO';
+                            if (colField === 'especialidad') return normalizeEsp(r);
                             if (colField === 'agenda') return r.agenda?.trim() || 'OTRO';
                             if (colField === 'tipo_visita') return r.tipo_visita?.trim() || 'OTRO';
                             return r.grupo_agenda?.trim() || 'OTRO';
