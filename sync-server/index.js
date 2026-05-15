@@ -1761,6 +1761,11 @@ async function syncConsultasGuardia(db) {
 async function syncRecepcionesVisitas(db) {
     console.log('\n🏥 [RECEPCIONES] Extrayendo visitas CHQ/ECO de SALUS...');
 
+    // Rango dinámico: desde 30 días atrás (historial reciente + ausentes) + todo lo futuro
+    const desde = new Date();
+    desde.setDate(desde.getDate() - 30);
+    const desdeStr = desde.toISOString().split('T')[0].replace(/-/g, '');
+
     const req = db.request();
     req.timeout = 120000;
     const result = await req.query(`
@@ -1805,13 +1810,13 @@ async function syncRecepcionesVisitas(db) {
               ,[ESPECIALIDAD]
               ,[Centro]
           FROM [SALUS].[dbo].[TABLEAU_Visitas ordenadas por agenda]
-          WHERE [FECHA] >= '20260515'
+          WHERE [FECHA] >= '${desdeStr}'
             AND (
                   [TIPO VISITA] LIKE '%(CHQ) CHEQUEO PREVENTIVO%' 
                   OR [TIPO VISITA] LIKE '%(ECO)%'
                 );
     `);
-    console.log(`   📥 ${result.recordset.length} registros extraídos`);
+    console.log(`   📥 ${result.recordset.length} registros extraídos (desde ${desdeStr})`);
 
     if (result.recordset.length === 0) {
         return { total: 0, inserted: 0, skipped: 0 };
