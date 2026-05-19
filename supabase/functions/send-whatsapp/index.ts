@@ -82,6 +82,9 @@ Deno.serve(async (req) => {
 
     try {
         const body = await req.json();
+        console.log(`[send-whatsapp] === INCOMING REQUEST ===`);
+        console.log(`[send-whatsapp] Full body:`, JSON.stringify(body));
+        console.log(`[send-whatsapp] body.to:`, body.to, `| body.action:`, body.action, `| body.lineId:`, body.lineId);
         const { action, lineId } = body;
 
         // ========================================
@@ -111,7 +114,13 @@ Deno.serve(async (req) => {
         // ACTION: send_template — Enviar plantilla Meta
         // ========================================
         if (action === 'send_template') {
-            const { to, templateName, languageCode, components } = body;
+            // Force string coercion to prevent Zod validation issues in BuilderBot
+            const to = String(body.to || '').trim();
+            const templateName = String(body.templateName || '').trim();
+            const languageCode = String(body.languageCode || 'es').trim();
+            const components = body.components;
+            
+            console.log(`[send-whatsapp] send_template parsed | to: "${to}" | template: "${templateName}" | lang: "${languageCode}"`);
             
             if (!to || !templateName) {
                 return new Response(
