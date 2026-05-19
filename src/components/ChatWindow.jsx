@@ -9,7 +9,7 @@ import {
     X, Send, Paperclip, Mic, Image as ImageIcon, Play, Pause,
     Phone, MessageSquare, Clock, CheckCheck, Check, Volume2,
     Download, Smile, Square, Loader, Zap, Settings,
-    Shield, AlertTriangle, FileText, RefreshCw, Copy,
+    Shield, AlertTriangle, FileText, RefreshCw, Copy, CheckCircle,
 } from 'lucide-react';
 import { fetchMessages, markAsRead, saveOutgoingMessage, subscribeToMessages, upsertCrmContact, fetchWhatsAppLines, getAssignedLine, assignLine } from '../services/chatService';
 import { sendWhatsAppMessage } from '../services/builderbotApi';
@@ -54,6 +54,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
     const [showMetaTemplatePicker, setShowMetaTemplatePicker] = useState(false);
     const [pendingMetaTemplate, setPendingMetaTemplate] = useState(null);
     const [sendingMetaTemplate, setSendingMetaTemplate] = useState(false);
+    const [templateJustSent, setTemplateJustSent] = useState(false);
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
@@ -239,7 +240,8 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                 mediaType: 'text',
                 lineId: assignedLineId,
             });
-            addToast?.('Plantilla enviada exitosamente ✅', 'success');
+            setTemplateJustSent(true);
+            addToast?.('Plantilla enviada ✅ — Esperando respuesta del paciente', 'success');
         } catch (err) {
             console.error('Error sending Meta template:', err);
             addToast?.('Error enviando plantilla: ' + err.message, 'error');
@@ -1021,47 +1023,75 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                         padding: '10px 16px',
                         display: 'flex', flexDirection: 'column', gap: '8px',
                     }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <AlertTriangle size={14} style={{ color: '#D97706', flexShrink: 0 }} />
-                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#92400E', flex: 1 }}>
-                                Ventana 24hs expirada — Seleccioná una plantilla para reanudar
-                            </span>
-                        </div>
-                        {sendingMetaTemplate ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', padding: '8px 0' }}>
-                                <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite', color: '#25D366' }} />
-                                <span style={{ fontSize: '0.78rem', color: '#166534', fontWeight: 600 }}>Enviando plantilla...</span>
+                        {templateJustSent ? (
+                            /* === TEMPLATE SENT — WAITING FOR RESPONSE === */
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', padding: '6px 0' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <CheckCircle size={16} style={{ color: '#16A34A' }} />
+                                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#166534' }}>
+                                        Plantilla enviada exitosamente
+                                    </span>
+                                </div>
+                                <p style={{ margin: 0, fontSize: '0.72rem', color: '#92400E', textAlign: 'center', lineHeight: 1.4 }}>
+                                    Cuando el paciente responda, se abrirá la ventana de 24hs y podrás escribir libremente.
+                                </p>
+                                <button
+                                    onClick={() => setTemplateJustSent(false)}
+                                    style={{
+                                        padding: '4px 14px', borderRadius: '8px', border: '1px solid #E2E8F0',
+                                        background: 'transparent', cursor: 'pointer', fontSize: '0.68rem',
+                                        color: '#64748B', fontWeight: 600, marginTop: '2px',
+                                    }}
+                                >
+                                    Enviar otra plantilla
+                                </button>
                             </div>
-                        ) : metaTemplates.filter(t => t.status === 'APPROVED').length === 0 ? (
-                            <span style={{ fontSize: '0.72rem', color: '#A16207', fontStyle: 'italic', textAlign: 'center', padding: '6px 0' }}>
-                                No hay plantillas aprobadas disponibles
-                            </span>
                         ) : (
-                            <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', padding: '2px 0', flexWrap: 'nowrap' }}>
-                                {metaTemplates.filter(t => t.status === 'APPROVED').map((tpl, idx) => (
-                                    <button
-                                        key={tpl.id || tpl.name || idx}
-                                        onClick={() => quickSendMetaTemplate(tpl)}
-                                        style={{
-                                            flexShrink: 0, padding: '8px 14px',
-                                            borderRadius: '10px', border: '1px solid #BBF7D0',
-                                            background: '#F0FDF4', cursor: 'pointer',
-                                            fontSize: '0.75rem', fontWeight: 600,
-                                            color: '#166534', transition: 'all 0.15s',
-                                            display: 'flex', alignItems: 'center', gap: '6px',
-                                            maxWidth: '280px',
-                                        }}
-                                        onMouseOver={e => { e.currentTarget.style.background = '#DCFCE7'; e.currentTarget.style.borderColor = '#25D366'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                                        onMouseOut={e => { e.currentTarget.style.background = '#F0FDF4'; e.currentTarget.style.borderColor = '#BBF7D0'; e.currentTarget.style.transform = 'translateY(0)'; }}
-                                        title={tpl.components?.find(c => c.type === 'BODY')?.text || tpl.name}
-                                    >
-                                        <FileText size={13} style={{ flexShrink: 0 }} />
-                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                            {tpl.name || tpl.templateName}
-                                        </span>
-                                    </button>
-                                ))}
-                            </div>
+                            /* === TEMPLATE PICKER === */
+                            <>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <AlertTriangle size={14} style={{ color: '#D97706', flexShrink: 0 }} />
+                                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#92400E', flex: 1 }}>
+                                        Ventana 24hs expirada — Seleccioná una plantilla para reanudar
+                                    </span>
+                                </div>
+                                {sendingMetaTemplate ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', padding: '8px 0' }}>
+                                        <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite', color: '#25D366' }} />
+                                        <span style={{ fontSize: '0.78rem', color: '#166534', fontWeight: 600 }}>Enviando plantilla...</span>
+                                    </div>
+                                ) : metaTemplates.filter(t => t.status === 'APPROVED').length === 0 ? (
+                                    <span style={{ fontSize: '0.72rem', color: '#A16207', fontStyle: 'italic', textAlign: 'center', padding: '6px 0' }}>
+                                        No hay plantillas aprobadas disponibles
+                                    </span>
+                                ) : (
+                                    <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', padding: '2px 0', flexWrap: 'nowrap' }}>
+                                        {metaTemplates.filter(t => t.status === 'APPROVED').map((tpl, idx) => (
+                                            <button
+                                                key={tpl.id || tpl.name || idx}
+                                                onClick={() => quickSendMetaTemplate(tpl)}
+                                                style={{
+                                                    flexShrink: 0, padding: '8px 14px',
+                                                    borderRadius: '10px', border: '1px solid #BBF7D0',
+                                                    background: '#F0FDF4', cursor: 'pointer',
+                                                    fontSize: '0.75rem', fontWeight: 600,
+                                                    color: '#166534', transition: 'all 0.15s',
+                                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                                    maxWidth: '280px',
+                                                }}
+                                                onMouseOver={e => { e.currentTarget.style.background = '#DCFCE7'; e.currentTarget.style.borderColor = '#25D366'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                                                onMouseOut={e => { e.currentTarget.style.background = '#F0FDF4'; e.currentTarget.style.borderColor = '#BBF7D0'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                                                title={tpl.components?.find(c => c.type === 'BODY')?.text || tpl.name}
+                                            >
+                                                <FileText size={13} style={{ flexShrink: 0 }} />
+                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {tpl.name || tpl.templateName}
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </>
                         )}
                     </div>
                 ) : (
