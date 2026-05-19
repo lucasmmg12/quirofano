@@ -52,6 +52,8 @@ export async function fetchMetaTemplates(lineId = 'line_b') {
  */
 export async function sendMetaTemplate({ to, templateName, languageCode = 'es', components, lineId = 'line_b' }) {
     try {
+        console.log('[metaTemplateService] Sending template:', { to, templateName, languageCode, lineId, hasComponents: !!components });
+        
         const { data, error } = await supabase.functions.invoke('send-whatsapp', {
             body: {
                 action: 'send_template',
@@ -63,8 +65,22 @@ export async function sendMetaTemplate({ to, templateName, languageCode = 'es', 
             },
         });
 
-        if (error) throw error;
-        if (!data?.success) throw new Error(data?.error || 'Error al enviar plantilla');
+        if (error) {
+            // Try to extract detailed error from FunctionsHttpError
+            let details = '';
+            try {
+                const ctx = await error.context?.json?.();
+                if (ctx) {
+                    details = ctx.error || ctx.details?.message || JSON.stringify(ctx.details || ctx);
+                    console.error('[metaTemplateService] Edge Function error details:', ctx);
+                }
+            } catch { /* no parseable context */ }
+            throw new Error(details || error.message || 'Error al enviar plantilla');
+        }
+        if (!data?.success) {
+            console.error('[metaTemplateService] Send failed:', data);
+            throw new Error(data?.error || 'Error al enviar plantilla');
+        }
 
         return data;
     } catch (err) {

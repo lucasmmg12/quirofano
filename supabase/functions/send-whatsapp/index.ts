@@ -130,7 +130,9 @@ Deno.serve(async (req) => {
             };
             if (components) templateBody.components = components;
             
-            console.log(`[send-whatsapp] send_template | Línea: ${lineId} | Template: ${templateName} → ${to}`);
+            console.log(`[send-whatsapp] send_template | Línea: ${lineId} | Template: ${templateName} | Lang: ${languageCode || 'es'} → ${to}`);
+            console.log(`[send-whatsapp] Request URL: ${url}`);
+            console.log(`[send-whatsapp] Request body:`, JSON.stringify(templateBody));
             
             const response = await fetch(url, {
                 method: 'POST',
@@ -141,12 +143,26 @@ Deno.serve(async (req) => {
                 body: JSON.stringify(templateBody),
             });
             
-            const data = await response.json();
+            const rawText = await response.text();
+            console.log(`[send-whatsapp] Response status: ${response.status}`);
+            console.log(`[send-whatsapp] Response body: ${rawText}`);
+            
+            let data;
+            try {
+                data = JSON.parse(rawText);
+            } catch {
+                data = { rawResponse: rawText };
+            }
             
             if (!response.ok) {
-                console.error('[send-whatsapp] Template send error:', data);
+                console.error('[send-whatsapp] Template send FAILED:', response.status, data);
                 return new Response(
-                    JSON.stringify({ success: false, error: data?.message || data?.error || `HTTP ${response.status}` }),
+                    JSON.stringify({ 
+                        success: false, 
+                        error: data?.message || data?.error || data?.rawResponse || `HTTP ${response.status}`,
+                        details: data,
+                        sentPayload: templateBody,
+                    }),
                     { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );
             }
