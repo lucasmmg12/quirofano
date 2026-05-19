@@ -9,7 +9,7 @@ import {
     X, Send, Paperclip, Mic, Image as ImageIcon, Play, Pause,
     Phone, MessageSquare, Clock, CheckCheck, Check, Volume2,
     Download, Smile, Square, Loader, Zap, Settings,
-    Shield, AlertTriangle, FileText, RefreshCw,
+    Shield, AlertTriangle, FileText, RefreshCw, Copy,
 } from 'lucide-react';
 import { fetchMessages, markAsRead, saveOutgoingMessage, subscribeToMessages, upsertCrmContact, fetchWhatsAppLines, getAssignedLine, assignLine } from '../services/chatService';
 import { sendWhatsAppMessage } from '../services/builderbotApi';
@@ -212,6 +212,34 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
             });
             addToast?.('Plantilla enviada exitosamente ✅', 'success');
             setPendingMetaTemplate(null);
+        } catch (err) {
+            console.error('Error sending Meta template:', err);
+            addToast?.('Error enviando plantilla: ' + err.message, 'error');
+        } finally {
+            setSendingMetaTemplate(false);
+        }
+    };
+
+    // === QUICK SEND META TEMPLATE (inline, skip confirmation) ===
+    const quickSendMetaTemplate = async (tpl) => {
+        if (!patientPhone || sendingMetaTemplate) return;
+        setSendingMetaTemplate(true);
+        try {
+            const normalizedPhone = patientPhone.startsWith('549') ? patientPhone : `549${patientPhone}`;
+            await sendMetaTemplate({
+                to: normalizedPhone,
+                templateName: tpl.name || tpl.templateName,
+                languageCode: tpl.language || 'es',
+                lineId: assignedLineId,
+            });
+            const templateBody = tpl.components?.find(c => c.type === 'BODY')?.text || tpl.name;
+            await saveOutgoingMessage({
+                phone: patientPhone,
+                content: `📋 [Plantilla Meta] ${templateBody}`,
+                mediaType: 'text',
+                lineId: assignedLineId,
+            });
+            addToast?.('Plantilla enviada exitosamente ✅', 'success');
         } catch (err) {
             console.error('Error sending Meta template:', err);
             addToast?.('Error enviando plantilla: ' + err.message, 'error');
@@ -794,7 +822,16 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                                 fontSize: '0.75rem', opacity: 0.85, marginTop: '2px',
                             }}>
                                 <Phone size={11} />
-                                <span>{patientPhone}</span>
+                                <span style={{ userSelect: 'text', cursor: 'text' }}>{patientPhone}</span>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(patientPhone).then(() => addToast?.('📋 Número copiado', 'success')).catch(() => {}); }}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', padding: '1px', display: 'inline-flex', alignItems: 'center', transition: 'color 0.15s' }}
+                                    onMouseOver={e => e.currentTarget.style.color = '#fff'}
+                                    onMouseOut={e => e.currentTarget.style.color = 'rgba(255,255,255,0.5)'}
+                                    title="Copiar número"
+                                >
+                                    <Copy size={11} />
+                                </button>
                                 {currentLine ? (
                                     <span
                                         onClick={() => setShowChangeLineModal(true)}
