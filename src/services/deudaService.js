@@ -12,6 +12,7 @@ export const CATEGORIAS_DEUDOR = {
     cuenta_corriente:      { label: 'Cuenta Corriente',          color: '#8B5CF6', bg: '#F3E8FF', icon: '🟣' },
     incobrable:            { label: 'Incobrable',                color: '#EF4444', bg: '#FEE2E2', icon: '🔴' },
     descuento_liquidacion: { label: 'Descuento por Liquidación', color: '#0D9488', bg: '#CCFBF1', icon: '🏷️' },
+    deuda_cancelada:       { label: 'Deuda Cancelada',           color: '#6366F1', bg: '#E0E7FF', icon: '🚫' },
     sin_deuda_salus:       { label: 'Sin Deuda en Salus',       color: '#059669', bg: '#D1FAE5', icon: '✅' },
 };
 
@@ -412,7 +413,7 @@ export async function fetchMetricasDeudas() {
     const total = all.length;
 
     // Categorías que descuentan de la deuda activa
-    const CATEGORIAS_DESCUENTO = ['sin_deuda_salus', 'descuento_liquidacion'];
+    const CATEGORIAS_DESCUENTO = ['sin_deuda_salus', 'descuento_liquidacion', 'deuda_cancelada'];
 
     const deudaBruta = all.reduce((s, p) => s + Number(p.deuda_total), 0);
     const deudaDescontada = all
