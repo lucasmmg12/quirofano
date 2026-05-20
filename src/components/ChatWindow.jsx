@@ -145,6 +145,19 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
         const loadLinesAndAssignment = async () => {
             setLinesLoading(true);
             try {
+                // 0. Ensure CRM contact exists BEFORE checking assignment
+                // This prevents the race condition where upsertCrmContact (fire-and-forget
+                // in the other useEffect) hasn't completed yet
+                if (patientName) {
+                    await upsertCrmContact({
+                        phone: patientPhone,
+                        nombre: patientName,
+                        id_paciente: patientContext?.idPaciente || null,
+                        dni: patientContext?.dni || null,
+                    }).catch(err => console.warn('[ChatWindow] Pre-load CRM upsert error:', err));
+                }
+                if (cancelled) return;
+
                 // 1. Cargar líneas disponibles primero
                 const lines = await fetchWhatsAppLines();
                 if (cancelled) return;
@@ -901,11 +914,18 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                                         {currentLine.label} ···{currentLine.phone.slice(-4)}
                                     </span>
                                 ) : (
-                                    <span style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                        marginLeft: '8px', padding: '1px 8px', borderRadius: '10px',
-                                        background: 'rgba(234,179,8,0.25)', fontSize: '0.68rem',
-                                    }}>
+                                    <span
+                                        onClick={() => setShowLineSelector(true)}
+                                        style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                            marginLeft: '8px', padding: '1px 8px', borderRadius: '10px',
+                                            background: 'rgba(234,179,8,0.25)', fontSize: '0.68rem',
+                                            cursor: 'pointer', transition: 'all 0.15s',
+                                        }}
+                                        onMouseOver={e => e.currentTarget.style.background = 'rgba(234,179,8,0.45)'}
+                                        onMouseOut={e => e.currentTarget.style.background = 'rgba(234,179,8,0.25)'}
+                                        title="Click para seleccionar línea"
+                                    >
                                         ⚠️ Sin línea asignada
                                     </span>
                                 )}

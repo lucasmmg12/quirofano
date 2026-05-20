@@ -376,10 +376,14 @@ export async function assignLine(phone, lineId) {
     const normalized = normalizeArgentinePhone(phone);
     if (!normalized || !lineId) return;
 
+    // Use upsert instead of update to handle the case where CRM contact
+    // doesn't exist yet (race condition with upsertCrmContact)
     const { error } = await supabase
         .from('crm_contacts')
-        .update({ assigned_line_id: lineId })
-        .eq('phone', normalized);
+        .upsert(
+            { phone: normalized, assigned_line_id: lineId },
+            { onConflict: 'phone' }
+        );
 
     if (error) {
         console.error('Error assigning line:', error);
