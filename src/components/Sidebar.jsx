@@ -3,7 +3,7 @@ import {
     ClipboardList, History, BookOpen, Settings, PanelLeftClose, PanelLeft,
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
     ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain, Users, PackageCheck, Microscope,
-    Activity,
+    Activity, FileSpreadsheet,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0 }) {
@@ -16,6 +16,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const altasSubItems = [
         { id: 'altas', label: 'Control de Altas', icon: ClipboardCheck },
         { id: 'asignaciones', label: 'Asignaciones', icon: Users },
+        { id: 'auditoria_historias', label: 'Auditoría H.C.', icon: FileSpreadsheet },
     ];
 
     // Sub-items dentro de "Emisión de Pedidos"

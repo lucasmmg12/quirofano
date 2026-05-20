@@ -30,6 +30,7 @@ const SMART_SUGGESTIONS = {
     altas: ['📋 Altas pendientes de hoy', '📊 Resumen de altas del día', '👤 Buscar paciente internado', '📥 Exportar altas a Excel'],
     turnos: ['📊 Cola de turnos actual', '⏰ Próximos turnos', '📈 Estadísticas de espera', '🔔 Turnos demorados'],
     metricas: ['📊 Resumen mensual', '📈 Comparar con mes anterior', '🏥 Métricas por especialidad', '📥 Exportar métricas a Excel'],
+    auditoria_historias: ['📊 ¿Cómo auditar historias clínicas?', '📋 Explicar pipeline de auditoría', '💡 ¿Qué significa Sin Fecha de Alta?', '🧭 Llevame a Inicio'],
     default: ['🔔 ¿Qué hay pendiente?', '📊 Reporte del día', '📥 Exportar datos a Excel', '❓ ¿Cómo funciona esto?'],
 };
 
@@ -60,6 +61,10 @@ const PROACTIVE_NUDGES = {
     turnos: [
         '⏰ ¿Querés ver el estado de la cola de turnos?',
         '📊 Puedo mostrarte estadísticas de espera',
+    ],
+    auditoria_historias: [
+        '🔍 ¿Necesitás ayuda auditando las planillas de historias clínicas?',
+        '📊 Puedo explicarte cómo funciona la auditoría de evolución y altas',
     ],
     default: [
         '👋 ¡Hola! ¿Sabías que puedo generar reportes en PDF?',
@@ -211,9 +216,9 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
 
         // #19 — Detect tutorial requests
         const tutorialMatch = text.match(/ense[ñn]ame|tutorial|como\s+(?:uso|funciona)|aprend/i);
-        const moduleMatch = text.match(/cirug[ií]a|deuda|pedido|mensaje|whatsapp/i);
+        const moduleMatch = text.match(/cirug[ií]a|deuda|pedido|mensaje|whatsapp|auditor[ií]a/i);
         if (tutorialMatch && moduleMatch) {
-            const modMap = { cirug: 'cirugias', deuda: 'deudas', pedido: 'pedidos', mensaj: 'mensajeria', whatsapp: 'mensajeria' };
+            const modMap = { cirug: 'cirugias', deuda: 'deudas', pedido: 'pedidos', mensaj: 'mensajeria', whatsapp: 'mensajeria', auditor: 'auditoria_historias' };
             const key = Object.keys(modMap).find(k => moduleMatch[0].toLowerCase().startsWith(k));
             if (key) { setTutorialId(modMap[key]); setInput(''); return; }
         }

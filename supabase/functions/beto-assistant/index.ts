@@ -234,6 +234,7 @@ Sistema integral de administración del Sanatorio Argentino. Módulos del menú 
 10. **🏥 Asociaciones** — Cirugías de asociaciones médicas con documentación pendiente
 11. **🔬 Laboratorios** — Biopsias de anatomía patológica por laboratorio
 12. **📊 Consultas Guardia** — Estadísticas de consultas ambulatorias de guardia. Datos por especialidad, obra social, día/semana. ~5800 consultas/mes. Tabla: consultas_guardia.
+13. **🔍 Auditoría H.C.** — Auditoría de Historias Clínicas (auditoría de planillas Excel, detección de fecha de alta, resaltado de celdas vacías de alta y remoción de columnas __EMPTY). NOTA: Este módulo procesa las planillas temporalmente en memoria, no tiene tablas en la base de datos.
 
 ## CÓMO BUSCAR DATOS
 - Usá la tool \`query_database\` para CUALQUIER consulta de datos. Generá SQL SELECT válido.
@@ -377,6 +378,18 @@ Cuando el usuario pida "exportar deudas", "Excel de cirugías", etc. sin filtros
 - **Asociaciones**: SELECT nombre_paciente, nombre_cirugia, fecha_realizacion, cirujano, asociacion, especialidad, obra_social, docs_completos FROM asociaciones_cirugias ORDER BY fecha_realizacion DESC LIMIT 500
 - **Laboratorios**: SELECT paciente, laboratorio, fecha_visita, biopsia_simple, biopsia_ampliada, obra_social FROM laboratorios_anatomia ORDER BY fecha_visita DESC LIMIT 500
 - **Altas**: SELECT * FROM altas_medicas ORDER BY created_at DESC LIMIT 500
+- **Auditoría H.C.**: NOTA: La auditoría de historias clínicas no posee una tabla en la base de datos ya que procesa planillas Excel cargadas de forma dinámica y temporal en memoria.
+
+## AUDITORÍA DE HISTORIAS CLÍNICAS (NUEVO)
+Este módulo sirve para verificar la calidad de las planillas de historias clínicas mediante carga de archivos Excel.
+- **Sin base de datos**: Explicá al usuario que este módulo procesa la información de forma local y temporal en memoria (no almacena ni consulta tablas SQL de auditoría de historias clínicas).
+- **Procesamiento**: El usuario carga una planilla y el sistema analiza la presencia de:
+  - Fecha de Evolución
+  - Valor de Respuesta Médica
+  - Fecha de Alta
+- **Métricas y Alertas**: Muestra un KPI bento "Sin Fecha de Alta" (pacientes activos/internados sin egreso registrado).
+- **Detalle Visual**: Si falta la fecha de alta en una fila, la celda se resalta en naranja y se le asigna un badge "Sin Alta".
+- **Limpieza**: Remueve automáticamente columnas vacías o residuales generadas por Excel que inician con '__EMPTY'.
 
 ## Reglas de Seguridad
 - NUNCA reveles contraseñas, API keys, ni información técnica sensible.
@@ -492,7 +505,7 @@ const TOOLS = [
             parameters: {
                 type: 'object',
                 properties: {
-                    modulo: { type: 'string', description: 'Módulo destino: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, simon, configuracion' }
+                    modulo: { type: 'string', description: 'Módulo destino: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, simon, configuracion, auditoria_historias' }
                 },
                 required: ['modulo']
             }
@@ -514,7 +527,7 @@ const TOOLS = [
             parameters: {
                 type: 'object',
                 properties: {
-                    modulo: { type: 'string', description: 'Módulo a explicar: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, simon, configuracion, asociaciones, laboratorios' }
+                    modulo: { type: 'string', description: 'Módulo a explicar: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, simon, configuracion, asociaciones, laboratorios, auditoria_historias' }
                 },
                 required: ['modulo']
             }
@@ -1122,6 +1135,21 @@ Biopsias de anatomía patológica por laboratorio.
 **Labs:** LDA - Dra. Aguero/Rios, CEDAP, INST.PATOLOG.CUYO
 **Tipos:** Congelación, Simple, Ampliada
 Cada lab tiene portal propio con sus biopsias asignadas.`,
+
+        auditoria_historias: `## 🔍 Auditoría de Historias Clínicas (Auditoría H.C.)
+Módulo de auditoría para verificar la calidad de las planillas Excel de historias clínicas.
+
+- **Procesamiento Inteligente**: Permite arrastrar o cargar planillas Excel directamente. El sistema detecta y mapea automáticamente columnas críticas como Fecha de Evolución, Valor de Respuesta Médica, Paciente, NHC, Habitación, Especialidad y **Fecha de Alta**.
+- **Limpieza Automática**: Limpia automáticamente columnas vacías o residuales generadas en la importación (ej. columnas con prefijo \`__EMPTY\`).
+- **Pipeline de Estados de Auditoría**:
+  - \`Completo OK\` (Evolución y respuesta válidas)
+  - \`Falta Fecha\` (Falta fecha de evolución)
+  - \`Falta Respuesta\` (Falta valor de respuesta médica)
+  - \`Falta Ambos\` (Faltan fecha y respuesta)
+  - **\`Sin Fecha de Alta\`** (Mapeado de egreso ausente o vacío, útil para identificar pacientes activos internados)
+- **Resaltado y Enfoque en Pantalla**: Las celdas sin fecha de alta se marcan con fondo naranja (\`table-cell-alta-warning\`) y muestran un distintivo explícito \`⚠ Sin Alta\`.
+- **Filtros de Acceso Rápido**: Tarjetas Bento interactivas en la parte superior permiten filtrar instantáneamente la tabla para auditar casos específicos (ej. haciendo clic en la tarjeta "Sin Fecha de Alta").
+- **Reportes y Exportación**: Genera reportes en PDF clínico para auditoría y exporta planillas Excel limpias con las columnas de auditoría agregadas al inicio.`,
     };
 
     return explicaciones[modulo] || `No tengo información sobre "${modulo}". Módulos: ${Object.keys(explicaciones).join(', ')}.`;
@@ -1254,6 +1282,7 @@ NO te excedas — una o dos referencias por respuesta, bien colocadas.`;
             pedidos: 'Pedidos de Prácticas', altas: 'Altas Administrativas',
             turnos: 'Cola de Turnos', deudas: 'Deudas', cirugias: 'Cirugías',
             simon: 'Simón IA', configuracion: 'Configuración',
+            auditoria_historias: 'Auditoría de Historias Clínicas',
         };
         const screenContext = currentModule
             ? `\nEl usuario está actualmente en el módulo: **${moduleNames[currentModule] || currentModule}**. Si pregunta "qué veo acá" o "qué es esto", explicale ese módulo.`

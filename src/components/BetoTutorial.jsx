@@ -47,6 +47,18 @@ const TUTORIALS = {
             { target: null, title: '📎 Paso 3: Plantillas', text: 'Accedé a "Plantillas WhatsApp" desde el sidebar para crear mensajes reutilizables con variables dinámicas.', position: 'center' },
             { target: null, title: '✅ ¡Listo!', text: 'Las notificaciones de mensajes nuevos llegan en tiempo real. ¡Comunicación fluida!', position: 'center' },
         ]
+    },
+    auditoria_historias: {
+        title: 'Auditoría de Historias Clínicas',
+        steps: [
+            { target: null, title: '🔍 Auditoría de Historias Clínicas', text: 'Te mostraré cómo verificar la consistencia de las historias clínicas ingresadas paso a paso.', position: 'center' },
+            { target: null, title: '📤 Paso 1: Importar Historias desde Excel', text: 'Arrastrá o seleccioná la planilla de historias clínicas. El sistema remueve columnas auxiliares vacías como las que empiezan con "__EMPTY".', position: 'center' },
+            { target: null, title: '🗺️ Paso 2: Configurar Mapeo de Columnas', text: 'El mapeador automático detectará las columnas clave como Paciente, Evolución y Fecha de Alta. Podés cambiarlas si el sistema se equivoca.', position: 'center' },
+            { target: null, title: '📊 Paso 3: Tarjetas Bento y Filtros', text: 'Las tarjetas de arriba muestran el estado del lote. La tarjeta ámbar "Sin Fecha de Alta" te permite ver pacientes activos de forma inmediata.', position: 'center' },
+            { target: null, title: '🎨 Paso 4: Celdas Resaltadas', text: 'Si falta la fecha de alta en una admisión, verás la celda pintada en naranja con la advertencia "⚠ Sin Alta" para auditarla rápidamente.', position: 'center' },
+            { target: null, title: '📥 Paso 5: Exportar y PDF', text: 'Podés descargar el reporte en PDF clínico o exportar un Excel con las columnas de auditoría agregadas al principio.', position: 'center' },
+            { target: null, title: '✅ ¡Listo!', text: 'Ya conocés las funciones principales de auditoría de historias clínicas. ¡A auditar!', position: 'center' },
+        ]
     }
 };
 

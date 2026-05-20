@@ -31,6 +31,7 @@ import DeudasPanel from './components/DeudasPanel.jsx';
 import AltasPanel from './components/AltasPanel.jsx';
 import AsignacionPanel from './components/AsignacionPanel.jsx';
 import ConsultasPanel from './components/ConsultasPanel.jsx';
+import AuditoriaHistoriasPanel from './components/AuditoriaHistoriasPanel.jsx';
 import SimonPanel from './components/SimonPanel.jsx';
 import AsociacionesEntregaPanel from './components/AsociacionesEntregaPanel.jsx';
 import LaboratoriosPanel from './components/LaboratoriosPanel.jsx';
@@ -712,6 +713,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'asignaciones' && (
                     <AsignacionPanel addToast={addToast} currentUser={currentUser} />
+                )}
+
+                {activeView === 'auditoria_historias' && (
+                    <AuditoriaHistoriasPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'simon' && (
