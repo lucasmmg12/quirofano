@@ -49,6 +49,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
     const [assignedLineId, setAssignedLineId] = useState(null);
     const [showLineSelector, setShowLineSelector] = useState(false);
     const [showChangeLineModal, setShowChangeLineModal] = useState(false);
+    const [linesLoading, setLinesLoading] = useState(true);
     // Meta WhatsApp 24h window state
     const [metaTemplates, setMetaTemplates] = useState([]);
     const [showMetaTemplatePicker, setShowMetaTemplatePicker] = useState(false);
@@ -136,18 +137,54 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
         };
     }, [open, patientPhone]);
 
-    // Load WhatsApp lines + assigned line
-    useEffect(() => {
-        if (!open) return;
-        fetchWhatsAppLines().then(setWhatsappLines).catch(console.error);
-    }, [open]);
-
+    // Load WhatsApp lines + assigned line (sequential to avoid race condition)
     useEffect(() => {
         if (!open || !patientPhone) return;
-        getAssignedLine(patientPhone).then(lineId => {
-            setAssignedLineId(lineId);
-            if (!lineId) setShowLineSelector(true);
-        }).catch(console.error);
+        let cancelled = false;
+
+        const loadLinesAndAssignment = async () => {
+            setLinesLoading(true);
+            try {
+                // 1. Cargar líneas disponibles primero
+                const lines = await fetchWhatsAppLines();
+                if (cancelled) return;
+                setWhatsappLines(lines);
+
+                // 2. Verificar asignación actual
+                const lineId = await getAssignedLine(patientPhone);
+                if (cancelled) return;
+
+                const available = lines.filter(l => l.id !== 'line_recepciones');
+
+                if (lineId) {
+                    // Ya tiene línea asignada
+                    setAssignedLineId(lineId);
+                } else if (available.length === 1) {
+                    // Auto-asignar si solo hay una línea disponible
+                    const autoLine = available[0];
+                    setAssignedLineId(autoLine.id);
+                    assignLine(patientPhone, autoLine.id).catch(err =>
+                        console.warn('[ChatWindow] Auto-assign line error:', err)
+                    );
+                    addToast?.(`Línea ${autoLine.label} asignada automáticamente`, 'success');
+                } else if (available.length > 1) {
+                    // Múltiples líneas: mostrar selector
+                    setShowLineSelector(true);
+                } else {
+                    console.warn('[ChatWindow] No WhatsApp lines available');
+                }
+            } catch (err) {
+                console.error('[ChatWindow] Error loading lines:', err);
+                if (!cancelled) {
+                    addToast?.('Error cargando líneas WhatsApp', 'error');
+                }
+            } finally {
+                if (!cancelled) setLinesLoading(false);
+            }
+        };
+
+        loadLinesAndAssignment();
+        return () => { cancelled = true; };
     }, [open, patientPhone]);
 
     // Get current line info
@@ -175,6 +212,9 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
 
     // Lines available for this system (exclude recepciones)
     const availableLines = whatsappLines.filter(l => l.id !== 'line_recepciones');
+
+    // Whether the composer should be blocked (no line assigned)
+    const composerBlocked = !assignedLineId && !linesLoading;
 
     // Handle line selection
     const handleSelectLine = async (lineId) => {
@@ -307,6 +347,12 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
     // ==========================================
     const handleSend = useCallback(async () => {
         if (!inputText.trim() || sending || !patientPhone) return;
+        // Block sending without assigned line
+        if (!assignedLineId) {
+            addToast?.('⚠️ Seleccioná una línea WhatsApp primero', 'error');
+            setShowLineSelector(true);
+            return;
+        }
         // Block free-text sending when Meta line window expired
         if (isMetaLine && isWindowExpired) {
             addToast?.('⚠️ Ventana de 24hs expirada. Usá una plantilla oficial.', 'error');
@@ -1097,6 +1143,36 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                             </>
                         )}
                     </div>
+                ) : composerBlocked ? (
+                /* ===== BLOCKED COMPOSER — NO LINE ASSIGNED ===== */
+                <div style={{
+                    borderTop: '2px solid #FDE68A',
+                    background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
+                    padding: '14px 16px',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <AlertTriangle size={16} style={{ color: '#D97706' }} />
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#92400E' }}>
+                            Seleccioná una línea WhatsApp para enviar mensajes
+                        </span>
+                    </div>
+                    <button
+                        onClick={() => setShowLineSelector(true)}
+                        style={{
+                            padding: '8px 20px', borderRadius: '10px',
+                            border: '1px solid #25D366', background: '#F0FDF4',
+                            color: '#166534', fontWeight: 700, fontSize: '0.82rem',
+                            cursor: 'pointer', transition: 'all 0.15s',
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                        }}
+                        onMouseOver={e => { e.currentTarget.style.background = '#DCFCE7'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                        onMouseOut={e => { e.currentTarget.style.background = '#F0FDF4'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                    >
+                        <Phone size={14} />
+                        Elegir línea
+                    </button>
+                </div>
                 ) : (
                 /* ===== NORMAL COMPOSER ===== */
                 <div style={{
