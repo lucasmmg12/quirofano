@@ -505,7 +505,7 @@ const TOOLS = [
             parameters: {
                 type: 'object',
                 properties: {
-                    modulo: { type: 'string', description: 'Módulo destino: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, simon, configuracion, auditoria_historias' }
+                    modulo: { type: 'string', description: 'Módulo destino: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, beto, configuracion, auditoria_historias' }
                 },
                 required: ['modulo']
             }
@@ -527,7 +527,7 @@ const TOOLS = [
             parameters: {
                 type: 'object',
                 properties: {
-                    modulo: { type: 'string', description: 'Módulo a explicar: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, simon, configuracion, asociaciones, laboratorios, auditoria_historias' }
+                    modulo: { type: 'string', description: 'Módulo a explicar: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, beto, configuracion, asociaciones, laboratorios, auditoria_historias' }
                 },
                 required: ['modulo']
             }
@@ -901,7 +901,7 @@ function navigateTo(args: Record<string, unknown>): string {
         turnos: 'turnos',
         deudas: 'deudas',
         cirugias: 'cirugias',
-        simon: 'simon',
+        beto: 'beto',
         configuracion: 'configuracion',
     };
 
@@ -1104,7 +1104,7 @@ Panel de cirugías programadas con bot automático de WhatsApp.
 **Datos:** nombre, DNI, teléfono, obra_social, fecha_cirugia, médico, módulo, status
 **Flujo:** Carga Excel SALUS → Bot WA notifica → Docs → Autorización → Confirmación`,
 
-        simon: `## 🤖 SIMÓN IA
+        beto: `## 🤖 BETO IA
 Pipeline de procesamiento de documentos con inteligencia artificial.
 
 - 📄 Carga y clasificación automática
@@ -1281,7 +1281,7 @@ NO te excedas — una o dos referencias por respuesta, bien colocadas.`;
             inicio: 'Inicio (Dashboard)', mensajeria: 'Mensajería (WhatsApp)',
             pedidos: 'Pedidos de Prácticas', altas: 'Altas Administrativas',
             turnos: 'Cola de Turnos', deudas: 'Deudas', cirugias: 'Cirugías',
-            simon: 'Simón IA', configuracion: 'Configuración',
+            beto: 'Beto IA', configuracion: 'Configuración',
             auditoria_historias: 'Auditoría de Historias Clínicas',
         };
         const screenContext = currentModule

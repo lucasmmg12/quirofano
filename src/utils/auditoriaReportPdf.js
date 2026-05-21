@@ -14,7 +14,7 @@ const COLORS = {
     blue: [28, 126, 214]           // #1C7ED6 (Respuesta)
 };
 
-export function exportAuditorReportPdf(originalRows, kpis, columnMapping) {
+export function exportAuditorReportPdf(originalRows, kpis, columnMapping, groupedPatients = []) {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -33,7 +33,7 @@ export function exportAuditorReportPdf(originalRows, kpis, columnMapping) {
 
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.text('Sistema ADM-QUI — Reporte de Auditoría de Historias Clínicas', margin, 18);
+    doc.text('Sistema ADM-QUI — Reporte de Auditoría de Historias Clínicas (OSP)', margin, 18);
 
     // Fecha a la derecha
     const now = new Date();
@@ -48,13 +48,12 @@ export function exportAuditorReportPdf(originalRows, kpis, columnMapping) {
 
     // --- RESUMEN DE INDICADORES (KPIs) ---
     doc.setTextColor(...COLORS.dark);
-    doc.setFontSize(12);
+    doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text('Resumen del Estado de Calidad de Historias Clínicas', margin, y);
-    y += 5;
-
-    // Tabla de KPIs
-    const kpiHeaders = ['Total Procesados', 'Auditorías OK', 'Casos Observados', 'Falta Fecha', 'Falta Respuesta', 'Falta Ambos'];
+    doc.text('Resumen General de Completitud', margin, y);
+    
+    // Tabla 1: KPIs de Completitud
+    const kpiHeaders = ['Total Registros', 'Completos OK', 'Observados', 'Falta Fecha', 'Falta Respuesta', 'Falta Ambos'];
     const totalObservados = kpis.total - kpis.ok;
     const onlyFecha = kpis.sinFecha - kpis.sinAmbos;
     const onlyRespuesta = kpis.sinRespuesta - kpis.sinAmbos;
@@ -69,12 +68,12 @@ export function exportAuditorReportPdf(originalRows, kpis, columnMapping) {
     ]];
 
     autoTable(doc, {
-        startY: y,
+        startY: y + 3,
         head: [kpiHeaders],
         body: kpiRows,
         margin: { left: margin, right: margin },
         styles: {
-            fontSize: 9,
+            fontSize: 8.5,
             cellPadding: 3,
             lineColor: [226, 232, 240],
             lineWidth: 0.2,
@@ -94,42 +93,82 @@ export function exportAuditorReportPdf(originalRows, kpis, columnMapping) {
         }
     });
 
+    y = doc.lastAutoTable.finalY + 8;
+
+    // --- IMPACTO FINANCIERO DE DÉBITOS (OSP) ---
+    doc.setTextColor(...COLORS.dark);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Impacto Financiero OSP San Juan (Estimación de Débitos)', margin, y);
+
+    const debitHeaders = ['Días sin Evolución (Gaps)', 'Evoluciones Duplicadas', 'Falta Foja Quirúrgica', 'Riesgo Total de Débito ($)'];
+    const debitRows = [[
+        kpis.totalGaps ? kpis.totalGaps.toString() : '0',
+        kpis.totalDuplicados ? kpis.totalDuplicados.toString() : '0',
+        kpis.totalFaltaFoja ? kpis.totalFaltaFoja.toString() : '0',
+        `$ ${(kpis.riesgoFinancieroTotal || 0).toLocaleString('es-AR')}`
+    ]];
+
+    autoTable(doc, {
+        startY: y + 3,
+        head: [debitHeaders],
+        body: debitRows,
+        margin: { left: margin, right: margin },
+        styles: {
+            fontSize: 8.5,
+            cellPadding: 3,
+            lineColor: [226, 232, 240],
+            lineWidth: 0.2,
+            textColor: COLORS.dark,
+            font: 'helvetica',
+            halign: 'center'
+        },
+        headStyles: {
+            fillColor: [254, 242, 242], // soft red
+            textColor: [185, 28, 28], // dark red
+            fontStyle: 'bold',
+        },
+        columnStyles: {
+            3: { textColor: [185, 28, 28], fontStyle: 'bold' }
+        }
+    });
+
     y = doc.lastAutoTable.finalY + 10;
 
-    // --- DETALLE DE CASOS CON OBSERVACIONES ---
+    // --- DETALLE DE CASOS CON OBSERVACIONES POR PACIENTE ---
     doc.setTextColor(...COLORS.dark);
-    doc.setFontSize(12);
+    doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text('Detalle de Casos Observados', margin, y);
-    y += 5;
+    doc.text('Detalle de Auditoría por Ciclo de Internación (Pacientes con Alertas)', margin, y);
+    y += 4;
 
-    // Filtrar filas con observaciones
-    const observedRows = originalRows.filter(row => row._auditStatus !== 'OK');
+    const auditedPatients = (groupedPatients || []).filter(p => p.hasCriticalIssues);
 
-    if (observedRows.length === 0) {
-        doc.setFontSize(9.5);
+    if (auditedPatients.length === 0) {
+        doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...COLORS.green);
-        doc.text('No se encontraron admisiones con observaciones en esta planilla. Calidad 100% OK.', margin, y);
-        y += 12;
+        doc.text('No se detectaron riesgos de débitos en los ciclos de internación de los pacientes. Auditoría 100% Correcta.', margin, y);
+        y += 10;
     } else {
-        const tableHeaders = ['Fila', 'Paciente', 'Admisión', 'Habitación', 'Especialidad', 'Serie', 'Estado', 'Detalle de Omisión'];
-        const tableRows = observedRows.map(row => {
-            const rowIdx = row._origIndex;
-            const pac = row[columnMapping.paciente] || '—';
-            const adm = row[columnMapping.numeroAdmision] || '—';
-            const hab = row[columnMapping.habitacion] || '—';
-            const esp = row[columnMapping.especialidad] || '—';
-            const serie = row[columnMapping.serieAdmision] || '—';
-            const state = row._auditStatus === 'AMBOS_NULOS' ? 'Faltan Ambos' 
-                        : row._auditStatus === 'SIN_FECHA' ? 'Sin Fecha' 
-                        : 'Sin Respuesta';
-            
-            const detail = row._auditStatus === 'AMBOS_NULOS' ? 'Falta Fecha de Evolución y Valor de Respuesta'
-                         : row._auditStatus === 'SIN_FECHA' ? 'Falta Fecha de Evolución'
-                         : 'Falta Valor de Respuesta Médica';
+        const tableHeaders = ['Paciente', 'N° Admisión', 'Habitación', 'Especialidad', 'Gaps Detectados', 'Evol. Duplicadas', 'Falta Foja', 'Débito Est.'];
+        const tableRows = auditedPatients.map(pat => {
+            const gapsStr = pat.gaps.length > 0 ? `${pat.gaps.length} (${pat.gaps.join(', ')})` : '0';
+            const dupCount = pat.evoluciones.filter(ev => ev.isDuplicated).length;
+            const dupStr = dupCount > 0 ? `${dupCount} días` : 'No';
+            const fojaStr = pat.faltaFoja ? 'Sí' : 'No';
+            const debitoStr = `$ ${pat.riesgoDebito.toLocaleString('es-AR')}`;
 
-            return [rowIdx.toString(), pac, adm, hab, esp, serie, state, detail];
+            return [
+                pat.paciente,
+                pat.numeroAdmision,
+                pat.habitacion || '—',
+                pat.especialidad || '—',
+                gapsStr,
+                dupStr,
+                fojaStr,
+                debitoStr
+            ];
         });
 
         autoTable(doc, {
@@ -139,7 +178,7 @@ export function exportAuditorReportPdf(originalRows, kpis, columnMapping) {
             margin: { left: margin, right: margin },
             styles: {
                 fontSize: 7.5,
-                cellPadding: 2,
+                cellPadding: 2.5,
                 lineColor: [226, 232, 240],
                 lineWidth: 0.2,
                 textColor: COLORS.dark,
@@ -154,20 +193,25 @@ export function exportAuditorReportPdf(originalRows, kpis, columnMapping) {
                 fillColor: COLORS.lightGray
             },
             columnStyles: {
-                0: { cellWidth: 10, halign: 'center' },
+                1: { cellWidth: 20, halign: 'center' },
                 2: { cellWidth: 20, halign: 'center' },
-                3: { cellWidth: 20, halign: 'center' },
-                6: { cellWidth: 25, fontStyle: 'bold' }
+                4: { cellWidth: 45 },
+                5: { cellWidth: 22, halign: 'center' },
+                6: { cellWidth: 18, halign: 'center' },
+                7: { cellWidth: 25, fontStyle: 'bold', halign: 'right' }
             },
             didParseCell: (data) => {
-                if (data.section === 'body' && data.column.index === 6) {
-                    const text = data.cell.text[0];
-                    if (text === 'Faltan Ambos') {
+                if (data.section === 'body') {
+                    if (data.column.index === 4 && data.cell.text[0] !== '0') {
                         data.cell.styles.textColor = COLORS.red;
-                    } else if (text === 'Sin Fecha') {
-                        data.cell.styles.textColor = COLORS.amber;
-                    } else if (text === 'Sin Respuesta') {
-                        data.cell.styles.textColor = COLORS.blue;
+                        data.cell.styles.fontStyle = 'bold';
+                    }
+                    if (data.column.index === 6 && data.cell.text[0] === 'Sí') {
+                        data.cell.styles.textColor = COLORS.red;
+                        data.cell.styles.fontStyle = 'bold';
+                    }
+                    if (data.column.index === 7) {
+                        data.cell.styles.textColor = [185, 28, 28];
                     }
                 }
             }

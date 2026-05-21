@@ -32,7 +32,7 @@ import AltasPanel from './components/AltasPanel.jsx';
 import AsignacionPanel from './components/AsignacionPanel.jsx';
 import ConsultasPanel from './components/ConsultasPanel.jsx';
 import AuditoriaHistoriasPanel from './components/AuditoriaHistoriasPanel.jsx';
-import SimonPanel from './components/SimonPanel.jsx';
+import BetoPanel from './components/BetoPanel.jsx';
 import AsociacionesEntregaPanel from './components/AsociacionesEntregaPanel.jsx';
 import LaboratoriosPanel from './components/LaboratoriosPanel.jsx';
 import PublicLabView from './components/PublicLabView.jsx';
@@ -719,8 +719,8 @@ function App({ currentUser, onLogout }) {
                     <AuditoriaHistoriasPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
-                {activeView === 'simon' && (
-                    <SimonPanel addToast={addToast} />
+                {activeView === 'beto' && (
+                    <BetoPanel addToast={addToast} />
                 )}
 
                 {activeView === 'config' && (

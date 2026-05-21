@@ -27,7 +27,7 @@ const MODULE_META = {
     metricas: { icon: BarChart3, label: 'Métricas', color: '#14B8A6', description: 'Estadísticas de cirugías' },
     asociaciones_entrega: { icon: PackageCheck, label: 'Asociaciones', color: '#F97316', description: 'Documentación de asociaciones' },
     laboratorios: { icon: Microscope, label: 'Laboratorios', color: '#7C3AED', description: 'Anatomía patológica' },
-    simon: { icon: Brain, label: 'Simón IA', color: '#0EA5E9', description: 'Procesamiento de documentos' },
+    beto: { icon: Brain, label: 'Beto IA', color: '#0EA5E9', description: 'Procesamiento de documentos' },
     config: { icon: Settings, label: 'Configuración', color: '#64748B', description: 'Ajustes del sistema' },
 };
 

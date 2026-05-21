@@ -3,7 +3,8 @@ import * as XLSX from 'xlsx';
 import { 
     Upload, FileSpreadsheet, Search, RefreshCw, X, Download, 
     CheckCircle, AlertTriangle, AlertCircle, FileText, ChevronDown, 
-    ChevronUp, ChevronLeft, ChevronRight, ListFilter, Trash2, ShieldAlert
+    ChevronUp, ChevronLeft, ChevronRight, ListFilter, Trash2, ShieldAlert,
+    DollarSign, Copy, Calendar
 } from 'lucide-react';
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -78,13 +79,303 @@ const COLUMN_KEYWORDS = {
     especialidad: ['especialidad', 'esp', 'especial'],
     medico: ['medico', 'médico', 'profesional', 'doctor', 'dr', 'medico_nombre', 'nombre_medico', 'profesional_nombre'],
     habitacion: ['habitacion', 'habitación', 'hab', 'pieza', 'cama'],
-    serieAdmision: ['serie admision', 'serie admisión', 'serie_admision', 'serie']
+    serieAdmision: ['serie admision', 'serie admisión', 'serie_admision', 'serie'],
+    fojaQuirurgica: ['foja_quirurgica', 'foja quirurgica', 'protocolo_quirurgico', 'protocolo quirurgico', 'quirurgica', 'tiene_protocolo', 'foja', 'foja_quir', 'protocolo'],
+    fechaIngreso: ['fecha ingreso', 'fecha_ingreso', 'ingreso', 'fec_ingreso', 'ingreso_fecha', 'fec_ing', 'fecha_ing']
+};
+
+const OSP_COSTS = {
+    cama: 150000,          // ARS por día de cama
+    moduloQuirurgico: 650000 // ARS por módulo de quirófano
+};
+
+const parseDateDMY = (str) => {
+    if (!str) return null;
+    const match = String(str).match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (match) {
+        return new Date(parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]));
+    }
+    const isoMatch = String(str).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+        return new Date(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, parseInt(isoMatch[3]));
+    }
+    const parsed = new Date(str);
+    return isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatDateDMY = (date) => {
+    const d = String(date.getDate()).padStart(2, '0');
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const y = date.getFullYear();
+    return `${d}/${m}/${y}`;
+};
+
+const findDateGaps = (dates, startStr, endStr) => {
+    const start = parseDateDMY(startStr) || (dates.length > 0 ? new Date(Math.min(...dates.map(d => d.getTime()))) : null);
+    const end = parseDateDMY(endStr) || (dates.length > 0 ? new Date(Math.max(...dates.map(d => d.getTime()))) : null);
+    
+    if (!start || !end) return [];
+    
+    const gaps = [];
+    const dateSet = new Set(dates.map(d => formatDateDMY(d)));
+    
+    // Generar secuencia de días
+    let curr = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const limit = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    limit.setDate(limit.getDate() + 1); // incluir día final
+    
+    let safetyCounter = 0;
+    while (curr < limit && safetyCounter < 365) { // Límite de 1 año por seguridad
+        safetyCounter++;
+        const currStr = formatDateDMY(curr);
+        if (!dateSet.has(currStr)) {
+            gaps.push(currStr);
+        }
+        curr.setDate(curr.getDate() + 1);
+    }
+    return gaps;
+};
+
+const calculateTextSimilarity = (txt1, txt2) => {
+    if (!txt1 || !txt2) return 0;
+    const clean = (txt) => {
+        return String(txt)
+            .toLowerCase()
+            .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .split(" ")
+            .filter(w => w.length > 2); // palabras con sentido
+    };
+    const words1 = clean(txt1);
+    const words2 = clean(txt2);
+    if (words1.length === 0 || words2.length === 0) return 0;
+    
+    const set1 = new Set(words1);
+    const set2 = new Set(words2);
+    
+    let intersection = 0;
+    set1.forEach(word => {
+        if (set2.has(word)) intersection++;
+    });
+    
+    const union = set1.size + set2.size - intersection;
+    return intersection / union;
+};
+
+const processAuditData = (processedRows, mapping) => {
+    const patientsMap = {};
+
+    processedRows.forEach(row => {
+        const numAdm = mapping.numeroAdmision ? String(row[mapping.numeroAdmision] || '').trim() : '';
+        const groupKey = numAdm || String(row[mapping.paciente] || '').trim() || `fila-${row._origIndex}`;
+
+        if (!patientsMap[groupKey]) {
+            patientsMap[groupKey] = {
+                id: groupKey,
+                numeroAdmision: numAdm || 'Sin N°',
+                paciente: mapping.paciente ? String(row[mapping.paciente] || '').trim() : 'Paciente Desconocido',
+                especialidad: mapping.especialidad ? String(row[mapping.especialidad] || '').trim() : 'Sin Especialidad',
+                medico: mapping.medico ? String(row[mapping.medico] || '').trim() : 'Sin Profesional',
+                habitacion: mapping.habitacion ? String(row[mapping.habitacion] || '').trim() : 'Sin Habitación',
+                fechaIngreso: mapping.fechaIngreso ? String(row[mapping.fechaIngreso] || '').trim() : '',
+                fechaAlta: mapping.fechaAlta ? String(row[mapping.fechaAlta] || '').trim() : '',
+                fojaQuirurgica: mapping.fojaQuirurgica ? String(row[mapping.fojaQuirurgica] || '').trim() : '',
+                evoluciones: [],
+                rows: []
+            };
+        }
+
+        const patient = patientsMap[groupKey];
+        patient.rows.push(row);
+
+        const fechaEv = mapping.fechaEvolucion ? String(row[mapping.fechaEvolucion] || '').trim() : '';
+        const textoEv = mapping.valorRespuestaMedica ? String(row[mapping.valorRespuestaMedica] || '').trim() : '';
+        
+        if (fechaEv || textoEv) {
+            patient.evoluciones.push({
+                fechaStr: fechaEv,
+                fechaObj: parseDateDMY(fechaEv),
+                texto: textoEv,
+                filaExcel: row._origIndex,
+                rowRef: row
+            });
+        }
+    });
+
+    const specialtyKeywordsQuir = ['cirugia', 'cirugía', 'quirurg', 'quirúrg', 'traumato', 'gineco', 'obstetr', 'cardio', 'urolog', 'quir', 'qx'];
+
+    return Object.values(patientsMap).map(pat => {
+        pat.evoluciones.sort((a, b) => {
+            if (!a.fechaObj) return 1;
+            if (!b.fechaObj) return -1;
+            return a.fechaObj - b.fechaObj;
+        });
+
+        const validDates = pat.evoluciones
+            .filter(ev => ev.fechaObj)
+            .map(ev => ev.fechaObj);
+
+        const fechaIngresoStr = pat.fechaIngreso || (pat.evoluciones[0] ? pat.evoluciones[0].fechaStr : '');
+        const fechaAltaStr = pat.fechaAlta || (pat.evoluciones[pat.evoluciones.length - 1] ? pat.evoluciones[pat.evoluciones.length - 1].fechaStr : '');
+
+        const gaps = findDateGaps(validDates, fechaIngresoStr, fechaAltaStr);
+
+        pat.evoluciones.forEach((ev, idx) => {
+            let isDuplicated = false;
+            let similarity = 0;
+
+            if (idx > 0 && ev.texto && pat.evoluciones[idx - 1].texto) {
+                similarity = calculateTextSimilarity(ev.texto, pat.evoluciones[idx - 1].texto);
+                if (similarity > 0.85) {
+                    isDuplicated = true;
+                }
+            }
+
+            ev.isDuplicated = isDuplicated;
+            ev.similarity = similarity;
+
+            const rowRef = ev.rowRef;
+            if (rowRef) {
+                if (isDuplicated) {
+                    rowRef._auditStatus = 'RIESGO_DUPLICADO';
+                    rowRef._auditDetail = `Evolución clínica duplicada con el día anterior (${Math.round(similarity * 100)}% similitud)`;
+                }
+            }
+        });
+
+        const esQuirurgico = specialtyKeywordsQuir.some(kw => pat.especialidad.toLowerCase().includes(kw)) ||
+                             (pat.fojaQuirurgica && pat.fojaQuirurgica.toLowerCase() !== 'no');
+        
+        const tieneFoja = pat.fojaQuirurgica && 
+                          pat.fojaQuirurgica.toLowerCase() !== 'no' && 
+                          pat.fojaQuirurgica.toLowerCase() !== 'false' && 
+                          pat.fojaQuirurgica.toLowerCase() !== 'null' && 
+                          pat.fojaQuirurgica.trim() !== '';
+
+        const faltaFoja = esQuirurgico && !tieneFoja;
+
+        const alertas = [];
+        if (gaps.length > 0) {
+            alertas.push({
+                tipo: 'CRITICO',
+                codigo: 'RIESGO_VACIO',
+                mensaje: `Faltan ${gaps.length} evoluciones médicas (Gaps: ${gaps.join(', ')})`
+            });
+        }
+
+        const duplicadosCount = pat.evoluciones.filter(ev => ev.isDuplicated).length;
+        if (duplicadosCount > 0) {
+            alertas.push({
+                tipo: 'MEDIO',
+                codigo: 'RIESGO_DUPLICADO',
+                mensaje: `${duplicadosCount} evolución/es duplicada/s (Copy-paste)`
+            });
+        }
+
+        if (faltaFoja) {
+            alertas.push({
+                tipo: 'CRITICO',
+                codigo: 'FALTA_FOJA',
+                mensaje: 'Falta registrar Foja Quirúrgica en paciente quirúrgico'
+            });
+        }
+
+        let riesgoDebito = 0;
+        riesgoDebito += gaps.length * OSP_COSTS.cama;
+        riesgoDebito += duplicadosCount * OSP_COSTS.cama * 0.5;
+        if (faltaFoja) {
+            riesgoDebito += OSP_COSTS.moduloQuirurgico;
+        }
+
+        return {
+            ...pat,
+            gaps,
+            esQuirurgico,
+            tieneFoja,
+            faltaFoja,
+            alertas,
+            riesgoDebito,
+            hasCriticalIssues: gaps.length > 0 || faltaFoja || duplicadosCount > 0
+        };
+    });
+};
+
+const isSurgicalDay = (day) => {
+    if (!day.valRespuesta) return false;
+    const txt = day.valRespuesta.toLowerCase();
+    return ['cirugia', 'cirugía', 'quirurg', 'quirúrg', 'foja', 'quirofano', 'quirófano', 'operacion', 'operación'].some(kw => txt.includes(kw));
+};
+
+const getPatientTimelineDays = (pat) => {
+    const start = parseDateDMY(pat.fechaIngreso) || (pat.evoluciones[0] ? pat.evoluciones[0].fechaObj : null);
+    const end = parseDateDMY(pat.fechaAlta) || (pat.evoluciones[pat.evoluciones.length - 1] ? pat.evoluciones[pat.evoluciones.length - 1].fechaObj : null);
+    
+    if (!start || !end) return [];
+    
+    const days = [];
+    let curr = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const limit = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    limit.setDate(limit.getDate() + 1); // include end date
+    
+    const evolutionMap = {};
+    pat.evoluciones.forEach(ev => {
+        if (ev.fechaStr) {
+            evolutionMap[ev.fechaStr] = ev;
+        }
+    });
+    
+    const gapSet = new Set(pat.gaps);
+    
+    let safety = 0;
+    while (curr < limit && safety < 365) {
+        safety++;
+        const dateStr = formatDateDMY(curr);
+        
+        // Determine status
+        let status = 'OK'; // Default
+        let detail = '';
+        let similarity = 0;
+        let valRespuesta = '';
+        
+        if (gapSet.has(dateStr)) {
+            status = 'GAP';
+            detail = 'Día sin evolución médica (Pérdida de cobro OSP)';
+        } else if (evolutionMap[dateStr]) {
+            const ev = evolutionMap[dateStr];
+            valRespuesta = ev.texto;
+            if (ev.isDuplicated) {
+                status = 'DUPLICADO';
+                similarity = ev.similarity;
+                detail = `Texto repetitivo (${Math.round(similarity * 100)}% similitud con día anterior)`;
+            } else {
+                status = 'OK';
+                detail = 'Evolución registrada correctamente';
+            }
+        } else {
+            status = 'GAP';
+            detail = 'Sin evolución registrada';
+        }
+        
+        days.push({
+            dateStr,
+            status,
+            detail,
+            similarity,
+            valRespuesta
+        });
+        
+        curr.setDate(curr.getDate() + 1);
+    }
+    return days;
 };
 
 export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
     // Archivo y Datos
     const [fileName, setFileName] = useState('');
     const [originalRows, setOriginalRows] = useState([]);
+    const [groupedPatients, setGroupedPatients] = useState([]);
+    const [viewMode, setViewMode] = useState('planilla'); // 'planilla' | 'pacientes'
     const [headers, setHeaders] = useState([]);
     const [columnMapping, setColumnMapping] = useState({});
     const [dragOver, setDragOver] = useState(false);
@@ -94,6 +385,11 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [pageSize, setPageSize] = useState(50);
     const [currentPage, setCurrentPage] = useState(1);
+
+    // Búsqueda y paginación de pacientes (Timeline)
+    const [patientRiskFilter, setPatientRiskFilter] = useState('all');
+    const [patientSearch, setPatientSearch] = useState('');
+    const [patientPage, setPatientPage] = useState(1);
 
     // Filtros por Columna (estilo Excel)
     const [columnFilters, setColumnFilters] = useState({}); // { [header]: Set(selectedValues) }
@@ -204,6 +500,8 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                     };
                 });
 
+                const auditedGrouped = processAuditData(processed, mapping);
+                setGroupedPatients(auditedGrouped);
                 setOriginalRows(processed);
                 setCurrentPage(1);
                 setColumnFilters({});
@@ -243,11 +541,16 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
         if (window.confirm('¿Seguro que deseas limpiar la planilla actual?')) {
             setFileName('');
             setOriginalRows([]);
+            setGroupedPatients([]);
+            setViewMode('planilla');
             setHeaders([]);
             setColumnMapping({});
             setColumnFilters({});
             setKpiFilter('all');
             setSortConfig({ key: null, direction: 'asc' });
+            setPatientRiskFilter('all');
+            setPatientSearch('');
+            setPatientPage(1);
         }
     };
 
@@ -262,6 +565,10 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
         let sinRespuesta = 0;
         let sinAmbos = 0;
         let sinAlta = 0;
+        let totalGaps = 0;
+        let totalDuplicados = 0;
+        let totalFaltaFoja = 0;
+        let riesgoFinancieroTotal = 0;
 
         const altaCol = columnMapping.fechaAlta;
 
@@ -286,15 +593,26 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
             }
         });
 
+        groupedPatients.forEach(pat => {
+            totalGaps += pat.gaps.length;
+            totalDuplicados += pat.evoluciones.filter(ev => ev.isDuplicated).length;
+            if (pat.faltaFoja) totalFaltaFoja++;
+            riesgoFinancieroTotal += pat.riesgoDebito;
+        });
+
         return {
             total: originalRows.length,
             ok,
             sinFecha,
             sinRespuesta,
             sinAmbos,
-            sinAlta
+            sinAlta,
+            totalGaps,
+            totalDuplicados,
+            totalFaltaFoja,
+            riesgoFinancieroTotal
         };
-    }, [originalRows, columnMapping]);
+    }, [originalRows, columnMapping, groupedPatients]);
 
     // Estadísticas de Omisiones avanzadas para los 10 gráficos
     const statsData = useMemo(() => {
@@ -520,6 +838,42 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
         return sortedRows.slice(start, start + pageSize);
     }, [sortedRows, currentPage, pageSize]);
 
+    // Filtrado de pacientes (Ciclos de Internación)
+    const filteredGroupedPatients = useMemo(() => {
+        let result = groupedPatients;
+
+        if (patientSearch) {
+            const q = patientSearch.toLowerCase();
+            result = result.filter(p => 
+                p.paciente.toLowerCase().includes(q) || 
+                p.numeroAdmision.toLowerCase().includes(q) ||
+                p.medico.toLowerCase().includes(q) ||
+                p.especialidad.toLowerCase().includes(q)
+            );
+        }
+
+        if (patientRiskFilter !== 'all') {
+            result = result.filter(p => {
+                const hasCritical = p.gaps.length > 0 || p.faltaFoja;
+                const hasMedium = p.evoluciones.some(ev => ev.isDuplicated);
+
+                if (patientRiskFilter === 'high') return hasCritical;
+                if (patientRiskFilter === 'medium') return !hasCritical && hasMedium;
+                if (patientRiskFilter === 'low') return !hasCritical && !hasMedium;
+                return true;
+            });
+        }
+
+        return result;
+    }, [groupedPatients, patientSearch, patientRiskFilter]);
+
+    const patientPageSize = 10;
+    const totalPatientPages = Math.ceil(filteredGroupedPatients.length / patientPageSize) || 1;
+    const paginatedPatients = useMemo(() => {
+        const start = (patientPage - 1) * patientPageSize;
+        return filteredGroupedPatients.slice(start, start + patientPageSize);
+    }, [filteredGroupedPatients, patientPage]);
+
     // Contadores activos de filtros de columna
     const activeFiltersCount = Object.keys(columnFilters).length;
 
@@ -647,7 +1001,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
         }
         try {
             const { exportAuditorReportPdf } = await import('../utils/auditoriaReportPdf');
-            exportAuditorReportPdf(originalRows, kpis, columnMapping);
+            exportAuditorReportPdf(originalRows, kpis, columnMapping, groupedPatients);
             addToast?.('Reporte PDF Clínico generado correctamente', 'success');
         } catch (err) {
             console.error(err);
@@ -1459,6 +1813,169 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                         </div>
                     </div>
 
+                    {/* TARJETAS KPI DE IMPACTO FINANCIERO OSP */}
+                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', width: '100%', marginTop: '16px' }}>
+                        {/* 1. Débito Latente Total */}
+                        <div 
+                            className="kpi-card"
+                            style={{ borderLeft: '4px solid #EF4444', flex: 1.2 }}
+                        >
+                            <div>
+                                <span className="kpi-card__title" style={{ color: '#EF4444' }}>Débito Latente OSP (Est.)</span>
+                                <div className="kpi-card__main">
+                                    <span className="kpi-card__value" style={{ color: '#B91C1C' }}>
+                                        $ {kpis.riesgoFinancieroTotal.toLocaleString('es-AR')}
+                                    </span>
+                                    <div className="kpi-card__icon-wrap" style={{ background: '#FEF2F2', color: '#B91C1C' }}>
+                                        <DollarSign size={20} />
+                                    </div>
+                                </div>
+                            </div>
+                            <span className="kpi-card__desc">Pérdida potencial por glosas/débitos</span>
+                        </div>
+
+                        {/* 2. Gaps */}
+                        <div 
+                            className="kpi-card"
+                            style={{ borderLeft: '4px solid #F59E0B' }}
+                        >
+                            <div>
+                                <span className="kpi-card__title">Días sin Evolución (Gaps)</span>
+                                <div className="kpi-card__main">
+                                    <span className="kpi-card__value">{kpis.totalGaps}</span>
+                                    <div className="kpi-card__icon-wrap" style={{ background: '#FEF3C7', color: '#D97706' }}>
+                                        <Calendar size={20} />
+                                    </div>
+                                </div>
+                            </div>
+                            <span className="kpi-card__desc">Cama no facturable ($150.000 c/u)</span>
+                        </div>
+
+                        {/* 3. Duplicados */}
+                        <div 
+                            className="kpi-card"
+                            style={{ borderLeft: '4px solid #3B82F6' }}
+                        >
+                            <div>
+                                <span className="kpi-card__title">Evoluciones Repetitivas</span>
+                                <div className="kpi-card__main">
+                                    <span className="kpi-card__value">{kpis.totalDuplicados}</span>
+                                    <div className="kpi-card__icon-wrap" style={{ background: '#DBEAFE', color: '#1D4ED8' }}>
+                                        <Copy size={20} />
+                                    </div>
+                                </div>
+                            </div>
+                            <span className="kpi-card__desc">Débito parcial del 50% por copy-paste</span>
+                        </div>
+
+                        {/* 4. Quirófano sin Foja */}
+                        <div 
+                            className="kpi-card"
+                            style={{ borderLeft: '4px solid #8B5CF6' }}
+                        >
+                            <div>
+                                <span className="kpi-card__title">Falta Foja Quirúrgica</span>
+                                <div className="kpi-card__main">
+                                    <span className="kpi-card__value">{kpis.totalFaltaFoja}</span>
+                                    <div className="kpi-card__icon-wrap" style={{ background: '#F3E8FF', color: '#6D28D9' }}>
+                                        <AlertCircle size={20} />
+                                    </div>
+                                </div>
+                            </div>
+                            <span className="kpi-card__desc">Módulo no cobrable ($650.000 c/u)</span>
+                        </div>
+                    </div>
+
+                    {/* CONMUTADOR DE VISTAS */}
+                    <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center', 
+                        borderBottom: '1px solid var(--neutral-200)',
+                        paddingBottom: '10px',
+                        marginTop: '16px'
+                    }}>
+                        <div style={{ display: 'flex', gap: '8px', background: '#F1F5F9', padding: '4px', borderRadius: '10px' }}>
+                            <button
+                                onClick={() => setViewMode('planilla')}
+                                style={{
+                                    padding: '8px 16px',
+                                    borderRadius: '8px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 700,
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    background: viewMode === 'planilla' ? '#fff' : 'transparent',
+                                    color: viewMode === 'planilla' ? '#1e5fa6' : 'var(--neutral-500)',
+                                    boxShadow: viewMode === 'planilla' ? '0 2px 4px rgba(0,0,0,0.06)' : 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                <FileSpreadsheet size={16} />
+                                Planilla General (Tabla)
+                            </button>
+                            <button
+                                onClick={() => setViewMode('pacientes')}
+                                style={{
+                                    padding: '8px 16px',
+                                    borderRadius: '8px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 700,
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    background: viewMode === 'pacientes' ? '#fff' : 'transparent',
+                                    color: viewMode === 'pacientes' ? '#1e5fa6' : 'var(--neutral-500)',
+                                    boxShadow: viewMode === 'pacientes' ? '0 2px 4px rgba(0,0,0,0.06)' : 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                <Calendar size={16} />
+                                Auditoría por Paciente (Ciclos)
+                            </button>
+                        </div>
+
+                        {viewMode === 'pacientes' && (
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', fontWeight: 600 }}>Filtrar Riesgo:</span>
+                                <div style={{ display: 'flex', gap: '4px', background: '#F1F5F9', padding: '3px', borderRadius: '8px' }}>
+                                    {[
+                                        { id: 'all', label: 'Todos' },
+                                        { id: 'high', label: 'Crítico', color: '#EF4444' },
+                                        { id: 'medium', label: 'Medio', color: '#F59E0B' },
+                                        { id: 'low', label: 'Sin Riesgo', color: '#10B981' }
+                                    ].map(filter => (
+                                        <button
+                                            key={filter.id}
+                                            onClick={() => { setPatientRiskFilter(filter.id); setPatientPage(1); }}
+                                            style={{
+                                                padding: '4px 10px',
+                                                borderRadius: '6px',
+                                                fontSize: '0.72rem',
+                                                fontWeight: 700,
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                background: patientRiskFilter === filter.id ? '#fff' : 'transparent',
+                                                color: patientRiskFilter === filter.id 
+                                                    ? (filter.color || '#1e5fa6') 
+                                                    : 'var(--neutral-500)',
+                                                boxShadow: patientRiskFilter === filter.id ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
+                                                transition: 'all 0.2s'
+                                            }}
+                                        >
+                                            {filter.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     {/* PANEL DE ANÁLISIS ESTADÍSTICO DE OMISIONES (Recharts) */}
                     {showStats && (
                         <div className="stats-section-container">
@@ -1740,259 +2257,519 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                         </div>
                     )}
 
-                    {/* BARRA DE FILTRADO ADICIONAL */}
-                    <div style={{
-                        display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap',
-                        padding: '10px 14px', borderRadius: '12px',
-                        background: '#FAFAFA', border: '1px solid var(--neutral-200)',
-                    }}>
-                        {/* Buscador general */}
-                        <div style={{ flex: 1, position: 'relative', minWidth: '220px' }}>
-                            <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
-                            <input
-                                type="text"
-                                placeholder="Buscar en todas las celdas..."
-                                value={searchTerm}
-                                onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                                style={{
-                                    width: '100%', padding: '8px 10px 8px 32px',
-                                    borderRadius: '8px', border: '1px solid var(--neutral-200)',
-                                    fontSize: '0.8rem', color: 'var(--neutral-700)',
-                                    outline: 'none', transition: 'border-color 0.2s',
-                                    background: '#fff'
-                                }}
-                                onFocus={e => e.currentTarget.style.borderColor = 'var(--primary-400)'}
-                                onBlur={e => e.currentTarget.style.borderColor = 'var(--neutral-200)'}
-                            />
-                        </div>
-
-                        {/* Indicador de filtros de columna activos */}
-                        {(activeFiltersCount > 0 || searchTerm || kpiFilter !== 'all') && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', fontWeight: 600 }}>
-                                    Filtrado activo ({totalFiltered} registros de {originalRows.length})
-                                </span>
-                                <button
-                                    onClick={handleClearAllFilters}
-                                    style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                        padding: '6px 12px', borderRadius: '8px',
-                                        background: '#FEE2E2', color: '#DC2626',
-                                        border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700,
-                                        transition: 'all 0.15s'
-                                    }}
-                                    onMouseOver={e => e.currentTarget.style.background = '#FCA5A5'}
-                                    onMouseOut={e => e.currentTarget.style.background = '#FEE2E2'}
-                                >
-                                    <X size={12} /> Limpiar Filtros
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* CONTENEDOR DE TABLA ESTILO EXCEL */}
-                    <div className="cart" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 }}>
-                        <div className="cart__table-wrapper" style={{ overflow: 'auto', flex: 1 }}>
-                            <table className="cart__table" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
-                                <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
-                                    <tr>
-                                        {/* Cabeceras estándar agregadas */}
-                                        <th className="cart__th" style={{ width: '60px', textAlign: 'center', background: '#F8FAFC' }}>Fila Excel</th>
-                                        <th className="cart__th" style={{ width: '130px', background: '#F8FAFC' }}>Estado Auditoría</th>
-                                        
-                                        {/* Cabeceras dinámicas provenientes del Excel */}
-                                        {headers.map(header => (
-                                            <TableHeaderCell key={header} header={header} />
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {paginatedRows.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={headers.length + 2} style={{ textAlign: 'center', padding: '40px 0', color: 'var(--neutral-400)' }}>
-                                                <AlertTriangle size={36} strokeWidth={1.2} style={{ color: 'var(--neutral-300)', marginBottom: '8px' }} />
-                                                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700 }}>Sin resultados</h3>
-                                                <p style={{ margin: 0, fontSize: '0.78rem' }}>Ajusta la búsqueda o los filtros para mostrar registros.</p>
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        paginatedRows.map((row, rIdx) => {
-                                            const status = row._auditStatus;
-                                            
-                                            // Badges clases
-                                            let badgeClass = 'badge-status--ok';
-                                            let badgeLabel = 'Completo OK';
-                                            if (status === 'SIN_AMBOS') {
-                                                badgeClass = 'badge-status--sin-ambos';
-                                                badgeLabel = 'Falta Ambos';
-                                            } else if (status === 'SIN_FECHA') {
-                                                badgeClass = 'badge-status--sin-fecha';
-                                                badgeLabel = 'Falta Fecha';
-                                            } else if (status === 'SIN_RESPUESTA') {
-                                                badgeClass = 'badge-status--sin-respuesta';
-                                                badgeLabel = 'Falta Respuesta';
-                                            }
-
-                                            return (
-                                                <tr key={row._origIndex} className="cart__row">
-                                                    {/* N° Fila original Excel */}
-                                                    <td className="cart__td" style={{ textAlign: 'center', fontWeight: 700, color: 'var(--neutral-400)', background: 'var(--neutral-50)' }}>
-                                                        {row._origIndex}
-                                                    </td>
-                                                    
-                                                    {/* Badge de estado auditoría */}
-                                                    <td className="cart__td" style={{ background: 'var(--neutral-50)' }}>
-                                                        <span className={`badge-status ${badgeClass}`}>
-                                                            {badgeLabel}
-                                                        </span>
-                                                    </td>
-
-                                                    {/* Columnas dinámicas de datos */}
-                                                    {headers.map(header => {
-                                                        const isFechaCol = header === columnMapping.fechaEvolucion;
-                                                        const isRespCol = header === columnMapping.valorRespuestaMedica;
-                                                        const isAltaCol = header === columnMapping.fechaAlta;
-                                                        
-                                                        const valRaw = row[header];
-                                                        const isEmpty = isNullOrEmpty(valRaw);
-                                                        
-                                                        // Clases condicionales de error
-                                                        let cellStyle = {};
-                                                        let cellClass = '';
-                                                        
-                                                        if (isFechaCol && isEmpty) {
-                                                            cellClass = 'table-cell-warning';
-                                                        } else if (isRespCol && isEmpty) {
-                                                            cellClass = 'table-cell-danger';
-                                                        } else if (isAltaCol && isEmpty) {
-                                                            cellClass = 'table-cell-alta-warning';
-                                                        }
-
-                                                        const displayVal = String(valRaw || '');
-
-                                                        return (
-                                                            <td 
-                                                                key={header} 
-                                                                className={`cart__td ${cellClass}`}
-                                                                style={{ 
-                                                                    maxWidth: '240px', 
-                                                                    overflow: 'hidden', 
-                                                                    textOverflow: 'ellipsis', 
-                                                                    whiteSpace: 'nowrap',
-                                                                    padding: isEmpty ? '6px 12px' : '10px 12px',
-                                                                    ...cellStyle
-                                                                }}
-                                                                title={isEmpty ? 'Sin registrar' : displayVal}
-                                                            >
-                                                                {isEmpty ? (
-                                                                    isFechaCol ? (
-                                                                        <span className="table-cell-empty-badge table-cell-empty-badge--warning">
-                                                                            <AlertTriangle size={11} /> Sin Fecha
-                                                                        </span>
-                                                                    ) : isRespCol ? (
-                                                                        <span className="table-cell-empty-badge table-cell-empty-badge--danger">
-                                                                            <AlertCircle size={11} /> Sin Respuesta
-                                                                        </span>
-                                                                    ) : isAltaCol ? (
-                                                                        <span className="table-cell-empty-badge table-cell-empty-badge--alta">
-                                                                            <AlertTriangle size={11} /> Sin Alta
-                                                                        </span>
-                                                                    ) : (
-                                                                        <span style={{ color: 'var(--neutral-300)', fontStyle: 'italic', fontSize: '0.75rem' }}>Vacío</span>
-                                                                    )
-                                                                ) : (
-                                                                    displayVal
-                                                                )}
-                                                            </td>
-                                                        );
-                                                    })}
-                                                </tr>
-                                            );
-                                        })
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* PIE DE TABLA / PAGINACIÓN */}
-                        <div style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '10px 18px', borderTop: '1px solid var(--neutral-200)',
-                            background: '#F8FAFC', flexWrap: 'wrap', gap: '10px', fontSize: '0.8rem'
-                        }}>
-                            <div>
-                                Mostrando <strong>{totalFiltered === 0 ? 0 : (currentPage - 1) * pageSize + 1}</strong> a <strong>{pageSize === -1 ? totalFiltered : Math.min(currentPage * pageSize, totalFiltered)}</strong> de <strong>{totalFiltered}</strong> registros
-                                {activeFiltersCount > 0 || kpiFilter !== 'all' || searchTerm ? (
-                                    <span style={{ color: 'var(--neutral-400)', marginLeft: '6px' }}>(filtrado de {originalRows.length} en total)</span>
-                                ) : null}
-                            </div>
-
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                {/* Selector tamaño página */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ color: 'var(--neutral-500)' }}>Filas:</span>
-                                    <select
-                                        value={pageSize}
-                                        onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                    {viewMode === 'planilla' ? (
+                        <>
+                            {/* BARRA DE FILTRADO ADICIONAL */}
+                            <div style={{
+                                display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap',
+                                padding: '10px 14px', borderRadius: '12px',
+                                background: '#FAFAFA', border: '1px solid var(--neutral-200)',
+                            }}>
+                                {/* Buscador general */}
+                                <div style={{ flex: 1, position: 'relative', minWidth: '220px' }}>
+                                    <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar en todas las celdas..."
+                                        value={searchTerm}
+                                        onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                                         style={{
-                                            padding: '4px 8px', borderRadius: '6px',
-                                            border: '1px solid var(--neutral-200)', background: '#fff',
-                                            fontWeight: 600, outline: 'none', cursor: 'pointer'
+                                            width: '100%', padding: '8px 10px 8px 32px',
+                                            borderRadius: '8px', border: '1px solid var(--neutral-200)',
+                                            fontSize: '0.8rem', color: 'var(--neutral-700)',
+                                            outline: 'none', transition: 'border-color 0.2s',
+                                            background: '#fff'
                                         }}
-                                    >
-                                        <option value={20}>20</option>
-                                        <option value={50}>50</option>
-                                        <option value={100}>100</option>
-                                        <option value={-1}>Todo</option>
-                                    </select>
+                                        onFocus={e => e.currentTarget.style.borderColor = 'var(--primary-400)'}
+                                        onBlur={e => e.currentTarget.style.borderColor = 'var(--neutral-200)'}
+                                    />
                                 </div>
 
-                                {/* Controles Paginador */}
-                                {pageSize !== -1 && totalPages > 1 && (
+                                {/* Indicador de filtros de columna activos */}
+                                {(activeFiltersCount > 0 || searchTerm || kpiFilter !== 'all') && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', fontWeight: 600 }}>
+                                            Filtrado activo ({totalFiltered} registros de {originalRows.length})
+                                        </span>
+                                        <button
+                                            onClick={handleClearAllFilters}
+                                            style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                padding: '6px 12px', borderRadius: '8px',
+                                                background: '#FEE2E2', color: '#DC2626',
+                                                border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700,
+                                                transition: 'all 0.15s'
+                                            }}
+                                            onMouseOver={e => e.currentTarget.style.background = '#FCA5A5'}
+                                            onMouseOut={e => e.currentTarget.style.background = '#FEE2E2'}
+                                        >
+                                            <X size={12} /> Limpiar Filtros
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* CONTENEDOR DE TABLA ESTILO EXCEL */}
+                            <div className="cart" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 }}>
+                                <div className="cart__table-wrapper" style={{ overflow: 'auto', flex: 1 }}>
+                                    <table className="cart__table" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+                                        <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                                            <tr>
+                                                <th className="cart__th" style={{ width: '60px', textAlign: 'center', background: '#F8FAFC' }}>Fila Excel</th>
+                                                <th className="cart__th" style={{ width: '130px', background: '#F8FAFC' }}>Estado Auditoría</th>
+                                                {headers.map(header => (
+                                                    <TableHeaderCell key={header} header={header} />
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {paginatedRows.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={headers.length + 2} style={{ textAlign: 'center', padding: '40px 0', color: 'var(--neutral-400)' }}>
+                                                        <AlertTriangle size={36} strokeWidth={1.2} style={{ color: 'var(--neutral-300)', marginBottom: '8px' }} />
+                                                        <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700 }}>Sin resultados</h3>
+                                                        <p style={{ margin: 0, fontSize: '0.78rem' }}>Ajusta la búsqueda o los filtros para mostrar registros.</p>
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                paginatedRows.map((row) => {
+                                                    const status = row._auditStatus;
+                                                    let badgeClass = 'badge-status--ok';
+                                                    let badgeLabel = 'Completo OK';
+                                                    if (status === 'SIN_AMBOS') {
+                                                        badgeClass = 'badge-status--sin-ambos';
+                                                        badgeLabel = 'Falta Ambos';
+                                                    } else if (status === 'SIN_FECHA') {
+                                                        badgeClass = 'badge-status--sin-fecha';
+                                                        badgeLabel = 'Falta Fecha';
+                                                    } else if (status === 'SIN_RESPUESTA') {
+                                                        badgeClass = 'badge-status--sin-respuesta';
+                                                        badgeLabel = 'Falta Respuesta';
+                                                    } else if (status === 'RIESGO_DUPLICADO') {
+                                                        badgeClass = 'badge-status--sin-fecha';
+                                                        badgeLabel = 'Repetido';
+                                                    }
+
+                                                    return (
+                                                        <tr key={row._origIndex} className="cart__row">
+                                                            <td className="cart__td" style={{ textAlign: 'center', fontWeight: 700, color: 'var(--neutral-400)', background: 'var(--neutral-50)' }}>
+                                                                {row._origIndex}
+                                                            </td>
+                                                            <td className="cart__td" style={{ background: 'var(--neutral-50)' }}>
+                                                                <span className={`badge-status ${badgeClass}`}>
+                                                                    {badgeLabel}
+                                                                </span>
+                                                            </td>
+                                                            {headers.map(header => {
+                                                                const isFechaCol = header === columnMapping.fechaEvolucion;
+                                                                const isRespCol = header === columnMapping.valorRespuestaMedica;
+                                                                const isAltaCol = header === columnMapping.fechaAlta;
+                                                                const valRaw = row[header];
+                                                                const isEmpty = isNullOrEmpty(valRaw);
+                                                                let cellClass = '';
+                                                                if (isFechaCol && isEmpty) {
+                                                                    cellClass = 'table-cell-warning';
+                                                                } else if (isRespCol && isEmpty) {
+                                                                    cellClass = 'table-cell-danger';
+                                                                } else if (isAltaCol && isEmpty) {
+                                                                    cellClass = 'table-cell-alta-warning';
+                                                                }
+                                                                const displayVal = String(valRaw || '');
+                                                                return (
+                                                                    <td 
+                                                                        key={header} 
+                                                                        className={`cart__td ${cellClass}`}
+                                                                        style={{ 
+                                                                            maxWidth: '240px', 
+                                                                            overflow: 'hidden', 
+                                                                            textOverflow: 'ellipsis', 
+                                                                            whiteSpace: 'nowrap',
+                                                                            padding: isEmpty ? '6px 12px' : '10px 12px',
+                                                                        }}
+                                                                        title={isEmpty ? 'Sin registrar' : displayVal}
+                                                                    >
+                                                                        {isEmpty ? (
+                                                                            isFechaCol ? (
+                                                                                <span className="table-cell-empty-badge table-cell-empty-badge--warning">
+                                                                                    <AlertTriangle size={11} /> Sin Fecha
+                                                                                </span>
+                                                                            ) : isRespCol ? (
+                                                                                <span className="table-cell-empty-badge table-cell-empty-badge--danger">
+                                                                                    <AlertCircle size={11} /> Sin Respuesta
+                                                                                </span>
+                                                                            ) : isAltaCol ? (
+                                                                                <span className="table-cell-empty-badge table-cell-empty-badge--alta">
+                                                                                    <AlertTriangle size={11} /> Sin Alta
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span style={{ color: 'var(--neutral-300)', fontStyle: 'italic', fontSize: '0.75rem' }}>Vacío</span>
+                                                                            )
+                                                                        ) : (
+                                                                            displayVal
+                                                                        )}
+                                                                    </td>
+                                                                );
+                                                            })}
+                                                        </tr>
+                                                    );
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* PIE DE TABLA / PAGINACIÓN */}
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    padding: '10px 18px', borderTop: '1px solid var(--neutral-200)',
+                                    background: '#F8FAFC', flexWrap: 'wrap', gap: '10px', fontSize: '0.8rem'
+                                }}>
+                                    <div>
+                                        Mostrando <strong>{totalFiltered === 0 ? 0 : (currentPage - 1) * pageSize + 1}</strong> a <strong>{pageSize === -1 ? totalFiltered : Math.min(currentPage * pageSize, totalFiltered)}</strong> de <strong>{totalFiltered}</strong> registros
+                                        {(activeFiltersCount > 0 || kpiFilter !== 'all' || searchTerm) && (
+                                            <span style={{ color: 'var(--neutral-400)', marginLeft: '6px' }}>(filtrado de {originalRows.length} en total)</span>
+                                        )}
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ color: 'var(--neutral-500)' }}>Filas:</span>
+                                            <select
+                                                value={pageSize}
+                                                onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                                                style={{
+                                                    padding: '4px 8px', borderRadius: '6px',
+                                                    border: '1px solid var(--neutral-200)', background: '#fff',
+                                                    fontWeight: 600, outline: 'none', cursor: 'pointer'
+                                                }}
+                                            >
+                                                <option value={20}>20</option>
+                                                <option value={50}>50</option>
+                                                <option value={100}>100</option>
+                                                <option value={-1}>Todo</option>
+                                            </select>
+                                        </div>
+                                        {pageSize !== -1 && totalPages > 1 && (
+                                            <div style={{ display: 'flex', gap: '4px' }}>
+                                                <button
+                                                    disabled={currentPage === 1}
+                                                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                                    style={{
+                                                        width: '28px', height: '28px', borderRadius: '6px',
+                                                        border: '1px solid var(--neutral-200)', background: '#fff',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                        cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                                                        opacity: currentPage === 1 ? 0.4 : 1,
+                                                        color: 'var(--neutral-600)', transition: 'all 0.15s'
+                                                    }}
+                                                >
+                                                    <ChevronLeft size={16} />
+                                                </button>
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', justify: 'center', padding: '0 8px', fontWeight: 700, color: 'var(--neutral-700)' }}>
+                                                    Pág. {currentPage} de {totalPages}
+                                                </span>
+                                                <button
+                                                    disabled={currentPage === totalPages}
+                                                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                                    style={{
+                                                        width: '28px', height: '28px', borderRadius: '6px',
+                                                        border: '1px solid var(--neutral-200)', background: '#fff',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                        cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                                                        opacity: currentPage === totalPages ? 0.4 : 1,
+                                                        color: 'var(--neutral-600)', transition: 'all 0.15s'
+                                                    }}
+                                                >
+                                                    <ChevronRight size={16} />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            {/* BARRA DE BÚSQUEDA PACIENTES */}
+                            <div style={{
+                                display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap',
+                                padding: '10px 14px', borderRadius: '12px',
+                                background: '#FAFAFA', border: '1px solid var(--neutral-200)',
+                            }}>
+                                <div style={{ flex: 1, position: 'relative', minWidth: '220px' }}>
+                                    <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar por paciente, admisión, médico o especialidad..."
+                                        value={patientSearch}
+                                        onChange={e => { setPatientSearch(e.target.value); setPatientPage(1); }}
+                                        style={{
+                                            width: '100%', padding: '8px 10px 8px 32px',
+                                            borderRadius: '8px', border: '1px solid var(--neutral-200)',
+                                            fontSize: '0.8rem', color: 'var(--neutral-700)',
+                                            outline: 'none', transition: 'border-color 0.2s',
+                                            background: '#fff'
+                                        }}
+                                        onFocus={e => e.currentTarget.style.borderColor = 'var(--primary-400)'}
+                                        onBlur={e => e.currentTarget.style.borderColor = 'var(--neutral-200)'}
+                                    />
+                                </div>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', fontWeight: 600 }}>
+                                    Ciclos: <strong>{filteredGroupedPatients.length}</strong> de {groupedPatients.length}
+                                </span>
+                            </div>
+
+                            {/* LISTA DE CICLOS DE PACIENTES */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', flex: 1, minHeight: 0, paddingRight: '4px' }}>
+                                {paginatedPatients.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '40px', background: '#fff', borderRadius: '12px', border: '1px solid var(--neutral-200)' }}>
+                                        <AlertTriangle size={36} strokeWidth={1.2} style={{ color: 'var(--neutral-300)', marginBottom: '8px' }} />
+                                        <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700 }}>Sin pacientes</h3>
+                                        <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--neutral-400)' }}>Ajusta los filtros o la búsqueda.</p>
+                                    </div>
+                                ) : (
+                                    paginatedPatients.map(pat => {
+                                        const timelineDays = getPatientTimelineDays(pat);
+                                        const hasAlertaCritica = pat.gaps.length > 0 || pat.faltaFoja;
+                                        
+                                        let riskColor = '#10B981';
+                                        let riskBg = '#E6FCF5';
+                                        let riskBorder = '#C3FAE8';
+                                        let riskText = 'Riesgo Bajo';
+                                        
+                                        if (hasAlertaCritica) {
+                                            riskColor = '#EF4444';
+                                            riskBg = '#FEF2F2';
+                                            riskBorder = '#FEE2E2';
+                                            riskText = 'Riesgo Crítico';
+                                        } else if (pat.evoluciones.some(ev => ev.isDuplicated)) {
+                                            riskColor = '#F59E0B';
+                                            riskBg = '#FEF3C7';
+                                            riskBorder = '#FDE68A';
+                                            riskText = 'Riesgo Medio';
+                                        }
+
+                                        return (
+                                            <div 
+                                                key={pat.id} 
+                                                style={{
+                                                    background: '#ffffff',
+                                                    borderRadius: '12px',
+                                                    border: `1px solid ${hasAlertaCritica ? '#FEE2E2' : 'rgba(0, 0, 0, 0.06)'}`,
+                                                    padding: '16px',
+                                                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.02)',
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    gap: '12px'
+                                                }}
+                                            >
+                                                {/* Header del Paciente */}
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                                                    <div>
+                                                        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--neutral-800)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            {pat.paciente}
+                                                            <span style={{ 
+                                                                fontSize: '0.7rem', 
+                                                                padding: '2px 8px', 
+                                                                borderRadius: '6px', 
+                                                                fontWeight: 700,
+                                                                color: riskColor,
+                                                                background: riskBg,
+                                                                border: `1px solid ${riskBorder}`
+                                                            }}>
+                                                                {riskText}
+                                                            </span>
+                                                        </h3>
+                                                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '4px', fontSize: '0.75rem', color: 'var(--neutral-500)' }}>
+                                                            <span>Admisión: <strong style={{ color: 'var(--neutral-700)' }}>{pat.numeroAdmision}</strong></span>
+                                                            <span>•</span>
+                                                            <span>Habitación: <strong style={{ color: 'var(--neutral-700)' }}>{pat.habitacion || '—'}</strong></span>
+                                                            <span>•</span>
+                                                            <span>Especialidad: <strong style={{ color: 'var(--neutral-700)' }}>{pat.especialidad || '—'}</strong></span>
+                                                            <span>•</span>
+                                                            <span>Profesional: <strong style={{ color: 'var(--neutral-700)' }}>{pat.medico || '—'}</strong></span>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {/* Impacto Financiero */}
+                                                    <div style={{ textAlign: 'right' }}>
+                                                        <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--neutral-400)', letterSpacing: '0.05em' }}>Débito Estimado</div>
+                                                        <div style={{ fontSize: '1.2rem', fontWeight: 800, color: pat.riesgoDebito > 0 ? '#B91C1C' : '#0CA678', marginTop: '2px' }}>
+                                                            $ {pat.riesgoDebito.toLocaleString('es-AR')}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Fechas de Ingreso y Alta */}
+                                                <div style={{ 
+                                                    background: '#F8FAFC', 
+                                                    borderRadius: '8px', 
+                                                    padding: '8px 12px', 
+                                                    fontSize: '0.75rem', 
+                                                    color: 'var(--neutral-600)',
+                                                    display: 'flex',
+                                                    gap: '24px'
+                                                }}>
+                                                    <span>Fecha Ingreso: <strong>{pat.fechaIngreso || '—'}</strong></span>
+                                                    <span>Fecha Alta: <strong>{pat.fechaAlta || 'Activo / Sin Alta'}</strong></span>
+                                                    <span>Días de Internación: <strong>{timelineDays.length} días</strong></span>
+                                                </div>
+
+                                                {/* Timeline Visual (Grid de días) */}
+                                                <div>
+                                                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-600)', marginBottom: '8px' }}>
+                                                        Línea de Tiempo del Ciclo:
+                                                    </div>
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                                        {timelineDays.map((day, dIdx) => {
+                                                            const surgical = isSurgicalDay(day);
+                                                            
+                                                            let dayBg = '#10B981';
+                                                            let dayText = 'Evolución OK';
+                                                            let dayColor = '#FFF';
+                                                            
+                                                            if (day.status === 'GAP') {
+                                                                dayBg = '#EF4444';
+                                                                dayText = 'Día sin evolución (Gap)';
+                                                            } else if (day.status === 'DUPLICADO') {
+                                                                dayBg = '#F59E0B';
+                                                                dayText = `Texto repetido (${Math.round(day.similarity * 100)}% similitud)`;
+                                                            } else if (surgical) {
+                                                                dayBg = '#3B82F6';
+                                                                dayText = 'Día Quirúrgico (Evolución de Cirugía)';
+                                                            }
+
+                                                            return (
+                                                                <div 
+                                                                    key={dIdx}
+                                                                    style={{
+                                                                        width: '32px',
+                                                                        height: '32px',
+                                                                        borderRadius: '6px',
+                                                                        background: dayBg,
+                                                                        color: dayColor,
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        fontSize: '0.7rem',
+                                                                        fontWeight: 700,
+                                                                        cursor: 'help',
+                                                                        position: 'relative'
+                                                                    }}
+                                                                    title={`Fecha: ${day.dateStr}\nEstado: ${dayText}\n\n${day.valRespuesta ? 'Texto: ' + day.valRespuesta.substring(0, 100) + '...' : 'Sin registros'}`}
+                                                                >
+                                                                    {dIdx + 1}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                    
+                                                    {/* Leyenda de la Línea de Tiempo */}
+                                                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '8px', fontSize: '0.68rem', color: 'var(--neutral-500)' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#10B981', display: 'inline-block' }} />
+                                                            <span>Evolución Médica OK</span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#F59E0B', display: 'inline-block' }} />
+                                                            <span>Evolución Repetida (Riesgo Débito 50%)</span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#EF4444', display: 'inline-block' }} />
+                                                            <span>Día sin Evolución (Débito Cama 100%)</span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#3B82F6', display: 'inline-block' }} />
+                                                            <span>Evolución Quirúrgica</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Detalle de Alertas del Paciente */}
+                                                {pat.alertas.length > 0 && (
+                                                    <div style={{ 
+                                                        borderTop: '1px solid var(--neutral-100)', 
+                                                        paddingTop: '10px', 
+                                                        display: 'flex', 
+                                                        flexDirection: 'column', 
+                                                        gap: '6px' 
+                                                    }}>
+                                                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Observaciones Críticas de Auditoría:</div>
+                                                        {pat.alertas.map((al, alIdx) => (
+                                                            <div 
+                                                                key={alIdx} 
+                                                                style={{ 
+                                                                    display: 'flex', 
+                                                                    alignItems: 'center', 
+                                                                    gap: '8px', 
+                                                                    fontSize: '0.75rem', 
+                                                                    color: al.tipo === 'CRITICO' ? '#B91C1C' : '#D97706',
+                                                                    background: al.tipo === 'CRITICO' ? '#FEF2F2' : '#FEF3C7',
+                                                                    padding: '6px 10px',
+                                                                    borderRadius: '6px',
+                                                                    fontWeight: 500
+                                                                }}
+                                                            >
+                                                                {al.tipo === 'CRITICO' ? <AlertCircle size={14} /> : <AlertTriangle size={14} />}
+                                                                {al.mensaje}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+
+                            {/* PIE DE VISTA PACIENTES / PAGINACIÓN */}
+                            <div style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                padding: '10px 18px', borderTop: '1px solid var(--neutral-200)',
+                                background: '#F8FAFC', flexWrap: 'wrap', gap: '10px', fontSize: '0.8rem',
+                                borderRadius: '0 0 12px 12px'
+                            }}>
+                                <div>
+                                    Mostrando <strong>{filteredGroupedPatients.length === 0 ? 0 : (patientPage - 1) * patientPageSize + 1}</strong> a <strong>{Math.min(patientPage * patientPageSize, filteredGroupedPatients.length)}</strong> de <strong>{filteredGroupedPatients.length}</strong> pacientes
+                                </div>
+
+                                {totalPatientPages > 1 && (
                                     <div style={{ display: 'flex', gap: '4px' }}>
                                         <button
-                                            disabled={currentPage === 1}
-                                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                            disabled={patientPage === 1}
+                                            onClick={() => setPatientPage(prev => Math.max(prev - 1, 1))}
                                             style={{
                                                 width: '28px', height: '28px', borderRadius: '6px',
                                                 border: '1px solid var(--neutral-200)', background: '#fff',
                                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                                                opacity: currentPage === 1 ? 0.4 : 1,
+                                                cursor: patientPage === 1 ? 'not-allowed' : 'pointer',
+                                                opacity: patientPage === 1 ? 0.4 : 1,
                                                 color: 'var(--neutral-600)', transition: 'all 0.15s'
                                             }}
-                                            onMouseOver={e => { if (currentPage > 1) e.currentTarget.style.borderColor = 'var(--primary-400)'; }}
-                                            onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--neutral-200)'; }}
                                         >
                                             <ChevronLeft size={16} />
                                         </button>
-                                        <span style={{ 
-                                            display: 'inline-flex', alignItems: 'center', justify: 'center',
-                                            padding: '0 8px', fontWeight: 700, color: 'var(--neutral-700)'
-                                        }}>
-                                            Pág. {currentPage} de {totalPages}
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', justify: 'center', padding: '0 8px', fontWeight: 700, color: 'var(--neutral-700)' }}>
+                                            Pág. {patientPage} de {totalPatientPages}
                                         </span>
                                         <button
-                                            disabled={currentPage === totalPages}
-                                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                            disabled={patientPage === totalPatientPages}
+                                            onClick={() => setPatientPage(prev => Math.min(prev + 1, totalPatientPages))}
                                             style={{
                                                 width: '28px', height: '28px', borderRadius: '6px',
                                                 border: '1px solid var(--neutral-200)', background: '#fff',
                                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                                                opacity: currentPage === totalPages ? 0.4 : 1,
+                                                cursor: patientPage === totalPatientPages ? 'not-allowed' : 'pointer',
+                                                opacity: patientPage === totalPatientPages ? 0.4 : 1,
                                                 color: 'var(--neutral-600)', transition: 'all 0.15s'
                                             }}
-                                            onMouseOver={e => { if (currentPage < totalPages) e.currentTarget.style.borderColor = 'var(--primary-400)'; }}
-                                            onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--neutral-200)'; }}
                                         >
                                             <ChevronRight size={16} />
                                         </button>
                                     </div>
                                 )}
                             </div>
-                        </div>
-                    </div>
+                        </>
+                    )}
                 </>
             )}
         </div>

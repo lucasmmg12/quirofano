@@ -1,6 +1,6 @@
 /**
- * ragClient.js — API Client para Simon IA (RAG Pipeline)
- * Conecta ADM-QUI con el backend de Simon en Render
+ * ragClient.js — API Client para Beto IA (RAG Pipeline)
+ * Conecta ADM-QUI con el backend de Beto en Render
  * 
  * Funciones: Chat, Conversations, Files, Folders, Rules, Analytics, Health
  */

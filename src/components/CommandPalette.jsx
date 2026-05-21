@@ -23,7 +23,7 @@ const MODULE_ITEMS = [
     { id: 'metricas', label: 'Métricas de Cirugías', icon: BarChart3, keywords: ['metrica', 'estadistica', 'grafico'] },
     { id: 'asociaciones_entrega', label: 'Entrega Asociaciones', icon: PackageCheck, keywords: ['asociacion', 'entrega', 'documentacion'] },
     { id: 'laboratorios', label: 'Anatomía Patológica', icon: Microscope, keywords: ['laboratorio', 'biopsia', 'anatomia'] },
-    { id: 'simon', label: 'Simón IA', icon: Brain, keywords: ['simon', 'ia', 'documento', 'ocr'] },
+    { id: 'beto', label: 'Beto IA', icon: Brain, keywords: ['beto', 'ia', 'documento', 'ocr'] },
     { id: 'config', label: 'Configuración', icon: Settings, keywords: ['config', 'ajuste', 'usuario'] },
 ];
 
