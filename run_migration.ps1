@@ -1,6 +1,20 @@
 $body = Get-Content -Path 'migrate_body.json' -Raw -Encoding UTF8
 $uri = 'https://api.supabase.com/v1/projects/hakysnqiryimxbwdslwe/database/query'
-$token = 'sbp_5b15e67cd11ce4fd0768b3c956db8f7968d4f6b1'
+
+# Intentar leer SUPABASE_ACCESS_TOKEN desde .env para evitar exponer credenciales en Git
+$token = $null
+if (Test-Path '.env') {
+    $envTokenLine = Get-Content -Path '.env' | Where-Object { $_ -match '^SUPABASE_ACCESS_TOKEN=(.*)' }
+    if ($envTokenLine) {
+        $token = $envTokenLine.Split('=', 2)[1].Trim()
+    }
+}
+
+if (-not $token) {
+    Write-Host "ERROR: SUPABASE_ACCESS_TOKEN no encontrado en el archivo .env"
+    exit 1
+}
+
 $headers = @{
     'Authorization' = "Bearer $token"
     'Content-Type'  = 'application/json'
