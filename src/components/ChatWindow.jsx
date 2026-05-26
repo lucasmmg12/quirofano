@@ -27,6 +27,96 @@ const EMOJI_LIST = [
     '🙏', '💯', '🎉', '🎊', '👋', '👌', '🤙', '📌', '⏰', '🗓️',
 ];
 
+// Heurística para pre-completar variables de Meta templates
+const guessMetaVariableValue = (index, templateText, context, patientName) => {
+    if (!templateText) return '';
+    const placeholder = `{{${index}}}`;
+    const placeholderPos = templateText.indexOf(placeholder);
+    if (placeholderPos === -1) return '';
+    
+    const start = Math.max(0, placeholderPos - 40);
+    const end = Math.min(templateText.length, placeholderPos + 40);
+    const contextText = templateText.substring(start, end).toLowerCase();
+    
+    // Extraer propiedades según el tipo de context (ChatWindow usa camelCase, MessagingPanel usa snake_case o anidado)
+    const obraSocial = context?.obraSocial || context?.surgery?.obra_social || '';
+    const medico = context?.medico || context?.surgery?.medico || '';
+    const fechaCirugia = context?.fechaCirugia || context?.surgery?.fecha_cirugia || '';
+    const totalPresupuesto = context?.presupuestoTotal || context?.budget?.importe_total || '';
+    const deudaTotal = context?.deudaTotal || context?.debt?.deuda_total || '';
+    
+    // 1. Patient Name (generalmente después de "hola", "estimado", "paciente", "bienvenido")
+    if (contextText.includes('hola') || contextText.includes('estimado') || contextText.includes('estimada') || contextText.includes('paciente') || contextText.includes('querido')) {
+        return patientName || '';
+    }
+    
+    // 2. Fecha de Cirugía (cerca de "cirugía", "cirugia", "fecha", "turno", "día", "dia")
+    if (contextText.includes('cirugía') || contextText.includes('cirugia') || contextText.includes('fecha') || contextText.includes('turno') || contextText.includes('día') || contextText.includes('dia') || contextText.includes('programada para el')) {
+        if (fechaCirugia) {
+            try {
+                const d = new Date(fechaCirugia + 'T12:00:00');
+                return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            } catch {
+                return fechaCirugia;
+            }
+        }
+        return '';
+    }
+    
+    // 3. Médico (cerca de "médico", "medico", "dr.", "dra.", "dr ", "dra ", "doctor", "doctora")
+    if (contextText.includes('médico') || contextText.includes('medico') || contextText.includes('dr.') || contextText.includes('dra.') || contextText.includes('doctor') || contextText.includes('doctora')) {
+        return medico || '';
+    }
+    
+    // 4. Obra Social / Cobertura (cerca de "obra social", "prepaga", "cobertura", "mutual", "osde")
+    if (contextText.includes('obra social') || contextText.includes('prepaga') || contextText.includes('cobertura') || contextText.includes('mutual') || contextText.includes('osde')) {
+        return obraSocial || '';
+    }
+    
+    // 5. Presupuesto o Deuda (cerca de "importe", "total", "$", "presupuesto", "deuda", "monto", "factura")
+    if (contextText.includes('importe') || contextText.includes('total') || contextText.includes('$') || contextText.includes('presupuesto') || contextText.includes('deuda') || contextText.includes('monto') || contextText.includes('factura')) {
+        if (totalPresupuesto) return typeof totalPresupuesto === 'number' ? `$${totalPresupuesto.toLocaleString('es-AR')}` : totalPresupuesto;
+        if (deudaTotal) return typeof deudaTotal === 'number' ? `$${deudaTotal.toLocaleString('es-AR')}` : deudaTotal;
+        return '';
+    }
+    
+    // Fallbacks
+    if (index === 1) return patientName || '';
+    if (index === 2 && fechaCirugia) {
+        try {
+            const d = new Date(fechaCirugia + 'T12:00:00');
+            return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        } catch {
+            return fechaCirugia;
+        }
+    }
+    
+    return '';
+};
+
+// Parser para extraer variables únicas del template
+const getMetaTemplateVariables = (tpl, context, patientName) => {
+    const bodyComponent = tpl.components?.find(c => c.type === 'BODY');
+    const text = bodyComponent?.text || '';
+    const matches = text.match(/\{\{(\d+)\}\}/g);
+    if (!matches) return [];
+    
+    const indices = [];
+    matches.forEach(m => {
+        const idx = Number(m.replace(/\{\{|\}\}/g, ''));
+        if (!indices.includes(idx)) {
+            indices.push(idx);
+        }
+    });
+    
+    indices.sort((a, b) => a - b);
+    
+    return indices.map(idx => {
+        const val = guessMetaVariableValue(idx, text, context, patientName);
+        return { index: idx, value: val };
+    });
+};
+
 export default function ChatWindow({ open, onClose, patientName, patientPhone, patientContext = {}, addToast }) {
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -56,6 +146,10 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
     const [pendingMetaTemplate, setPendingMetaTemplate] = useState(null);
     const [sendingMetaTemplate, setSendingMetaTemplate] = useState(false);
     const [templateJustSent, setTemplateJustSent] = useState(false);
+    // Meta WhatsApp template variables states
+    const [metaTemplateForVars, setMetaTemplateForVars] = useState(null);
+    const [metaTemplateVars, setMetaTemplateVars] = useState([]);
+
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
@@ -280,6 +374,15 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
     // === QUICK SEND META TEMPLATE (inline, skip confirmation) ===
     const quickSendMetaTemplate = async (tpl) => {
         if (!patientPhone || sendingMetaTemplate) return;
+
+        // Verificar si la plantilla tiene variables
+        const parsedVars = getMetaTemplateVariables(tpl, patientContext, patientName);
+        if (parsedVars.length > 0) {
+            setMetaTemplateForVars(tpl);
+            setMetaTemplateVars(parsedVars);
+            return;
+        }
+
         setSendingMetaTemplate(true);
         try {
             const normalizedPhone = patientPhone.startsWith('549') ? patientPhone : `549${patientPhone}`;
@@ -305,6 +408,59 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
             setSendingMetaTemplate(false);
         }
     };
+
+    // === SEND META TEMPLATE WITH VARIABLES ===
+    const sendMetaTemplateWithVars = async () => {
+        if (!metaTemplateForVars || !patientPhone || sendingMetaTemplate) return;
+        setSendingMetaTemplate(true);
+        try {
+            const normalizedPhone = patientPhone.startsWith('549') ? patientPhone : `549${patientPhone}`;
+            
+            // Construir el parámetro components con la estructura de Meta (type: 'body' en minúsculas)
+            const components = [
+                {
+                    type: 'body',
+                    parameters: metaTemplateVars.map(v => ({
+                        type: 'text',
+                        text: String(v.value || '').trim()
+                    }))
+                }
+            ];
+
+            await sendMetaTemplate({
+                to: normalizedPhone,
+                templateName: metaTemplateForVars.name || metaTemplateForVars.templateName,
+                languageCode: metaTemplateForVars.language || 'es',
+                components,
+                lineId: assignedLineId,
+            });
+
+            // Reemplazar las variables localmente para guardarlo con los valores reales en la BD
+            const templateBody = metaTemplateForVars.components?.find(c => c.type === 'BODY')?.text || metaTemplateForVars.name;
+            let resolvedText = templateBody;
+            metaTemplateVars.forEach(v => {
+                resolvedText = resolvedText.replace(`{{${v.index}}}`, v.value || '');
+            });
+
+            await saveOutgoingMessage({
+                phone: patientPhone,
+                content: `📋 [Plantilla Meta] ${resolvedText}`,
+                mediaType: 'text',
+                lineId: assignedLineId,
+            });
+
+            setTemplateJustSent(true);
+            addToast?.('Plantilla enviada con variables ✅', 'success');
+            setMetaTemplateForVars(null);
+            setMetaTemplateVars([]);
+        } catch (err) {
+            console.error('Error sending Meta template with vars:', err);
+            addToast?.('Error enviando plantilla: ' + err.message, 'error');
+        } finally {
+            setSendingMetaTemplate(false);
+        }
+    };
+
 
     // Auto-scroll al final
     useEffect(() => {
@@ -1692,6 +1848,121 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                         >
                             Cancelar
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Variables de Plantilla Meta */}
+            {metaTemplateForVars && (
+                <div className="modal-overlay" onClick={() => setMetaTemplateForVars(null)} style={{ zIndex: 1100 }}>
+                    <div className="modal animate-scale-in" onClick={e => e.stopPropagation()} style={{ maxWidth: '550px' }}>
+                        <div className="modal__header" style={{ borderBottom: '1px solid #E2E8F0', padding: '16px 20px' }}>
+                            <div className="modal__header-title" style={{ gap: '8px' }}>
+                                <FileText size={20} style={{ color: '#166534' }} />
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#166534' }}>
+                                        Configurar Variables de Plantilla
+                                    </h3>
+                                    <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                        Plantilla: {metaTemplateForVars.name || metaTemplateForVars.templateName}
+                                    </span>
+                                </div>
+                            </div>
+                            <button className="modal__close" onClick={() => setMetaTemplateForVars(null)} aria-label="Cerrar">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="modal__body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            {/* Live Preview Panel */}
+                            <div>
+                                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                                    Vista Previa del Mensaje
+                                </label>
+                                <div style={{
+                                    padding: '12px 16px', borderRadius: '10px',
+                                    background: '#D9FDD3', fontSize: '0.85rem',
+                                    lineHeight: 1.5, color: '#111B21',
+                                    whiteSpace: 'pre-wrap', border: '1px solid #BBF7D0',
+                                    boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)'
+                                }}>
+                                    {(() => {
+                                        const bodyText = metaTemplateForVars.components?.find(c => c.type === 'BODY')?.text || '';
+                                        let resolved = bodyText;
+                                        metaTemplateVars.forEach(v => {
+                                            const valText = v.value ? `**${v.value}**` : `[Variable ${v.index}]`;
+                                            resolved = resolved.replace(`{{${v.index}}}`, valText);
+                                        });
+                                        // Simple bold rendering for preview
+                                        return resolved.split('**').map((part, i) => 
+                                            i % 2 === 1 ? <strong key={i} style={{ color: '#166534', background: 'rgba(22,101,52,0.08)', padding: '0 2px', borderRadius: '3px' }}>{part}</strong> : part
+                                        );
+                                    })()}
+                                </div>
+                            </div>
+
+                            {/* Variable Fields */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', textTransform: 'uppercase' }}>
+                                    Valores de las Variables
+                                </label>
+                                <div style={{ display: 'grid', gap: '10px' }}>
+                                    {metaTemplateVars.map((v, i) => (
+                                        <div key={v.index} className="field-group" style={{ margin: 0 }}>
+                                            <label className="field-label" style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <span>Variable {v.index}</span>
+                                                <span style={{ fontSize: '0.65rem', fontWeight: 400, color: '#94A3B8' }}>
+                                                    ({i === 0 ? 'Nombre' : i === 1 ? 'Fecha/Detalle' : 'Información'})
+                                                </span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                className="field-input"
+                                                placeholder={`Ej: Valor para variable ${v.index}`}
+                                                value={v.value}
+                                                onChange={e => {
+                                                    const updated = [...metaTemplateVars];
+                                                    updated[i] = { ...v, value: e.target.value };
+                                                    setMetaTemplateVars(updated);
+                                                }}
+                                                style={{ width: '100%', padding: '8px 12px', fontSize: '0.85rem' }}
+                                                autoFocus={i === 0}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="modal__footer" style={{ borderTop: '1px solid #E2E8F0', padding: '14px 20px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                            <button className="btn btn--ghost" onClick={() => setMetaTemplateForVars(null)}>
+                                Cancelar
+                            </button>
+                            <button
+                                className="btn btn--success"
+                                onClick={sendMetaTemplateWithVars}
+                                disabled={sendingMetaTemplate || metaTemplateVars.some(v => !v.value.trim())}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                    background: '#166534', color: '#fff', border: 'none',
+                                    padding: '8px 18px', borderRadius: '8px', cursor: 'pointer',
+                                    fontWeight: 700, fontSize: '0.82rem',
+                                    boxShadow: '0 2px 8px rgba(22,101,52,0.3)',
+                                }}
+                            >
+                                {sendingMetaTemplate ? (
+                                    <>
+                                        <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                                        Enviando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Send size={14} />
+                                        Enviar Plantilla
+                                    </>
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
