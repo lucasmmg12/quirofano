@@ -376,18 +376,33 @@ export async function assignLine(phone, lineId) {
     const normalized = normalizeArgentinePhone(phone);
     if (!normalized || !lineId) return;
 
-    // Use upsert instead of update to handle the case where CRM contact
-    // doesn't exist yet (race condition with upsertCrmContact)
-    const { error } = await supabase
+    // Primero intentar UPDATE (para contactos que ya existen)
+    const { data, error: updateError } = await supabase
         .from('crm_contacts')
-        .upsert(
-            { phone: normalized, assigned_line_id: lineId },
-            { onConflict: 'phone' }
-        );
+        .update({ assigned_line_id: lineId })
+        .eq('phone', normalized)
+        .select('phone')
+        .maybeSingle();
 
-    if (error) {
-        console.error('Error assigning line:', error);
-        throw error;
+    if (updateError) {
+        console.error('Error assigning line (update):', updateError);
+        throw updateError;
+    }
+
+    // Si no existía el contacto, crear con nombre por defecto (el teléfono)
+    // para satisfacer el NOT NULL constraint en "nombre"
+    if (!data) {
+        const { error: insertError } = await supabase
+            .from('crm_contacts')
+            .upsert(
+                { phone: normalized, nombre: normalized, assigned_line_id: lineId },
+                { onConflict: 'phone' }
+            );
+
+        if (insertError) {
+            console.error('Error assigning line (insert):', insertError);
+            throw insertError;
+        }
     }
 }
 
