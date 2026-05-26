@@ -3,7 +3,7 @@
  * Maneja la lectura/escritura de mensajes en whatsapp_messages
  */
 
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseAdmin } from '../lib/supabase';
 import { normalizeArgentinePhone } from './builderbotApi';
 import { getCurrentUser } from './authService';
 
@@ -170,7 +170,7 @@ export async function saveOutgoingMessage({ phone, content, mediaUrl, mediaType,
         return user.usuario || user.nombre || 'Sistema ADM-QUI';
     })();
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
         .from('whatsapp_messages')
         .insert({
             phone: normalized,
@@ -285,7 +285,7 @@ export async function upsertCrmContact({ phone, nombre, id_paciente, dni, notas 
     const normalized = normalizeArgentinePhone(phone);
     if (!normalized || !nombre) return null;
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
         .from('crm_contacts')
         .upsert({
             phone: normalized,
@@ -378,7 +378,7 @@ export async function assignLine(phone, lineId) {
 
     // Use upsert instead of update to handle the case where CRM contact
     // doesn't exist yet (race condition with upsertCrmContact)
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
         .from('crm_contacts')
         .upsert(
             { phone: normalized, assigned_line_id: lineId },
