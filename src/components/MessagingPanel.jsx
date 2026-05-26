@@ -34,93 +34,135 @@ const EMOJI_LIST = [
     '🙏', '💯', '🎉', '🎊', '👋', '👌', '🤙', '📌', '⏰', '🗓️',
 ];
 
-// Heurística para pre-completar variables de Meta templates
-const guessMetaVariableValue = (index, templateText, context, patientName) => {
-    if (!templateText) return '';
-    const placeholder = `{{${index}}}`;
-    const placeholderPos = templateText.indexOf(placeholder);
-    if (placeholderPos === -1) return '';
-    
-    const start = Math.max(0, placeholderPos - 40);
-    const end = Math.min(templateText.length, placeholderPos + 40);
-    const contextText = templateText.substring(start, end).toLowerCase();
-    
-    // Extraer propiedades según el tipo de context (ChatWindow usa camelCase, MessagingPanel usa snake_case o anidado)
+// === META TEMPLATE VARIABLE SYSTEM v2 (heurísticas + localStorage mapping + auto-envío) ===
+
+const META_VAR_STORAGE_KEY = 'meta_template_var_mappings';
+
+// Labels humanos por fieldKey
+const FIELD_LABELS = {
+    nombre: 'Nombre del paciente',
+    fecha_cirugia: 'Fecha de cirugía',
+    medico: 'Médico / Profesional',
+    obra_social: 'Obra Social / Cobertura',
+    presupuesto: 'Presupuesto / Importe',
+    deuda: 'Deuda / Saldo',
+};
+
+// Formatear fecha legible
+const formatDateAR = (fecha) => {
+    if (!fecha) return '';
+    try {
+        const d = new Date(fecha + 'T12:00:00');
+        return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch { return fecha; }
+};
+
+// Resolver valor concreto a partir de un fieldKey y el contexto del paciente
+const resolveFieldFromContext = (fieldKey, context, patientName) => {
     const obraSocial = context?.obraSocial || context?.surgery?.obra_social || '';
     const medico = context?.medico || context?.surgery?.medico || '';
     const fechaCirugia = context?.fechaCirugia || context?.surgery?.fecha_cirugia || '';
     const totalPresupuesto = context?.presupuestoTotal || context?.budget?.importe_total || '';
     const deudaTotal = context?.deudaTotal || context?.debt?.deuda_total || '';
-    
-    // 1. Patient Name (generalmente después de "hola", "estimado", "paciente", "bienvenido")
-    if (contextText.includes('hola') || contextText.includes('estimado') || contextText.includes('estimada') || contextText.includes('paciente') || contextText.includes('querido')) {
-        return patientName || '';
-    }
-    
-    // 2. Fecha de Cirugía (cerca de "cirugía", "cirugia", "fecha", "turno", "día", "dia")
-    if (contextText.includes('cirugía') || contextText.includes('cirugia') || contextText.includes('fecha') || contextText.includes('turno') || contextText.includes('día') || contextText.includes('dia') || contextText.includes('programada para el')) {
-        if (fechaCirugia) {
-            try {
-                const d = new Date(fechaCirugia + 'T12:00:00');
-                return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-            } catch {
-                return fechaCirugia;
-            }
-        }
-        return '';
-    }
-    
-    // 3. Médico (cerca de "médico", "medico", "dr.", "dra.", "dr ", "dra ", "doctor", "doctora")
-    if (contextText.includes('médico') || contextText.includes('medico') || contextText.includes('dr.') || contextText.includes('dra.') || contextText.includes('doctor') || contextText.includes('doctora')) {
-        return medico || '';
-    }
-    
-    // 4. Obra Social / Cobertura (cerca de "obra social", "prepaga", "cobertura", "mutual", "osde")
-    if (contextText.includes('obra social') || contextText.includes('prepaga') || contextText.includes('cobertura') || contextText.includes('mutual') || contextText.includes('osde')) {
-        return obraSocial || '';
-    }
-    
-    // 5. Presupuesto o Deuda (cerca de "importe", "total", "$", "presupuesto", "deuda", "monto", "factura")
-    if (contextText.includes('importe') || contextText.includes('total') || contextText.includes('$') || contextText.includes('presupuesto') || contextText.includes('deuda') || contextText.includes('monto') || contextText.includes('factura')) {
-        if (totalPresupuesto) return typeof totalPresupuesto === 'number' ? `$${totalPresupuesto.toLocaleString('es-AR')}` : totalPresupuesto;
-        if (deudaTotal) return typeof deudaTotal === 'number' ? `$${deudaTotal.toLocaleString('es-AR')}` : deudaTotal;
-        return '';
-    }
-    
-    // Fallbacks
-    if (index === 1) return patientName || '';
-    if (index === 2 && fechaCirugia) {
-        try {
-            const d = new Date(fechaCirugia + 'T12:00:00');
-            return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        } catch {
-            return fechaCirugia;
-        }
-    }
-    
-    return '';
+
+    const map = {
+        nombre: patientName || '',
+        fecha_cirugia: formatDateAR(fechaCirugia),
+        medico: medico || '',
+        obra_social: obraSocial || '',
+        presupuesto: totalPresupuesto ? (typeof totalPresupuesto === 'number' ? `$${totalPresupuesto.toLocaleString('es-AR')}` : totalPresupuesto) : '',
+        deuda: deudaTotal ? (typeof deudaTotal === 'number' ? `$${deudaTotal.toLocaleString('es-AR')}` : deudaTotal) : '',
+    };
+    return map[fieldKey] ?? '';
 };
 
-// Parser para extraer variables únicas del template
+// Recuperar mapeo guardado para una plantilla específica
+const getStoredMapping = (templateName) => {
+    try {
+        const stored = localStorage.getItem(META_VAR_STORAGE_KEY);
+        if (!stored) return null;
+        const mappings = JSON.parse(stored);
+        return mappings[templateName] || null;
+    } catch { return null; }
+};
+
+// Guardar mapeo variable→fieldKey para una plantilla
+const saveTemplateMapping = (templateName, vars) => {
+    try {
+        const stored = localStorage.getItem(META_VAR_STORAGE_KEY);
+        const mappings = stored ? JSON.parse(stored) : {};
+        const mapping = {};
+        vars.forEach(v => {
+            if (v.fieldKey) mapping[v.index] = v.fieldKey;
+        });
+        if (Object.keys(mapping).length > 0) {
+            mappings[templateName] = mapping;
+            localStorage.setItem(META_VAR_STORAGE_KEY, JSON.stringify(mappings));
+        }
+    } catch { /* silent */ }
+};
+
+// Heurística mejorada para detectar el fieldKey de una variable por su contexto textual
+const guessMetaVariableFieldKey = (index, templateText) => {
+    if (!templateText) return null;
+    const placeholder = `{{${index}}}`;
+    const placeholderPos = templateText.indexOf(placeholder);
+    if (placeholderPos === -1) return null;
+
+    // Ventana de contexto amplia (80 chars a cada lado)
+    const start = Math.max(0, placeholderPos - 80);
+    const end = Math.min(templateText.length, placeholderPos + 80);
+    const ctx = templateText.substring(start, end).toLowerCase();
+
+    // 1. Nombre — saludos, menciones de paciente
+    if (/hola|estimad[oa]|paciente|querid[oa]|bienvenid[oa]|se[ñn]or[a]?|nombre|sr[a]?\./.test(ctx)) return 'nombre';
+    // 2. Fecha de cirugía — programado, turno, intervención, etc.
+    if (/cirug[íi]a|fecha|turno|d[íi]a|programad[oa]|procedimiento|intervenci[oó]n|pr[oó]ximamente|agendad[oa]|cita|horario|jornada|estudio/.test(ctx)) return 'fecha_cirugia';
+    // 3. Médico
+    if (/m[ée]dic[oa]|dr[a]?\.|doctor[a]?|profesional|cirujano|especialista/.test(ctx)) return 'medico';
+    // 4. Obra Social
+    if (/obra social|prepaga|cobertura|mutual|osde|seguro|afiliaci[oó]n/.test(ctx)) return 'obra_social';
+    // 5. Presupuesto/Dinero
+    if (/importe|\$|presupuesto|monto|factura|pago|abonar|costo|valor/.test(ctx)) return 'presupuesto';
+    // 6. Deuda
+    if (/deuda|saldo|pendiente|adeuda/.test(ctx)) return 'deuda';
+
+    // Fallback por índice convencional
+    if (index === 1) return 'nombre';
+    if (index === 2) return 'fecha_cirugia';
+    if (index === 3) return 'medico';
+
+    return null;
+};
+
+// Parser principal: extrae variables, aplica mapeo guardado > heurística > fallback
 const getMetaTemplateVariables = (tpl, context, patientName) => {
     const bodyComponent = tpl.components?.find(c => c.type === 'BODY');
     const text = bodyComponent?.text || '';
     const matches = text.match(/\{\{(\d+)\}\}/g);
     if (!matches) return [];
-    
+
     const indices = [];
     matches.forEach(m => {
         const idx = Number(m.replace(/\{\{|\}\}/g, ''));
-        if (!indices.includes(idx)) {
-            indices.push(idx);
-        }
+        if (!indices.includes(idx)) indices.push(idx);
     });
-    
     indices.sort((a, b) => a - b);
-    
+
+    const templateName = tpl.name || tpl.templateName || '';
+    const storedMapping = getStoredMapping(templateName);
+
     return indices.map(idx => {
-        const val = guessMetaVariableValue(idx, text, context, patientName);
-        return { index: idx, value: val };
+        // 1. Intentar mapeo guardado primero (fuente de verdad)
+        if (storedMapping && storedMapping[idx]) {
+            const fieldKey = storedMapping[idx];
+            const value = resolveFieldFromContext(fieldKey, context, patientName);
+            return { index: idx, value, fieldKey };
+        }
+        // 2. Heurística de detección de campo
+        const fieldKey = guessMetaVariableFieldKey(idx, text);
+        const value = fieldKey ? resolveFieldFromContext(fieldKey, context, patientName) : '';
+        return { index: idx, value, fieldKey };
     });
 };
 
@@ -190,6 +232,7 @@ export default function MessagingPanel({ addToast, currentUser }) {
     // Meta WhatsApp template variables states
     const [metaTemplateForVars, setMetaTemplateForVars] = useState(null);
     const [metaTemplateVars, setMetaTemplateVars] = useState([]);
+    const autoSendPendingRef = useRef(false);
 
 
     const messagesEndRef = useRef(null);
@@ -602,6 +645,15 @@ export default function MessagingPanel({ addToast, currentUser }) {
         const contactName = selectedPhone ? (contactNames[selectedPhone] || '') : '';
         const parsedVars = getMetaTemplateVariables(tpl, patientContext, contactName);
         if (parsedVars.length > 0) {
+            // AUTO-SEND: si todas las variables se resolvieron con valor, enviar directo
+            const allResolved = parsedVars.every(v => v.value && v.value.trim() !== '');
+            if (allResolved) {
+                autoSendPendingRef.current = true;
+                setMetaTemplateForVars(tpl);
+                setMetaTemplateVars(parsedVars);
+                return;
+            }
+            // Si faltan variables, mostrar modal para completar manualmente
             setMetaTemplateForVars(tpl);
             setMetaTemplateVars(parsedVars);
             return;
@@ -658,6 +710,10 @@ export default function MessagingPanel({ addToast, currentUser }) {
                 lineId: assignedLineId,
             });
 
+            // Guardar mapeo en localStorage para auto-resolver la próxima vez
+            const tplName = metaTemplateForVars.name || metaTemplateForVars.templateName || '';
+            saveTemplateMapping(tplName, metaTemplateVars);
+
             const templateBody = metaTemplateForVars.components?.find(c => c.type === 'BODY')?.text || metaTemplateForVars.name;
             let resolvedText = templateBody;
             metaTemplateVars.forEach(v => {
@@ -684,6 +740,13 @@ export default function MessagingPanel({ addToast, currentUser }) {
         }
     };
 
+    // Auto-send: cuando autoSendPendingRef está activo y metaTemplateForVars se setea, enviar sin mostrar modal
+    useEffect(() => {
+        if (autoSendPendingRef.current && metaTemplateForVars && metaTemplateVars.length > 0) {
+            autoSendPendingRef.current = false;
+            sendMetaTemplateWithVars();
+        }
+    }, [metaTemplateForVars, metaTemplateVars]);
 
     // === Auto scroll to bottom on new messages ===
     useEffect(() => {
@@ -2042,18 +2105,21 @@ export default function MessagingPanel({ addToast, currentUser }) {
                                     Valores de las Variables
                                 </label>
                                 <div style={{ display: 'grid', gap: '10px' }}>
-                                    {metaTemplateVars.map((v, i) => (
+                                    {metaTemplateVars.map((v, i) => {
+                                        const fieldLabel = v.fieldKey ? FIELD_LABELS[v.fieldKey] : null;
+                                        const isFirstEmpty = metaTemplateVars.findIndex(x => !x.value || !x.value.trim()) === i;
+                                        return (
                                         <div key={v.index} className="field-group" style={{ margin: 0 }}>
                                             <label className="field-label" style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                 <span>Variable {v.index}</span>
-                                                <span style={{ fontSize: '0.65rem', fontWeight: 400, color: '#94A3B8' }}>
-                                                    ({i === 0 ? 'Nombre' : i === 1 ? 'Fecha/Detalle' : 'Información'})
+                                                <span style={{ fontSize: '0.65rem', fontWeight: 400, color: v.fieldKey ? '#166534' : '#94A3B8' }}>
+                                                    ({fieldLabel || 'Sin detectar'})
                                                 </span>
                                             </label>
                                             <input
                                                 type="text"
                                                 className="field-input"
-                                                placeholder={`Ej: Valor para variable ${v.index}`}
+                                                placeholder={fieldLabel ? `Ej: ${fieldLabel}` : `Ej: Valor para variable ${v.index}`}
                                                 value={v.value}
                                                 onChange={e => {
                                                     const updated = [...metaTemplateVars];
@@ -2061,10 +2127,11 @@ export default function MessagingPanel({ addToast, currentUser }) {
                                                     setMetaTemplateVars(updated);
                                                 }}
                                                 style={{ width: '100%', padding: '8px 12px', fontSize: '0.85rem' }}
-                                                autoFocus={i === 0}
+                                                autoFocus={isFirstEmpty}
                                             />
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>
