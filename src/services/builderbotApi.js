@@ -80,11 +80,16 @@ export function normalizeArgentinePhone(phone) {
 export async function sendWhatsAppMessage({ content, number, mediaUrl, lineId }) {
     try {
         const normalizedNumber = normalizeArgentinePhone(number);
-        const { data, error } = await supabase.rpc('send_whatsapp', {
-            p_content: content,
-            p_number: normalizedNumber,
-            p_media_url: mediaUrl || null,
-            p_line_id: lineId || null,
+
+        // Usar Edge Function en vez de RPC (pg_net) para evitar que falle
+        // cuando Supabase está en periodo de gracia/pausado
+        const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+            body: {
+                content,
+                number: normalizedNumber,
+                ...(mediaUrl && { mediaUrl }),
+                ...(lineId && { lineId }),
+            },
         });
 
         if (error) throw error;
