@@ -65,6 +65,52 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
 
     // Pendientes state
     const [records, setRecords] = useState([]);
+    const [deudasMap, setDeudasMap] = useState({});
+
+    const fetchDeudasForRecords = useCallback(async (recordsList) => {
+        const dnis = [...new Set(recordsList.filter(r => r.dni).map(r => r.dni))];
+        if (dnis.length === 0) return;
+        
+        try {
+            const { data, error } = await supabase
+                .from('deudas_pacientes')
+                .select('dni, deuda_total, categoria')
+                .in('dni', dnis);
+                
+            if (error) throw error;
+            
+            const debtMap = {};
+            const CATEGORIAS_DESCUENTO = ['sin_deuda_salus', 'descuento_liquidacion', 'deuda_cancelada'];
+            
+            (data || []).forEach(dp => {
+                if (dp.dni && dp.deuda_total > 0 && !CATEGORIAS_DESCUENTO.includes(dp.categoria)) {
+                    debtMap[dp.dni] = {
+                        deuda_total: dp.deuda_total,
+                        categoria: dp.categoria
+                    };
+                }
+            });
+            setDeudasMap(prev => ({ ...prev, ...debtMap }));
+        } catch (e) {
+            console.error('Error fetching deudas:', e);
+        }
+    }, []);
+
+    const getPatientDebt = useCallback((pacienteDni) => {
+        if (!pacienteDni) return null;
+        const cleanInput = String(pacienteDni).replace(/\D/g, '');
+        if (!cleanInput) return null;
+
+        if (deudasMap[pacienteDni]) return deudasMap[pacienteDni];
+
+        for (const key of Object.keys(deudasMap)) {
+            if (String(key).replace(/\D/g, '') === cleanInput) {
+                return deudasMap[key];
+            }
+        }
+        return null;
+    }, [deudasMap]);
+
     const [searchTerm, setSearchTerm] = useState('');
     const [filterModulo, setFilterModulo] = useState('all');
     const [filterLaboratorio, setFilterLaboratorio] = useState('all');
@@ -127,25 +173,27 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 }
             }
             setRecords(data);
+            await fetchDeudasForRecords(data);
         } catch (err) {
             console.error('Error loading records:', err);
             addToast?.('Error al cargar registros', 'error');
         } finally {
             setLoading(false);
         }
-    }, [addToast, selectedMonth]);
+    }, [addToast, selectedMonth, fetchDeudasForRecords]);
 
     const loadCarrito = useCallback(async () => {
         setCarritoLoading(true);
         try {
             const data = await fetchCarritoLab();
             setCarrito(data);
+            await fetchDeudasForRecords(data);
         } catch (err) {
             addToast?.('Error al cargar carrito', 'error');
         } finally {
             setCarritoLoading(false);
         }
-    }, [addToast]);
+    }, [addToast, fetchDeudasForRecords]);
 
     const loadHistorial = useCallback(async () => {
         try {
@@ -947,6 +995,30 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                     <td style={tdStyle}>
                                                         <div style={{ fontWeight: 600, color: 'var(--neutral-800)', fontSize: '0.85rem' }}>{r.paciente}</div>
                                                         <div style={{ fontSize: '0.73rem', color: 'var(--neutral-400)' }}>DNI: {r.dni || 'S/D'}</div>
+                                                        {(() => {
+                                                            const debt = getPatientDebt(r.dni);
+                                                            if (debt) {
+                                                                return (
+                                                                    <div style={{
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                        background: '#FEF2F2',
+                                                                        color: '#DC2626',
+                                                                        border: '1px solid #FCA5A5',
+                                                                        borderRadius: '6px',
+                                                                        padding: '1px 6px',
+                                                                        fontSize: '0.7rem',
+                                                                        fontWeight: 700,
+                                                                        marginTop: '3px',
+                                                                        width: 'fit-content'
+                                                                    }}>
+                                                                        ⚠️ Deuda: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(debt.deuda_total)}
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
                                                     </td>
                                                     <td style={{ ...tdStyle, maxWidth: '180px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.cliente}>
                                                         {r.cliente || '-'}
@@ -1175,7 +1247,33 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                     {items.map(item => (
                                                         <tr key={item.id_visita} style={{ borderTop: '1px solid #F1F5F9' }}>
                                                             <td style={tdSmall}>{fmtFecha(item.fecha_visita)}</td>
-                                                            <td style={{ ...tdSmall, fontWeight: 600 }}>{item.paciente}</td>
+                                                            <td style={{ ...tdSmall }}>
+                                                                <div style={{ fontWeight: 600 }}>{item.paciente}</div>
+                                                                {(() => {
+                                                                    const debt = getPatientDebt(item.dni);
+                                                                    if (debt) {
+                                                                        return (
+                                                                            <div style={{
+                                                                                display: 'inline-flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '4px',
+                                                                                background: '#FEF2F2',
+                                                                                color: '#DC2626',
+                                                                                border: '1px solid #FCA5A5',
+                                                                                borderRadius: '6px',
+                                                                                padding: '1px 6px',
+                                                                                fontSize: '0.68rem',
+                                                                                fontWeight: 700,
+                                                                                marginTop: '3px',
+                                                                                width: 'fit-content'
+                                                                            }}>
+                                                                                ⚠️ Deuda: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(debt.deuda_total)}
+                                                                            </div>
+                                                                        );
+                                                                    }
+                                                                    return null;
+                                                                })()}
+                                                            </td>
                                                             <td style={{ ...tdSmall, fontFamily: 'monospace' }}>{item.dni || '—'}</td>
                                                             <td style={tdSmall}>{item.cliente || '—'}</td>
                                                             <td style={tdSmall}>

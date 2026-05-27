@@ -256,11 +256,15 @@ export async function importarDeudas(registros, usuario, onProgress) {
         }
         const nhc = String(r.nhc).trim();
         if (!porNhc[nhc]) {
-            porNhc[nhc] = { nombre: r.nombre, facturas: [], telefono: r.telefono, telefono_invalido: r.telefono_invalido };
-        } else if (!porNhc[nhc].telefono && r.telefono) {
-            // Si otra factura tiene el teléfono, lo tomamos
-            porNhc[nhc].telefono = r.telefono;
-            porNhc[nhc].telefono_invalido = r.telefono_invalido;
+            porNhc[nhc] = { nombre: r.nombre, dni: r.nif || null, facturas: [], telefono: r.telefono, telefono_invalido: r.telefono_invalido };
+        } else {
+            if (!porNhc[nhc].telefono && r.telefono) {
+                porNhc[nhc].telefono = r.telefono;
+                porNhc[nhc].telefono_invalido = r.telefono_invalido;
+            }
+            if (!porNhc[nhc].dni && r.nif) {
+                porNhc[nhc].dni = r.nif;
+            }
         }
         porNhc[nhc].facturas.push(r);
     }
@@ -297,7 +301,7 @@ export async function importarDeudas(registros, usuario, onProgress) {
         // Upsert paciente
         const { data: existente } = await supabase
             .from('deudas_pacientes')
-            .select('id, telefono, categoria, notas')
+            .select('id, dni, telefono, categoria, notas')
             .eq('nhc', nhc)
             .maybeSingle();
 
@@ -320,6 +324,11 @@ export async function importarDeudas(registros, usuario, onProgress) {
                 updateData.telefono_invalido = grupo.telefono_invalido;
             }
 
+            // Also update DNI if it is not present in database but is present in Excel group
+            if (!existente.dni && grupo.dni) {
+                updateData.dni = grupo.dni;
+            }
+
             await supabase
                 .from('deudas_pacientes')
                 .update(updateData)
@@ -332,6 +341,7 @@ export async function importarDeudas(registros, usuario, onProgress) {
                 .insert({
                     nhc,
                     nombre: grupo.nombre,
+                    dni: grupo.dni || null,
                     deuda_total: deudaTotal,
                     cantidad_facturas: grupo.facturas.length,
                     telefono: grupo.telefono || null,

@@ -14,6 +14,22 @@ export default function PublicLabView({ labName }) {
     const [filterFecha, setFilterFecha] = useState('all');
     const [filterOS, setFilterOS] = useState('all');
     const [expandedRow, setExpandedRow] = useState(null);
+    const [deudasMap, setDeudasMap] = useState({});
+
+    const getPatientDebt = (pacienteDni) => {
+        if (!pacienteDni) return null;
+        const cleanInput = String(pacienteDni).replace(/\D/g, '');
+        if (!cleanInput) return null;
+
+        if (deudasMap[pacienteDni]) return deudasMap[pacienteDni];
+
+        for (const key of Object.keys(deudasMap)) {
+            if (String(key).replace(/\D/g, '') === cleanInput) {
+                return deudasMap[key];
+            }
+        }
+        return null;
+    };
 
     useEffect(() => {
         const loadData = async () => {
@@ -49,6 +65,29 @@ export default function PublicLabView({ labName }) {
                                 r.coseguro = coseguroMap[r.dni];
                             }
                         });
+                    }
+                }
+
+                // Enriquecer con deudas desde deudas_pacientes
+                const allDnis = [...new Set(labRecords.filter(r => r.dni).map(r => r.dni))];
+                if (allDnis.length > 0) {
+                    const { data: deudasPacientes } = await supabase
+                        .from('deudas_pacientes')
+                        .select('dni, deuda_total, categoria')
+                        .in('dni', allDnis);
+
+                    if (deudasPacientes && deudasPacientes.length > 0) {
+                        const debtMap = {};
+                        const CATEGORIAS_DESCUENTO = ['sin_deuda_salus', 'descuento_liquidacion', 'deuda_cancelada'];
+                        deudasPacientes.forEach(dp => {
+                            if (dp.dni && dp.deuda_total > 0 && !CATEGORIAS_DESCUENTO.includes(dp.categoria)) {
+                                debtMap[dp.dni] = {
+                                    deuda_total: dp.deuda_total,
+                                    categoria: dp.categoria
+                                };
+                            }
+                        });
+                        setDeudasMap(debtMap);
                     }
                 }
 
@@ -388,6 +427,31 @@ export default function PublicLabView({ labName }) {
                                         <td style={{ padding: '16px' }}>
                                             <div style={{ fontWeight: 600, color: '#1E293B' }}>{r.paciente}</div>
                                             <div style={{ fontSize: '0.85rem', color: '#64748B' }}>DNI: {r.dni || 'S/D'}</div>
+                                            {(() => {
+                                                const debt = getPatientDebt(r.dni);
+                                                if (debt) {
+                                                    return (
+                                                        <div style={{
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px',
+                                                            background: '#FEF2F2',
+                                                            color: '#DC2626',
+                                                            border: '1px solid #FCA5A5',
+                                                            borderRadius: '6px',
+                                                            padding: '2px 8px',
+                                                            fontSize: '0.72rem',
+                                                            fontWeight: 700,
+                                                            marginTop: '6px',
+                                                            boxShadow: '0 1px 2px rgba(220, 38, 38, 0.05)',
+                                                            width: 'fit-content'
+                                                        }}>
+                                                            ⚠️ Deuda: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(debt.deuda_total)}
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
                                         </td>
                                         <td style={{ padding: '16px' }}>
                                             <div style={{ color: '#334155', fontSize: '0.85rem' }}>{r.cliente || '-'}</div>
