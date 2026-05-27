@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS whatsapp_lines (
 
 -- Insertar las dos líneas (credenciales se configuran luego desde ConfigPanel o Supabase)
 INSERT INTO whatsapp_lines (id, label, phone, api_key, project_id, color, icon) VALUES
-    ('line_a', 'WhatsApp Business', '5492644861691', 'configurar-desde-panel', 'configurar-desde-panel', '#25D366', 'briefcase'),
+    ('line_a', 'WhatsApp Business', '5492644774612', 'configurar-desde-panel', 'configurar-desde-panel', '#25D366', 'briefcase'),
     ('line_b', 'WhatsApp Messenger', '5492644809077', 'configurar-desde-panel', 'configurar-desde-panel', '#0088CC', 'smartphone')
 ON CONFLICT (id) DO NOTHING;
 
