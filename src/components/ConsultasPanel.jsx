@@ -658,8 +658,8 @@ export default function ConsultasPanel() {
                         const allCols = Object.entries(colCounts).sort((a, b) => b[1] - a[1]).map(([k]) => k);
                         const visibleCols = allCols.filter(c => !colsOcultas.has(c));
 
-                        // Build rows
-                        const rowMap = {};
+                        // Build pivot: dateKey -> OS -> col -> count
+                        const pivot = {};
                         filtered.forEach(r => {
                             let key;
                             if (matrizAgrupar === 'semana') {
@@ -672,32 +672,53 @@ export default function ConsultasPanel() {
                             } else {
                                 key = r.fecha_visita;
                             }
-                            if (!rowMap[key]) rowMap[key] = { key, total: 0, cols: {}, byOS: { OSP: 0, Prepagas: 0, Particulares: 0 } };
-                            rowMap[key].total++;
+                            const os = normalizeOS(r.cliente);
                             const col = getColVal(r);
-                            rowMap[key].cols[col] = (rowMap[key].cols[col] || 0) + 1;
-                            const osCateg = normalizeOS(r.cliente);
-                            rowMap[key].byOS[osCateg] = (rowMap[key].byOS[osCateg] || 0) + 1;
-                        });
-                        const rows = Object.values(rowMap).sort((a, b) => a.key.localeCompare(b.key));
 
-                        // Totals
-                        const totals = {};
+                            if (!pivot[key]) pivot[key] = {};
+                            if (!pivot[key][os]) pivot[key][os] = { total: 0, cols: {} };
+                            pivot[key][os].total++;
+                            pivot[key][os].cols[col] = (pivot[key][os].cols[col] || 0) + 1;
+                        });
+
+                        const OS_ORDER = ['OSP', 'Prepagas', 'Particulares'];
+                        const OS_STYLES = {
+                            OSP: { label: 'OSP', color: '#0369A1', bg: '#E0F2FE', headerBg: '#0284C7' },
+                            Prepagas: { label: 'PREPAGAS', color: '#7C3AED', bg: '#F3E8FF', headerBg: '#7C3AED' },
+                            Particulares: { label: 'PARTICULAR', color: '#EA580C', bg: '#FFF7ED', headerBg: '#EA580C' },
+                        };
+
+                        const dateKeys = Object.keys(pivot).sort();
+
+                        // Build flat rows for rendering
+                        const flatRows = [];
+                        dateKeys.forEach(dateKey => {
+                            OS_ORDER.forEach((os, osIdx) => {
+                                const data = pivot[dateKey]?.[os] || { total: 0, cols: {} };
+                                flatRows.push({ dateKey, os, isFirst: osIdx === 0, total: data.total, cols: data.cols });
+                            });
+                        });
+
+                        // Grand totals per OS
+                        const osTotals = {};
                         let grandTotal = 0;
-                        const osTotals = { OSP: 0, Prepagas: 0, Particulares: 0 };
-                        rows.forEach(r => {
-                            grandTotal += r.total;
-                            visibleCols.forEach(c => { totals[c] = (totals[c] || 0) + (r.cols[c] || 0); });
-                            osTotals.OSP += r.byOS.OSP || 0;
-                            osTotals.Prepagas += r.byOS.Prepagas || 0;
-                            osTotals.Particulares += r.byOS.Particulares || 0;
+                        OS_ORDER.forEach(os => {
+                            osTotals[os] = { total: 0, cols: {} };
+                            dateKeys.forEach(dateKey => {
+                                const data = pivot[dateKey]?.[os];
+                                if (data) {
+                                    osTotals[os].total += data.total;
+                                    grandTotal += data.total;
+                                    visibleCols.forEach(c => { osTotals[os].cols[c] = (osTotals[os].cols[c] || 0) + (data.cols[c] || 0); });
+                                }
+                            });
                         });
 
-                        const OS_COLS = [
-                            { key: 'OSP', label: 'OSP', color: '#0369A1', bg: '#E0F2FE' },
-                            { key: 'Prepagas', label: 'Prepagas', color: '#7C3AED', bg: '#F3E8FF' },
-                            { key: 'Particulares', label: 'Particular', color: '#EA580C', bg: '#FFF7ED' },
-                        ];
+                        // Column totals (all OS combined)
+                        const colTotals = {};
+                        visibleCols.forEach(c => {
+                            colTotals[c] = OS_ORDER.reduce((sum, os) => sum + (osTotals[os].cols[c] || 0), 0);
+                        });
 
                         const formatRowLabel = (key) => {
                             if (matrizAgrupar === 'semana') {
@@ -707,6 +728,12 @@ export default function ConsultasPanel() {
                             }
                             return formatDate(key);
                         };
+
+                        // Date totals for the rowSpan cell
+                        const dateTotals = {};
+                        dateKeys.forEach(dk => {
+                            dateTotals[dk] = OS_ORDER.reduce((sum, os) => sum + (pivot[dk]?.[os]?.total || 0), 0);
+                        });
 
                         const toggleCol = (col) => {
                             setColsOcultas(prev => {
@@ -720,9 +747,8 @@ export default function ConsultasPanel() {
                             <div style={{ background: '#fff', border: '1px solid #F1F5F9', borderRadius: '16px', padding: '20px', marginBottom: '20px' }}>
                                 {/* Controls */}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
-                                    <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: 0, color: '#1E293B' }}>📋 Matriz de Consultas</h3>
+                                    <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: 0, color: '#1E293B' }}>📋 Matriz de Consultas por Obra Social</h3>
                                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                        {/* Group by toggle */}
                                         <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 600 }}>Agrupar:</span>
                                         {[{ id: 'dia', label: 'Día' }, { id: 'semana', label: 'Semana' }].map(g => (
                                             <button key={g.id} onClick={() => setMatrizAgrupar(g.id)} style={{
@@ -774,84 +800,102 @@ export default function ConsultasPanel() {
                                                 <th style={{ padding: '8px 10px', color: '#fff', fontWeight: 700, textAlign: 'left', position: 'sticky', left: 0, background: '#3730A3', zIndex: 2, minWidth: '70px' }}>
                                                     {matrizAgrupar === 'semana' ? 'Semana' : 'Fecha'}
                                                 </th>
+                                                <th style={{ padding: '8px 8px', color: '#fff', fontWeight: 700, textAlign: 'left', minWidth: '80px' }}>
+                                                    OS
+                                                </th>
                                                 {visibleCols.map(col => (
                                                     <th key={col} style={{ padding: '8px 6px', color: '#fff', fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.65rem' }}>
                                                         {col.length > 14 ? col.substring(0, 12) + '…' : col}
                                                     </th>
                                                 ))}
                                                 <th style={{ padding: '8px 10px', color: '#FDE68A', fontWeight: 800, textAlign: 'center', minWidth: '50px', borderLeft: '2px solid rgba(255,255,255,0.2)' }}>TOTAL</th>
-                                                {OS_COLS.map(os => (
-                                                    <th key={os.key} style={{ padding: '8px 6px', color: '#fff', fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.65rem', borderLeft: os.key === 'OSP' ? '2px solid rgba(255,255,255,0.2)' : 'none' }}>
-                                                        {os.label}
-                                                    </th>
-                                                ))}
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {rows.map((row, idx) => {
-                                                const isWeekend = matrizAgrupar === 'dia' && [0, 6].includes(new Date(row.key + 'T12:00:00').getDay());
+                                            {flatRows.map((row, idx) => {
+                                                const isWeekend = matrizAgrupar === 'dia' && [0, 6].includes(new Date(row.dateKey + 'T12:00:00').getDay());
+                                                const osS = OS_STYLES[row.os];
+                                                const groupBg = isWeekend ? '#EEF2FF' : '#fff';
+                                                const borderTop = row.isFirst && idx > 0 ? '2px solid #E2E8F0' : 'none';
                                                 return (
-                                                    <tr key={row.key} style={{ background: isWeekend ? '#EEF2FF' : idx % 2 === 0 ? '#fff' : '#FAFAFA' }}>
+                                                    <tr key={`${row.dateKey}_${row.os}`} style={{ background: groupBg, borderTop }}>
+                                                        {row.isFirst && (
+                                                            <td rowSpan={OS_ORDER.length} style={{
+                                                                padding: '6px 10px', fontWeight: isWeekend ? 700 : 600,
+                                                                color: isWeekend ? '#4F46E5' : '#334155',
+                                                                position: 'sticky', left: 0, zIndex: 1,
+                                                                background: groupBg,
+                                                                borderRight: '2px solid #E2E8F0',
+                                                                verticalAlign: 'middle',
+                                                                borderTop,
+                                                            }}>
+                                                                {formatRowLabel(row.dateKey)}
+                                                            </td>
+                                                        )}
                                                         <td style={{
-                                                            padding: '6px 10px', fontWeight: isWeekend ? 700 : 600,
-                                                            color: isWeekend ? '#4F46E5' : '#334155',
-                                                            position: 'sticky', left: 0, zIndex: 1,
-                                                            background: isWeekend ? '#EEF2FF' : idx % 2 === 0 ? '#fff' : '#FAFAFA',
-                                                            borderRight: '2px solid #E2E8F0',
+                                                            padding: '3px 8px', fontWeight: 700, fontSize: '0.62rem',
+                                                            color: osS.color, background: osS.bg,
+                                                            borderRight: '1px solid #E2E8F0',
+                                                            whiteSpace: 'nowrap', letterSpacing: '0.3px',
                                                         }}>
-                                                            {formatRowLabel(row.key)}
+                                                            {osS.label}
                                                         </td>
                                                         {visibleCols.map(col => {
                                                             const val = row.cols[col] || 0;
-                                                            const maxInCol = Math.max(...rows.map(r => r.cols[col] || 0), 1);
-                                                            const intensity = val / maxInCol;
                                                             return (
                                                                 <td key={col} style={{
-                                                                    padding: '6px 6px', textAlign: 'center', fontWeight: val > 0 ? 700 : 400,
-                                                                    color: val > 0 ? '#1E293B' : '#D1D5DB',
-                                                                    background: val > 0 ? `rgba(79,70,229,${intensity * 0.15})` : 'transparent',
+                                                                    padding: '3px 6px', textAlign: 'center',
+                                                                    fontWeight: val > 0 ? 600 : 400,
+                                                                    color: val > 0 ? '#1E293B' : '#E2E8F0',
+                                                                    fontSize: '0.72rem',
                                                                 }}>
-                                                                    {val || '—'}
+                                                                    {val || ''}
                                                                 </td>
                                                             );
                                                         })}
-                                                        <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 800, color: '#1E293B', background: '#F8FAFC', borderLeft: '2px solid #E2E8F0' }}>
-                                                            {row.total}
+                                                        <td style={{
+                                                            padding: '3px 10px', textAlign: 'center', fontWeight: 700,
+                                                            color: row.total > 0 ? osS.color : '#E2E8F0',
+                                                            background: '#F8FAFC', borderLeft: '2px solid #E2E8F0',
+                                                        }}>
+                                                            {row.total || ''}
                                                         </td>
-                                                        {OS_COLS.map(os => {
-                                                            const val = row.byOS[os.key] || 0;
-                                                            return (
-                                                                <td key={os.key} style={{
-                                                                    padding: '6px 6px', textAlign: 'center', fontWeight: val > 0 ? 700 : 400,
-                                                                    color: val > 0 ? os.color : '#D1D5DB',
-                                                                    background: val > 0 ? os.bg : 'transparent',
-                                                                    borderLeft: os.key === 'OSP' ? '2px solid #E2E8F0' : 'none',
-                                                                }}>
-                                                                    {val || '—'}
-                                                                </td>
-                                                            );
-                                                        })}
                                                     </tr>
                                                 );
                                             })}
                                         </tbody>
                                         <tfoot>
-                                            <tr style={{ background: 'linear-gradient(135deg, #F1F5F9, #E2E8F0)' }}>
-                                                <td style={{ padding: '8px 10px', fontWeight: 800, color: '#1E293B', position: 'sticky', left: 0, background: '#E2E8F0', borderRight: '2px solid #CBD5E1', zIndex: 1 }}>TOTAL</td>
-                                                {visibleCols.map(col => (
-                                                    <td key={col} style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 800, color: '#4F46E5' }}>
-                                                        {totals[col] || 0}
-                                                    </td>
-                                                ))}
-                                                <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 900, color: '#1E293B', fontSize: '0.82rem', borderLeft: '2px solid #CBD5E1' }}>
-                                                    {grandTotal.toLocaleString()}
-                                                </td>
-                                                {OS_COLS.map(os => (
-                                                    <td key={os.key} style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 800, color: os.color, borderLeft: os.key === 'OSP' ? '2px solid #CBD5E1' : 'none' }}>
-                                                        {osTotals[os.key]}
-                                                    </td>
-                                                ))}
-                                            </tr>
+                                            {OS_ORDER.map((os, osIdx) => {
+                                                const osS = OS_STYLES[os];
+                                                const t = osTotals[os];
+                                                return (
+                                                    <tr key={os} style={{ background: osS.bg, borderTop: osIdx === 0 ? '3px solid #4F46E5' : '1px solid #E2E8F0' }}>
+                                                        {osIdx === 0 && (
+                                                            <td rowSpan={OS_ORDER.length} style={{
+                                                                padding: '8px 10px', fontWeight: 900, color: '#1E293B',
+                                                                position: 'sticky', left: 0, background: '#E2E8F0',
+                                                                borderRight: '2px solid #CBD5E1', zIndex: 1,
+                                                                verticalAlign: 'middle', fontSize: '0.78rem',
+                                                            }}>TOTAL</td>
+                                                        )}
+                                                        <td style={{
+                                                            padding: '5px 8px', fontWeight: 800, fontSize: '0.65rem',
+                                                            color: '#fff', background: osS.headerBg,
+                                                            whiteSpace: 'nowrap', letterSpacing: '0.3px',
+                                                        }}>
+                                                            {osS.label}
+                                                        </td>
+                                                        {visibleCols.map(col => (
+                                                            <td key={col} style={{ padding: '5px 6px', textAlign: 'center', fontWeight: 800, color: osS.color }}>
+                                                                {t.cols[col] || ''}
+                                                            </td>
+                                                        ))}
+                                                        <td style={{ padding: '5px 10px', textAlign: 'center', fontWeight: 900, color: osS.color, fontSize: '0.78rem', borderLeft: '2px solid #CBD5E1' }}>
+                                                            {t.total}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tfoot>
                                     </table>
                                 </div>
