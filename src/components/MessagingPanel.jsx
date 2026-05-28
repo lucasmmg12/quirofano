@@ -1167,13 +1167,30 @@ export default function MessagingPanel({ addToast, currentUser }) {
             case 'sticker':
                 return (
                     <div>
-                        <img
-                            src={msg.media_url}
-                            alt="Imagen"
-                            className="msg-panel__bubble-image"
-                            onClick={() => setLightboxUrl(msg.media_url)}
-                            onError={(e) => { e.target.style.display = 'none'; }}
-                        />
+                        {msg.media_url ? (
+                            <img
+                                src={msg.media_url}
+                                alt={msg.media_type === 'sticker' ? 'Sticker' : 'Imagen'}
+                                className="msg-panel__bubble-image"
+                                onClick={() => setLightboxUrl(msg.media_url)}
+                                onError={(e) => { e.target.style.display = 'none'; }}
+                                style={msg.media_type === 'sticker' ? {
+                                    maxWidth: '160px', maxHeight: '160px',
+                                    borderRadius: '4px', background: 'transparent',
+                                } : undefined}
+                            />
+                        ) : (
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                padding: '10px 14px', borderRadius: '10px',
+                                background: msg.direction === 'outgoing' ? 'rgba(0,0,0,0.04)' : 'rgba(0,0,0,0.03)',
+                                fontSize: '0.8rem', color: '#94A3B8',
+                                fontStyle: 'italic',
+                            }}>
+                                <span style={{ fontSize: '1.4rem' }}>{msg.media_type === 'sticker' ? '🏷️' : '🖼️'}</span>
+                                <span>{msg.media_type === 'sticker' ? 'Sticker' : 'Imagen no disponible'}</span>
+                            </div>
+                        )}
                         {msg.content && msg.content !== '[image]' && msg.content !== '[sticker]' && msg.content !== '📷 Imagen' && (
                             <p className="msg-panel__bubble-text">{msg.content}</p>
                         )}

@@ -963,17 +963,33 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
             case 'sticker':
                 return (
                     <div>
-                        <img
-                            src={msg.media_url}
-                            alt="Imagen"
-                            onClick={() => setLightboxUrl(msg.media_url)}
-                            style={{
-                                maxWidth: '240px', maxHeight: '240px',
-                                borderRadius: '8px', cursor: 'pointer',
-                                objectFit: 'cover', display: 'block',
-                            }}
-                            onError={(e) => { e.target.style.display = 'none'; }}
-                        />
+                        {msg.media_url ? (
+                            <img
+                                src={msg.media_url}
+                                alt={msg.media_type === 'sticker' ? 'Sticker' : 'Imagen'}
+                                onClick={() => setLightboxUrl(msg.media_url)}
+                                style={{
+                                    maxWidth: msg.media_type === 'sticker' ? '160px' : '240px',
+                                    maxHeight: msg.media_type === 'sticker' ? '160px' : '240px',
+                                    borderRadius: msg.media_type === 'sticker' ? '4px' : '8px',
+                                    cursor: 'pointer',
+                                    objectFit: 'cover', display: 'block',
+                                    background: msg.media_type === 'sticker' ? 'transparent' : undefined,
+                                }}
+                                onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                        ) : (
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                padding: '12px 16px', borderRadius: '12px',
+                                background: msg.direction === 'outgoing' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.03)',
+                                fontSize: '0.83rem', color: msg.direction === 'outgoing' ? 'rgba(255,255,255,0.7)' : '#94A3B8',
+                                fontStyle: 'italic',
+                            }}>
+                                <span style={{ fontSize: '1.5rem' }}>{msg.media_type === 'sticker' ? '🏷️' : '🖼️'}</span>
+                                <span>{msg.media_type === 'sticker' ? 'Sticker' : 'Imagen no disponible'}</span>
+                            </div>
+                        )}
                         {msg.content && msg.content !== '[image]' && msg.content !== '[sticker]' && msg.content !== '📷 Imagen' && (
                             <p style={{ margin: '6px 0 0', fontSize: '0.85rem' }}>{msg.content}</p>
                         )}

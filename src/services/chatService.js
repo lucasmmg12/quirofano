@@ -31,7 +31,9 @@ export async function fetchConversations() {
         if (!map[msg.phone]) {
             map[msg.phone] = {
                 phone: msg.phone,
-                lastMessage: msg.media_type !== 'text' ? `📎 ${msg.media_type}` : (msg.content || ''),
+                lastMessage: msg.media_type !== 'text'
+                    ? `${msg.media_type === 'sticker' ? '🏷️' : msg.media_type === 'image' ? '📷' : msg.media_type === 'audio' ? '🎤' : msg.media_type === 'video' ? '🎬' : '📎'} ${msg.media_type === 'sticker' ? 'Sticker' : msg.media_type}`
+                    : (msg.content || ''),
                 lastDate: msg.created_at,
                 direction: msg.direction,
                 senderName: '',

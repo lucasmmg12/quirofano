@@ -208,15 +208,19 @@ Deno.serve(async (req) => {
         // Log de lo encontrado
         console.log(`[webhook] Parsed — line: ${lineId || 'unknown'}, direction: ${direction}, phone: ${phone}, mediaUrl: ${mediaUrl}, mediaType: ${mediaType}, content: ${content?.substring(0, 100)}`);
 
+        // Preservar media_type incluso sin URL (para stickers sin URL descargable)
+        // Esto permite al frontend mostrar un placeholder apropiado
+        const finalMediaType = mediaType !== 'text' ? mediaType : (mediaUrl ? inferMediaType(mediaUrl, data.attachment?.[0]) : 'text');
+
         // Insertar en la tabla
         const { error: insertError } = await supabase
             .from('whatsapp_messages')
             .insert({
                 phone,
                 direction,
-                content: content || (mediaUrl ? `[${mediaType}]` : ''),
+                content: content || (mediaUrl ? `[${finalMediaType}]` : (finalMediaType !== 'text' ? `[${finalMediaType}]` : '')),
                 media_url: mediaUrl,
-                media_type: mediaUrl ? mediaType : 'text',
+                media_type: finalMediaType,
                 sender_name: senderName,
                 is_read: direction === 'outgoing',
                 raw_payload: payload,
@@ -260,7 +264,7 @@ Deno.serve(async (req) => {
             }
         }
 
-        console.log(`[webhook] Mensaje ${direction} guardado — line: ${lineId}, phone: ${phone}, media: ${mediaType}, persisted: ${mediaUrl !== originalMediaUrl}`);
+        console.log(`[webhook] Mensaje ${direction} guardado — line: ${lineId}, phone: ${phone}, media: ${finalMediaType}, persisted: ${mediaUrl !== originalMediaUrl}`);
 
         return new Response(
             JSON.stringify({ ok: true, direction, phone, mediaType, hasMedia: !!mediaUrl, persisted: mediaUrl !== originalMediaUrl, lineId }),
