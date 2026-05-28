@@ -3,7 +3,8 @@ import { supabase } from '../lib/supabase';
 import {
     BarChart3, Calendar, Users, Stethoscope, Upload, RefreshCw,
     TrendingUp, Building2, ChevronDown, FileSpreadsheet, Filter,
-    ChevronLeft, ChevronRight, Search, Table2,
+    ChevronLeft, ChevronRight, Search, Table2, Check, Save, Loader,
+    GraduationCap, Clock,
 } from 'lucide-react';
 
 const MESES = [
@@ -20,6 +21,12 @@ const ESP_COLORS = {
     CARDIOLOGIA: '#EF4444',
     PREPARTO: '#F59E0B',
     NEONATOLOGIA: '#8B5CF6',
+};
+
+const OS_CATEGORIES = {
+    OSP: { label: 'OSP', color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' },
+    Prepagas: { label: 'Prepagas', color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' },
+    Particulares: { label: 'Particular', color: '#EA580C', bg: '#FFF7ED', border: '#FED7AA' },
 };
 
 export default function ConsultasPanel() {
@@ -42,6 +49,13 @@ export default function ConsultasPanel() {
     const [regSearch, setRegSearch] = useState('');
     const [regColFilter, setRegColFilter] = useState('todos'); // todos | paciente | cliente | especialidad | agenda | tipo_visita
     const searchTimer = useRef(null);
+    // OS category filter for registros view
+    const [filtroOS, setFiltroOS] = useState('todas'); // todas | OSP | Prepagas | Particulares
+    // Editable "traído" notes per row
+    const [traidoEdits, setTraidoEdits] = useState({}); // { id_visita: 'texto...' }
+    const [traidoSaving, setTraidoSaving] = useState({}); // { id_visita: true/false }
+    const [traidoSaved, setTraidoSaved] = useState({}); // { id_visita: true } — flash check icon
+    const traidoTimers = useRef({}); // debounce timers per row
     // Excel-style per-column filters
     const [colFilters, setColFilters] = useState({});      // { especialidad: Set(['PEDIATRIA']), agenda: Set([...]) }
     const [colFilterOpen, setColFilterOpen] = useState(null);  // which column dropdown is open
@@ -70,7 +84,7 @@ export default function ConsultasPanel() {
         while (true) {
             const { data: rows, error } = await supabase
                 .from('consultas_guardia')
-                .select('fecha_visita,visita_especialidad,cliente,grupo_agenda,tipo_visita,agenda')
+                .select('fecha_visita,hora_visita,visita_especialidad,cliente,grupo_agenda,tipo_visita,agenda')
                 .eq('mes_periodo', mes)
                 .order('fecha_visita', { ascending: true })
                 .range(from, from + PAGE - 1);
@@ -110,7 +124,7 @@ export default function ConsultasPanel() {
         const to = from + regSize - 1;
         let q = supabase
             .from('consultas_guardia')
-            .select('id_visita,paciente,cliente,nif,fecha_visita,visita_especialidad,agenda,tipo_visita,grupo_agenda,nhc', { count: 'exact' })
+            .select('id_visita,paciente,cliente,nif,fecha_visita,hora_visita,visita_especialidad,agenda,tipo_visita,grupo_agenda,nhc,notas_traido', { count: 'exact' })
             .eq('mes_periodo', mes)
             .order('fecha_visita', { ascending: false })
             .order('paciente', { ascending: true })
@@ -124,6 +138,14 @@ export default function ConsultasPanel() {
             else if (regColFilter === 'tipo_visita') q = q.ilike('tipo_visita', s);
             else q = q.or(`paciente.ilike.${s},cliente.ilike.${s},visita_especialidad.ilike.${s},agenda.ilike.${s},tipo_visita.ilike.${s}`);
         }
+        // Apply OS category filter (server-side via cliente patterns)
+        if (filtroOS === 'OSP') {
+            q = q.eq('cliente', '001 - PROVINCIA');
+        } else if (filtroOS === 'Prepagas') {
+            q = q.neq('cliente', '001 - PROVINCIA').like('cliente', '[0-9]%');
+        } else if (filtroOS === 'Particulares') {
+            q = q.not('cliente', 'like', '[0-9]%');
+        }
         // Apply per-column filters
         const colDbMap = { especialidad: 'visita_especialidad', agenda: 'agenda', tipo_visita: 'tipo_visita', cliente: 'cliente' };
         Object.entries(colFilters).forEach(([colKey, selectedSet]) => {
@@ -132,11 +154,42 @@ export default function ConsultasPanel() {
             }
         });
         const { data: rows, count, error } = await q;
-        if (!error) { setRegRows(rows || []); setRegTotal(count || 0); }
+        if (!error) {
+            setRegRows(rows || []);
+            setRegTotal(count || 0);
+            // Initialize traido edits from loaded data
+            const edits = {};
+            (rows || []).forEach(r => { if (r.notas_traido) edits[r.id_visita] = r.notas_traido; });
+            setTraidoEdits(prev => ({ ...prev, ...edits }));
+        }
         setRegLoading(false);
-    }, [mes, regPage, regSize, regSearch, regColFilter, colFilters]);
+    }, [mes, regPage, regSize, regSearch, regColFilter, colFilters, filtroOS]);
 
     useEffect(() => { if (vista === 'registros') fetchRegistros(); }, [vista, fetchRegistros]);
+
+    // Save "traído" notes with debounce
+    const saveTraido = useCallback(async (idVisita, value) => {
+        setTraidoSaving(prev => ({ ...prev, [idVisita]: true }));
+        try {
+            await supabase
+                .from('consultas_guardia')
+                .update({ notas_traido: value || null })
+                .eq('id_visita', idVisita);
+            setTraidoSaved(prev => ({ ...prev, [idVisita]: true }));
+            setTimeout(() => setTraidoSaved(prev => ({ ...prev, [idVisita]: false })), 1500);
+        } catch (err) {
+            console.error('Error saving notas_traido:', err);
+        } finally {
+            setTraidoSaving(prev => ({ ...prev, [idVisita]: false }));
+        }
+    }, []);
+
+    const handleTraidoChange = useCallback((idVisita, value) => {
+        setTraidoEdits(prev => ({ ...prev, [idVisita]: value }));
+        // Debounced save (1.2s after last keystroke)
+        if (traidoTimers.current[idVisita]) clearTimeout(traidoTimers.current[idVisita]);
+        traidoTimers.current[idVisita] = setTimeout(() => saveTraido(idVisita, value), 1200);
+    }, [saveTraido]);
 
     // Debounced search
     const handleRegSearch = (val) => {
@@ -159,7 +212,8 @@ export default function ConsultasPanel() {
         const obrasSociales = [...new Set(filtered.map(r => r.cliente))];
         const diasUnicos = [...new Set(filtered.map(r => r.fecha_visita))];
         const promDiario = diasUnicos.length ? Math.round(total / diasUnicos.length) : 0;
-        return { total, especialidades: especialidades.length, obrasSociales: obrasSociales.length, promDiario, dias: diasUnicos.length };
+        const residencia = filtered.filter(r => isResidencia(r)).length;
+        return { total, especialidades: especialidades.length, obrasSociales: obrasSociales.length, promDiario, dias: diasUnicos.length, residencia };
     }, [filtered]);
 
     // Helper: normalizar especialidad agrupando (NEO) como NEONATOLOGIA
@@ -175,6 +229,14 @@ export default function ConsultasPanel() {
         if (trimmed === '001 - PROVINCIA') return 'OSP';
         if (/^\d/.test(trimmed)) return 'Prepagas';
         return 'Particulares';
+    };
+
+    // Helper: detectar si es consulta de residencia ginecología (7:00 - 14:00)
+    const isResidencia = (r) => {
+        if (r.visita_especialidad?.trim() !== 'GINECOLOGIA') return false;
+        if (!r.hora_visita) return false;
+        const h = parseInt(r.hora_visita.split(':')[0], 10);
+        return h >= 7 && h < 14;
     };
 
     // Group by date
@@ -242,6 +304,16 @@ export default function ConsultasPanel() {
             // Detect month from first row
             const firstDate = rows[0]?.['Fecha Visita'];
             const excelToISO = (s) => { if (!s || typeof s !== 'number') return null; return new Date((s - 25569) * 86400000).toISOString().split('T')[0]; };
+            // Extract time from Excel serial (fractional part = time of day)
+            const excelToTime = (s) => {
+                if (!s || typeof s !== 'number') return null;
+                const frac = s - Math.floor(s); // fractional part = time
+                if (frac === 0) return null; // no time component
+                const totalMinutes = Math.round(frac * 24 * 60);
+                const hours = Math.floor(totalMinutes / 60);
+                const mins = totalMinutes % 60;
+                return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:00`;
+            };
             const sampleDate = excelToISO(firstDate);
             const mesPeriodo = sampleDate?.substring(0, 7) || mes;
 
@@ -253,13 +325,14 @@ export default function ConsultasPanel() {
             // Transform
             const records = rows.map(r => {
                 const fecha = excelToISO(r['Fecha Visita']);
+                const hora = excelToTime(r['Fecha Visita']);
                 return {
                     import_id: imp?.id, id_visita: r.idVisita, id_paciente: r.IdPaciente,
                     cliente: (r.Cliente || '').trim(), asistencia: (r.Asistencia || '').trim(),
                     paciente: (r.Paciente || '').trim(), nhc: r.NHC, nif: r.NIF ? String(r.NIF) : null,
                     agenda: (r.Agenda || '').trim(), agrupacion_agenda: (r.Agrupacion_Agenda || '').trim(),
                     grupo_agenda: (r['Grupo Agenda'] || '').trim(), tipo_visita: (r['Tipo Visita'] || '').trim(),
-                    tiempo_pred: r.TiempoPred, fecha_visita: fecha,
+                    tiempo_pred: r.TiempoPred, fecha_visita: fecha, hora_visita: hora,
                     visita_especialidad: (r.Visita_Especialidad || '').trim(), mes_periodo: mesPeriodo,
                 };
             });
@@ -369,6 +442,7 @@ export default function ConsultasPanel() {
                             { label: 'Especialidades', value: kpis.especialidades, icon: Stethoscope, color: '#EC4899', bg: '#FDF2F8' },
                             { label: 'Obras Sociales', value: kpis.obrasSociales, icon: Building2, color: '#F59E0B', bg: '#FFFBEB' },
                             { label: 'Días con datos', value: kpis.dias, icon: Calendar, color: '#06B6D4', bg: '#ECFEFF' },
+                            { label: 'Residencia Gine', value: kpis.residencia, icon: GraduationCap, color: '#7C3AED', bg: '#F5F3FF' },
                         ].map((k, i) => (
                             <div key={i} style={{ background: '#fff', border: '1px solid #F1F5F9', borderRadius: '16px', padding: '16px', display: 'flex', gap: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                                 <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: k.bg, color: k.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -788,6 +862,27 @@ export default function ConsultasPanel() {
                                 </div>
                             </div>
 
+                            {/* OS Category filter buttons */}
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <Building2 size={13} style={{ color: '#94A3B8' }} />
+                                <button onClick={() => { setFiltroOS('todas'); setRegPage(0); }} style={{
+                                    padding: '4px 10px', borderRadius: '8px', border: '1px solid',
+                                    fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer',
+                                    background: filtroOS === 'todas' ? '#1E293B' : '#fff',
+                                    color: filtroOS === 'todas' ? '#fff' : '#64748B',
+                                    borderColor: filtroOS === 'todas' ? '#1E293B' : '#E2E8F0',
+                                }}>Todas</button>
+                                {Object.entries(OS_CATEGORIES).map(([key, cfg]) => (
+                                    <button key={key} onClick={() => { setFiltroOS(filtroOS === key ? 'todas' : key); setRegPage(0); }} style={{
+                                        padding: '4px 10px', borderRadius: '8px', border: '1px solid',
+                                        fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer',
+                                        background: filtroOS === key ? cfg.color : cfg.bg,
+                                        color: filtroOS === key ? '#fff' : cfg.color,
+                                        borderColor: filtroOS === key ? cfg.color : cfg.border,
+                                    }}>{cfg.label}</button>
+                                ))}
+                            </div>
+
                             {/* Active column filters display */}
                             {Object.entries(colFilters).some(([, s]) => s.size > 0) && (
                                 <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -822,9 +917,12 @@ export default function ConsultasPanel() {
                                         <tr style={{ background: '#F8FAFC' }}>
                                             {[
                                                 { key: 'fecha', label: 'Fecha', filterable: false },
+                                                { key: 'hora', label: 'Hora', filterable: false },
                                                 { key: 'paciente', label: 'Paciente', filterable: false },
                                                 { key: 'dni', label: 'DNI', filterable: false },
                                                 { key: 'cliente', label: 'Obra Social', filterable: true },
+                                                { key: 'categoria_os', label: 'Cat.', filterable: false },
+                                                { key: 'traido', label: 'Traído', filterable: false },
                                                 { key: 'especialidad', label: 'Especialidad', filterable: true },
                                                 { key: 'agenda', label: 'Agenda', filterable: true },
                                                 { key: 'tipo_visita', label: 'Tipo Visita', filterable: true },
@@ -951,15 +1049,63 @@ export default function ConsultasPanel() {
                                     </thead>
                                     <tbody>
                                         {regLoading ? (
-                                            <tr><td colSpan={8} style={{ padding: '30px', textAlign: 'center', color: '#94A3B8' }}><RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} /> Cargando...</td></tr>
+                                            <tr><td colSpan={11} style={{ padding: '30px', textAlign: 'center', color: '#94A3B8' }}><RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} /> Cargando...</td></tr>
                                         ) : regRows.length === 0 ? (
-                                            <tr><td colSpan={8} style={{ padding: '30px', textAlign: 'center', color: '#94A3B8' }}>Sin resultados</td></tr>
-                                        ) : regRows.map((r, i) => (
-                                            <tr key={r.id_visita || i} style={{ background: i % 2 === 0 ? '#fff' : '#FAFAFA', borderBottom: '1px solid #F1F5F9' }}>
+                                            <tr><td colSpan={11} style={{ padding: '30px', textAlign: 'center', color: '#94A3B8' }}>Sin resultados</td></tr>
+                                        ) : regRows.map((r, i) => {
+                                            const osCat = normalizeOS(r.cliente);
+                                            const osCfg = OS_CATEGORIES[osCat] || OS_CATEGORIES.Particulares;
+                                            const isRes = isResidencia(r);
+                                            return (
+                                            <tr key={r.id_visita || i} style={{ background: isRes ? '#F5F3FF' : (i % 2 === 0 ? '#fff' : '#FAFAFA'), borderBottom: '1px solid #F1F5F9' }}>
                                                 <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: '#64748B', fontWeight: 600 }}>{r.fecha_visita ? (() => { const [y,m,d] = r.fecha_visita.split('-'); return `${d}/${m}`; })() : '—'}</td>
+                                                <td style={{ padding: '6px 6px', whiteSpace: 'nowrap', color: '#64748B', fontSize: '0.66rem' }}>
+                                                    {r.hora_visita ? r.hora_visita.substring(0, 5) : '—'}
+                                                    {isRes && (
+                                                        <span style={{
+                                                            marginLeft: '4px', padding: '1px 5px', borderRadius: '4px',
+                                                            fontSize: '0.55rem', fontWeight: 800, background: '#7C3AED',
+                                                            color: '#fff', verticalAlign: 'middle',
+                                                        }}>RES</span>
+                                                    )}
+                                                </td>
                                                 <td style={{ padding: '6px 8px', fontWeight: 600, color: '#1E293B', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.paciente || '—'}</td>
                                                 <td style={{ padding: '6px 8px', color: '#64748B' }}>{r.nif || '—'}</td>
-                                                <td style={{ padding: '6px 8px', color: '#334155', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.cliente || '—'}</td>
+                                                <td style={{ padding: '6px 8px', color: '#334155', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.cliente}>{r.cliente || '—'}</td>
+                                                <td style={{ padding: '6px 4px', textAlign: 'center' }}>
+                                                    <span style={{
+                                                        padding: '2px 8px', borderRadius: '6px', fontSize: '0.6rem', fontWeight: 700,
+                                                        background: osCfg.bg, color: osCfg.color, border: `1px solid ${osCfg.border}`,
+                                                        whiteSpace: 'nowrap',
+                                                    }}>{osCfg.label}</span>
+                                                </td>
+                                                <td style={{ padding: '4px 4px', minWidth: '120px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <input
+                                                            type="text"
+                                                            value={traidoEdits[r.id_visita] ?? r.notas_traido ?? ''}
+                                                            onChange={e => handleTraidoChange(r.id_visita, e.target.value)}
+                                                            onBlur={() => {
+                                                                const val = traidoEdits[r.id_visita];
+                                                                if (val !== undefined && val !== (r.notas_traido || '')) {
+                                                                    if (traidoTimers.current[r.id_visita]) clearTimeout(traidoTimers.current[r.id_visita]);
+                                                                    saveTraido(r.id_visita, val);
+                                                                }
+                                                            }}
+                                                            placeholder="—"
+                                                            style={{
+                                                                width: '100%', padding: '4px 6px', borderRadius: '6px',
+                                                                border: '1px solid #E2E8F0', fontSize: '0.68rem',
+                                                                background: '#FAFAFA', outline: 'none',
+                                                                transition: 'border-color 0.15s, background 0.15s',
+                                                            }}
+                                                            onFocus={e => { e.target.style.borderColor = '#4F46E5'; e.target.style.background = '#fff'; }}
+                                                            onBlurCapture={e => { e.target.style.borderColor = '#E2E8F0'; e.target.style.background = '#FAFAFA'; }}
+                                                        />
+                                                        {traidoSaving[r.id_visita] && <Loader size={11} style={{ color: '#94A3B8', animation: 'spin 1s linear infinite', flexShrink: 0 }} />}
+                                                        {traidoSaved[r.id_visita] && <Check size={11} style={{ color: '#16A34A', flexShrink: 0 }} />}
+                                                    </div>
+                                                </td>
                                                 <td style={{ padding: '6px 8px' }}>
                                                     <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '0.62rem', fontWeight: 700, background: (ESP_COLORS[r.visita_especialidad?.trim()] || '#94A3B8') + '18', color: ESP_COLORS[r.visita_especialidad?.trim()] || '#64748B' }}>{r.visita_especialidad || '—'}</span>
                                                 </td>
@@ -967,7 +1113,8 @@ export default function ConsultasPanel() {
                                                 <td style={{ padding: '6px 8px', color: '#64748B', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.tipo_visita || '—'}</td>
                                                 <td style={{ padding: '6px 8px', color: '#94A3B8', textAlign: 'center' }}>{r.nhc || '—'}</td>
                                             </tr>
-                                        ))}
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
