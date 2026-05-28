@@ -666,7 +666,7 @@ a {
 }
 
 /* ===============================================
-   Beto IA — RAG Container (Chat Interface)
+   Simon IA — RAG Container (Chat Interface)
    =============================================== */
 
 .rag-container {
@@ -1015,10 +1015,10 @@ a {
 .rag-kpi-card:hover { box-shadow: var(--shadow-sm); }
 
 /* ===============================================
-   Beto IA — Feedback Buttons (Correct/Incorrect)
+   Simon IA — Feedback Buttons (Correct/Incorrect)
    =============================================== */
 
-.beto-feedback {
+.simon-feedback {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1028,7 +1028,7 @@ a {
   animation: fadeIn 0.3s ease-out;
 }
 
-.beto-feedback-label {
+.simon-feedback-label {
   font-size: 0.68rem;
   color: var(--neutral-400);
   font-weight: 600;
@@ -1036,7 +1036,7 @@ a {
   white-space: nowrap;
 }
 
-.beto-feedback-btn {
+.simon-feedback-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1051,11 +1051,11 @@ a {
   color: var(--neutral-500);
 }
 
-.beto-feedback-btn.correct {
+.simon-feedback-btn.correct {
   border-color: rgba(16, 185, 129, 0.2);
 }
 
-.beto-feedback-btn.correct:hover {
+.simon-feedback-btn.correct:hover {
   background: #ecfdf5;
   color: #059669;
   border-color: #10b981;
@@ -1063,15 +1063,15 @@ a {
   box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
 }
 
-.beto-feedback-btn.correct:active {
+.simon-feedback-btn.correct:active {
   transform: translateY(0);
 }
 
-.beto-feedback-btn.incorrect {
+.simon-feedback-btn.incorrect {
   border-color: rgba(239, 68, 68, 0.2);
 }
 
-.beto-feedback-btn.incorrect:hover {
+.simon-feedback-btn.incorrect:hover {
   background: #fef2f2;
   color: #dc2626;
   border-color: #ef4444;
@@ -1079,18 +1079,18 @@ a {
   box-shadow: 0 2px 8px rgba(239, 68, 68, 0.15);
 }
 
-.beto-feedback-btn.incorrect:active {
+.simon-feedback-btn.incorrect:active {
   transform: translateY(0);
 }
 
 /* Voted state */
-.beto-feedback.voted {
+.simon-feedback.voted {
   border-top-color: transparent;
   padding-top: 6px;
   margin-top: 8px;
 }
 
-.beto-feedback-result {
+.simon-feedback-result {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1098,22 +1098,22 @@ a {
   border-radius: 20px;
   font-size: 0.68rem;
   font-weight: 700;
-  animation: betoFeedbackIn 0.35s ease-out;
+  animation: simonFeedbackIn 0.35s ease-out;
 }
 
-.beto-feedback-result.correct {
+.simon-feedback-result.correct {
   background: #ecfdf5;
   color: #059669;
   border: 1px solid #a7f3d0;
 }
 
-.beto-feedback-result.incorrect {
+.simon-feedback-result.incorrect {
   background: #fef2f2;
   color: #dc2626;
   border: 1px solid #fecaca;
 }
 
-@keyframes betoFeedbackIn {
+@keyframes simonFeedbackIn {
   0% {
     opacity: 0;
     transform: scale(0.85);

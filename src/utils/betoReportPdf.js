@@ -1,7 +1,7 @@
 /**
- * betoReportPdf.js — Genera PDFs profesionales desde los reportes de Beto
+ * betoReportPdf.js — Genera PDFs profesionales desde los reportes de Simon
  * 
- * Parsea markdown tables + texto de Beto y genera un PDF con estilo
+ * Parsea markdown tables + texto de Simon y genera un PDF con estilo
  * institucional del Sanatorio Argentino usando jsPDF + autoTable.
  */
 import jsPDF from 'jspdf';
@@ -9,7 +9,7 @@ import autoTable from 'jspdf-autotable';
 
 // ─── Color palette (Institucional Sanatorio Argentino) ───
 const COLORS = {
-    primary: [79, 70, 229],      // #4F46E5 — Indigo (Beto brand)
+    primary: [79, 70, 229],      // #4F46E5 — Indigo (Simon brand)
     primaryLight: [238, 242, 255], // #EEF2FF
     dark: [30, 41, 59],           // #1E293B
     gray: [100, 116, 139],        // #64748B
@@ -21,7 +21,7 @@ const COLORS = {
 };
 
 /**
- * Parse markdown content from Beto's response to extract:
+ * Parse markdown content from Simon's response to extract:
  * - Title
  * - Subtitle/date
  * - Tables (| header | header |)
@@ -130,8 +130,8 @@ function cleanMarkdown(text) {
 }
 
 /**
- * Generate a professional PDF from Beto's report markdown
- * @param {string} markdown - The raw markdown content from Beto
+ * Generate a professional PDF from Simon's report markdown
+ * @param {string} markdown - The raw markdown content from Simon
  * @param {string} [reportTitle] - Optional override title
  * @returns {jsPDF} The generated PDF document
  */
@@ -157,7 +157,7 @@ export function generateBetoReportPdf(markdown, reportTitle) {
 
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.text('Reporte generado por Beto — Asistente IA', margin, 19);
+    doc.text('Reporte generado por Simon — Asistente IA', margin, 19);
 
     // Date on the right
     const now = new Date();
@@ -171,7 +171,7 @@ export function generateBetoReportPdf(markdown, reportTitle) {
     y = 36;
 
     // ─── REPORT TITLE ───
-    const title = reportTitle || extractTitle(sections) || 'Reporte de Beto';
+    const title = reportTitle || extractTitle(sections) || 'Reporte de Simon';
     doc.setTextColor(...COLORS.dark);
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
@@ -326,7 +326,7 @@ function addFooter(doc, pageWidth, pageHeight, margin) {
     doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...COLORS.gray);
-    doc.text('Generado por Beto — Asistente IA del Sanatorio Argentino', margin, pageHeight - 7);
+    doc.text('Generado por Simon — Asistente IA del Sanatorio Argentino', margin, pageHeight - 7);
     doc.text(`Página ${doc.internal.getNumberOfPages()}`, pageWidth - margin, pageHeight - 7, { align: 'right' });
 }
 
@@ -353,7 +353,7 @@ function generateColumnStyles(headers) {
  */
 export function downloadBetoReportPdf(markdown, reportTitle) {
     const doc = generateBetoReportPdf(markdown, reportTitle);
-    const safeName = (reportTitle || 'reporte-beto')
+    const safeName = (reportTitle || 'reporte-simon')
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '');
