@@ -199,23 +199,6 @@ export default function ConsultasPanel() {
         searchTimer.current = setTimeout(() => fetchRegistros(), 400);
     };
 
-    // Filtered data
-    const filtered = useMemo(() => {
-        if (filtroEsp === 'todas') return data;
-        return data.filter(r => r.visita_especialidad?.trim() === filtroEsp);
-    }, [data, filtroEsp]);
-
-    // KPIs
-    const kpis = useMemo(() => {
-        const total = filtered.length;
-        const especialidades = [...new Set(filtered.map(r => r.visita_especialidad?.trim()))];
-        const obrasSociales = [...new Set(filtered.map(r => r.cliente))];
-        const diasUnicos = [...new Set(filtered.map(r => r.fecha_visita))];
-        const promDiario = diasUnicos.length ? Math.round(total / diasUnicos.length) : 0;
-        const residencia = filtered.filter(r => isResidencia(r)).length;
-        return { total, especialidades: especialidades.length, obrasSociales: obrasSociales.length, promDiario, dias: diasUnicos.length, residencia };
-    }, [filtered]);
-
     // Helper: normalizar especialidad agrupando (NEO) como NEONATOLOGIA
     const normalizeEsp = (r) => {
         if (r.agenda?.trim().startsWith('(NEO)')) return 'NEONATOLOGIA';
@@ -238,6 +221,23 @@ export default function ConsultasPanel() {
         const h = parseInt(r.hora_visita.split(':')[0], 10);
         return h >= 7 && h < 14;
     };
+
+    // Filtered data
+    const filtered = useMemo(() => {
+        if (filtroEsp === 'todas') return data;
+        return data.filter(r => r.visita_especialidad?.trim() === filtroEsp);
+    }, [data, filtroEsp]);
+
+    // KPIs
+    const kpis = useMemo(() => {
+        const total = filtered.length;
+        const especialidades = [...new Set(filtered.map(r => r.visita_especialidad?.trim()))];
+        const obrasSociales = [...new Set(filtered.map(r => r.cliente))];
+        const diasUnicos = [...new Set(filtered.map(r => r.fecha_visita))];
+        const promDiario = diasUnicos.length ? Math.round(total / diasUnicos.length) : 0;
+        const residencia = filtered.filter(r => isResidencia(r)).length;
+        return { total, especialidades: especialidades.length, obrasSociales: obrasSociales.length, promDiario, dias: diasUnicos.length, residencia };
+    }, [filtered]);
 
     // Group by date
     const porDia = useMemo(() => {
