@@ -9,7 +9,7 @@ import {
     ChevronRight, ChevronDown, Brain, BookOpen, AlertCircle, CheckCircle, X, Clock,
     Sparkles, FolderOpen, Tag, Download, FolderPlus, Home, Folder,
     Shield, RefreshCw, BarChart3, HelpCircle, Search, Zap, ArrowRight,
-    ThumbsUp, ThumbsDown,
+    ThumbsUp, ThumbsDown, Lightbulb, GraduationCap,
 } from 'lucide-react';
 import {
     sendRAGMessage, listRAGConversations, getRAGConversationMessages,
@@ -25,7 +25,9 @@ function renderMarkdown(text) {
     return text
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/^(\d+)\. (.*)/gm, '$1. $2')
         .replace(/^- (.*)/gm, '• $1')
+        .replace(/`([^`]+)`/g, '<code style="background:#F1F5F9;padding:1px 4px;border-radius:3px;font-size:0.85em">$1</code>')
         .replace(/\n/g, '<br/>');
 }
 
@@ -97,7 +99,17 @@ export default function BetoPanel({ addToast }) {
     const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
     // Feedback
-    const [feedbackMap, setFeedbackMap] = useState({});  // { [msgIndex]: 'correct' | 'incorrect' }
+    const [feedbackMap, setFeedbackMap] = useState({});
+
+    // Confirm modal
+    const [confirmAction, setConfirmAction] = useState(null);
+
+    // Upload modal
+    const [showUploadModal, setShowUploadModal] = useState(false);
+    const [pendingFiles, setPendingFiles] = useState([]);
+
+    // Sidebar toggle
+    const [showSidebar, setShowSidebar] = useState(true);
 
     useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
@@ -167,9 +179,15 @@ export default function BetoPanel({ addToast }) {
         } catch(e) { setError(e.message); } finally { setIsLoading(false); }
     }
 
-    async function handleDeleteConv(id, e) {
+    function handleDeleteConv(id, e) {
         e.stopPropagation();
-        try { await deleteRAGConversation(id); if (activeConversation === id) startNewConversation(); loadConversations(); } catch(err) { setError(err.message); }
+        setConfirmAction({
+            title: 'Eliminar Conversación',
+            message: '¿Estás seguro de que querés eliminar esta conversación del historial?',
+            onConfirm: async () => {
+                try { await deleteRAGConversation(id); if (activeConversation === id) startNewConversation(); loadConversations(); } catch(err) { setError(err.message); }
+            },
+        });
     }
 
     // ═══ FEEDBACK ═══
@@ -189,11 +207,19 @@ export default function BetoPanel({ addToast }) {
 
     // ═══ FILES ═══
     function navigateToFolder(p) { setCurrentFolder(p); loadFiles(p); }
-    async function handleFileSelect(event) {
+    function handleFileSelect(event) {
         const files = Array.from(event.target.files || []).filter(f => {
             const ext = '.' + f.name.split('.').pop().toLowerCase();
             return SUPPORTED_EXTS.includes(ext) && !f.name.startsWith('~$');
         });
+        if (!files.length) return;
+        setPendingFiles(files);
+        setShowUploadModal(true);
+    }
+    async function confirmUpload() {
+        setShowUploadModal(false);
+        const files = pendingFiles;
+        setPendingFiles([]);
         if (!files.length) return;
         setIsUploading(true); setError(null);
         if (files.length === 1) {
@@ -292,7 +318,7 @@ export default function BetoPanel({ addToast }) {
     return (
         <div className="rag-container">
             {/* ── Sidebar ── */}
-            <div className="rag-sidebar">
+            {showSidebar && <div className="rag-sidebar">
                 <div className="rag-sidebar-header">
                     <button className="rag-new-chat-btn" onClick={startNewConversation}>
                         <Plus size={14} /> Nueva Consulta
@@ -333,15 +359,23 @@ export default function BetoPanel({ addToast }) {
                     {activeTab === 'rules' && renderRulesSidebar()}
                     {activeTab === 'analytics' && renderAnalyticsSidebar()}
                 </div>
-            </div>
+            </div>}
 
             {/* ── Chat Area ── */}
             <div className="rag-chat-area">
                 <div className="rag-status-bar">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <button onClick={() => setShowSidebar(!showSidebar)} style={{
+                            background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
+                            color: 'var(--neutral-500)', display: 'flex', alignItems: 'center',
+                        }} title={showSidebar ? 'Ocultar panel' : 'Mostrar panel'}>
+                            <ChevronRight size={16} style={{ transform: showSidebar ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                        </button>
                         <div className="rag-status-dot" /> Simon IA — En línea
                     </div>
-                    {learningStats && <span>🧠 {learningStats.total_learned || 0} respuestas aprendidas</span>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {learningStats && <span>🧠 {learningStats.total_learned || 0} respuestas aprendidas</span>}
+                    </div>
                 </div>
 
                 <div className="rag-messages">
@@ -410,6 +444,57 @@ export default function BetoPanel({ addToast }) {
                                     </button>
                                 </div>
                             </div>
+
+                            {/* ── Smart Guidance: Preguntas frecuentes ── */}
+                            {(suggestions.categories?.length > 0 || suggestions.top_queries?.length > 0) && (
+                                <div style={{ width: '100%', marginTop: '14px' }}>
+                                    {suggestions.top_queries?.length > 0 && (
+                                        <div style={{ marginBottom: '10px' }}>
+                                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <Sparkles size={12} /> Preguntas frecuentes
+                                            </div>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                                {suggestions.top_queries.slice(0, 6).map((q, i) => (
+                                                    <button key={i} onClick={() => setInputValue(q.text)} style={{
+                                                        padding: '6px 12px', borderRadius: '20px', border: '1px solid #E2E8F0',
+                                                        background: '#fff', cursor: 'pointer', fontSize: '0.72rem', color: 'var(--neutral-600)',
+                                                        fontWeight: 500, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '4px',
+                                                    }}
+                                                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.background = '#EFF6FF'; }}
+                                                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.background = '#fff'; }}
+                                                    >
+                                                        <MessageSquare size={11} />
+                                                        {q.text.length > 50 ? q.text.slice(0, 47) + '...' : q.text}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {suggestions.categories?.length > 0 && (
+                                        <div>
+                                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <Tag size={12} /> Temas disponibles
+                                            </div>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                                                {suggestions.categories.slice(0, 8).map((cat, i) => (
+                                                    <button key={i} onClick={() => setInputValue(`¿Qué información hay sobre ${cat.name}?`)} style={{
+                                                        padding: '4px 10px', borderRadius: '16px', border: '1px solid #DDD6FE',
+                                                        background: '#F5F3FF', cursor: 'pointer', fontSize: '0.68rem', color: '#7C3AED',
+                                                        fontWeight: 600, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '4px',
+                                                    }}
+                                                    onMouseEnter={e => { e.currentTarget.style.background = '#EDE9FE'; }}
+                                                    onMouseLeave={e => { e.currentTarget.style.background = '#F5F3FF'; }}
+                                                    >
+                                                        <FolderOpen size={10} />
+                                                        {cat.name}
+                                                        {cat.count > 1 && <span style={{ fontSize: '0.58rem', opacity: 0.7 }}>({cat.count})</span>}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* ── Guía: ¿Cómo funciona Simon? ── */}
                             <button
@@ -623,20 +708,70 @@ export default function BetoPanel({ addToast }) {
                     {messages.map((msg, i) => {
                         const feedbackKey = `${activeConversation || 'new'}_${i}`;
                         const currentFeedback = feedbackMap[feedbackKey];
+                        // Parse related questions from Simon's response
+                        const parts = (msg.content || '').split(/---\s*\n💡/);
+                        const mainContent = parts[0];
+                        let relatedQuestions = [];
+                        if (msg.role === 'assistant' && parts.length > 1) {
+                            const rqSection = parts[1];
+                            const matches = rqSection.match(/- ¿([^?]+)\?/g) || [];
+                            relatedQuestions = matches.map(m => m.replace(/^- /, '').trim());
+                        }
                         return (
-                            <div key={i} className={msg.role === 'user' ? 'rag-msg-user' : 'rag-msg-assistant'}>
+                            <div key={i} className={msg.role === 'user' ? 'rag-msg-user' : 'rag-msg-assistant'} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                                <div style={{
+                                    width: '28px', height: '28px', borderRadius: '8px', flexShrink: 0,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    background: msg.role === 'user' ? '#EFF6FF' : '#F5F3FF',
+                                    fontSize: '0.85rem', marginTop: '2px',
+                                }}>{msg.role === 'user' ? '👤' : '🧠'}</div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
                                 {msg.role === 'assistant' ? (
                                     <>
-                                        <div dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
+                                        <div dangerouslySetInnerHTML={{ __html: renderMarkdown(mainContent) }} />
+                                        {/* Related Questions */}
+                                        {relatedQuestions.length > 0 && (
+                                            <div style={{ marginTop: '10px', padding: '10px 12px', background: '#FFFBEB', borderRadius: '10px', border: '1px solid #FDE68A' }}>
+                                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#92400E', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
+                                                    <Lightbulb size={12} /> También podrías preguntar:
+                                                </div>
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                    {relatedQuestions.map((rq, ri) => (
+                                                        <button key={ri} onClick={() => setInputValue(rq)} style={{
+                                                            padding: '4px 10px', borderRadius: '16px', border: '1px solid #FDE68A',
+                                                            background: '#fff', cursor: 'pointer', fontSize: '0.68rem', color: '#92400E',
+                                                            fontWeight: 500, transition: 'all 0.15s',
+                                                        }}
+                                                        onMouseEnter={e => { e.currentTarget.style.background = '#FEF3C7'; }}
+                                                        onMouseLeave={e => { e.currentTarget.style.background = '#fff'; }}
+                                                        >{rq}</button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Sources — improved */}
                                         {msg.sources?.length > 0 && (
-                                            <div className="rag-msg-sources">
+                                            <div style={{ marginTop: '8px', padding: '8px 10px', background: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                                <div style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--neutral-400)', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <FileText size={10} /> Fuentes consultadas
+                                                </div>
                                                 {msg.sources.map((src, j) => (
-                                                    <span key={j} className="rag-source-chip">
-                                                        <FileText size={10} /> {(src.filename || src).slice(0, 30)}
-                                                    </span>
+                                                    <div key={j} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 0', fontSize: '0.7rem' }}>
+                                                        <span>{src.source_type === 'chat_history' ? '🧠' : (FILE_ICONS['.' + (src.file_type || 'pdf')] || '📄')}</span>
+                                                        <span style={{ flex: 1, color: 'var(--neutral-600)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                            {src.source_type === 'chat_history' ? 'Aprendido de chat previo' : (src.filename || src).slice(0, 40)}
+                                                        </span>
+                                                        {src.chunks_used && <span style={{ fontSize: '0.58rem', padding: '1px 6px', borderRadius: '8px', background: '#EFF6FF', color: '#3B82F6', fontWeight: 600 }}>{src.chunks_used} chunks</span>}
+                                                        {src.rerank_score > 0 && <span style={{ fontSize: '0.58rem', padding: '1px 6px', borderRadius: '8px', background: '#ECFDF5', color: '#059669', fontWeight: 600 }}>{src.rerank_score}/10</span>}
+                                                        {src.source_type === 'chat_history' && <span style={{ fontSize: '0.58rem', padding: '1px 6px', borderRadius: '8px', background: '#F5F3FF', color: '#7C3AED', fontWeight: 600 }}><GraduationCap size={8} /> Aprendido</span>}
+                                                        {src.storage_path && src.source_type !== 'chat_history' && (
+                                                            <button onClick={() => downloadRAGFile(src.storage_path)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3B82F6', padding: '2px', display: 'flex' }}><Download size={11} /></button>
+                                                        )}
+                                                    </div>
                                                 ))}
                                             </div>
                                         )}
+                                        {/* Clarification suggestions */}
                                         {msg.type === 'clarification' && msg.suggestions?.length > 0 && (
                                             <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                                 {msg.suggestions.map((s, j) => (
@@ -655,25 +790,14 @@ export default function BetoPanel({ addToast }) {
                                             ) : (
                                                 <>
                                                     <span className="simon-feedback-label">¿Fue útil?</span>
-                                                    <button
-                                                        className="simon-feedback-btn correct"
-                                                        onClick={() => handleFeedback(i, true)}
-                                                        title="Respuesta correcta"
-                                                    >
-                                                        <ThumbsUp size={13} /> Correcta
-                                                    </button>
-                                                    <button
-                                                        className="simon-feedback-btn incorrect"
-                                                        onClick={() => handleFeedback(i, false)}
-                                                        title="Respuesta incorrecta"
-                                                    >
-                                                        <ThumbsDown size={13} /> Incorrecta
-                                                    </button>
+                                                    <button className="simon-feedback-btn correct" onClick={() => handleFeedback(i, true)} title="Respuesta correcta"><ThumbsUp size={13} /> Correcta</button>
+                                                    <button className="simon-feedback-btn incorrect" onClick={() => handleFeedback(i, false)} title="Respuesta incorrecta"><ThumbsDown size={13} /> Incorrecta</button>
                                                 </>
                                             )}
                                         </div>
                                     </>
-                                ) : msg.content}
+                                ) : <span>{msg.content}</span>}
+                                </div>
                             </div>
                         );
                     })}
@@ -702,6 +826,77 @@ export default function BetoPanel({ addToast }) {
                     </button>
                 </div>
             </div>
+
+            {/* ── Confirm Modal ── */}
+            {confirmAction && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    onClick={() => setConfirmAction(null)}>
+                    <div onClick={e => e.stopPropagation()} style={{
+                        background: '#fff', borderRadius: '16px', padding: '24px', maxWidth: '380px', width: '90%',
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.15)', animation: 'fadeIn 0.2s ease',
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                            <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <AlertCircle size={18} color="#EF4444" />
+                            </div>
+                            <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700 }}>{confirmAction.title}</h4>
+                        </div>
+                        <p style={{ fontSize: '0.78rem', color: 'var(--neutral-500)', lineHeight: 1.5, margin: '0 0 20px' }}>{confirmAction.message}</p>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                            <button onClick={() => setConfirmAction(null)} style={{
+                                padding: '8px 16px', borderRadius: '8px', border: '1px solid #E2E8F0',
+                                background: '#fff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+                            }}>Cancelar</button>
+                            <button onClick={() => { confirmAction.onConfirm(); setConfirmAction(null); }} style={{
+                                padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                background: '#EF4444', color: '#fff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+                            }}>Eliminar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Upload Preview Modal ── */}
+            {showUploadModal && pendingFiles.length > 0 && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    onClick={() => { setShowUploadModal(false); setPendingFiles([]); if (fileInputRef.current) fileInputRef.current.value = ''; }}>
+                    <div onClick={e => e.stopPropagation()} style={{
+                        background: '#fff', borderRadius: '16px', padding: '24px', maxWidth: '440px', width: '90%',
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.15)', animation: 'fadeIn 0.2s ease',
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                            <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Upload size={18} color="#3B82F6" />
+                            </div>
+                            <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700 }}>Confirmar subida</h4>
+                        </div>
+                        <div style={{ background: '#F8FAFC', borderRadius: '10px', padding: '12px', marginBottom: '14px', maxHeight: '200px', overflowY: 'auto' }}>
+                            {pendingFiles.map((f, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', fontSize: '0.72rem' }}>
+                                    <span>{FILE_ICONS['.' + f.name.split('.').pop().toLowerCase()] || '📄'}</span>
+                                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--neutral-700)' }}>{f.name}</span>
+                                    <span style={{ fontSize: '0.62rem', color: 'var(--neutral-400)' }}>{formatFileSize(f.size)}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', marginBottom: '16px' }}>
+                            {pendingFiles.length} archivo{pendingFiles.length !== 1 ? 's' : ''} · {formatFileSize(pendingFiles.reduce((s, f) => s + f.size, 0))} total
+                            {currentFolder && <span> → carpeta: <strong>{currentFolder}</strong></span>}
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                            <button onClick={() => { setShowUploadModal(false); setPendingFiles([]); if (fileInputRef.current) fileInputRef.current.value = ''; }} style={{
+                                padding: '8px 16px', borderRadius: '8px', border: '1px solid #E2E8F0',
+                                background: '#fff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+                            }}>Cancelar</button>
+                            <button onClick={confirmUpload} style={{
+                                padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                background: '#3B82F6', color: '#fff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                            }}><Upload size={14} /> Subir</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 
@@ -744,7 +939,7 @@ export default function BetoPanel({ addToast }) {
                     <div key={item.path} className="rag-conv-item" onClick={() => navigateToFolder(item.path)}>
                         <Folder size={16} color="#3B82F6" />
                         <span className="rag-conv-title" style={{ flex: 1 }}>{item.name}</span>
-                        <button className="rag-conv-delete" style={{ opacity: 1 }} onClick={e => { e.stopPropagation(); deleteRAGFolder(item.path).then(() => loadFiles()); }}><Trash2 size={11} /></button>
+                        <button className="rag-conv-delete" style={{ opacity: 1 }} onClick={e => { e.stopPropagation(); setConfirmAction({ title: 'Eliminar Carpeta', message: `¿Eliminar la carpeta "${item.name}" y todo su contenido?`, onConfirm: () => deleteRAGFolder(item.path).then(() => loadFiles()) }); }}><Trash2 size={11} /></button>
                     </div>
                 ) : (
                     <div key={item.name} className="rag-conv-item" style={{ cursor: 'default' }}>
@@ -754,7 +949,7 @@ export default function BetoPanel({ addToast }) {
                             <div style={{ fontSize: '0.65rem', color: 'var(--neutral-400)' }}>{item.total_chunks} chunks · {formatFileSize(item.file_size)}</div>
                         </div>
                         <button className="rag-conv-delete" style={{ opacity: 1 }} onClick={() => downloadRAGFile(item.storage_path || `${item.folder}/${item.name}`.replace(/^\//, ''))}><Download size={11} /></button>
-                        <button className="rag-conv-delete" style={{ opacity: 1 }} onClick={() => { deleteRAGFile(item.storage_path || `${item.folder}/${item.name}`.replace(/^\//, '')).then(() => loadFiles()); }}><Trash2 size={11} /></button>
+                        <button className="rag-conv-delete" style={{ opacity: 1 }} onClick={() => { setConfirmAction({ title: 'Eliminar Archivo', message: `¿Estás seguro de que querés eliminar "${item.name}"?`, onConfirm: () => deleteRAGFile(item.storage_path || `${item.folder}/${item.name}`.replace(/^\//, '')).then(() => loadFiles()) }); }}><Trash2 size={11} /></button>
                     </div>
                 ))}
             </div>
