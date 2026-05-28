@@ -346,7 +346,7 @@ export default function BetoPanel({ addToast }) {
 
                 <div className="rag-messages">
                     {messages.length === 0 && !isLoading && (
-                        <div className="rag-empty-state" style={{ maxWidth: '620px', width: '100%', padding: '40px 28px' }}>
+                        <div className="rag-empty-state" style={{ maxWidth: '620px', width: '100%', padding: '40px 28px', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', margin: 'auto' }}>
                             <Brain size={48} style={{ marginBottom: '12px', opacity: 0.3 }} />
                             <h3 style={{ margin: '0 0 6px', fontSize: '1rem', fontWeight: 700, color: 'var(--neutral-500)' }}>¿En qué puedo ayudarte?</h3>
                             <p style={{ margin: '0 0 24px', fontSize: '0.8rem' }}>Consultá documentos del Sanatorio con IA</p>
