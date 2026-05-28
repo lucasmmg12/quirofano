@@ -672,20 +672,32 @@ export default function ConsultasPanel() {
                             } else {
                                 key = r.fecha_visita;
                             }
-                            if (!rowMap[key]) rowMap[key] = { key, total: 0, cols: {} };
+                            if (!rowMap[key]) rowMap[key] = { key, total: 0, cols: {}, byOS: { OSP: 0, Prepagas: 0, Particulares: 0 } };
                             rowMap[key].total++;
                             const col = getColVal(r);
                             rowMap[key].cols[col] = (rowMap[key].cols[col] || 0) + 1;
+                            const osCateg = normalizeOS(r.cliente);
+                            rowMap[key].byOS[osCateg] = (rowMap[key].byOS[osCateg] || 0) + 1;
                         });
                         const rows = Object.values(rowMap).sort((a, b) => a.key.localeCompare(b.key));
 
                         // Totals
                         const totals = {};
                         let grandTotal = 0;
+                        const osTotals = { OSP: 0, Prepagas: 0, Particulares: 0 };
                         rows.forEach(r => {
                             grandTotal += r.total;
                             visibleCols.forEach(c => { totals[c] = (totals[c] || 0) + (r.cols[c] || 0); });
+                            osTotals.OSP += r.byOS.OSP || 0;
+                            osTotals.Prepagas += r.byOS.Prepagas || 0;
+                            osTotals.Particulares += r.byOS.Particulares || 0;
                         });
+
+                        const OS_COLS = [
+                            { key: 'OSP', label: 'OSP', color: '#0369A1', bg: '#E0F2FE' },
+                            { key: 'Prepagas', label: 'Prepagas', color: '#7C3AED', bg: '#F3E8FF' },
+                            { key: 'Particulares', label: 'Particular', color: '#EA580C', bg: '#FFF7ED' },
+                        ];
 
                         const formatRowLabel = (key) => {
                             if (matrizAgrupar === 'semana') {
@@ -767,7 +779,12 @@ export default function ConsultasPanel() {
                                                         {col.length > 14 ? col.substring(0, 12) + '…' : col}
                                                     </th>
                                                 ))}
-                                                <th style={{ padding: '8px 10px', color: '#FDE68A', fontWeight: 800, textAlign: 'center', minWidth: '50px' }}>TOTAL</th>
+                                                <th style={{ padding: '8px 10px', color: '#FDE68A', fontWeight: 800, textAlign: 'center', minWidth: '50px', borderLeft: '2px solid rgba(255,255,255,0.2)' }}>TOTAL</th>
+                                                {OS_COLS.map(os => (
+                                                    <th key={os.key} style={{ padding: '8px 6px', color: '#fff', fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.65rem', borderLeft: os.key === 'OSP' ? '2px solid rgba(255,255,255,0.2)' : 'none' }}>
+                                                        {os.label}
+                                                    </th>
+                                                ))}
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -801,6 +818,19 @@ export default function ConsultasPanel() {
                                                         <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 800, color: '#1E293B', background: '#F8FAFC', borderLeft: '2px solid #E2E8F0' }}>
                                                             {row.total}
                                                         </td>
+                                                        {OS_COLS.map(os => {
+                                                            const val = row.byOS[os.key] || 0;
+                                                            return (
+                                                                <td key={os.key} style={{
+                                                                    padding: '6px 6px', textAlign: 'center', fontWeight: val > 0 ? 700 : 400,
+                                                                    color: val > 0 ? os.color : '#D1D5DB',
+                                                                    background: val > 0 ? os.bg : 'transparent',
+                                                                    borderLeft: os.key === 'OSP' ? '2px solid #E2E8F0' : 'none',
+                                                                }}>
+                                                                    {val || '—'}
+                                                                </td>
+                                                            );
+                                                        })}
                                                     </tr>
                                                 );
                                             })}
@@ -816,6 +846,11 @@ export default function ConsultasPanel() {
                                                 <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 900, color: '#1E293B', fontSize: '0.82rem', borderLeft: '2px solid #CBD5E1' }}>
                                                     {grandTotal.toLocaleString()}
                                                 </td>
+                                                {OS_COLS.map(os => (
+                                                    <td key={os.key} style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 800, color: os.color, borderLeft: os.key === 'OSP' ? '2px solid #CBD5E1' : 'none' }}>
+                                                        {osTotals[os.key]}
+                                                    </td>
+                                                ))}
                                             </tr>
                                         </tfoot>
                                     </table>

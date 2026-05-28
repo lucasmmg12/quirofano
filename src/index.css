@@ -424,26 +424,26 @@ a {
 }
 
 /* ===============================================
-   Beto IA — Welcome / Boot Screen
+   Simon IA — Welcome / Boot Screen
    =============================================== */
 
-.beto-welcome {
+.simon-welcome {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   min-height: calc(100vh - 60px);
   background: linear-gradient(135deg, #f0f4ff 0%, #e8ecf5 30%, #f8fafc 100%);
-  animation: betoBgPulse 8s ease-in-out infinite;
+  animation: simonBgPulse 8s ease-in-out infinite;
   padding: 40px 20px;
 }
 
-@keyframes betoBgPulse {
+@keyframes simonBgPulse {
   0%, 100% { background: linear-gradient(135deg, #f0f4ff 0%, #e8ecf5 30%, #f8fafc 100%); }
   50% { background: linear-gradient(135deg, #e8ecf5 0%, #f0f4ff 30%, #eef2ff 100%); }
 }
 
-.beto-welcome-card {
+.simon-welcome-card {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -455,20 +455,20 @@ a {
   border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 24px;
   box-shadow: 0 8px 32px rgba(59, 130, 246, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
-  animation: betoCardIn 0.6s ease-out;
+  animation: simonCardIn 0.6s ease-out;
 }
 
-@keyframes betoCardIn {
+@keyframes simonCardIn {
   from { opacity: 0; transform: translateY(20px) scale(0.97); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-.beto-avatar-container {
+.simon-avatar-container {
   position: relative;
   margin-bottom: 20px;
 }
 
-.beto-avatar {
+.simon-avatar {
   width: 96px;
   height: 96px;
   border-radius: 24px;
@@ -478,21 +478,21 @@ a {
   box-shadow: 0 4px 20px rgba(59, 130, 246, 0.2);
 }
 
-.beto-avatar-glow {
+.simon-avatar-glow {
   position: absolute;
   inset: -8px;
   border-radius: 30px;
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(99, 102, 241, 0.15));
   z-index: 1;
-  animation: betoGlow 3s ease-in-out infinite;
+  animation: simonGlow 3s ease-in-out infinite;
 }
 
-@keyframes betoGlow {
+@keyframes simonGlow {
   0%, 100% { opacity: 0.5; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.05); }
 }
 
-.beto-name {
+.simon-name {
   font-size: 28px;
   font-weight: 800;
   color: var(--neutral-800);
@@ -500,21 +500,21 @@ a {
   letter-spacing: -0.5px;
 }
 
-.beto-subtitle {
+.simon-subtitle {
   font-size: 13px;
   font-weight: 600;
   color: var(--primary-500);
   margin: 0 0 12px;
 }
 
-.beto-desc {
+.simon-desc {
   font-size: 13px;
   color: var(--neutral-500);
   line-height: 1.6;
   margin: 0 0 24px;
 }
 
-.beto-start-btn {
+.simon-start-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -532,15 +532,15 @@ a {
   box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
 }
 
-.beto-start-btn:hover {
+.simon-start-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 24px rgba(59, 130, 246, 0.4);
   background: linear-gradient(135deg, #2563eb, #4f46e5);
 }
 
-.beto-start-btn:active { transform: translateY(0); }
+.simon-start-btn:active { transform: translateY(0); }
 
-.beto-sleep-info {
+.simon-sleep-info {
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -555,19 +555,19 @@ a {
   text-align: left;
 }
 
-.beto-sleep-info svg { color: var(--neutral-400); flex-shrink: 0; margin-top: 1px; }
-.beto-sleep-info strong { color: var(--neutral-700); }
+.simon-sleep-info svg { color: var(--neutral-400); flex-shrink: 0; margin-top: 1px; }
+.simon-sleep-info strong { color: var(--neutral-700); }
 
 /* Boot phases */
-.beto-boot { width: 100%; margin-top: 20px; }
+.simon-boot { width: 100%; margin-top: 20px; }
 
-.beto-boot-phases {
+.simon-boot-phases {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.beto-boot-phase {
+.simon-boot-phase {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -578,7 +578,7 @@ a {
   transition: all 0.3s;
 }
 
-.beto-boot-phase .beto-boot-dot {
+.simon-boot-phase .simon-boot-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -587,31 +587,31 @@ a {
   transition: all 0.3s;
 }
 
-.beto-boot-phase span { flex: 1; }
+.simon-boot-phase span { flex: 1; }
 
-.beto-boot-phase.active {
+.simon-boot-phase.active {
   color: var(--primary-500);
   background: var(--primary-50);
   font-weight: 600;
 }
 
-.beto-boot-phase.active .beto-boot-dot {
+.simon-boot-phase.active .simon-boot-dot {
   background: var(--primary-500);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-  animation: betoDotPulse 1.5s ease-in-out infinite;
+  animation: simonDotPulse 1.5s ease-in-out infinite;
 }
 
-@keyframes betoDotPulse {
+@keyframes simonDotPulse {
   0%, 100% { box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
   50% { box-shadow: 0 0 0 5px rgba(59, 130, 246, 0.1); }
 }
 
-.beto-boot-phase.done { color: #059669; }
-.beto-boot-phase.done .beto-boot-dot { background: #10b981; }
-.beto-boot-phase.done svg { color: #10b981; }
-.beto-boot-phase svg { flex-shrink: 0; }
+.simon-boot-phase.done { color: #059669; }
+.simon-boot-phase.done .simon-boot-dot { background: #10b981; }
+.simon-boot-phase.done svg { color: #10b981; }
+.simon-boot-phase svg { flex-shrink: 0; }
 
-.beto-boot-timer {
+.simon-boot-timer {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -622,7 +622,7 @@ a {
   font-variant-numeric: tabular-nums;
 }
 
-.beto-boot-error {
+.simon-boot-error {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -635,11 +635,11 @@ a {
   text-align: center;
 }
 
-.beto-boot-error svg { color: #ef4444; }
-.beto-boot-error strong { font-size: 13px; color: var(--neutral-800); }
-.beto-boot-error p { font-size: 11px; color: var(--neutral-500); margin: 0; }
+.simon-boot-error svg { color: #ef4444; }
+.simon-boot-error strong { font-size: 13px; color: var(--neutral-800); }
+.simon-boot-error p { font-size: 11px; color: var(--neutral-500); margin: 0; }
 
-.beto-retry-btn {
+.simon-retry-btn {
   padding: 8px 20px;
   border: 1px solid var(--neutral-300);
   border-radius: 8px;
@@ -652,13 +652,13 @@ a {
   margin-top: 4px;
 }
 
-.beto-retry-btn:hover {
+.simon-retry-btn:hover {
   border-color: var(--primary-400, #4D8FCC);
   color: var(--primary-500);
   background: var(--primary-50);
 }
 
-.beto-welcome-footer {
+.simon-welcome-footer {
   margin-top: 24px;
   font-size: 10px;
   color: var(--neutral-400);

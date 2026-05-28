@@ -1,5 +1,5 @@
 /**
- * BetoAnalyticsPanel — #12 Dashboard de uso del asistente Beto
+ * BetoAnalyticsPanel — #12 Dashboard de uso del asistente Simon
  * Muestra métricas de consultas, tasa de éxito, queries frecuentes, etc.
  */
 import { useState, useEffect } from 'react';
@@ -70,7 +70,7 @@ export default function BetoAnalyticsPanel({ addToast }) {
             setData({ total, successful, failed, avgTime, topQueries, topTools, topUsers, interactions: interactions || [] });
         } catch (e) {
             console.error('Error loading analytics:', e);
-            addToast?.('Error cargando analytics de Beto', 'error');
+            addToast?.('Error cargando analytics de Simon', 'error');
             setData({ total: 0, successful: 0, failed: 0, avgTime: 0, topQueries: [], topTools: [], topUsers: [], interactions: [] });
         } finally {
             setLoading(false);
@@ -88,7 +88,7 @@ export default function BetoAnalyticsPanel({ addToast }) {
                         <Brain size={22} style={{ color: '#fff' }} />
                     </div>
                     <div>
-                        <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#1E293B' }}>Beto Analytics</h2>
+                        <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#1E293B' }}>Simon Analytics</h2>
                         <p style={{ margin: 0, fontSize: '.78rem', color: '#64748B' }}>Métricas de uso del asistente IA</p>
                     </div>
                 </div>

@@ -236,8 +236,8 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
 
                 {/* ─── Items finales ─── */}
                 {[
-                    { id: 'beto', label: 'Beto IA', icon: Brain },
-                    { id: 'beto_analytics', label: 'Beto Analytics', icon: Brain },
+                    { id: 'beto', label: 'Simon IA', icon: Brain },
+                    { id: 'beto_analytics', label: 'Simon Analytics', icon: Brain },
                     { id: 'config', label: 'Configuración', icon: Settings },
                 ].map(item => {
                     const Icon = item.icon;

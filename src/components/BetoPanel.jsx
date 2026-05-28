@@ -1,5 +1,5 @@
 /**
- * BetoPanel.jsx — Beto IA integrado en ADM-QUI
+ * BetoPanel.jsx — Simon IA integrado en ADM-QUI
  * Chat RAG + Documentos + Reglas + Analytics
  * Estética copiada 1:1 del Contact Center (CSS classes)
  */
@@ -102,7 +102,7 @@ export default function BetoPanel({ addToast }) {
     useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
     // ═══ BOOT ═══
-    async function startBeto() {
+    async function startSimon() {
         setBootPhase('waking');
         setBootTimer(0);
         const start = Date.now();
@@ -121,7 +121,7 @@ export default function BetoPanel({ addToast }) {
             await Promise.all([loadConversations(), loadFiles(), loadLearningStats()]);
             fetchSuggestions().then(d => setSuggestions(d)).catch(() => {});
         } catch (e) {
-            console.error('Beto boot: error cargando datos', e);
+            console.error('Simon boot: error cargando datos', e);
             setBootPhase('error');
             clearInterval(bootTimerRef.current);
             return;
@@ -222,64 +222,64 @@ export default function BetoPanel({ addToast }) {
             { key: 'waking', label: 'Despertando servidor...' },
             { key: 'connecting', label: 'Conectando IA...' },
             { key: 'loading', label: 'Cargando documentos...' },
-            { key: 'ready', label: '¡Beto está listo!' },
+            { key: 'ready', label: '¡Simon está listo!' },
         ];
         const order = ['waking', 'connecting', 'loading', 'ready'];
         const idx = order.indexOf(bootPhase);
 
         return (
-            <div className="beto-welcome">
-                <div className="beto-welcome-card">
-                    <div className="beto-avatar-container">
-                        <div className="beto-avatar-glow" />
-                        <img src="/logosanatorio.png" alt="Beto" className="beto-avatar" />
+            <div className="simon-welcome">
+                <div className="simon-welcome-card">
+                    <div className="simon-avatar-container">
+                        <div className="simon-avatar-glow" />
+                        <img src="/logosanatorio.png" alt="Simon" className="simon-avatar" />
                     </div>
-                    <h2 className="beto-name">Beto</h2>
-                    <p className="beto-subtitle">Asistente IA Documental</p>
+                    <h2 className="simon-name">Simon</h2>
+                    <p className="simon-subtitle">Asistente IA Documental</p>
 
                     {bootPhase === 'idle' && (
                         <>
-                            <p className="beto-desc">
+                            <p className="simon-desc">
                                 Consultá documentos del Sanatorio Argentino con inteligencia artificial. Respuestas precisas con citación de fuentes.
                             </p>
-                            <button className="beto-start-btn" onClick={startBeto}>
-                                <Brain size={18} /> Iniciar charla con Beto
+                            <button className="simon-start-btn" onClick={startSimon}>
+                                <Brain size={18} /> Iniciar charla con Simon
                             </button>
-                            <div className="beto-sleep-info">
+                            <div className="simon-sleep-info">
                                 <Clock size={14} />
-                                <span>Beto se apaga tras <strong>15 min</strong> de inactividad y demora entre <strong>30–60 seg</strong> en volver a encenderse.</span>
+                                <span>Simon se apaga tras <strong>15 min</strong> de inactividad y demora entre <strong>30–60 seg</strong> en volver a encenderse.</span>
                             </div>
                         </>
                     )}
 
                     {bootPhase === 'error' && (
-                        <div className="beto-boot-error">
+                        <div className="simon-boot-error">
                             <AlertCircle size={24} />
-                            <strong>No se pudo conectar con Beto</strong>
+                            <strong>No se pudo conectar con Simon</strong>
                             <p>El servidor no respondió. Intentá de nuevo.</p>
-                            <button className="beto-retry-btn" onClick={() => setBootPhase('idle')}>Reintentar</button>
+                            <button className="simon-retry-btn" onClick={() => setBootPhase('idle')}>Reintentar</button>
                         </div>
                     )}
 
                     {bootPhase !== 'idle' && bootPhase !== 'error' && (
-                        <div className="beto-boot">
-                            <div className="beto-boot-phases">
+                        <div className="simon-boot">
+                            <div className="simon-boot-phases">
                                 {phases.map((p, i) => {
                                     const isDone = idx > i || bootPhase === 'ready';
                                     const isActive = order[i] === bootPhase && bootPhase !== 'ready';
                                     return (
-                                        <div key={p.key} className={`beto-boot-phase ${isDone ? 'done' : isActive ? 'active' : ''}`}>
-                                            {isDone ? <CheckCircle size={16} /> : isActive ? <Loader2 size={16} className="rag-spin" /> : <div className="beto-boot-dot" />}
+                                        <div key={p.key} className={`simon-boot-phase ${isDone ? 'done' : isActive ? 'active' : ''}`}>
+                                            {isDone ? <CheckCircle size={16} /> : isActive ? <Loader2 size={16} className="rag-spin" /> : <div className="simon-boot-dot" />}
                                             <span>{p.label}</span>
                                         </div>
                                     );
                                 })}
                             </div>
-                            <div className="beto-boot-timer"><Clock size={12} /> {bootTimer}s</div>
+                            <div className="simon-boot-timer"><Clock size={12} /> {bootTimer}s</div>
                         </div>
                     )}
                 </div>
-                <div className="beto-welcome-footer">Sanatorio Argentino · Powered by GPT-4o + RAG Pipeline V3.2</div>
+                <div className="simon-welcome-footer">Sanatorio Argentino · Powered by GPT-4o + RAG Pipeline V3.2</div>
             </div>
         );
     }
@@ -339,7 +339,7 @@ export default function BetoPanel({ addToast }) {
             <div className="rag-chat-area">
                 <div className="rag-status-bar">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <div className="rag-status-dot" /> Beto IA — En línea
+                        <div className="rag-status-dot" /> Simon IA — En línea
                     </div>
                     {learningStats && <span>🧠 {learningStats.total_learned || 0} respuestas aprendidas</span>}
                 </div>
@@ -363,11 +363,11 @@ export default function BetoPanel({ addToast }) {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                                     <Sparkles size={16} color="#3B82F6" />
                                     <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--neutral-700)' }}>
-                                        Mejoremos a Beto juntos
+                                        Mejoremos a Simon juntos
                                     </span>
                                 </div>
                                 <p style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', lineHeight: 1.5, margin: '0 0 14px' }}>
-                                    Beto aprende de los documentos y reglas que vos le enseñás. Cuanta más información le des, mejores van a ser sus respuestas.
+                                    Simon aprende de los documentos y reglas que vos le enseñás. Cuanta más información le des, mejores van a ser sus respuestas.
                                 </p>
 
                                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -411,7 +411,7 @@ export default function BetoPanel({ addToast }) {
                                 </div>
                             </div>
 
-                            {/* ── Guía: ¿Cómo funciona Beto? ── */}
+                            {/* ── Guía: ¿Cómo funciona Simon? ── */}
                             <button
                                 onClick={() => setShowGuide(prev => !prev)}
                                 style={{
@@ -425,7 +425,7 @@ export default function BetoPanel({ addToast }) {
                             >
                                 <HelpCircle size={16} color="#3B82F6" />
                                 <span style={{ flex: 1, fontSize: '0.8rem', fontWeight: 700, color: 'var(--neutral-600)', textAlign: 'left' }}>
-                                    ¿Cómo funciona Beto?
+                                    ¿Cómo funciona Simon?
                                 </span>
                                 <ChevronDown size={14} style={{
                                     transition: 'transform 0.25s ease',
@@ -447,10 +447,10 @@ export default function BetoPanel({ addToast }) {
                                         borderBottom: '1px solid var(--neutral-100)',
                                     }}>
                                         <h4 style={{ margin: '0 0 6px', fontSize: '0.95rem', fontWeight: 800, color: 'var(--neutral-800)' }}>
-                                            🧠 Guía completa de Beto IA
+                                            🧠 Guía completa de Simon IA
                                         </h4>
                                         <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--neutral-500)', lineHeight: 1.5 }}>
-                                            Beto es un asistente de inteligencia artificial que responde preguntas basándose en los documentos y reglas que vos le cargás. Así funciona:
+                                            Simon es un asistente de inteligencia artificial que responde preguntas basándose en los documentos y reglas que vos le cargás. Así funciona:
                                         </p>
                                     </div>
 
@@ -505,8 +505,8 @@ export default function BetoPanel({ addToast }) {
                                                     <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--neutral-800)' }}>Subí tus documentos</span>
                                                 </div>
                                                 <p style={{ margin: '0 0 8px', fontSize: '0.73rem', color: 'var(--neutral-500)', lineHeight: 1.6 }}>
-                                                    Andá a la pestaña <strong>"Docs"</strong> en la barra lateral y subí los archivos que quieras que Beto conozca. 
-                                                    Beto los procesa, los divide en fragmentos y los almacena para poder buscar en ellos.
+                                                    Andá a la pestaña <strong>"Docs"</strong> en la barra lateral y subí los archivos que quieras que Simon conozca. 
+                                                    Simon los procesa, los divide en fragmentos y los almacena para poder buscar en ellos.
                                                 </p>
                                                 <div style={{
                                                     display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '8px',
@@ -543,7 +543,7 @@ export default function BetoPanel({ addToast }) {
                                                 </div>
                                                 <p style={{ margin: '0 0 8px', fontSize: '0.73rem', color: 'var(--neutral-500)', lineHeight: 1.6 }}>
                                                     ¿Hay información que NO está en ningún documento pero es importante? Andá a <strong>"Reglas"</strong> y escribila en texto libre. 
-                                                    Beto la clasifica automáticamente y la usa para responder.
+                                                    Simon la clasifica automáticamente y la usa para responder.
                                                 </p>
                                                 <div style={{
                                                     padding: '10px 12px', background: '#FAFAFE', borderRadius: '8px',
@@ -576,10 +576,10 @@ export default function BetoPanel({ addToast }) {
                                                     <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--neutral-800)' }}>Hacé tu pregunta</span>
                                                 </div>
                                                 <p style={{ margin: '0 0 8px', fontSize: '0.73rem', color: 'var(--neutral-500)', lineHeight: 1.6 }}>
-                                                    Escribí tu consulta en el chat. Beto busca en todos tus documentos y reglas, encuentra los fragmentos más relevantes, 
+                                                    Escribí tu consulta en el chat. Simon busca en todos tus documentos y reglas, encuentra los fragmentos más relevantes, 
                                                     y genera una respuesta precisa <strong>citando las fuentes</strong> de donde sacó la información.
                                                 </p>
-                                                <img src="/beto_step_chat.png" alt="Chatear con Beto" style={{
+                                                <img src="/beto_step_chat.png" alt="Chatear con Simon" style={{
                                                     width: '100%', maxHeight: '140px', objectFit: 'cover',
                                                     borderRadius: '8px', border: '1px solid var(--neutral-100)',
                                                 }} />
@@ -597,7 +597,7 @@ export default function BetoPanel({ addToast }) {
                                                 { text: 'Subí los convenios de obras sociales completos para preguntas de cobertura', color: '#3B82F6' },
                                                 { text: 'Agregá reglas con datos que cambian seguido: precios, plus, requisitos actuales', color: '#8B5CF6' },
                                                 { text: 'Sé específico en tus preguntas — "¿OSDE cubre ecografía doppler?" es mejor que "ecografía"', color: '#10B981' },
-                                                { text: 'Beto aprende de cada conversación y mejora sus respuestas con el tiempo', color: '#F59E0B' },
+                                                { text: 'Simon aprende de cada conversación y mejora sus respuestas con el tiempo', color: '#F59E0B' },
                                                 { text: 'Podés organizar documentos en carpetas desde la pestaña Docs', color: '#EF4444' },
                                             ].map((tip, i) => (
                                                 <div key={i} style={{
@@ -645,25 +645,25 @@ export default function BetoPanel({ addToast }) {
                                             </div>
                                         )}
                                         {/* ── Feedback Buttons ── */}
-                                        <div className={`beto-feedback ${currentFeedback ? 'voted' : ''}`}>
+                                        <div className={`simon-feedback ${currentFeedback ? 'voted' : ''}`}>
                                             {currentFeedback ? (
-                                                <div className={`beto-feedback-result ${currentFeedback}`}>
+                                                <div className={`simon-feedback-result ${currentFeedback}`}>
                                                     {currentFeedback === 'correct'
                                                         ? <><ThumbsUp size={12} /> Correcta</>
                                                         : <><ThumbsDown size={12} /> Incorrecta</>}
                                                 </div>
                                             ) : (
                                                 <>
-                                                    <span className="beto-feedback-label">¿Fue útil?</span>
+                                                    <span className="simon-feedback-label">¿Fue útil?</span>
                                                     <button
-                                                        className="beto-feedback-btn correct"
+                                                        className="simon-feedback-btn correct"
                                                         onClick={() => handleFeedback(i, true)}
                                                         title="Respuesta correcta"
                                                     >
                                                         <ThumbsUp size={13} /> Correcta
                                                     </button>
                                                     <button
-                                                        className="beto-feedback-btn incorrect"
+                                                        className="simon-feedback-btn incorrect"
                                                         onClick={() => handleFeedback(i, false)}
                                                         title="Respuesta incorrecta"
                                                     >
@@ -680,7 +680,7 @@ export default function BetoPanel({ addToast }) {
 
                     {isLoading && (
                         <div className="rag-msg-assistant" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--neutral-500)' }}>
-                            <Loader2 size={16} className="rag-spin" /> Beto está pensando...
+                            <Loader2 size={16} className="rag-spin" /> Simon está pensando...
                         </div>
                     )}
                     <div ref={messagesEndRef} />
@@ -696,7 +696,7 @@ export default function BetoPanel({ addToast }) {
                 <div className="rag-input-area">
                     <textarea className="rag-input" value={inputValue} onChange={e => setInputValue(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                        placeholder="Preguntale algo a Beto..." rows={1} />
+                        placeholder="Preguntale algo a Simon..." rows={1} />
                     <button className="rag-send-btn" onClick={handleSend} disabled={!inputValue.trim() || isLoading}>
                         {isLoading ? <Loader2 size={18} className="rag-spin" /> : <Send size={18} />}
                     </button>
