@@ -38,6 +38,7 @@ import ChatWindow from './ChatWindow';
 import BudgetCollapsible from './BudgetCollapsible';
 import { fetchPatientsByIds } from '../services/patientService';
 import SalusSyncButton from './SalusSyncButton';
+import BulkTemplateSender from './BulkTemplateSender';
 
 // ============================================================
 // CONSTANTS & CONFIG
@@ -218,6 +219,10 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const [showPurgeModal, setShowPurgeModal] = useState(false);
     const [purgeConfirmText, setPurgeConfirmText] = useState('');
     const [purging, setPurging] = useState(false);
+
+    // Bulk template send
+    const [selectedSurgeryIds, setSelectedSurgeryIds] = useState(new Set());
+    const [showBulkSender, setShowBulkSender] = useState(false);
 
     // ============================================================
     // DATA LOADING
@@ -885,7 +890,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 }}
                 style={{ cursor: 'pointer', userSelect: 'none' }}
             >
-                <td colSpan={10} style={{
+                <td colSpan={11} style={{
                     padding: '10px 16px', background: gcd.bg,
                     borderLeft: `4px solid ${gcd.color}`,
                     fontWeight: 700, fontSize: '0.82rem', color: gcd.color,
@@ -893,6 +898,27 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {/* Group select-all checkbox */}
+                            <input
+                                type="checkbox"
+                                checked={group.items.filter(s => s.ausente !== '0' && s.ausente !== '1').length > 0 && group.items.filter(s => s.ausente !== '0' && s.ausente !== '1').every(s => selectedSurgeryIds.has(s.id))}
+                                onChange={(e) => {
+                                    e.stopPropagation();
+                                    const activeIds = group.items.filter(s => s.ausente !== '0' && s.ausente !== '1').map(s => s.id);
+                                    setSelectedSurgeryIds(prev => {
+                                        const next = new Set(prev);
+                                        if (e.target.checked) {
+                                            activeIds.forEach(id => next.add(id));
+                                        } else {
+                                            activeIds.forEach(id => next.delete(id));
+                                        }
+                                        return next;
+                                    });
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                style={{ cursor: 'pointer', width: '14px', height: '14px', accentColor: '#3B82F6' }}
+                                title="Seleccionar todas las cirugías de este día"
+                            />
                             <ChevronRight size={15} style={{
                                 transition: 'transform 0.2s ease',
                                 transform: isDayExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
@@ -943,6 +969,26 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 onMouseOver={e => { if (!isExpanded) e.currentTarget.style.background = isSuspended ? '#FEE2E2' : 'var(--neutral-50)'; }}
                 onMouseOut={e => { if (!isExpanded) e.currentTarget.style.background = isSuspended ? '#FEF2F2' : ''; }}
             >
+                {/* Row Checkbox */}
+                <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }}>
+                    {surgery.ausente !== '0' && surgery.ausente !== '1' && (
+                        <input
+                            type="checkbox"
+                            checked={selectedSurgeryIds.has(surgery.id)}
+                            onChange={(e) => {
+                                e.stopPropagation();
+                                setSelectedSurgeryIds(prev => {
+                                    const next = new Set(prev);
+                                    if (e.target.checked) next.add(surgery.id);
+                                    else next.delete(surgery.id);
+                                    return next;
+                                });
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ cursor: 'pointer', width: '14px', height: '14px', accentColor: '#3B82F6' }}
+                        />
+                    )}
+                </td>
                 {/* Expand Chevron */}
                 <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }}>
                     <ChevronRight size={14} style={{
@@ -1156,7 +1202,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             const resultActions = getResultActions(surgery);
             rows.push(
                 <tr key={`${surgery.id}-detail`}>
-                    <td colSpan={10} style={{
+                    <td colSpan={11} style={{
                         padding: 0, background: 'var(--neutral-50)',
                         borderLeft: `4px solid ${cfg.color}`,
                         animation: 'fadeIn 0.2s ease-out',
@@ -1981,6 +2027,22 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                         <table className="cart__table">
                             <thead>
                                 <tr>
+                                    <th className="cart__th" style={{ width: '36px', textAlign: 'center', padding: '4px' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={filtered.length > 0 && selectedSurgeryIds.size > 0 && filtered.every(s => selectedSurgeryIds.has(s.id))}
+                                            onChange={(e) => {
+                                                e.stopPropagation();
+                                                if (e.target.checked) {
+                                                    setSelectedSurgeryIds(new Set(filtered.filter(s => s.ausente !== '0' && s.ausente !== '1').map(s => s.id)));
+                                                } else {
+                                                    setSelectedSurgeryIds(new Set());
+                                                }
+                                            }}
+                                            title="Seleccionar todo"
+                                            style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#3B82F6' }}
+                                        />
+                                    </th>
                                     <th className="cart__th" style={{ width: '36px' }}></th>
                                     <th className="cart__th" style={{ width: '46px' }}>⏱️</th>
                                     <th className="cart__th">Estado</th>
@@ -1999,7 +2061,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                 {/* ==================== FAR DAYS COLLAPSIBLE ==================== */}
                                 {farGroups.length > 0 && (
                                     <tr key="__far-days-toggle">
-                                        <td colSpan={10} style={{
+                                        <td colSpan={11} style={{
                                             padding: 0, border: 'none', background: 'transparent',
                                         }}>
                                             <button
@@ -2756,6 +2818,76 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                     document.body
                 )
             )}
+
+            {/* ==================== BULK SELECTION FLOATING BAR ==================== */}
+            {selectedSurgeryIds.size > 0 && (
+                <div style={{
+                    position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
+                    zIndex: 1000, display: 'flex', alignItems: 'center', gap: '16px',
+                    padding: '12px 24px', borderRadius: '14px',
+                    background: 'linear-gradient(135deg, #1E293B, #334155)',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.1) inset',
+                    animation: 'slideUp 0.3s ease-out',
+                    backdropFilter: 'blur(12px)',
+                }}>
+                    <span style={{
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        color: '#E2E8F0', fontSize: '0.82rem', fontWeight: 600,
+                    }}>
+                        <span style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            width: '24px', height: '24px', borderRadius: '8px',
+                            background: '#3B82F6', color: '#fff',
+                            fontSize: '0.75rem', fontWeight: 800,
+                        }}>
+                            {selectedSurgeryIds.size}
+                        </span>
+                        cirugía{selectedSurgeryIds.size !== 1 ? 's' : ''} seleccionada{selectedSurgeryIds.size !== 1 ? 's' : ''}
+                    </span>
+
+                    <div style={{ width: '1px', height: '24px', background: '#475569' }} />
+
+                    <button
+                        onClick={() => setShowBulkSender(true)}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            padding: '8px 18px', borderRadius: '8px', border: 'none',
+                            background: 'linear-gradient(135deg, #059669, #10B981)',
+                            color: '#fff', fontSize: '0.82rem', fontWeight: 700,
+                            cursor: 'pointer', transition: 'all 0.15s',
+                            boxShadow: '0 2px 8px rgba(16,185,129,0.3)',
+                        }}
+                        onMouseOver={e => { e.currentTarget.style.transform = 'scale(1.03)'; }}
+                        onMouseOut={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+                    >
+                        <Send size={15} /> Enviar Plantilla
+                    </button>
+
+                    <button
+                        onClick={() => setSelectedSurgeryIds(new Set())}
+                        style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            width: '32px', height: '32px', borderRadius: '8px',
+                            border: '1px solid #475569', background: 'transparent',
+                            color: '#94A3B8', cursor: 'pointer', transition: 'all 0.15s',
+                        }}
+                        onMouseOver={e => { e.currentTarget.style.background = '#374151'; e.currentTarget.style.color = '#fff'; }}
+                        onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94A3B8'; }}
+                        title="Deseleccionar todo"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+            )}
+
+            {/* ==================== BULK TEMPLATE SENDER MODAL ==================== */}
+            <BulkTemplateSender
+                isOpen={showBulkSender}
+                onClose={() => { setShowBulkSender(false); setSelectedSurgeryIds(new Set()); }}
+                selectedSurgeries={surgeries.filter(s => selectedSurgeryIds.has(s.id))}
+                addToast={addToast}
+                currentUser={currentUser}
+            />
         </div>
     );
 }
