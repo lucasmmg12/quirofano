@@ -257,6 +257,85 @@
 }
 
 /* ========================================
+   TOAST NOTIFICATIONS (Enhanced)
+   ======================================== */
+
+.toast-container {
+    position: fixed;
+    top: var(--space-6);
+    right: var(--space-6);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    pointer-events: none;
+}
+
+.toast {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-lg);
+    background: var(--neutral-0);
+    box-shadow: var(--shadow-xl), 0 0 0 1px rgba(0,0,0,0.04);
+    animation: toastSlideIn 300ms ease-out;
+    min-width: 320px;
+    max-width: 420px;
+    border-left: 4px solid;
+    position: relative;
+    overflow: hidden;
+    pointer-events: auto;
+}
+
+@keyframes toastSlideIn {
+    from { opacity: 0; transform: translateX(40px) scale(0.95); }
+    to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+.toast__icon {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 0.85rem;
+}
+
+.toast--success { border-left-color: var(--success-500); }
+.toast--success .toast__icon { background: var(--success-50); color: var(--success-600); }
+
+.toast--error { border-left-color: var(--danger-500); }
+.toast--error .toast__icon { background: var(--danger-50); color: var(--danger-600); }
+
+.toast--info { border-left-color: var(--primary-500); }
+.toast--info .toast__icon { background: var(--primary-50); color: var(--primary-500); }
+
+.toast__message {
+    font-size: 0.84rem;
+    font-weight: 500;
+    color: var(--neutral-700);
+    flex: 1;
+    line-height: 1.4;
+}
+
+.toast__progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    transform-origin: left;
+    animation: toastProgress 3.5s linear forwards;
+}
+
+.toast--success .toast__progress { background: var(--success-500); }
+.toast--error .toast__progress { background: var(--danger-500); }
+.toast--info .toast__progress { background: var(--primary-500); }
+
+/* ========================================
    PATIENT HEADER
    ======================================== */
 

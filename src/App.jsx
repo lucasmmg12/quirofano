@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import Sidebar from './components/Sidebar.jsx';
 import PatientHeader from './components/PatientHeader.jsx';
@@ -16,7 +16,7 @@ import { createOrder, markOrderPrinted, markOrderSent, fetchOrderHistory } from 
 import { getCurrentUser, logout as authLogout } from './services/authService';
 import { logAction } from './services/auditService';
 import { subscribeToAllIncoming, fetchUnreadCounts } from './services/chatService';
-import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
+import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, ChevronDown, ChevronRight, RotateCcw, Moon, Sun, Menu, X, AlertCircle, Info, Home as HomeIcon } from 'lucide-react';
 import SurgeryPanel from './components/SurgeryPanel.jsx';
 import ConfigPanel from './components/ConfigPanel.jsx';
 import HomePanel from './components/HomePanel.jsx';
@@ -41,6 +41,7 @@ import IdleHomerOverlay from './components/IdleHomerOverlay.jsx';
 import BetoWidget from './components/BetoWidget.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
 import BetoAnalyticsPanel from './components/BetoAnalyticsPanel.jsx';
+import ManualProcedimientos from './components/ManualProcedimientos.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -95,6 +96,31 @@ function AppRoot() {
 }
 
 
+// View labels for breadcrumbs
+const VIEW_LABELS = {
+    inicio: 'Inicio',
+    pedidos: 'Pedidos',
+    mensajeria: 'Mensajería',
+    cirugias: 'Control de Cirugías',
+    nomenclador: 'Nomenclador',
+    config: 'Configuración',
+    templates: 'Plantillas WhatsApp',
+    wa_status: 'Estado WhatsApp',
+    metricas: 'Métricas',
+    turnos: 'Cola de Turnos',
+    deudas: 'Deudas',
+    altas: 'Altas Administrativas',
+    asignacion: 'Asignación',
+    consultas: 'Consultas',
+    auditoria_historias: 'Auditoría de Historias',
+    beto: 'Simon IA',
+    asociaciones_entrega: 'Asociaciones Entrega',
+    laboratorios: 'Laboratorios',
+    pedidos_marcela: 'Pedidos Especiales',
+    beto_analytics: 'Beto Analytics',
+    manual: 'Manual del Sistema',
+};
+
 function App({ currentUser, onLogout }) {
     // Sidebar — persist active view across refreshes
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true');
@@ -102,9 +128,22 @@ function App({ currentUser, onLogout }) {
     const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
     const betoWidgetRef = useRef(null);
     const [activeView, setActiveViewRaw] = useState(() => localStorage.getItem('active_view') || 'inicio');
+    // Dark mode
+    const [darkMode, setDarkMode] = useState(() => localStorage.getItem('dark_mode') === 'true');
+    // View transition key — bumps on view change to trigger CSS animation
+    const [viewKey, setViewKey] = useState(0);
+    // Mobile sidebar
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+    useEffect(() => {
+        document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+        localStorage.setItem('dark_mode', darkMode);
+    }, [darkMode]);
 
     const setActiveView = useCallback((view) => {
         setActiveViewRaw(view);
+        setViewKey(k => k + 1);
+        setMobileMenuOpen(false);
         localStorage.setItem('active_view', view);
     }, []);
 
@@ -420,26 +459,61 @@ function App({ currentUser, onLogout }) {
 
     return (
         <div className="app">
+            {/* Mobile Sidebar Backdrop */}
+            {mobileMenuOpen && <div className="sidebar--mobile-backdrop" onClick={() => setMobileMenuOpen(false)} />}
+
             <Sidebar
                 collapsed={sidebarCollapsed}
                 onToggle={() => setSidebarCollapsed(prev => { const next = !prev; localStorage.setItem('sidebar_collapsed', next); return next; })}
                 activeView={activeView}
                 onViewChange={setActiveView}
                 unreadMessageCount={globalUnreadCount}
+                className={mobileMenuOpen ? 'sidebar--mobile-open' : ''}
             />
 
             <main className={`main ${sidebarCollapsed ? 'main--expanded' : ''}`}>
                 {/* Top Bar */}
                 <header className="topbar no-print" style={{ flexShrink: 0 }}>
+                    {/* Mobile hamburger */}
+                    <button
+                        className="topbar__mobile-menu"
+                        onClick={() => setMobileMenuOpen(true)}
+                        style={{ display: 'none', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '8px', background: 'var(--neutral-50)', border: '1px solid var(--neutral-200)', cursor: 'pointer', color: 'var(--neutral-600)', marginRight: '8px' }}
+                    >
+                        <Menu size={18} />
+                    </button>
                     <div className="topbar__left">
-                        <h1 className="topbar__title"><span className="topbar__title-accent">Administración</span> Sanatorio Argentino</h1>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <h1 className="topbar__title"><span className="topbar__title-accent">Administración</span> Sanatorio Argentino</h1>
+                            {activeView !== 'inicio' && (
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: 'var(--neutral-400)', fontWeight: 500 }}>
+                                    <ChevronRight size={14} />
+                                    <span style={{ color: 'var(--primary-500)', fontWeight: 600 }}>{VIEW_LABELS[activeView] || activeView}</span>
+                                </span>
+                            )}
+                        </div>
                         <span className="topbar__subtitle">Sistema de gestión integral</span>
                     </div>
                     {/* WhatsApp Line Status — centered in topbar */}
                     {(activeView === 'mensajeria' || activeView === 'cirugias' || activeView === 'deudas') && (
                         <WhatsAppLineStatus />
                     )}
-                    <div className="topbar__right" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div className="topbar__right" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {/* Dark Mode Toggle */}
+                        <button
+                            onClick={() => setDarkMode(d => !d)}
+                            title={darkMode ? 'Modo claro' : 'Modo oscuro'}
+                            style={{
+                                width: '34px', height: '34px', borderRadius: '10px',
+                                background: darkMode ? '#1E293B' : 'var(--neutral-50)',
+                                border: `1px solid ${darkMode ? '#334155' : 'var(--neutral-200)'}`,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                cursor: 'pointer', color: darkMode ? '#FBBF24' : 'var(--neutral-500)',
+                                transition: 'all 0.2s',
+                            }}
+                        >
+                            {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+                        </button>
                         <span className="topbar__date">
                             {new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                         </span>
@@ -503,7 +577,7 @@ function App({ currentUser, onLogout }) {
 
                 {/* Content */}
                 {activeView === 'inicio' && (
-                    <HomePanel />
+                    <HomePanel key={viewKey} onNavigate={setActiveView} />
                 )}
 
                 {activeView === 'mensajeria' && (
@@ -748,6 +822,10 @@ function App({ currentUser, onLogout }) {
                         <TemplateManager addToast={addToast} />
                     </div>
                 )}
+
+                {activeView === 'manual' && (
+                    <ManualProcedimientos />
+                )}
             </main>
 
             {/* Print Templates (hidden on screen, visible on print) */}
@@ -805,12 +883,18 @@ function App({ currentUser, onLogout }) {
                 addToast={addToast}
             />
 
-            {/* Toast Notifications */}
+            {/* Toast Notifications (Enhanced) */}
             {toasts.length > 0 && (
                 <div className="toast-container">
                     {toasts.map(toast => (
                         <div key={toast.id} className={`toast toast--${toast.type}`}>
+                            <div className="toast__icon">
+                                {toast.type === 'success' && <CheckCircle size={16} />}
+                                {toast.type === 'error' && <AlertCircle size={16} />}
+                                {toast.type === 'info' && <Info size={16} />}
+                            </div>
                             <span className="toast__message">{toast.message}</span>
+                            <div className="toast__progress" />
                         </div>
                     ))}
                 </div>

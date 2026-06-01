@@ -3,10 +3,10 @@ import {
     ClipboardList, History, BookOpen, Settings, PanelLeftClose, PanelLeft,
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
     ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain, Users, PackageCheck, Microscope,
-    Activity, FileSpreadsheet,
+    Activity, FileSpreadsheet, BookMarked,
 } from 'lucide-react';
 
-export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0 }) {
+export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '' }) {
     const [pedidosOpen, setPedidosOpen] = useState(false);
     const [mensajeriaOpen, setMensajeriaOpen] = useState(false);
     const [altasOpen, setAltasOpen] = useState(false);
@@ -118,7 +118,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     }
 
     return (
-        <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
+        <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''} ${className}`}>
             <div className="sidebar__brand">
                 <div className="sidebar__logo">
                     <img src="/logosanatorio.png" alt="Sanatorio Argentino" className="sidebar__logo-img" style={{ width: collapsed ? 32 : 38, height: collapsed ? 32 : 38, borderRadius: '8px', objectFit: 'contain' }} />
@@ -238,6 +238,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                 {[
                     { id: 'beto', label: 'Simon IA', icon: Brain },
                     { id: 'beto_analytics', label: 'Simon Analytics', icon: Brain },
+                    { id: 'manual', label: 'Manual del Sistema', icon: BookMarked },
                     { id: 'config', label: 'Configuración', icon: Settings },
                 ].map(item => {
                     const Icon = item.icon;
