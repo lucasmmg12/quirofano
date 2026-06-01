@@ -230,10 +230,25 @@ function checkPage(doc, y, counters, needed = 30) {
 
 // ─── Generador principal del PDF ─────────────────────────────────────────────
 
-export function generateManualPDF() {
+export async function generateManualPDF() {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const W = doc.internal.pageSize.getWidth();
     const H = doc.internal.pageSize.getHeight();
+
+    // ─ Cargar logo institucional ──────────────────────────────────────
+    let logoDataUrl = null;
+    try {
+        const resp = await fetch('/logosanatorio.png');
+        const blob = await resp.blob();
+        logoDataUrl = await new Promise((res, rej) => {
+            const reader = new FileReader();
+            reader.onload = () => res(reader.result);
+            reader.onerror = rej;
+            reader.readAsDataURL(blob);
+        });
+    } catch (e) {
+        console.warn('No se pudo cargar el logo, se usará monograma de texto.', e);
+    }
 
     // Contador de páginas mutable
     const counters = { page: 1 };
@@ -251,16 +266,25 @@ export function generateManualPDF() {
         doc.setFillColor(...COLORS.primaryMid);
         doc.rect(0, H * 0.52, W, H * 0.48, 'F');
 
-        // Logo/Monograma
-        doc.setFillColor(...COLORS.white);
-        doc.roundedRect(W / 2 - 20, 28, 40, 40, 5, 5, 'F');
-        doc.setTextColor(...COLORS.primary);
-        doc.setFontSize(26);
-        doc.setFont('helvetica', 'bold');
-        doc.text('SA', W / 2, 53, { align: 'center' });
-        doc.setFontSize(7);
-        doc.setFont('helvetica', 'normal');
-        doc.text('SANATORIO ARGENTINO', W / 2, 60.5, { align: 'center' });
+        // Logo institucional (imagen real con fallback a monograma)
+        if (logoDataUrl) {
+            // Marco blanco con bordes redondeados
+            doc.setFillColor(...COLORS.white);
+            doc.roundedRect(W / 2 - 22, 22, 44, 44, 6, 6, 'F');
+            // Imagen del logo centrada dentro del marco
+            doc.addImage(logoDataUrl, 'PNG', W / 2 - 18, 25, 36, 36);
+        } else {
+            // Fallback: monograma de texto
+            doc.setFillColor(...COLORS.white);
+            doc.roundedRect(W / 2 - 20, 28, 40, 40, 5, 5, 'F');
+            doc.setTextColor(...COLORS.primary);
+            doc.setFontSize(26);
+            doc.setFont('helvetica', 'bold');
+            doc.text('SA', W / 2, 53, { align: 'center' });
+            doc.setFontSize(7);
+            doc.setFont('helvetica', 'normal');
+            doc.text('SANATORIO ARGENTINO', W / 2, 60.5, { align: 'center' });
+        }
 
         // Título del documento
         doc.setTextColor(...COLORS.white);
@@ -1211,9 +1235,7 @@ export default function ManualProcedimientos() {
         setLoading(true);
         setDone(false);
         try {
-            // Pequeño delay para que el spinner sea visible
-            await new Promise(r => setTimeout(r, 80));
-            generateManualPDF();
+            await generateManualPDF();
             setDone(true);
             setTimeout(() => setDone(false), 4000);
         } catch (err) {
