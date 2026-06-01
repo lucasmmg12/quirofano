@@ -179,8 +179,14 @@ function noteBox(doc, text, y, type = 'info') {
         danger:  [254, 226, 226],
         success: [220, 252, 231],
     };
-    const lines = doc.splitTextToSize(text, W - 46);
-    const h = lines.length * 4.5 + 6;
+    // Manejar saltos de línea manuales (\n) antes de splitTextToSize
+    const maxW = W - 52;
+    let lines = [];
+    text.split('\n').forEach(part => {
+        const wrapped = doc.splitTextToSize(part.trim(), maxW);
+        lines = lines.concat(wrapped);
+    });
+    const h = lines.length * 4.8 + 8;
 
     doc.setFillColor(...colorMap[type]);
     doc.roundedRect(14, y, W - 28, h, 2, 2, 'F');
@@ -192,7 +198,7 @@ function noteBox(doc, text, y, type = 'info') {
     doc.setFontSize(8);
     doc.setFont('helvetica', 'italic');
     doc.setTextColor(...COLORS.grayDark);
-    doc.text(lines, 20, y + 4.5);
+    doc.text(lines, 20, y + 5.5);
     doc.setTextColor(...COLORS.textMain);
     return y + h + 4;
 }
@@ -576,16 +582,16 @@ export async function generateManualPDF() {
             ], y2);
 
             y2 = checkPage(doc, y2, counters, 50);
-            y2 = subTitle(doc, '3.3  Cambio de Contraseña', y2);
-            y2 = para(doc, 'Para cambiar la contraseña, el usuario debe hacer clic en el ícono de llave (🔑) ubicado en la barra superior derecha del sistema. Se abrirá un modal que permitirá ingresar la contraseña actual y establecer una nueva. Se recomienda usar contraseñas de al menos 8 caracteres con combinación de letras y números.', y2 + 1);
+            y2 = subTitle(doc, '3.3  Cambio de Contrasena', y2);
+            y2 = para(doc, 'Para cambiar la contrasena, el usuario debe hacer clic en el icono de llave (candado) ubicado en la barra superior derecha del sistema. Se abrira un modal que permitira ingresar la contrasena actual y establecer una nueva. Se recomienda usar contrasenas de al menos 8 caracteres con combinacion de letras y numeros.', y2 + 1);
 
             y2 += 3;
-            y2 = subTitle(doc, '3.4  Cierre de Sesión', y2);
-            y2 = para(doc, 'Para cerrar la sesión de forma segura, el usuario debe hacer clic en el ícono de "Salir" (→) ubicado en la barra superior derecha. Esto eliminará la sesión activa y redirigirá a la pantalla de inicio de sesión. Es obligatorio cerrar sesión al finalizar la jornada de trabajo, especialmente en equipos compartidos.', y2 + 1);
+            y2 = subTitle(doc, '3.4  Cierre de Sesion', y2);
+            y2 = para(doc, 'Para cerrar la sesion de forma segura, el usuario debe hacer clic en el icono de "Salir" (flecha de salida) ubicado en la barra superior derecha. Esto eliminara la sesion activa y redirigira a la pantalla de inicio de sesion. Es obligatorio cerrar sesion al finalizar la jornada de trabajo, especialmente en equipos compartidos.', y2 + 1);
 
             y2 += 3;
-            y2 = subTitle(doc, '3.5  Modos de Visualización', y2);
-            y2 = para(doc, 'El sistema ofrece dos modos de visualización: Modo Claro (predeterminado) y Modo Oscuro. Se puede alternar entre ambos mediante el ícono de luna/sol ubicado en la barra superior. La preferencia se guarda automáticamente en el navegador.', y2 + 1);
+            y2 = subTitle(doc, '3.5  Modos de Visualizacion', y2);
+            y2 = para(doc, 'El sistema ofrece dos modos de visualizacion: Modo Claro (predeterminado) y Modo Oscuro. Se puede alternar entre ambos mediante el icono de luna/sol ubicado en la barra superior. La preferencia se guarda automaticamente en el navegador.', y2 + 1);
         }
 
         // ── SECCIÓN 4: MÓDULOS DEL SISTEMA ───────────────────────────────────
@@ -687,7 +693,7 @@ export async function generateManualPDF() {
                 'Listado de hasta 50 pedidos más recientes por defecto',
                 'Expansión de filas para ver el detalle de prácticas de cada pedido',
                 'Botón de reimpresión individual por pedido o por práctica',
-                'Estados visuales: 🖨 Impreso (azul) / ✓ Enviado (verde) / ● Creado (gris)',
+                'Estados visuales: [Impreso] color azul / [Enviado] color verde / [Creado] color gris',
             ], yn4);
 
             // ─── 4.6 Nomenclador ─────────────────────────────────────────────
@@ -944,27 +950,27 @@ export async function generateManualPDF() {
             autoTable(doc, {
                 startY: y6,
                 margin: { left: 14, right: 14 },
-                head: [['Módulo', 'Admin', 'Operador', 'Auditoría', 'Solo Lectura']],
+                head: [['Modulo', 'Admin', 'Operador', 'Auditoria', 'Solo Lectura']],
                 body: [
-                    ['Inicio (Home)',              '✅ Total', '✅ Total', '✅ Total', '✅ Total'],
-                    ['Mensajería y Chat',          '✅ Total', '✅ Total', '❌ Sin acceso', '❌ Sin acceso'],
-                    ['Plantillas WhatsApp',        '✅ Total', '✅ Total', '❌ Sin acceso', '❌ Sin acceso'],
-                    ['Nuevo Pedido',               '✅ Total', '✅ Total', '👁 Solo lectura', '❌ Sin acceso'],
-                    ['Historial de Pedidos',       '✅ Total', '✅ Total', '👁 Solo lectura', '👁 Solo lectura'],
-                    ['Nomenclador',                '✅ Total', '✅ Total', '👁 Solo lectura', '👁 Solo lectura'],
-                    ['Control de Cirugías',        '✅ Total', '✅ Total', '👁 Solo lectura', '❌ Sin acceso'],
-                    ['Deudas',                     '✅ Total', '✅ Total', '👁 Solo lectura', '❌ Sin acceso'],
-                    ['Altas Administrativas',      '✅ Total', '✅ Total', '❌ Sin acceso', '❌ Sin acceso'],
-                    ['Asignaciones',               '✅ Total', '✅ Total', '❌ Sin acceso', '❌ Sin acceso'],
-                    ['Auditoría de H.C.',          '✅ Total', '❌ Sin acceso', '✅ Total', '👁 Solo lectura'],
-                    ['Cola de Turnos',             '✅ Total', '✅ Total', '❌ Sin acceso', '❌ Sin acceso'],
-                    ['Consultas de Guardia',       '✅ Total', '✅ Total', '❌ Sin acceso', '❌ Sin acceso'],
-                    ['Entrega Asociaciones',       '✅ Total', '✅ Total', '👁 Solo lectura', '❌ Sin acceso'],
-                    ['Laboratorios / Anatomía',    '✅ Total', '✅ Total', '👁 Solo lectura', '❌ Sin acceso'],
-                    ['Métricas e Indicadores',     '✅ Total', '✅ Total', '✅ Total', '👁 Solo lectura'],
-                    ['Simón IA',                   '✅ Total', '✅ Total', '✅ Total', '✅ Total'],
-                    ['Configuración',              '✅ Total', '❌ Sin acceso', '❌ Sin acceso', '❌ Sin acceso'],
-                    ['Manual del Sistema',         '✅ Total', '✅ Total', '✅ Total', '✅ Total'],
+                    ['Inicio (Home)',              'Total',         'Total',         'Total',         'Total'],
+                    ['Mensajeria y Chat',          'Total',         'Total',         'Sin acceso',    'Sin acceso'],
+                    ['Plantillas WhatsApp',        'Total',         'Total',         'Sin acceso',    'Sin acceso'],
+                    ['Nuevo Pedido',               'Total',         'Total',         'Solo lectura',  'Sin acceso'],
+                    ['Historial de Pedidos',       'Total',         'Total',         'Solo lectura',  'Solo lectura'],
+                    ['Nomenclador',                'Total',         'Total',         'Solo lectura',  'Solo lectura'],
+                    ['Control de Cirugia',         'Total',         'Total',         'Solo lectura',  'Sin acceso'],
+                    ['Deudas',                     'Total',         'Total',         'Solo lectura',  'Sin acceso'],
+                    ['Altas Administrativas',      'Total',         'Total',         'Sin acceso',    'Sin acceso'],
+                    ['Asignaciones',               'Total',         'Total',         'Sin acceso',    'Sin acceso'],
+                    ['Auditoria de H.C.',          'Total',         'Sin acceso',    'Total',         'Solo lectura'],
+                    ['Cola de Turnos',             'Total',         'Total',         'Sin acceso',    'Sin acceso'],
+                    ['Consultas de Guardia',       'Total',         'Total',         'Sin acceso',    'Sin acceso'],
+                    ['Entrega Asociaciones',       'Total',         'Total',         'Solo lectura',  'Sin acceso'],
+                    ['Laboratorios / Anatomia',    'Total',         'Total',         'Solo lectura',  'Sin acceso'],
+                    ['Metricas e Indicadores',     'Total',         'Total',         'Total',         'Solo lectura'],
+                    ['Simon IA',                   'Total',         'Total',         'Total',         'Total'],
+                    ['Configuracion',              'Total',         'Sin acceso',    'Sin acceso',    'Sin acceso'],
+                    ['Manual del Sistema',         'Total',         'Total',         'Total',         'Total'],
                 ],
                 headStyles: { fillColor: COLORS.tableHead, textColor: COLORS.white, fontStyle: 'bold', fontSize: 7.5 },
                 bodyStyles: { fontSize: 7 },
@@ -977,6 +983,19 @@ export async function generateManualPDF() {
                     4: { cellWidth: 28, halign: 'center' },
                 },
                 styles: { cellPadding: 2, lineColor: COLORS.grayMid, lineWidth: 0.2 },
+                didParseCell: (data) => {
+                    if (data.section === 'body' && data.column.index > 0) {
+                        const val = data.cell.raw;
+                        if (val === 'Total') {
+                            data.cell.styles.textColor = [39, 174, 96];  // verde
+                            data.cell.styles.fontStyle = 'bold';
+                        } else if (val === 'Sin acceso') {
+                            data.cell.styles.textColor = [192, 57, 43];  // rojo
+                        } else if (val === 'Solo lectura') {
+                            data.cell.styles.textColor = [41, 128, 185]; // azul
+                        }
+                    }
+                },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
             drawHeader(doc, counters.page, null);
