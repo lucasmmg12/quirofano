@@ -7,12 +7,47 @@ import {
     Users, Search, X, Plus, ChevronLeft, ChevronRight, Loader2,
     Stethoscope, DollarSign, ClipboardCheck, Activity, Microscope,
     FileText, Phone, Mail, User, Building2, Calendar, AlertCircle,
-    CheckCircle, Edit3, Save, Hash, Heart,
+    CheckCircle, Edit3, Save, Hash, Heart, MessageSquare, ExternalLink,
 } from 'lucide-react';
 import {
     fetchPacientes, fetchPacienteDetalle, fetchPacienteStats,
     createPaciente, updatePaciente,
 } from '../services/pacienteUnificadoService';
+import { normalizeArgentinePhone } from '../services/builderbotApi';
+
+/**
+ * Resolve best phone from patient record + detail data (cirugías, deudas)
+ */
+function resolvePhone(pac, detalle) {
+    // 1. Direct from patient record
+    if (pac?.telefono && pac.telefono.trim()) return pac.telefono.trim();
+    // 2. From surgeries
+    if (detalle?.cirugias) {
+        for (const c of detalle.cirugias) {
+            if (c.telefono && c.telefono.trim()) return c.telefono.trim();
+        }
+    }
+    // 3. From deudas
+    if (detalle?.deudas?.telefono) return detalle.deudas.telefono.trim();
+    return null;
+}
+
+/**
+ * Build WhatsApp URL for a given phone number
+ */
+function buildWhatsAppUrl(phone) {
+    const normalized = normalizeArgentinePhone(phone);
+    if (!normalized) return null;
+    return `https://wa.me/${normalized}`;
+}
+
+/**
+ * Open WhatsApp in a new tab
+ */
+function openWhatsApp(phone) {
+    const url = buildWhatsAppUrl(phone);
+    if (url) window.open(url, '_blank');
+}
 
 // ─── Helpers ───
 function formatDate(d) {
@@ -262,7 +297,31 @@ export default function PacientesPanel({ addToast, currentUser }) {
                                                 <td style={{ padding: '10px 14px', color: 'var(--neutral-500)' }}>{p.edad || '—'}</td>
                                                 <td style={{ padding: '10px 14px', color: 'var(--neutral-500)' }}>{p.sexo || '—'}</td>
                                                 <td style={{ padding: '10px 14px', color: 'var(--neutral-500)', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.centro || '—'}</td>
-                                                <td style={{ padding: '10px 14px', color: p.telefono ? 'var(--neutral-600)' : 'var(--neutral-300)' }}>{p.telefono || '—'}</td>
+                                                <td style={{ padding: '10px 14px' }}>
+                                                    {p.telefono ? (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <span style={{ color: 'var(--neutral-600)', fontFamily: 'monospace', fontSize: '0.76rem' }}>{p.telefono}</span>
+                                                            <button
+                                                                onClick={e => { e.stopPropagation(); openWhatsApp(p.telefono); }}
+                                                                title="Enviar WhatsApp"
+                                                                style={{
+                                                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                                    width: '26px', height: '26px', borderRadius: '7px',
+                                                                    border: 'none', cursor: 'pointer',
+                                                                    background: 'linear-gradient(135deg, #25D366, #128C7E)',
+                                                                    color: '#fff', flexShrink: 0, transition: 'all 0.15s',
+                                                                    boxShadow: '0 1px 4px rgba(37,211,102,0.3)',
+                                                                }}
+                                                                onMouseOver={e => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(37,211,102,0.5)'; }}
+                                                                onMouseOut={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 1px 4px rgba(37,211,102,0.3)'; }}
+                                                            >
+                                                                <MessageSquare size={13} />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <span style={{ color: 'var(--neutral-300)' }}>—</span>
+                                                    )}
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -383,16 +442,46 @@ export default function PacientesPanel({ addToast, currentUser }) {
                             {pac?.email && <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><Mail size={13} /> {pac.email}</span>}
                         </div>
                     </div>
-                    <button
-                        onClick={() => { setEditMode(!editMode); setEditData({ telefono: pac?.telefono || '', email: pac?.email || '', nhc: pac?.nhc || '', notas: pac?.notas || '' }); }}
-                        style={{
-                            padding: '8px 16px', borderRadius: '10px',
-                            border: '1px solid rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.1)',
-                            color: '#fff', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
-                        }}
-                    >
-                        <Edit3 size={14} style={{ marginRight: '4px' }} /> Editar
-                    </button>
+
+                    {/* Action buttons */}
+                    <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                        {/* WhatsApp button */}
+                        {(() => {
+                            const phone = resolvePhone(pac, detalle);
+                            if (!phone) return null;
+                            return (
+                                <button
+                                    onClick={() => openWhatsApp(phone)}
+                                    title={`Enviar WhatsApp a ${phone}`}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                        padding: '8px 18px', borderRadius: '10px',
+                                        border: 'none',
+                                        background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                                        color: '#fff', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                        boxShadow: '0 2px 8px rgba(37,211,102,0.4)',
+                                    }}
+                                    onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(37,211,102,0.5)'; }}
+                                    onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(37,211,102,0.4)'; }}
+                                >
+                                    <MessageSquare size={15} /> WhatsApp
+                                </button>
+                            );
+                        })()}
+
+                        {/* Edit button */}
+                        <button
+                            onClick={() => { setEditMode(!editMode); setEditData({ telefono: pac?.telefono || '', email: pac?.email || '', nhc: pac?.nhc || '', notas: pac?.notas || '' }); }}
+                            style={{
+                                padding: '8px 16px', borderRadius: '10px',
+                                border: '1px solid rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.1)',
+                                color: '#fff', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                            }}
+                        >
+                            <Edit3 size={14} style={{ marginRight: '4px' }} /> Editar
+                        </button>
+                    </div>
                 </div>
 
                 {/* Edit inline */}
@@ -453,6 +542,46 @@ export default function PacientesPanel({ addToast, currentUser }) {
                     </div>
                 )}
             </div>
+
+            {/* ── Phone resolved banner (when phone comes from other source) ── */}
+            {(() => {
+                const directPhone = pac?.telefono?.trim();
+                const resolved = resolvePhone(pac, detalle);
+                if (!directPhone && resolved) {
+                    const source = detalle?.cirugias?.find(c => c.telefono?.trim() === resolved) ? 'cirugías' : 'deudas';
+                    return (
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '10px',
+                            padding: '12px 18px', borderRadius: '12px',
+                            background: 'linear-gradient(135deg, rgba(37,211,102,0.08), rgba(18,140,126,0.06))',
+                            border: '1px solid rgba(37,211,102,0.2)', marginBottom: '4px',
+                        }}>
+                            <Phone size={16} style={{ color: '#25D366', flexShrink: 0 }} />
+                            <div style={{ flex: 1, fontSize: '0.82rem', color: 'var(--neutral-600)' }}>
+                                Teléfono encontrado en <strong style={{ color: 'var(--neutral-800)' }}>{source}</strong>:
+                                <span style={{ fontFamily: 'monospace', fontWeight: 700, marginLeft: '8px', color: '#128C7E' }}>{resolved}</span>
+                            </div>
+                            <button
+                                onClick={() => openWhatsApp(resolved)}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                    padding: '7px 16px', borderRadius: '8px',
+                                    border: 'none',
+                                    background: 'linear-gradient(135deg, #25D366, #128C7E)',
+                                    color: '#fff', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                                    transition: 'all 0.15s',
+                                    boxShadow: '0 1px 6px rgba(37,211,102,0.3)',
+                                }}
+                                onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                                onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
+                            >
+                                <MessageSquare size={14} /> Enviar WhatsApp
+                            </button>
+                        </div>
+                    );
+                }
+                return null;
+            })()}
 
             {/* Detalle sections */}
             {detalleLoading ? (
