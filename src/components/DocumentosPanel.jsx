@@ -1,18 +1,21 @@
 /**
  * DocumentosPanel.jsx — Repositorio centralizado de documentos
- * Upload, visualización, descarga y gestión de archivos multiformat
+ * Upload, visualización, descarga, gestión de archivos multiformat
+ * + Gestión de categorías con drag & drop
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-    FolderOpen, Upload, Search, Filter, Download, Trash2, Eye,
+    FolderOpen, Upload, Search, Download, Trash2, Eye,
     FileText, Image, FileSpreadsheet, Presentation, File, X,
     Plus, Clock, HardDrive, User, ChevronDown, Loader2, AlertCircle,
-    CheckCircle,
+    CheckCircle, GripVertical, Edit3, FolderPlus, Settings, ChevronRight,
+    Tag,
 } from 'lucide-react';
 import {
     uploadDocumento, fetchDocumentos, deleteDocumento,
     getDocumentoPublicUrl, getCategorias, ACCEPT_STRING, MAX_FILE_SIZE,
+    createCategoria, renameCategoria, deleteCategoria, updateDocumentoCategoria,
 } from '../services/documentosService';
 
 // ═══════ FILE TYPE HELPERS ═══════
@@ -72,6 +75,8 @@ function getOfficeViewerUrl(publicUrl) {
     return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(publicUrl)}`;
 }
 
+const CAT_COLORS = ['#6366F1', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#06B6D4', '#EC4899', '#14B8A6', '#F97316', '#6B7280'];
+
 // ═══════ MAIN COMPONENT ═══════
 
 export default function DocumentosPanel({ addToast, currentUser }) {
@@ -83,6 +88,10 @@ export default function DocumentosPanel({ addToast, currentUser }) {
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [previewDoc, setPreviewDoc] = useState(null);
     const [deleteConfirm, setDeleteConfirm] = useState(null);
+    const [showCatManager, setShowCatManager] = useState(false);
+    const [viewMode, setViewMode] = useState('grid'); // grid | category
+    const [dragOverCat, setDragOverCat] = useState(null);
+    const [draggedDoc, setDraggedDoc] = useState(null);
 
     // Stats
     const totalDocs = documentos.length;
@@ -144,6 +153,48 @@ export default function DocumentosPanel({ addToast, currentUser }) {
         document.body.removeChild(a);
     }, []);
 
+    // ─── Drag & Drop handlers ───
+    const handleDragStart = useCallback((e, doc) => {
+        setDraggedDoc(doc);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', doc.id);
+        // Add visual feedback
+        e.currentTarget.style.opacity = '0.5';
+    }, []);
+
+    const handleDragEnd = useCallback((e) => {
+        e.currentTarget.style.opacity = '1';
+        setDraggedDoc(null);
+        setDragOverCat(null);
+    }, []);
+
+    const handleDropOnCategory = useCallback(async (catName) => {
+        if (!draggedDoc || draggedDoc.categoria === catName) {
+            setDragOverCat(null);
+            return;
+        }
+        try {
+            await updateDocumentoCategoria(draggedDoc.id, catName);
+            addToast?.(`"${draggedDoc.nombre_original}" movido a ${catName}`, 'success');
+            loadData();
+        } catch (e) {
+            addToast?.('Error al mover: ' + e.message, 'error');
+        } finally {
+            setDragOverCat(null);
+            setDraggedDoc(null);
+        }
+    }, [draggedDoc, addToast, loadData]);
+
+    // Group docs by category for category view
+    const docsByCategory = {};
+    const catNames = categorias.map(c => typeof c === 'string' ? c : c.nombre);
+    catNames.forEach(cat => { docsByCategory[cat] = []; });
+    documentos.forEach(doc => {
+        const cat = doc.categoria || 'General';
+        if (!docsByCategory[cat]) docsByCategory[cat] = [];
+        docsByCategory[cat].push(doc);
+    });
+
     return (
         <div className="content no-print view-transition-enter" style={{ maxWidth: '1200px', margin: '0 auto' }}>
 
@@ -192,11 +243,31 @@ export default function DocumentosPanel({ addToast, currentUser }) {
                     </div>
                 </div>
 
+                {/* Categorías */}
+                <div style={{
+                    background: 'var(--neutral-0)', borderRadius: '16px',
+                    border: '1px solid var(--neutral-200)', padding: '20px',
+                    boxShadow: 'var(--shadow-sm)',
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                        <div style={{
+                            width: '36px', height: '36px', borderRadius: '10px',
+                            background: '#FFF7ED', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                            <Tag size={18} style={{ color: '#F59E0B' }} />
+                        </div>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--neutral-500)' }}>Categorías</span>
+                    </div>
+                    <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--neutral-800)', letterSpacing: '-0.02em' }}>
+                        {catNames.length}
+                    </div>
+                </div>
+
                 {/* Último documento subido */}
                 <div style={{
                     background: 'var(--neutral-0)', borderRadius: '16px',
                     border: '1px solid var(--neutral-200)', padding: '20px',
-                    boxShadow: 'var(--shadow-sm)', gridColumn: 'span 2',
+                    boxShadow: 'var(--shadow-sm)',
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                         <div style={{
@@ -208,16 +279,16 @@ export default function DocumentosPanel({ addToast, currentUser }) {
                         <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--neutral-500)' }}>Última Subida</span>
                     </div>
                     {lastUploaded ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--neutral-800)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--neutral-800)' }}>
                                 {lastUploaded.nombre_original}
                             </span>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', fontWeight: 500, flexShrink: 0 }}>
-                                {formatFullDate(lastUploaded.created_at)} por {lastUploaded.subido_por}
-                            </span>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', fontWeight: 500, marginTop: '2px' }}>
+                                {formatFullDate(lastUploaded.created_at)}
+                            </div>
                         </div>
                     ) : (
-                        <span style={{ fontSize: '0.85rem', color: 'var(--neutral-400)' }}>Sin documentos aún</span>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--neutral-400)' }}>Sin documentos</span>
                     )}
                 </div>
             </div>
@@ -269,7 +340,7 @@ export default function DocumentosPanel({ addToast, currentUser }) {
                         }}
                     >
                         <option value="">Todas las categorías</option>
-                        {categorias.map(cat => (
+                        {catNames.map(cat => (
                             <option key={cat} value={cat}>{cat}</option>
                         ))}
                     </select>
@@ -278,6 +349,47 @@ export default function DocumentosPanel({ addToast, currentUser }) {
                         color: 'var(--neutral-400)', pointerEvents: 'none',
                     }} />
                 </div>
+
+                {/* View mode toggle */}
+                <div style={{
+                    display: 'flex', borderRadius: '10px', overflow: 'hidden',
+                    border: '1px solid var(--neutral-200)',
+                }}>
+                    {[
+                        { id: 'grid', label: '📄 Archivos' },
+                        { id: 'category', label: '📁 Categorías' },
+                    ].map(v => (
+                        <button
+                            key={v.id}
+                            onClick={() => { setViewMode(v.id); setCategoriaFilter(''); }}
+                            style={{
+                                padding: '7px 14px', border: 'none',
+                                background: viewMode === v.id ? '#6366F1' : 'var(--neutral-0)',
+                                color: viewMode === v.id ? '#fff' : 'var(--neutral-600)',
+                                fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+                                transition: 'all 0.15s',
+                            }}
+                        >
+                            {v.label}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Manage categories button */}
+                <button
+                    onClick={() => setShowCatManager(true)}
+                    style={{
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        padding: '8px 14px', borderRadius: '10px',
+                        border: '1px solid var(--neutral-200)', background: 'var(--neutral-0)',
+                        fontSize: '0.82rem', fontWeight: 600, color: 'var(--neutral-600)',
+                        cursor: 'pointer', transition: 'all 0.15s',
+                    }}
+                    onMouseOver={e => { e.currentTarget.style.borderColor = '#6366F1'; e.currentTarget.style.color = '#6366F1'; }}
+                    onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--neutral-200)'; e.currentTarget.style.color = 'var(--neutral-600)'; }}
+                >
+                    <Settings size={14} /> Categorías
+                </button>
 
                 {/* Upload button */}
                 <button
@@ -298,185 +410,106 @@ export default function DocumentosPanel({ addToast, currentUser }) {
                 </button>
             </div>
 
-            {/* ═══════ DOCUMENTS GRID ═══════ */}
-            {loading ? (
-                <div style={{
-                    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px',
-                }}>
-                    {Array.from({ length: 6 }).map((_, i) => (
-                        <div key={i} style={{
-                            background: 'var(--neutral-0)', borderRadius: '14px',
-                            border: '1px solid var(--neutral-200)', padding: '20px',
-                            height: '140px', animation: 'pulse 1.5s ease-in-out infinite',
-                        }} />
-                    ))}
-                </div>
-            ) : documentos.length === 0 ? (
-                <div style={{
-                    background: 'var(--neutral-0)', borderRadius: '20px',
-                    border: '1px solid var(--neutral-200)', padding: '60px 40px',
-                    textAlign: 'center', boxShadow: 'var(--shadow-sm)',
-                }}>
-                    <FolderOpen size={56} strokeWidth={1.2} style={{ color: 'var(--neutral-300)', marginBottom: '16px' }} />
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--neutral-600)', margin: '0 0 8px' }}>
-                        {search || categoriaFilter ? 'Sin resultados' : 'Repositorio vacío'}
-                    </h3>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--neutral-400)', margin: '0 0 20px', maxWidth: '400px', marginInline: 'auto' }}>
-                        {search || categoriaFilter
-                            ? 'No se encontraron documentos con los filtros aplicados.'
-                            : 'Subí tu primer documento para comenzar a centralizar la documentación del Sanatorio.'}
-                    </p>
-                    {!search && !categoriaFilter && (
-                        <button
-                            onClick={() => setShowUploadModal(true)}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '8px',
-                                padding: '10px 24px', borderRadius: '10px',
-                                background: 'linear-gradient(135deg, #6366F1, #4F46E5)',
-                                border: 'none', color: '#fff', fontSize: '0.85rem', fontWeight: 700,
-                                cursor: 'pointer', transition: 'all 0.2s',
-                            }}
-                        >
-                            <Upload size={16} />
-                            Subir primer documento
-                        </button>
-                    )}
-                </div>
-            ) : (
-                <div style={{
-                    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px',
-                }}>
-                    {documentos.map(doc => {
-                        const ft = getFileIcon(doc.mime_type, doc.nombre_original);
-                        const IconComp = ft.icon;
-                        return (
-                            <div
-                                key={doc.id}
-                                style={{
-                                    background: 'var(--neutral-0)', borderRadius: '14px',
-                                    border: '1px solid var(--neutral-200)', padding: '18px',
-                                    transition: 'all 0.2s', cursor: 'default',
-                                    boxShadow: 'var(--shadow-sm)',
-                                }}
-                                onMouseOver={e => { e.currentTarget.style.borderColor = ft.color + '60'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                                onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--neutral-200)'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; e.currentTarget.style.transform = 'translateY(0)'; }}
-                            >
-                                {/* Top row: icon + type badge */}
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                                    <div style={{
-                                        width: '42px', height: '42px', borderRadius: '12px',
-                                        background: ft.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    }}>
-                                        <IconComp size={20} style={{ color: ft.color }} />
-                                    </div>
-                                    <span style={{
-                                        padding: '3px 10px', borderRadius: '8px', fontSize: '0.68rem',
-                                        fontWeight: 700, background: ft.bg, color: ft.color,
-                                        textTransform: 'uppercase', letterSpacing: '0.03em',
-                                    }}>
-                                        {ft.label}
-                                    </span>
-                                </div>
-
-                                {/* Filename */}
-                                <div style={{
-                                    fontSize: '0.85rem', fontWeight: 700, color: 'var(--neutral-800)',
-                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                    marginBottom: '4px',
-                                }} title={doc.nombre_original}>
-                                    {doc.nombre_original}
-                                </div>
-
-                                {/* Category + description */}
-                                {doc.descripcion && (
-                                    <div style={{
-                                        fontSize: '0.75rem', color: 'var(--neutral-500)',
-                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                        marginBottom: '4px',
-                                    }} title={doc.descripcion}>
-                                        {doc.descripcion}
-                                    </div>
-                                )}
-
-                                {/* Metadata row */}
-                                <div style={{
-                                    display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
-                                    fontSize: '0.72rem', color: 'var(--neutral-400)', marginBottom: '14px', marginTop: '6px',
-                                }}>
-                                    <span style={{
-                                        padding: '2px 8px', borderRadius: '6px',
-                                        background: 'var(--neutral-50)', color: 'var(--neutral-500)',
-                                        fontWeight: 600,
-                                    }}>
-                                        {doc.categoria}
-                                    </span>
-                                    <span>·</span>
-                                    <span>{formatFileSize(doc.size_bytes)}</span>
-                                    <span>·</span>
-                                    <span title={formatFullDate(doc.created_at)}>{formatTimeAgo(doc.created_at)}</span>
-                                </div>
-
-                                {/* Subido por */}
-                                <div style={{
-                                    display: 'flex', alignItems: 'center', gap: '6px',
-                                    fontSize: '0.72rem', color: 'var(--neutral-400)', marginBottom: '14px',
-                                }}>
-                                    <User size={12} />
-                                    <span>Subido por <strong style={{ color: 'var(--neutral-600)' }}>{doc.subido_por}</strong></span>
-                                </div>
-
-                                {/* Action buttons */}
-                                <div style={{ display: 'flex', gap: '6px' }}>
-                                    <button
-                                        onClick={() => handleView(doc)}
-                                        title="Visualizar"
-                                        style={{
-                                            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
-                                            padding: '7px 0', borderRadius: '8px',
-                                            border: '1px solid var(--neutral-200)', background: 'var(--neutral-0)',
-                                            fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-600)',
-                                            cursor: 'pointer', transition: 'all 0.15s',
-                                        }}
-                                        onMouseOver={e => { e.currentTarget.style.background = '#EEF2FF'; e.currentTarget.style.borderColor = '#A5B4FC'; e.currentTarget.style.color = '#4F46E5'; }}
-                                        onMouseOut={e => { e.currentTarget.style.background = 'var(--neutral-0)'; e.currentTarget.style.borderColor = 'var(--neutral-200)'; e.currentTarget.style.color = 'var(--neutral-600)'; }}
-                                    >
-                                        <Eye size={14} /> Ver
-                                    </button>
-                                    <button
-                                        onClick={() => handleDownload(doc)}
-                                        title="Descargar"
-                                        style={{
-                                            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
-                                            padding: '7px 0', borderRadius: '8px',
-                                            border: '1px solid var(--neutral-200)', background: 'var(--neutral-0)',
-                                            fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-600)',
-                                            cursor: 'pointer', transition: 'all 0.15s',
-                                        }}
-                                        onMouseOver={e => { e.currentTarget.style.background = '#ECFDF5'; e.currentTarget.style.borderColor = '#6EE7B7'; e.currentTarget.style.color = '#059669'; }}
-                                        onMouseOut={e => { e.currentTarget.style.background = 'var(--neutral-0)'; e.currentTarget.style.borderColor = 'var(--neutral-200)'; e.currentTarget.style.color = 'var(--neutral-600)'; }}
-                                    >
-                                        <Download size={14} /> Bajar
-                                    </button>
-                                    <button
-                                        onClick={() => setDeleteConfirm(doc)}
-                                        title="Eliminar"
-                                        style={{
-                                            width: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            padding: '7px 0', borderRadius: '8px',
-                                            border: '1px solid var(--neutral-200)', background: 'var(--neutral-0)',
-                                            fontSize: '0.75rem', color: 'var(--neutral-400)',
-                                            cursor: 'pointer', transition: 'all 0.15s',
-                                        }}
-                                        onMouseOver={e => { e.currentTarget.style.background = '#FEF2F2'; e.currentTarget.style.borderColor = '#FCA5A5'; e.currentTarget.style.color = '#DC2626'; }}
-                                        onMouseOut={e => { e.currentTarget.style.background = 'var(--neutral-0)'; e.currentTarget.style.borderColor = 'var(--neutral-200)'; e.currentTarget.style.color = 'var(--neutral-400)'; }}
-                                    >
-                                        <Trash2 size={14} />
-                                    </button>
-                                </div>
+            {/* ═══════ CATEGORY VIEW ═══════ */}
+            {viewMode === 'category' ? (
+                loading ? (
+                    <div style={{ padding: '60px', textAlign: 'center', color: 'var(--neutral-400)' }}>
+                        <Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} />
+                        <p style={{ marginTop: '8px', fontSize: '0.85rem' }}>Cargando...</p>
+                    </div>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {Object.entries(docsByCategory).map(([catName, docs]) => {
+                            const catObj = categorias.find(c => (typeof c === 'string' ? c : c.nombre) === catName);
+                            const catColor = (catObj && typeof catObj !== 'string' ? catObj.color : null) || CAT_COLORS[catNames.indexOf(catName) % CAT_COLORS.length];
+                            return (
+                                <CategoryDropZone
+                                    key={catName}
+                                    catName={catName}
+                                    catColor={catColor}
+                                    docs={docs}
+                                    isOver={dragOverCat === catName}
+                                    onDragOver={(e) => { e.preventDefault(); setDragOverCat(catName); }}
+                                    onDragLeave={() => setDragOverCat(null)}
+                                    onDrop={() => handleDropOnCategory(catName)}
+                                    onDragStart={handleDragStart}
+                                    onDragEnd={handleDragEnd}
+                                    onView={handleView}
+                                    onDownload={handleDownload}
+                                    onDelete={(doc) => setDeleteConfirm(doc)}
+                                />
+                            );
+                        })}
+                        {Object.keys(docsByCategory).length === 0 && (
+                            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--neutral-400)' }}>
+                                Sin categorías. Creá una desde el botón "Categorías".
                             </div>
-                        );
-                    })}
-                </div>
+                        )}
+                    </div>
+                )
+            ) : (
+                /* ═══════ GRID VIEW ═══════ */
+                loading ? (
+                    <div style={{
+                        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px',
+                    }}>
+                        {Array.from({ length: 6 }).map((_, i) => (
+                            <div key={i} style={{
+                                background: 'var(--neutral-0)', borderRadius: '14px',
+                                border: '1px solid var(--neutral-200)', padding: '20px',
+                                height: '140px', animation: 'pulse 1.5s ease-in-out infinite',
+                            }} />
+                        ))}
+                    </div>
+                ) : documentos.length === 0 ? (
+                    <div style={{
+                        background: 'var(--neutral-0)', borderRadius: '20px',
+                        border: '1px solid var(--neutral-200)', padding: '60px 40px',
+                        textAlign: 'center', boxShadow: 'var(--shadow-sm)',
+                    }}>
+                        <FolderOpen size={56} strokeWidth={1.2} style={{ color: 'var(--neutral-300)', marginBottom: '16px' }} />
+                        <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--neutral-600)', margin: '0 0 8px' }}>
+                            {search || categoriaFilter ? 'Sin resultados' : 'Repositorio vacío'}
+                        </h3>
+                        <p style={{ fontSize: '0.85rem', color: 'var(--neutral-400)', margin: '0 0 20px', maxWidth: '400px', marginInline: 'auto' }}>
+                            {search || categoriaFilter
+                                ? 'No se encontraron documentos con los filtros aplicados.'
+                                : 'Subí tu primer documento para comenzar a centralizar la documentación del Sanatorio.'}
+                        </p>
+                        {!search && !categoriaFilter && (
+                            <button
+                                onClick={() => setShowUploadModal(true)}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '8px',
+                                    padding: '10px 24px', borderRadius: '10px',
+                                    background: 'linear-gradient(135deg, #6366F1, #4F46E5)',
+                                    border: 'none', color: '#fff', fontSize: '0.85rem', fontWeight: 700,
+                                    cursor: 'pointer', transition: 'all 0.2s',
+                                }}
+                            >
+                                <Upload size={16} />
+                                Subir primer documento
+                            </button>
+                        )}
+                    </div>
+                ) : (
+                    <div style={{
+                        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px',
+                    }}>
+                        {documentos.map(doc => (
+                            <DocCard
+                                key={doc.id}
+                                doc={doc}
+                                onView={handleView}
+                                onDownload={handleDownload}
+                                onDelete={() => setDeleteConfirm(doc)}
+                                onDragStart={handleDragStart}
+                                onDragEnd={handleDragEnd}
+                                draggable
+                            />
+                        ))}
+                    </div>
+                )
             )}
 
             {/* ═══════ UPLOAD MODAL ═══════ */}
@@ -486,7 +519,7 @@ export default function DocumentosPanel({ addToast, currentUser }) {
                     onUploaded={() => { setShowUploadModal(false); loadData(); }}
                     addToast={addToast}
                     currentUser={currentUser}
-                    existingCategorias={categorias}
+                    existingCategorias={catNames}
                 />
             )}
 
@@ -516,7 +549,7 @@ export default function DocumentosPanel({ addToast, currentUser }) {
                             padding: '16px 20px', borderBottom: '1px solid var(--neutral-200)',
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
-                                <Eye size={18} style={{ color: 'var(--primary-500)', flexShrink: 0 }} />
+                                <Eye size={18} style={{ color: '#6366F1', flexShrink: 0 }} />
                                 <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--neutral-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {previewDoc.nombre_original}
                                 </span>
@@ -549,7 +582,7 @@ export default function DocumentosPanel({ addToast, currentUser }) {
                         </div>
 
                         {/* Preview content */}
-                        <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC' }}>
+                        <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--neutral-50)' }}>
                             {previewDoc.viewerUrl ? (
                                 <iframe
                                     src={previewDoc.viewerUrl}
@@ -625,8 +658,6 @@ export default function DocumentosPanel({ addToast, currentUser }) {
                                     fontSize: '0.82rem', fontWeight: 700, color: '#fff',
                                     cursor: 'pointer', transition: 'all 0.15s',
                                 }}
-                                onMouseOver={e => e.currentTarget.style.background = '#DC2626'}
-                                onMouseOut={e => e.currentTarget.style.background = '#EF4444'}
                             >
                                 Sí, eliminar
                             </button>
@@ -634,6 +665,494 @@ export default function DocumentosPanel({ addToast, currentUser }) {
                     </div>
                 </div>
             )}
+
+            {/* ═══════ CATEGORY MANAGER MODAL ═══════ */}
+            {showCatManager && (
+                <CategoryManagerModal
+                    onClose={() => setShowCatManager(false)}
+                    onUpdated={loadData}
+                    addToast={addToast}
+                    categorias={categorias}
+                />
+            )}
+        </div>
+    );
+}
+
+
+// ═══════ DOC CARD COMPONENT ═══════
+function DocCard({ doc, onView, onDownload, onDelete, onDragStart, onDragEnd, draggable }) {
+    const ft = getFileIcon(doc.mime_type, doc.nombre_original);
+    const IconComp = ft.icon;
+    return (
+        <div
+            draggable={draggable}
+            onDragStart={e => onDragStart(e, doc)}
+            onDragEnd={onDragEnd}
+            style={{
+                background: 'var(--neutral-0)', borderRadius: '14px',
+                border: '1px solid var(--neutral-200)', padding: '18px',
+                transition: 'all 0.2s', cursor: draggable ? 'grab' : 'default',
+                boxShadow: 'var(--shadow-sm)',
+            }}
+            onMouseOver={e => { e.currentTarget.style.borderColor = ft.color + '60'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+            onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--neutral-200)'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+        >
+            {/* Top row: grip + icon + type badge */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {draggable && <GripVertical size={14} style={{ color: 'var(--neutral-300)', cursor: 'grab' }} />}
+                    <div style={{
+                        width: '42px', height: '42px', borderRadius: '12px',
+                        background: ft.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                        <IconComp size={20} style={{ color: ft.color }} />
+                    </div>
+                </div>
+                <span style={{
+                    padding: '3px 10px', borderRadius: '8px', fontSize: '0.68rem',
+                    fontWeight: 700, background: ft.bg, color: ft.color,
+                    textTransform: 'uppercase', letterSpacing: '0.03em',
+                }}>
+                    {ft.label}
+                </span>
+            </div>
+
+            {/* Filename */}
+            <div style={{
+                fontSize: '0.85rem', fontWeight: 700, color: 'var(--neutral-800)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                marginBottom: '4px',
+            }} title={doc.nombre_original}>
+                {doc.nombre_original}
+            </div>
+
+            {/* Category + description */}
+            {doc.descripcion && (
+                <div style={{
+                    fontSize: '0.75rem', color: 'var(--neutral-500)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    marginBottom: '4px',
+                }} title={doc.descripcion}>
+                    {doc.descripcion}
+                </div>
+            )}
+
+            {/* Metadata row */}
+            <div style={{
+                display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+                fontSize: '0.72rem', color: 'var(--neutral-400)', marginBottom: '14px', marginTop: '6px',
+            }}>
+                <span style={{
+                    padding: '2px 8px', borderRadius: '6px',
+                    background: 'var(--neutral-50)', color: 'var(--neutral-500)',
+                    fontWeight: 600,
+                }}>
+                    {doc.categoria}
+                </span>
+                <span>·</span>
+                <span>{formatFileSize(doc.size_bytes)}</span>
+                <span>·</span>
+                <span title={formatFullDate(doc.created_at)}>{formatTimeAgo(doc.created_at)}</span>
+            </div>
+
+            {/* Subido por */}
+            <div style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                fontSize: '0.72rem', color: 'var(--neutral-400)', marginBottom: '14px',
+            }}>
+                <User size={12} />
+                <span>Subido por <strong style={{ color: 'var(--neutral-600)' }}>{doc.subido_por}</strong></span>
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                    onClick={() => onView(doc)}
+                    title="Visualizar"
+                    style={{
+                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
+                        padding: '7px 0', borderRadius: '8px',
+                        border: '1px solid var(--neutral-200)', background: 'var(--neutral-0)',
+                        fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-600)',
+                        cursor: 'pointer', transition: 'all 0.15s',
+                    }}
+                    onMouseOver={e => { e.currentTarget.style.background = '#EEF2FF'; e.currentTarget.style.borderColor = '#A5B4FC'; e.currentTarget.style.color = '#4F46E5'; }}
+                    onMouseOut={e => { e.currentTarget.style.background = 'var(--neutral-0)'; e.currentTarget.style.borderColor = 'var(--neutral-200)'; e.currentTarget.style.color = 'var(--neutral-600)'; }}
+                >
+                    <Eye size={14} /> Ver
+                </button>
+                <button
+                    onClick={() => onDownload(doc)}
+                    title="Descargar"
+                    style={{
+                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
+                        padding: '7px 0', borderRadius: '8px',
+                        border: '1px solid var(--neutral-200)', background: 'var(--neutral-0)',
+                        fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-600)',
+                        cursor: 'pointer', transition: 'all 0.15s',
+                    }}
+                    onMouseOver={e => { e.currentTarget.style.background = '#ECFDF5'; e.currentTarget.style.borderColor = '#6EE7B7'; e.currentTarget.style.color = '#059669'; }}
+                    onMouseOut={e => { e.currentTarget.style.background = 'var(--neutral-0)'; e.currentTarget.style.borderColor = 'var(--neutral-200)'; e.currentTarget.style.color = 'var(--neutral-600)'; }}
+                >
+                    <Download size={14} /> Bajar
+                </button>
+                <button
+                    onClick={onDelete}
+                    title="Eliminar"
+                    style={{
+                        width: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: '7px 0', borderRadius: '8px',
+                        border: '1px solid var(--neutral-200)', background: 'var(--neutral-0)',
+                        fontSize: '0.75rem', color: 'var(--neutral-400)',
+                        cursor: 'pointer', transition: 'all 0.15s',
+                    }}
+                    onMouseOver={e => { e.currentTarget.style.background = '#FEF2F2'; e.currentTarget.style.borderColor = '#FCA5A5'; e.currentTarget.style.color = '#DC2626'; }}
+                    onMouseOut={e => { e.currentTarget.style.background = 'var(--neutral-0)'; e.currentTarget.style.borderColor = 'var(--neutral-200)'; e.currentTarget.style.color = 'var(--neutral-400)'; }}
+                >
+                    <Trash2 size={14} />
+                </button>
+            </div>
+        </div>
+    );
+}
+
+
+// ═══════ CATEGORY DROP ZONE ═══════
+function CategoryDropZone({ catName, catColor, docs, isOver, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, onView, onDownload, onDelete }) {
+    const [collapsed, setCollapsed] = useState(false);
+
+    return (
+        <div
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={(e) => { e.preventDefault(); onDrop(); }}
+            style={{
+                background: 'var(--neutral-0)',
+                borderRadius: '16px',
+                border: isOver ? `2px dashed ${catColor}` : '1px solid var(--neutral-200)',
+                overflow: 'hidden',
+                boxShadow: isOver ? `0 0 20px ${catColor}20` : 'var(--shadow-sm)',
+                transition: 'all 0.2s',
+            }}
+        >
+            {/* Category header */}
+            <button
+                onClick={() => setCollapsed(!collapsed)}
+                style={{
+                    display: 'flex', alignItems: 'center', gap: '12px', width: '100%',
+                    padding: '16px 20px', border: 'none', background: 'transparent',
+                    cursor: 'pointer', textAlign: 'left',
+                }}
+            >
+                <div style={{
+                    width: '10px', height: '10px', borderRadius: '50%',
+                    background: catColor, flexShrink: 0,
+                }} />
+                <span style={{ flex: 1, fontSize: '0.92rem', fontWeight: 700, color: 'var(--neutral-800)' }}>
+                    {catName}
+                </span>
+                <span style={{
+                    padding: '3px 12px', borderRadius: '10px',
+                    background: catColor + '15', color: catColor,
+                    fontSize: '0.75rem', fontWeight: 700,
+                }}>
+                    {docs.length} {docs.length === 1 ? 'archivo' : 'archivos'}
+                </span>
+                <ChevronRight size={16} style={{
+                    color: 'var(--neutral-400)', transition: 'transform 0.2s',
+                    transform: collapsed ? 'rotate(0deg)' : 'rotate(90deg)',
+                }} />
+            </button>
+
+            {/* Docs inside this category */}
+            {!collapsed && (
+                <div style={{
+                    borderTop: '1px solid var(--neutral-100)',
+                    padding: docs.length > 0 ? '14px 20px' : '20px',
+                }}>
+                    {docs.length > 0 ? (
+                        <div style={{
+                            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '12px',
+                        }}>
+                            {docs.map(doc => (
+                                <DocCard
+                                    key={doc.id}
+                                    doc={doc}
+                                    onView={onView}
+                                    onDownload={onDownload}
+                                    onDelete={() => onDelete(doc)}
+                                    onDragStart={onDragStart}
+                                    onDragEnd={onDragEnd}
+                                    draggable
+                                />
+                            ))}
+                        </div>
+                    ) : (
+                        <div style={{
+                            textAlign: 'center', padding: '20px', color: 'var(--neutral-400)',
+                            fontSize: '0.82rem', border: `2px dashed var(--neutral-200)`,
+                            borderRadius: '10px',
+                        }}>
+                            📁 Arrastrá archivos aquí para moverlos a <strong>{catName}</strong>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+// ═══════ CATEGORY MANAGER MODAL ═══════
+function CategoryManagerModal({ onClose, onUpdated, addToast, categorias }) {
+    const [newCatName, setNewCatName] = useState('');
+    const [creating, setCreating] = useState(false);
+    const [editingCat, setEditingCat] = useState(null);
+    const [editName, setEditName] = useState('');
+    const [deletingCat, setDeletingCat] = useState(null);
+
+    const catNames = categorias.map(c => typeof c === 'string' ? c : c.nombre);
+
+    const handleCreate = async () => {
+        if (!newCatName.trim()) return;
+        setCreating(true);
+        try {
+            await createCategoria(newCatName.trim());
+            addToast?.(`Categoría "${newCatName}" creada`, 'success');
+            setNewCatName('');
+            onUpdated();
+        } catch (e) {
+            addToast?.('Error: ' + e.message, 'error');
+        } finally {
+            setCreating(false);
+        }
+    };
+
+    const handleRename = async (oldName) => {
+        if (!editName.trim() || editName.trim() === oldName) {
+            setEditingCat(null);
+            return;
+        }
+        try {
+            await renameCategoria(oldName, editName.trim());
+            addToast?.(`Categoría renombrada a "${editName.trim()}"`, 'success');
+            setEditingCat(null);
+            onUpdated();
+        } catch (e) {
+            addToast?.('Error: ' + e.message, 'error');
+        }
+    };
+
+    const handleDelete = async (name) => {
+        try {
+            await deleteCategoria(name);
+            addToast?.(`Categoría "${name}" eliminada. Documentos movidos a General.`, 'success');
+            setDeletingCat(null);
+            onUpdated();
+        } catch (e) {
+            addToast?.('Error: ' + e.message, 'error');
+        }
+    };
+
+    return (
+        <div
+            style={{
+                position: 'fixed', inset: 0, zIndex: 9999,
+                background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '40px', animation: 'fadeIn 0.2s ease',
+            }}
+            onClick={onClose}
+        >
+            <div
+                style={{
+                    background: 'var(--neutral-0)', borderRadius: '20px',
+                    width: '480px', maxWidth: '95vw', maxHeight: '80vh',
+                    boxShadow: '0 25px 50px rgba(0,0,0,0.25)', overflow: 'hidden',
+                    display: 'flex', flexDirection: 'column',
+                }}
+                onClick={e => e.stopPropagation()}
+            >
+                {/* Header */}
+                <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '20px 24px', borderBottom: '1px solid var(--neutral-100)',
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                            width: '36px', height: '36px', borderRadius: '10px',
+                            background: 'linear-gradient(135deg, #6366F1, #4F46E5)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                            <FolderPlus size={18} style={{ color: '#fff' }} />
+                        </div>
+                        <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--neutral-800)' }}>Gestionar Categorías</span>
+                    </div>
+                    <button onClick={onClose} style={{
+                        width: '32px', height: '32px', borderRadius: '8px',
+                        border: '1px solid var(--neutral-200)', background: 'var(--neutral-0)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', color: 'var(--neutral-400)',
+                    }}>
+                        <X size={16} />
+                    </button>
+                </div>
+
+                {/* Create new */}
+                <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--neutral-100)' }}>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <input
+                            type="text"
+                            placeholder="Nombre de nueva categoría..."
+                            value={newCatName}
+                            onChange={e => setNewCatName(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                            style={{
+                                flex: 1, padding: '8px 14px', borderRadius: '8px',
+                                border: '1px solid var(--neutral-200)', fontSize: '0.82rem',
+                                fontFamily: 'inherit', color: 'var(--neutral-700)', outline: 'none',
+                            }}
+                        />
+                        <button
+                            onClick={handleCreate}
+                            disabled={creating || !newCatName.trim()}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '5px',
+                                padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                background: !newCatName.trim() ? 'var(--neutral-200)' : 'linear-gradient(135deg, #6366F1, #4F46E5)',
+                                color: !newCatName.trim() ? 'var(--neutral-400)' : '#fff',
+                                fontSize: '0.82rem', fontWeight: 700, cursor: !newCatName.trim() ? 'not-allowed' : 'pointer',
+                            }}
+                        >
+                            {creating ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Plus size={14} />}
+                            Crear
+                        </button>
+                    </div>
+                </div>
+
+                {/* Categories list */}
+                <div style={{ flex: 1, overflow: 'auto', padding: '8px 24px 24px' }}>
+                    {catNames.length === 0 ? (
+                        <div style={{ padding: '30px', textAlign: 'center', color: 'var(--neutral-400)', fontSize: '0.82rem' }}>
+                            Sin categorías. Creá la primera arriba.
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {catNames.map((cat, idx) => {
+                                const color = CAT_COLORS[idx % CAT_COLORS.length];
+                                const isEditing = editingCat === cat;
+                                const isDeleting = deletingCat === cat;
+                                const isGeneral = cat === 'General';
+
+                                return (
+                                    <div key={cat} style={{
+                                        display: 'flex', alignItems: 'center', gap: '10px',
+                                        padding: '10px 12px', borderRadius: '10px',
+                                        border: '1px solid var(--neutral-100)',
+                                        background: isDeleting ? '#FEF2F2' : 'transparent',
+                                        transition: 'all 0.15s',
+                                    }}>
+                                        <div style={{
+                                            width: '10px', height: '10px', borderRadius: '50%',
+                                            background: color, flexShrink: 0,
+                                        }} />
+
+                                        {isEditing ? (
+                                            <div style={{ flex: 1, display: 'flex', gap: '6px' }}>
+                                                <input
+                                                    value={editName}
+                                                    onChange={e => setEditName(e.target.value)}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Enter') handleRename(cat);
+                                                        if (e.key === 'Escape') setEditingCat(null);
+                                                    }}
+                                                    autoFocus
+                                                    style={{
+                                                        flex: 1, padding: '4px 8px', borderRadius: '6px',
+                                                        border: '1px solid #6366F1', fontSize: '0.82rem',
+                                                        fontFamily: 'inherit', outline: 'none',
+                                                    }}
+                                                />
+                                                <button onClick={() => handleRename(cat)} style={{
+                                                    padding: '4px 10px', borderRadius: '6px', border: 'none',
+                                                    background: '#10B981', color: '#fff', fontSize: '0.72rem', fontWeight: 700,
+                                                    cursor: 'pointer',
+                                                }}>
+                                                    <CheckCircle size={12} />
+                                                </button>
+                                                <button onClick={() => setEditingCat(null)} style={{
+                                                    padding: '4px 10px', borderRadius: '6px',
+                                                    border: '1px solid var(--neutral-200)', background: 'var(--neutral-0)',
+                                                    fontSize: '0.72rem', cursor: 'pointer', color: 'var(--neutral-500)',
+                                                }}>
+                                                    <X size={12} />
+                                                </button>
+                                            </div>
+                                        ) : isDeleting ? (
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ fontSize: '0.78rem', color: '#DC2626', fontWeight: 600, marginBottom: '4px' }}>
+                                                    ¿Eliminar "{cat}"? Los documentos se moverán a General.
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                    <button onClick={() => handleDelete(cat)} style={{
+                                                        padding: '4px 10px', borderRadius: '6px', border: 'none',
+                                                        background: '#EF4444', color: '#fff', fontSize: '0.72rem', fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                    }}>Sí, eliminar</button>
+                                                    <button onClick={() => setDeletingCat(null)} style={{
+                                                        padding: '4px 10px', borderRadius: '6px',
+                                                        border: '1px solid var(--neutral-200)', background: 'var(--neutral-0)',
+                                                        fontSize: '0.72rem', cursor: 'pointer',
+                                                    }}>Cancelar</button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <span style={{ flex: 1, fontSize: '0.85rem', fontWeight: 600, color: 'var(--neutral-800)' }}>
+                                                    {cat}
+                                                </span>
+                                                {!isGeneral && (
+                                                    <div style={{ display: 'flex', gap: '4px' }}>
+                                                        <button
+                                                            onClick={() => { setEditingCat(cat); setEditName(cat); }}
+                                                            title="Renombrar"
+                                                            style={{
+                                                                width: '28px', height: '28px', borderRadius: '6px',
+                                                                border: '1px solid var(--neutral-200)', background: 'var(--neutral-0)',
+                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                cursor: 'pointer', color: 'var(--neutral-400)',
+                                                            }}
+                                                            onMouseOver={e => { e.currentTarget.style.color = '#6366F1'; e.currentTarget.style.borderColor = '#A5B4FC'; }}
+                                                            onMouseOut={e => { e.currentTarget.style.color = 'var(--neutral-400)'; e.currentTarget.style.borderColor = 'var(--neutral-200)'; }}
+                                                        >
+                                                            <Edit3 size={12} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setDeletingCat(cat)}
+                                                            title="Eliminar"
+                                                            style={{
+                                                                width: '28px', height: '28px', borderRadius: '6px',
+                                                                border: '1px solid var(--neutral-200)', background: 'var(--neutral-0)',
+                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                cursor: 'pointer', color: 'var(--neutral-400)',
+                                                            }}
+                                                            onMouseOver={e => { e.currentTarget.style.color = '#EF4444'; e.currentTarget.style.borderColor = '#FCA5A5'; }}
+                                                            onMouseOut={e => { e.currentTarget.style.color = 'var(--neutral-400)'; e.currentTarget.style.borderColor = 'var(--neutral-200)'; }}
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }

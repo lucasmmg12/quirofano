@@ -99,8 +99,128 @@
   color: #F8FAFC;
 }
 
+/* ── Dark Mode: Force readable colors on inline-styled components ── */
+/* Many JSX components use hardcoded hex colors in inline styles.
+   These overrides ensure text remains readable in dark mode. */
+
+[data-theme="dark"] .content h1,
+[data-theme="dark"] .content h2,
+[data-theme="dark"] .content h3 {
+  color: #F1F5F9 !important;
+}
+
+[data-theme="dark"] .content p,
+[data-theme="dark"] .content span,
+[data-theme="dark"] .content div,
+[data-theme="dark"] .content label,
+[data-theme="dark"] .content td,
+[data-theme="dark"] .content th {
+  border-color: #334155;
+}
+
+/* Force all text in content area to be readable */
+[data-theme="dark"] .content [style*="color: #1E293B"],
+[data-theme="dark"] .content [style*="color: #334155"],
+[data-theme="dark"] .content [style*="color: #0F172A"],
+[data-theme="dark"] .content [style*="color:#1E293B"],
+[data-theme="dark"] .content [style*="color:#334155"],
+[data-theme="dark"] .content [style*="color:#0F172A"] {
+  color: #F1F5F9 !important;
+}
+
+[data-theme="dark"] .content [style*="color: #475569"],
+[data-theme="dark"] .content [style*="color: #64748B"],
+[data-theme="dark"] .content [style*="color:#475569"],
+[data-theme="dark"] .content [style*="color:#64748B"] {
+  color: #CBD5E1 !important;
+}
+
+[data-theme="dark"] .content [style*="color: #94A3B8"],
+[data-theme="dark"] .content [style*="color:#94A3B8"] {
+  color: #94A3B8 !important;
+}
+
+/* Background overrides for card-like containers */
+[data-theme="dark"] .content [style*="background: #fff"],
+[data-theme="dark"] .content [style*="background: #FFFFFF"],
+[data-theme="dark"] .content [style*="background:#fff"],
+[data-theme="dark"] .content [style*="background: white"],
+[data-theme="dark"] .content [style*="background-color: #fff"],
+[data-theme="dark"] .content [style*="background-color: white"] {
+  background: #1E293B !important;
+}
+
+[data-theme="dark"] .content [style*="background: #F8FAFC"],
+[data-theme="dark"] .content [style*="background: #FAFAFA"],
+[data-theme="dark"] .content [style*="background: #F1F5F9"],
+[data-theme="dark"] .content [style*="background:#F8FAFC"],
+[data-theme="dark"] .content [style*="background:#F1F5F9"] {
+  background: #0F172A !important;
+}
+
+/* Border overrides */
+[data-theme="dark"] .content [style*="border-color: #E2E8F0"],
+[data-theme="dark"] .content [style*="border: 1px solid #E2E8F0"],
+[data-theme="dark"] .content [style*="border: 1px solid #F1F5F9"] {
+  border-color: #334155 !important;
+}
+
+/* Table header backgrounds */
+[data-theme="dark"] .content table thead tr[style*="background: linear-gradient(135deg, #312E81"] {
+  background: linear-gradient(135deg, #1E1B4B, #312E81) !important;
+}
+
+/* Select / Input elements in dark mode */
+[data-theme="dark"] .content select,
+[data-theme="dark"] .content input[type="text"],
+[data-theme="dark"] .content input[type="search"],
+[data-theme="dark"] .content input[type="number"],
+[data-theme="dark"] .content input[type="email"],
+[data-theme="dark"] .content textarea {
+  background-color: #1E293B !important;
+  color: #E2E8F0 !important;
+  border-color: #475569 !important;
+}
+
+[data-theme="dark"] .content select option {
+  background-color: #1E293B;
+  color: #E2E8F0;
+}
+
+/* Topbar in dark mode */
+[data-theme="dark"] .topbar {
+  background: #0F172A !important;
+  border-bottom-color: #1E293B !important;
+}
+
+/* Tables in dark mode */
+[data-theme="dark"] .content table tbody tr:hover {
+  background: #1E293B !important;
+}
+
+[data-theme="dark"] .content table tbody tr {
+  border-bottom-color: #1E293B !important;
+}
+
 [data-theme="dark"] ::-webkit-scrollbar-thumb {
   background: #475569;
+}
+
+/* Modals & overlays in dark mode */
+[data-theme="dark"] [style*="background: rgba(0,0,0,0.5)"] div[style*="background: var(--neutral-0)"],
+[data-theme="dark"] [style*="background: rgba(0,0,0,0.6)"] div[style*="background: var(--neutral-0)"] {
+  background: #1E293B !important;
+}
+
+/* Surgery expanded card dark mode — force labels readable */
+[data-theme="dark"] .surgery-card-expanded,
+[data-theme="dark"] [class*="card-expanded"] {
+  background: #1E293B !important;
+}
+
+[data-theme="dark"] .surgery-card-expanded label,
+[data-theme="dark"] .surgery-card-expanded span {
+  color: #CBD5E1 !important;
 }
 
 /* ===== VIEW TRANSITIONS ===== */

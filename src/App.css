@@ -3382,3 +3382,143 @@
         display: none !important;
     }
 }
+
+/* ========================================
+   DARK MODE OVERRIDES
+   ======================================== */
+
+/* Topbar gradient */
+[data-theme="dark"] .topbar {
+    background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%) !important;
+    border-bottom-color: #334155 !important;
+}
+
+/* Form inputs in dark mode */
+[data-theme="dark"] .field-input,
+[data-theme="dark"] .field-select {
+    background: #1E293B !important;
+    color: #E2E8F0 !important;
+    border-color: #475569 !important;
+}
+
+[data-theme="dark"] .field-input:focus,
+[data-theme="dark"] .field-select:focus {
+    border-color: var(--primary-400) !important;
+    box-shadow: 0 0 0 3px rgba(30, 95, 166, 0.2) !important;
+}
+
+[data-theme="dark"] .field-input::placeholder {
+    color: #64748B !important;
+}
+
+/* Patient autocomplete dropdown */
+[data-theme="dark"] .patient-autocomplete-dropdown {
+    background: #1E293B !important;
+    border-color: #475569 !important;
+}
+
+[data-theme="dark"] .patient-autocomplete-option:hover {
+    background: #334155 !important;
+}
+
+/* OS Combobox dropdown */
+[data-theme="dark"] .os-combobox__dropdown {
+    background: #1E293B !important;
+    border-color: #475569 !important;
+}
+
+[data-theme="dark"] .os-combobox__option:hover {
+    background: #334155 !important;
+}
+
+[data-theme="dark"] .os-combobox__selected {
+    background: rgba(30, 95, 166, 0.15) !important;
+    border-color: var(--primary-600) !important;
+}
+
+/* Practice search */
+[data-theme="dark"] .practice-search {
+    background: #1E293B !important;
+    border-color: #334155 !important;
+}
+
+[data-theme="dark"] .practice-search__input {
+    background: #0F172A !important;
+    color: #E2E8F0 !important;
+    border-color: #475569 !important;
+}
+
+/* Cart table */
+[data-theme="dark"] .cart__table-wrapper {
+    background: #1E293B !important;
+    border-color: #334155 !important;
+}
+
+[data-theme="dark"] .cart__row:hover {
+    background: #334155 !important;
+}
+
+[data-theme="dark"] .cart__td {
+    border-bottom-color: #1E293B !important;
+}
+
+/* Surgery expanded row — force readable backgrounds */
+[data-theme="dark"] .cart__row + tr td[colspan] {
+    background: #1E293B !important;
+}
+
+[data-theme="dark"] .cart__row + tr td[colspan] div[style*="background: '#fff'"],
+[data-theme="dark"] .cart__row + tr td[colspan] div[style*="background: #fff"] {
+    background: #0F172A !important;
+}
+
+/* Buttons with white bg in expanded card */
+[data-theme="dark"] .cart__row + tr button[style*="background: '#fff'"],
+[data-theme="dark"] .cart__row + tr button[style*="background: #fff"] {
+    background: #0F172A !important;
+}
+
+/* Patient header section */
+[data-theme="dark"] .patient-header {
+    background: #1E293B !important;
+    border-color: #334155 !important;
+}
+
+[data-theme="dark"] .patient-header__top:hover {
+    background: #334155 !important;
+}
+
+/* Toast in dark mode */
+[data-theme="dark"] .toast {
+    background: #1E293B !important;
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) !important;
+}
+
+[data-theme="dark"] .toast--success {
+    background: rgba(6, 95, 70, 0.2) !important;
+}
+
+[data-theme="dark"] .toast--error {
+    background: rgba(127, 29, 29, 0.2) !important;
+}
+
+[data-theme="dark"] .toast--info {
+    background: rgba(30, 58, 138, 0.2) !important;
+}
+
+/* Category chips */
+[data-theme="dark"] .category-chip {
+    background: #1E293B !important;
+    border-color: #475569 !important;
+    color: #CBD5E1 !important;
+}
+
+[data-theme="dark"] .category-chip:hover {
+    background: #334155 !important;
+}
+
+/* Clear fields button */
+[data-theme="dark"] .btn-clear-fields {
+    border-color: #475569 !important;
+    color: #94A3B8 !important;
+}

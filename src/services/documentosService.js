@@ -136,6 +136,17 @@ export function getDocumentoPublicUrl(storageKey) {
  * Lista las categorías únicas existentes
  */
 export async function getCategorias() {
+    // Primero intentamos obtener de la tabla dedicada
+    const { data: catRows, error: catError } = await supabase
+        .from('documento_categorias')
+        .select('nombre, color, orden')
+        .order('orden', { ascending: true });
+
+    if (!catError && catRows && catRows.length > 0) {
+        return catRows;
+    }
+
+    // Fallback: obtener de los documentos directamente
     const { data, error } = await supabase
         .from('documentos')
         .select('categoria')
@@ -144,5 +155,97 @@ export async function getCategorias() {
     if (error) throw error;
 
     const unique = [...new Set((data || []).map(d => d.categoria).filter(Boolean))];
-    return unique;
+    return unique.map((name, i) => ({ nombre: name, color: null, orden: i }));
 }
+
+/**
+ * Crea una nueva categoría
+ */
+export async function createCategoria(nombre, color = null) {
+    if (!nombre?.trim()) throw new Error('El nombre es obligatorio');
+
+    // Get max orden
+    const { data: maxRow } = await supabase
+        .from('documento_categorias')
+        .select('orden')
+        .order('orden', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    const nextOrden = (maxRow?.orden || 0) + 1;
+
+    const { data, error } = await supabase
+        .from('documento_categorias')
+        .insert({ nombre: nombre.trim(), color: color || null, orden: nextOrden })
+        .select()
+        .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+}
+
+/**
+ * Renombra una categoría (actualiza nombre en categorías y en todos los documentos)
+ */
+export async function renameCategoria(oldName, newName) {
+    if (!newName?.trim()) throw new Error('El nuevo nombre es obligatorio');
+
+    // Update category table
+    await supabase
+        .from('documento_categorias')
+        .update({ nombre: newName.trim() })
+        .eq('nombre', oldName);
+
+    // Update all documents with old category
+    const { error } = await supabase
+        .from('documentos')
+        .update({ categoria: newName.trim() })
+        .eq('categoria', oldName);
+
+    if (error) throw new Error(error.message);
+}
+
+/**
+ * Elimina una categoría (mover docs a "General" primero)
+ */
+export async function deleteCategoria(nombre) {
+    // Move documents to "General"
+    await supabase
+        .from('documentos')
+        .update({ categoria: 'General' })
+        .eq('categoria', nombre);
+
+    // Delete from categories table
+    await supabase
+        .from('documento_categorias')
+        .delete()
+        .eq('nombre', nombre);
+}
+
+/**
+ * Actualiza la categoría de un documento (para drag & drop)
+ */
+export async function updateDocumentoCategoria(docId, newCategoria) {
+    const { data, error } = await supabase
+        .from('documentos')
+        .update({ categoria: newCategoria })
+        .eq('id', docId)
+        .select()
+        .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+}
+
+/**
+ * Actualiza la categoría de múltiples documentos a la vez
+ */
+export async function bulkUpdateCategoria(docIds, newCategoria) {
+    const { error } = await supabase
+        .from('documentos')
+        .update({ categoria: newCategoria })
+        .in('id', docIds);
+
+    if (error) throw new Error(error.message);
+}
+
