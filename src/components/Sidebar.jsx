@@ -3,7 +3,7 @@ import {
     ClipboardList, History, BookOpen, Settings, PanelLeftClose, PanelLeft,
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
     ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain, Users, PackageCheck, Microscope,
-    Activity, FileSpreadsheet, BookMarked,
+    Activity, FileSpreadsheet, BookMarked, FolderOpen,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '' }) {
@@ -207,6 +207,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     { id: 'turnos', label: 'Cola de Turnos', icon: Ticket },
                     { id: 'deudas', label: 'Deudas', icon: DollarSign },
                     { id: 'consultas', label: 'Consultas Guardia', icon: Activity },
+                    { id: 'documentos', label: 'Documentos', icon: FolderOpen },
                 ].map(item => {
                     const Icon = item.icon;
                     const isActive = activeView === item.id;

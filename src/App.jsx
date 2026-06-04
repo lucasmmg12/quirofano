@@ -42,6 +42,7 @@ import BetoWidget from './components/BetoWidget.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
 import BetoAnalyticsPanel from './components/BetoAnalyticsPanel.jsx';
 import ManualProcedimientos from './components/ManualProcedimientos.jsx';
+import DocumentosPanel from './components/DocumentosPanel.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -119,6 +120,7 @@ const VIEW_LABELS = {
     pedidos_marcela: 'Pedidos Especiales',
     beto_analytics: 'Beto Analytics',
     manual: 'Manual del Sistema',
+    documentos: 'Documentos',
 };
 
 function App({ currentUser, onLogout }) {
@@ -779,6 +781,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'consultas' && (
                     <ConsultasPanel />
+                )}
+
+                {activeView === 'documentos' && (
+                    <DocumentosPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'altas' && (

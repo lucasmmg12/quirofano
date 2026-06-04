@@ -41,6 +41,11 @@ export default function DeudasPanel({ addToast, currentUser }) {
     const [metricas, setMetricas] = useState(null);
     const [showMetricas, setShowMetricas] = useState(false);
 
+    // ─── Filtros de tiempo ───
+    const [datePreset, setDatePreset] = useState('todos'); // 'todos' | 'este_mes' | 'mes_pasado' | 'custom'
+    const [customDateFrom, setCustomDateFrom] = useState('');
+    const [customDateTo, setCustomDateTo] = useState('');
+
     // ─── Importación ───
     const [importing, setImporting] = useState(false);
     const [importResult, setImportResult] = useState(null);
@@ -89,6 +94,31 @@ export default function DeudasPanel({ addToast, currentUser }) {
     const [responsablesMap, setResponsablesMap] = useState({});
 
     // ─── Load data ───
+    // Computed date range based on preset
+    const dateFilters = useMemo(() => {
+        const now = new Date();
+        switch (datePreset) {
+            case 'este_mes': {
+                const from = new Date(now.getFullYear(), now.getMonth(), 1);
+                const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+                return { fechaDesde: from.toISOString(), fechaHasta: to.toISOString() };
+            }
+            case 'mes_pasado': {
+                const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                const to = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+                return { fechaDesde: from.toISOString(), fechaHasta: to.toISOString() };
+            }
+            case 'custom': {
+                const result = {};
+                if (customDateFrom) result.fechaDesde = new Date(customDateFrom).toISOString();
+                if (customDateTo) result.fechaHasta = new Date(customDateTo + 'T23:59:59').toISOString();
+                return result;
+            }
+            default: // 'todos'
+                return {};
+        }
+    }, [datePreset, customDateFrom, customDateTo]);
+
     const loadDeudores = useCallback(async () => {
         setLoading(true);
         try {
@@ -98,9 +128,12 @@ export default function DeudasPanel({ addToast, currentUser }) {
             if (telFilter !== null) filters.conTelefono = telFilter;
             filters.sortBy = sortBy;
             filters.sortDir = sortDir;
+            // Filtros de fecha
+            if (dateFilters.fechaDesde) filters.fechaDesde = dateFilters.fechaDesde;
+            if (dateFilters.fechaHasta) filters.fechaHasta = dateFilters.fechaHasta;
             const data = await fetchDeudores(filters);
             setDeudores(data);
-            const m = await fetchMetricasDeudas();
+            const m = await fetchMetricasDeudas(dateFilters);
             setMetricas(m);
 
             // Fetch responsables from altas by patient name (batch, non-blocking)
@@ -119,7 +152,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
         } finally {
             setLoading(false);
         }
-    }, [catFilter, search, telFilter, sortBy, sortDir, addToast]);
+    }, [catFilter, search, telFilter, sortBy, sortDir, dateFilters, addToast]);
 
     useEffect(() => { loadDeudores(); }, [loadDeudores]);
 
@@ -707,6 +740,84 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         <button onClick={() => setTelFilter(null)} style={{ ...st.filterBtn, ...(telFilter === null ? st.filterBtnActive : {}) }}>📱 Todos</button>
                         <button onClick={() => setTelFilter(true)} style={{ ...st.filterBtn, ...(telFilter === true ? st.filterBtnActive : {}) }}>✅ Con teléfono</button>
                         <button onClick={() => setTelFilter(false)} style={{ ...st.filterBtn, ...(telFilter === false ? st.filterBtnActive : {}) }}>❌ Sin teléfono</button>
+                    </div>
+                    {/* FILTROS DE TIEMPO */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <Calendar size={15} style={{ color: '#94A3B8', flexShrink: 0 }} />
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: '4px' }}>Período:</span>
+                        {[
+                            { id: 'todos', label: '📊 Todos' },
+                            { id: 'este_mes', label: '📅 Este mes' },
+                            { id: 'mes_pasado', label: '⏪ Mes pasado' },
+                            { id: 'custom', label: '📆 Personalizado' },
+                        ].map(p => (
+                            <button
+                                key={p.id}
+                                onClick={() => setDatePreset(p.id)}
+                                style={{
+                                    ...st.filterBtn,
+                                    ...(datePreset === p.id ? {
+                                        background: '#F0FDF4',
+                                        borderColor: '#86EFAC',
+                                        color: '#16A34A',
+                                        fontWeight: 700,
+                                    } : {}),
+                                }}
+                            >
+                                {p.label}
+                            </button>
+                        ))}
+                        {datePreset === 'custom' && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
+                                <input
+                                    type="date"
+                                    value={customDateFrom}
+                                    onChange={e => setCustomDateFrom(e.target.value)}
+                                    style={{
+                                        ...st.filterBtn,
+                                        padding: '5px 10px',
+                                        fontSize: '0.78rem',
+                                        fontWeight: 600,
+                                        color: '#0D3B66',
+                                        cursor: 'text',
+                                        borderColor: customDateFrom ? '#93C5FD' : '#E2E8F0',
+                                        background: customDateFrom ? '#EFF6FF' : '#FAFBFC',
+                                    }}
+                                />
+                                <span style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 600 }}>→</span>
+                                <input
+                                    type="date"
+                                    value={customDateTo}
+                                    onChange={e => setCustomDateTo(e.target.value)}
+                                    style={{
+                                        ...st.filterBtn,
+                                        padding: '5px 10px',
+                                        fontSize: '0.78rem',
+                                        fontWeight: 600,
+                                        color: '#0D3B66',
+                                        cursor: 'text',
+                                        borderColor: customDateTo ? '#93C5FD' : '#E2E8F0',
+                                        background: customDateTo ? '#EFF6FF' : '#FAFBFC',
+                                    }}
+                                />
+                            </div>
+                        )}
+                        {datePreset !== 'todos' && (
+                            <button
+                                onClick={() => { setDatePreset('todos'); setCustomDateFrom(''); setCustomDateTo(''); }}
+                                style={{
+                                    ...st.filterBtn,
+                                    padding: '4px 8px',
+                                    background: '#FEE2E2',
+                                    borderColor: '#FCA5A5',
+                                    color: '#DC2626',
+                                    fontSize: '0.72rem',
+                                }}
+                                title="Limpiar filtro de fecha"
+                            >
+                                <X size={12} /> Limpiar
+                            </button>
+                        )}
                     </div>
                 </div>
 

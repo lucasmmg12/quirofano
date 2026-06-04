@@ -41,6 +41,13 @@ export async function fetchDeudores(filters = {}) {
     if (filters.conTelefono === false) {
         query = query.is('telefono', null);
     }
+    // Filtro por rango de fechas (fecha_ultima_factura)
+    if (filters.fechaDesde) {
+        query = query.gte('fecha_ultima_factura', filters.fechaDesde);
+    }
+    if (filters.fechaHasta) {
+        query = query.lte('fecha_ultima_factura', filters.fechaHasta);
+    }
 
     const { data, error } = await query;
     if (error) throw error;
@@ -412,12 +419,22 @@ export async function importarDeudas(registros, usuario, onProgress) {
 
 // ─── Métricas / Dashboard ───
 
-export async function fetchMetricasDeudas() {
-    const { data: pacientes } = await supabase
+export async function fetchMetricasDeudas(filtros = {}) {
+    let query = supabase
         .from('deudas_pacientes')
         .select('id, nombre, nhc, deuda_total, categoria, telefono, telefono_invalido, ultimo_contacto_at, ultima_respuesta_at, cantidad_facturas')
         .gte('deuda_total', MIN_DEUDA)
         .order('deuda_total', { ascending: false });
+
+    // Filtro por rango de fechas (fecha_ultima_factura)
+    if (filtros.fechaDesde) {
+        query = query.gte('fecha_ultima_factura', filtros.fechaDesde);
+    }
+    if (filtros.fechaHasta) {
+        query = query.lte('fecha_ultima_factura', filtros.fechaHasta);
+    }
+
+    const { data: pacientes } = await query;
 
     const all = pacientes || [];
     const total = all.length;
