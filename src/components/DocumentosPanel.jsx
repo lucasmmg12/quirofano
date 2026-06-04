@@ -60,6 +60,18 @@ function formatFullDate(dateStr) {
     });
 }
 
+function isOfficeDoc(mimeType, fileName) {
+    const ext = fileName?.split('.').pop()?.toLowerCase() || '';
+    if (mimeType?.includes('word') || ext === 'doc' || ext === 'docx') return true;
+    if (mimeType?.includes('spreadsheet') || mimeType?.includes('excel') || ext === 'xlsx' || ext === 'xls') return true;
+    if (mimeType?.includes('presentation') || mimeType?.includes('powerpoint') || ext === 'pptx' || ext === 'ppt') return true;
+    return false;
+}
+
+function getOfficeViewerUrl(publicUrl) {
+    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(publicUrl)}`;
+}
+
 // ═══════ MAIN COMPONENT ═══════
 
 export default function DocumentosPanel({ addToast, currentUser }) {
@@ -113,7 +125,9 @@ export default function DocumentosPanel({ addToast, currentUser }) {
     const handleView = useCallback((doc) => {
         const url = getDocumentoPublicUrl(doc.nombre_storage);
         if (doc.mime_type?.startsWith('image/') || doc.mime_type === 'application/pdf') {
-            setPreviewDoc({ ...doc, url });
+            setPreviewDoc({ ...doc, url, viewerUrl: null });
+        } else if (isOfficeDoc(doc.mime_type, doc.nombre_original)) {
+            setPreviewDoc({ ...doc, url, viewerUrl: getOfficeViewerUrl(url) });
         } else {
             window.open(url, '_blank');
         }
@@ -536,7 +550,13 @@ export default function DocumentosPanel({ addToast, currentUser }) {
 
                         {/* Preview content */}
                         <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC' }}>
-                            {previewDoc.mime_type?.startsWith('image/') ? (
+                            {previewDoc.viewerUrl ? (
+                                <iframe
+                                    src={previewDoc.viewerUrl}
+                                    title={previewDoc.nombre_original}
+                                    style={{ width: '100%', height: '100%', border: 'none' }}
+                                />
+                            ) : previewDoc.mime_type?.startsWith('image/') ? (
                                 <img
                                     src={previewDoc.url}
                                     alt={previewDoc.nombre_original}
