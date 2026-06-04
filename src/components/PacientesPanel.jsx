@@ -14,6 +14,8 @@ import {
     createPaciente, updatePaciente,
 } from '../services/pacienteUnificadoService';
 import { normalizeArgentinePhone } from '../services/builderbotApi';
+import { fetchUnreadCounts, subscribeToAllIncoming } from '../services/chatService';
+import ChatWindow from './ChatWindow';
 
 /**
  * Resolve best phone from patient record + detail data (cirugías, deudas)
@@ -92,6 +94,10 @@ export default function PacientesPanel({ addToast, currentUser }) {
     const [editMode, setEditMode] = useState(false);
     const [editData, setEditData] = useState({});
     const [saving, setSaving] = useState(false);
+    // Chat states
+    const [chatOpen, setChatOpen] = useState(false);
+    const [chatPatient, setChatPatient] = useState({ name: '', phone: '' });
+    const [unreadCounts, setUnreadCounts] = useState({});
     const searchTimer = useRef(null);
     const PAGE_SIZE = 50;
 
@@ -115,6 +121,47 @@ export default function PacientesPanel({ addToast, currentUser }) {
     }, [page, search, addToast]);
 
     useEffect(() => { loadList(); }, [loadList]);
+
+    // ─── Unread counts + realtime subscription ───
+    useEffect(() => {
+        const loadUnreads = async () => {
+            try {
+                const counts = await fetchUnreadCounts();
+                setUnreadCounts(counts);
+            } catch (e) { console.error('Error loading unread counts:', e); }
+        };
+        loadUnreads();
+
+        const unsub = subscribeToAllIncoming((newMsg) => {
+            if (newMsg.direction === 'incoming') {
+                const normalizedPhone = normalizeArgentinePhone(newMsg.phone) || newMsg.phone;
+                setUnreadCounts(prev => ({
+                    ...prev,
+                    [normalizedPhone]: (prev[normalizedPhone] || 0) + 1
+                }));
+            }
+        });
+        return () => unsub();
+    }, []);
+
+    // ─── Open embedded chat ───
+    const openChat = useCallback((name, phone, context = {}) => {
+        const normalized = normalizeArgentinePhone(phone);
+        setChatPatient({
+            name,
+            phone,
+            obraSocial: context.obraSocial || '',
+            fechaCirugia: context.fechaCirugia || '',
+            medico: context.medico || '',
+            idPaciente: context.idPaciente || null,
+            dni: context.dni || null,
+        });
+        setChatOpen(true);
+        // Clear unread for this phone
+        if (normalized) {
+            setUnreadCounts(prev => { const n = { ...prev }; delete n[normalized]; return n; });
+        }
+    }, []);
 
     // ─── Open detail ───
     const openDetail = useCallback(async (pac) => {
@@ -302,8 +349,8 @@ export default function PacientesPanel({ addToast, currentUser }) {
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                             <span style={{ color: 'var(--neutral-600)', fontFamily: 'monospace', fontSize: '0.76rem' }}>{p.telefono}</span>
                                                             <button
-                                                                onClick={e => { e.stopPropagation(); openWhatsApp(p.telefono); }}
-                                                                title="Enviar WhatsApp"
+                                                                onClick={e => { e.stopPropagation(); openChat(p.nombre, p.telefono, { idPaciente: p.id_paciente, dni: p.dni }); }}
+                                                                title="Abrir chat WhatsApp"
                                                                 style={{
                                                                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                                                                     width: '26px', height: '26px', borderRadius: '7px',
@@ -311,11 +358,27 @@ export default function PacientesPanel({ addToast, currentUser }) {
                                                                     background: 'linear-gradient(135deg, #25D366, #128C7E)',
                                                                     color: '#fff', flexShrink: 0, transition: 'all 0.15s',
                                                                     boxShadow: '0 1px 4px rgba(37,211,102,0.3)',
+                                                                    position: 'relative',
                                                                 }}
                                                                 onMouseOver={e => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(37,211,102,0.5)'; }}
                                                                 onMouseOut={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 1px 4px rgba(37,211,102,0.3)'; }}
                                                             >
                                                                 <MessageSquare size={13} />
+                                                                {(() => {
+                                                                    const norm = normalizeArgentinePhone(p.telefono);
+                                                                    const count = norm ? (unreadCounts[norm] || 0) : 0;
+                                                                    return count > 0 ? (
+                                                                        <span style={{
+                                                                            position: 'absolute', top: '-5px', right: '-5px',
+                                                                            minWidth: '16px', height: '16px', padding: '0 4px',
+                                                                            borderRadius: '8px', background: '#EF4444', color: '#fff',
+                                                                            fontSize: '0.6rem', fontWeight: 800,
+                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                            border: '1.5px solid #fff',
+                                                                            animation: 'pulse 2s infinite',
+                                                                        }}>{count}</span>
+                                                                    ) : null;
+                                                                })()}
                                                             </button>
                                                         </div>
                                                     ) : (
@@ -449,10 +512,18 @@ export default function PacientesPanel({ addToast, currentUser }) {
                         {(() => {
                             const phone = resolvePhone(pac, detalle);
                             if (!phone) return null;
+                            const normalized = normalizeArgentinePhone(phone);
+                            const unreadCount = normalized ? (unreadCounts[normalized] || 0) : 0;
                             return (
                                 <button
-                                    onClick={() => openWhatsApp(phone)}
-                                    title={`Enviar WhatsApp a ${phone}`}
+                                    onClick={() => openChat(pac.nombre, phone, {
+                                        idPaciente: pac.id_paciente,
+                                        dni: pac.dni,
+                                        obraSocial: detalle?.cirugias?.[0]?.obra_social || '',
+                                        fechaCirugia: detalle?.cirugias?.[0]?.fecha_cirugia || '',
+                                        medico: detalle?.cirugias?.[0]?.medico || '',
+                                    })}
+                                    title={`Abrir chat con ${phone}`}
                                     style={{
                                         display: 'flex', alignItems: 'center', gap: '8px',
                                         padding: '8px 18px', borderRadius: '10px',
@@ -461,11 +532,24 @@ export default function PacientesPanel({ addToast, currentUser }) {
                                         color: '#fff', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
                                         transition: 'all 0.2s',
                                         boxShadow: '0 2px 8px rgba(37,211,102,0.4)',
+                                        position: 'relative',
                                     }}
                                     onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(37,211,102,0.5)'; }}
                                     onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(37,211,102,0.4)'; }}
                                 >
                                     <MessageSquare size={15} /> WhatsApp
+                                    {unreadCount > 0 && (
+                                        <span style={{
+                                            position: 'absolute', top: '-6px', right: '-6px',
+                                            minWidth: '20px', height: '20px', padding: '0 5px',
+                                            borderRadius: '10px', background: '#EF4444', color: '#fff',
+                                            fontSize: '0.65rem', fontWeight: 800,
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            animation: 'pulse 2s infinite',
+                                            boxShadow: '0 0 8px rgba(239,68,68,0.5)',
+                                            border: '2px solid rgba(255,255,255,0.8)',
+                                        }}>{unreadCount}</span>
+                                    )}
                                 </button>
                             );
                         })()}
@@ -562,7 +646,10 @@ export default function PacientesPanel({ addToast, currentUser }) {
                                 <span style={{ fontFamily: 'monospace', fontWeight: 700, marginLeft: '8px', color: '#128C7E' }}>{resolved}</span>
                             </div>
                             <button
-                                onClick={() => openWhatsApp(resolved)}
+                                onClick={() => openChat(pac.nombre, resolved, {
+                                    idPaciente: pac.id_paciente,
+                                    dni: pac.dni,
+                                })}
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: '6px',
                                     padding: '7px 16px', borderRadius: '8px',
@@ -575,7 +662,7 @@ export default function PacientesPanel({ addToast, currentUser }) {
                                 onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
                                 onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
                             >
-                                <MessageSquare size={14} /> Enviar WhatsApp
+                                <MessageSquare size={14} /> Abrir Chat
                             </button>
                         </div>
                     );
@@ -800,6 +887,22 @@ export default function PacientesPanel({ addToast, currentUser }) {
                     </DetailSection>
                 </div>
             )}
+
+            {/* ==================== CHAT WINDOW ==================== */}
+            <ChatWindow
+                open={chatOpen}
+                onClose={() => setChatOpen(false)}
+                patientName={chatPatient.name}
+                patientPhone={chatPatient.phone}
+                patientContext={{
+                    obraSocial: chatPatient.obraSocial,
+                    fechaCirugia: chatPatient.fechaCirugia,
+                    medico: chatPatient.medico,
+                    idPaciente: chatPatient.idPaciente,
+                    dni: chatPatient.dni,
+                }}
+                addToast={addToast}
+            />
         </div>
     );
 }
