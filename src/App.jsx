@@ -43,6 +43,7 @@ import CommandPalette from './components/CommandPalette.jsx';
 import BetoAnalyticsPanel from './components/BetoAnalyticsPanel.jsx';
 import ManualProcedimientos from './components/ManualProcedimientos.jsx';
 import DocumentosPanel from './components/DocumentosPanel.jsx';
+import PacientesPanel from './components/PacientesPanel.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -121,6 +122,7 @@ const VIEW_LABELS = {
     beto_analytics: 'Beto Analytics',
     manual: 'Manual del Sistema',
     documentos: 'Documentos',
+    pacientes: 'Pacientes',
 };
 
 function App({ currentUser, onLogout }) {
@@ -785,6 +787,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'documentos' && (
                     <DocumentosPanel addToast={addToast} currentUser={currentUser} />
+                )}
+
+                {activeView === 'pacientes' && (
+                    <PacientesPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'altas' && (

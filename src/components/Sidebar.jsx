@@ -36,6 +36,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     // Sub-items dentro de "Control de Cirugías"
     const cirugiasSubItems = [
         { id: 'cirugias', label: 'Control de Cirugías', icon: Stethoscope },
+        { id: 'pacientes', label: 'Pacientes', icon: Users },
         { id: 'metricas', label: 'Métricas', icon: BarChart3 },
         { id: 'asociaciones_entrega', label: 'Entrega Asociaciones', icon: PackageCheck },
         { id: 'laboratorios', label: 'Anatomía Pat.', icon: Microscope },
