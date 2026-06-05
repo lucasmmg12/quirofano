@@ -10,9 +10,13 @@ import {
     Search, RefreshCw, ChevronRight, Clock, Calendar,
     Filter, X, Loader2, FileText, User, Building2,
     Stethoscope, ChevronDown, ChevronUp, StickyNote, Save,
-    ListFilter, Download, FileDown,
+    ListFilter, Download, FileDown, ShoppingCart, Printer, Trash2, PackageCheck,
 } from 'lucide-react';
-import { fetchAltas, updateAltaEstado, updateAltaNotas, updateAltaResponsable, ALTA_ESTADOS } from '../services/altasService';
+import {
+    fetchAltas, updateAltaEstado, updateAltaNotas, updateAltaResponsable, ALTA_ESTADOS,
+    fetchCarritoTraspaso, marcarParaTraspaso, quitarDeCarritoTraspaso,
+    generarTraspaso, fetchTraspasos, fetchTraspasoDetalle,
+} from '../services/altasService';
 import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
 import SalusSyncButton from './SalusSyncButton';
 import AltasMetricsPanel from './AltasMetricsPanel';
@@ -55,16 +59,28 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [notasText, setNotasText] = useState('');
     const [criterios, setCriterios] = useState([]);
 
+    // ── Carrito de traspaso ──
+    const [selectedIds, setSelectedIds] = useState(new Set());
+    const [carritoItems, setCarritoItems] = useState([]);
+    const [carritoLoading, setCarritoLoading] = useState(false);
+    const [traspasos, setTraspasos] = useState([]);
+    const [traspasosLoading, setTraspasosLoading] = useState(false);
+    const [expandedTraspaso, setExpandedTraspaso] = useState(null);
+    const [traspasoDetalle, setTraspasoDetalle] = useState({});
+    const [showTraspasoModal, setShowTraspasoModal] = useState(false);
+    const [traspasoForm, setTraspasoForm] = useState({ entrega: '', recibe: '', notas: '' });
+    const [generando, setGenerando] = useState(false);
+
     // ── Filtros por columna (tipo Excel) ──
     const [columnFilters, setColumnFilters] = useState({});
     const [activeFilterCol, setActiveFilterCol] = useState(null);
     const [filterSearch, setFilterSearch] = useState('');
 
     // ── Ordenamiento fecha ingreso ──
-    const [ingresoSort, setIngresoSort] = useState('desc'); // 'desc' = recientes primero | 'asc' = antiguas primero
+    const [ingresoSort, setIngresoSort] = useState('desc');
 
     // ── Tab activo ──
-    const [activeTab, setActiveTab] = useState('tabla'); // 'tabla' | 'metricas'
+    const [activeTab, setActiveTab] = useState('tabla'); // 'tabla' | 'metricas' | 'carrito' | 'historial'
 
     // ── Carga de datos ──
     const loadData = useCallback(async () => {
@@ -84,6 +100,163 @@ export default function AltasPanel({ addToast, currentUser }) {
     }, [fromDate, toDate, searchTerm, addToast]);
 
     useEffect(() => { loadData(); }, [loadData]);
+
+    // ── Carga carrito ──
+    const loadCarrito = useCallback(async () => {
+        setCarritoLoading(true);
+        try {
+            const data = await fetchCarritoTraspaso();
+            setCarritoItems(data);
+        } catch (err) {
+            addToast?.('Error al cargar carrito: ' + err.message, 'error');
+        } finally {
+            setCarritoLoading(false);
+        }
+    }, [addToast]);
+
+    const loadTraspasos = useCallback(async () => {
+        setTraspasosLoading(true);
+        try {
+            const data = await fetchTraspasos();
+            setTraspasos(data);
+        } catch (err) {
+            addToast?.('Error al cargar historial: ' + err.message, 'error');
+        } finally {
+            setTraspasosLoading(false);
+        }
+    }, [addToast]);
+
+    useEffect(() => {
+        if (activeTab === 'carrito') loadCarrito();
+        else if (activeTab === 'historial') loadTraspasos();
+    }, [activeTab, loadCarrito, loadTraspasos]);
+
+    // ── Carrito handlers ──
+    const handleToggleSelect = (id) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const handleSelectAllAltaAdm = () => {
+        const altaAdmIds = sortedAltas
+            .filter(a => a._effectiveEstado === 'Alta Adm' && !a.en_carrito_traspaso && !a.traspaso_id)
+            .map(a => a.id);
+        setSelectedIds(new Set(altaAdmIds));
+    };
+
+    const handleEnviarAlCarrito = async () => {
+        if (selectedIds.size === 0) {
+            addToast?.('Seleccioná fichas para enviar al carrito', 'info');
+            return;
+        }
+        try {
+            await marcarParaTraspaso([...selectedIds]);
+            addToast?.(`${selectedIds.size} ficha(s) enviadas al carrito`, 'success');
+            setSelectedIds(new Set());
+            loadData();
+            loadCarrito();
+        } catch (err) {
+            addToast?.('Error: ' + err.message, 'error');
+        }
+    };
+
+    const handleQuitarDelCarrito = async (id) => {
+        try {
+            await quitarDeCarritoTraspaso(id);
+            addToast?.('Ficha removida del carrito', 'info');
+            loadCarrito();
+            loadData();
+        } catch (err) {
+            addToast?.('Error: ' + err.message, 'error');
+        }
+    };
+
+    const handleGenerarTraspaso = async () => {
+        if (!traspasoForm.entrega) {
+            addToast?.('Ingresá el nombre de quien entrega', 'error');
+            return;
+        }
+        setGenerando(true);
+        try {
+            const traspaso = await generarTraspaso({
+                responsableEntrega: traspasoForm.entrega,
+                responsableRecibe: traspasoForm.recibe || null,
+                notas: traspasoForm.notas || null,
+            });
+            addToast?.(`✅ Traspaso ${traspaso.codigo} generado — ${traspaso.cantidad_fichas} fichas`, 'success');
+            setShowTraspasoModal(false);
+            setTraspasoForm({ entrega: '', recibe: '', notas: '' });
+            loadCarrito();
+            loadData();
+            // Auto-print
+            handlePrintTraspaso(traspaso);
+        } catch (err) {
+            addToast?.('Error: ' + err.message, 'error');
+        } finally {
+            setGenerando(false);
+        }
+    };
+
+    const handlePrintTraspaso = async (traspaso) => {
+        try {
+            const items = await fetchTraspasoDetalle(traspaso.id);
+            const today = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            const rows = items.map(a => `<tr>
+                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px;font-family:monospace;font-weight:600">${a.numero_admision || '—'}</td>
+                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px;font-weight:600">${a.paciente || '—'}</td>
+                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px">${a.cliente || '—'}</td>
+                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px">${a.doctor || '—'}</td>
+                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px;font-family:monospace">${formatDate(a.fecha_ingreso)}</td>
+                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px;font-family:monospace">${formatDate(a.fecha_alta)}</td>
+            </tr>`).join('');
+
+            const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Traspaso ${traspaso.codigo}</title>
+            <style>
+                @page { margin: 15mm; }
+                body { font-family: -apple-system, 'Segoe UI', sans-serif; color: #1f2937; }
+                table { border-collapse: collapse; width: 100%; }
+                th { padding: 6px 8px; background: #f1f5f9; border: 1px solid #e2e8f0; font-size: 11px; font-weight: 700; text-align: left; }
+                tr:nth-child(even) td { background: #f9fafb; }
+            </style></head><body>
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+                    <div style="font-size:20px;font-weight:800">📦 Constancia de Traspaso</div>
+                    <div style="margin-left:auto;font-size:12px;color:#6b7280">${today}</div>
+                </div>
+                <div style="display:flex;gap:20px;margin-bottom:14px;font-size:12px">
+                    <div><strong>Código:</strong> ${traspaso.codigo}</div>
+                    <div><strong>Fichas:</strong> ${traspaso.cantidad_fichas}</div>
+                    <div><strong>Entrega:</strong> ${traspaso.responsable_entrega}</div>
+                    <div><strong>Recibe:</strong> ${traspaso.responsable_recibe || '________________________'}</div>
+                </div>
+                ${traspaso.notas ? '<div style="margin-bottom:12px;font-size:11px;color:#6b7280"><strong>Obs:</strong> ' + traspaso.notas + '</div>' : ''}
+                <table><thead><tr>
+                    <th>N° Adm</th><th>Paciente</th><th>Obra Social</th><th>Médico</th><th>Ingreso</th><th>Alta</th>
+                </tr></thead><tbody>${rows}</tbody></table>
+                <div style="display:flex;justify-content:space-between;margin-top:40px">
+                    <div style="text-align:center;width:200px">
+                        <div style="border-top:1px solid #1f2937;padding-top:6px;font-size:11px;font-weight:600">${traspaso.responsable_entrega}</div>
+                        <div style="font-size:9px;color:#9ca3af">Entrega — Administración</div>
+                    </div>
+                    <div style="text-align:center;width:200px">
+                        <div style="border-top:1px solid #1f2937;padding-top:6px;font-size:11px;font-weight:600">${traspaso.responsable_recibe || '________________________'}</div>
+                        <div style="font-size:9px;color:#9ca3af">Recibe — Facturación</div>
+                    </div>
+                </div>
+                <div style="margin-top:30px;font-size:9px;color:#9ca3af;text-align:center">Sanatorio Argentino — Sistema ADM-QUI — ${today}</div>
+            </body></html>`;
+
+            const printWin = window.open('', '_blank', 'width=900,height=700');
+            printWin.document.write(html);
+            printWin.document.close();
+            setTimeout(() => printWin.print(), 400);
+        } catch (err) {
+            addToast?.('Error al imprimir: ' + err.message, 'error');
+        }
+    };
 
     // ── Handlers ──
     const handleEstadoChange = async (id, nuevoEstado) => {
@@ -583,6 +756,8 @@ export default function AltasPanel({ addToast, currentUser }) {
             }}>
                 {[
                     { key: 'tabla', label: '📋 Tabla', icon: null },
+                    { key: 'carrito', label: '📦 Carrito', icon: null, badge: carritoItems.length },
+                    { key: 'historial', label: '📄 Historial', icon: null },
                     { key: 'metricas', label: '📊 Métricas BI', icon: null },
                 ].map(tab => (
                     <button
@@ -600,12 +775,211 @@ export default function AltasPanel({ addToast, currentUser }) {
                         }}
                     >
                         {tab.label}
+                        {tab.badge > 0 && (
+                            <span style={{
+                                background: '#6366F1', color: '#fff', padding: '1px 7px',
+                                borderRadius: '10px', fontSize: '0.65rem', fontWeight: 800,
+                            }}>{tab.badge}</span>
+                        )}
                     </button>
                 ))}
             </div>
 
             {activeTab === 'metricas' ? (
                 <AltasMetricsPanel altas={preFilteredAltas} />
+            ) : activeTab === 'carrito' ? (
+                /* ══════ CARRITO TAB ══════ */
+                <div className="animate-fade-in">
+                    {carritoLoading ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+                            <Loader2 size={28} className="spin" style={{ color: '#6366F1' }} />
+                        </div>
+                    ) : carritoItems.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--neutral-400)' }}>
+                            <ShoppingCart size={48} strokeWidth={1.2} />
+                            <h3 style={{ margin: '12px 0 4px' }}>Carrito vacío</h3>
+                            <p style={{ fontSize: '0.85rem' }}>Seleccioná fichas con estado "Alta Adm" en la pestaña Tabla y envialas al carrito.</p>
+                        </div>
+                    ) : (
+                        <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--neutral-600)' }}>
+                                    <ShoppingCart size={16} style={{ verticalAlign: 'middle', marginRight: '6px' }} />
+                                    {carritoItems.length} ficha{carritoItems.length !== 1 ? 's' : ''} en el carrito
+                                </div>
+                                <button onClick={() => setShowTraspasoModal(true)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        padding: '10px 20px', borderRadius: '10px',
+                                        background: 'linear-gradient(135deg, #6366F1, #4F46E5)',
+                                        color: '#fff', border: 'none', cursor: 'pointer',
+                                        fontSize: '0.82rem', fontWeight: 700,
+                                        boxShadow: '0 2px 8px rgba(99,102,241,0.3)',
+                                    }}>
+                                    <Printer size={16} /> Generar Constancia de Traspaso
+                                </button>
+                            </div>
+                            <div style={{ borderRadius: '12px', border: '1px solid var(--neutral-200)', overflow: 'hidden' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                                    <thead>
+                                        <tr style={{ background: 'var(--neutral-50)' }}>
+                                            <th className="cart__th">N° Adm</th>
+                                            <th className="cart__th">Paciente</th>
+                                            <th className="cart__th">Obra Social</th>
+                                            <th className="cart__th">Médico</th>
+                                            <th className="cart__th">Ingreso</th>
+                                            <th className="cart__th">Alta</th>
+                                            <th className="cart__th" style={{ width: '40px' }}></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {carritoItems.map(a => (
+                                            <tr key={a.id} style={{ borderBottom: '1px solid var(--neutral-100)' }}>
+                                                <td style={{ padding: '8px 10px' }}>
+                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: '#EEF2FF', color: '#4338CA' }}>{a.numero_admision}</span>
+                                                </td>
+                                                <td style={{ padding: '8px 10px', fontWeight: 600 }}>{a.paciente}</td>
+                                                <td style={{ padding: '8px 10px', color: 'var(--neutral-500)' }}>{a.cliente || '—'}</td>
+                                                <td style={{ padding: '8px 10px', color: 'var(--neutral-500)' }}>{a.doctor || '—'}</td>
+                                                <td style={{ padding: '8px 10px' }}>{formatDate(a.fecha_ingreso)}</td>
+                                                <td style={{ padding: '8px 10px' }}>{formatDate(a.fecha_alta)}</td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                                                    <button onClick={() => handleQuitarDelCarrito(a.id)}
+                                                        title="Quitar del carrito"
+                                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444', padding: '4px' }}>
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </>
+                    )}
+
+                    {/* Modal Generar Traspaso */}
+                    {showTraspasoModal && (
+                        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            onClick={() => setShowTraspasoModal(false)}>
+                            <div onClick={e => e.stopPropagation()} style={{
+                                background: '#fff', borderRadius: '16px', padding: '28px', width: '420px', maxWidth: '90vw',
+                                boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+                            }}>
+                                <h3 style={{ margin: '0 0 20px', fontSize: '1.1rem', fontWeight: 800 }}>
+                                    📦 Generar Constancia de Traspaso
+                                </h3>
+                                <div style={{ fontSize: '0.82rem', color: 'var(--neutral-500)', marginBottom: '16px' }}>
+                                    {carritoItems.length} ficha{carritoItems.length !== 1 ? 's' : ''} serán traspasadas a Facturación.
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    <div>
+                                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>Entrega *</label>
+                                        <input value={traspasoForm.entrega} onChange={e => setTraspasoForm(p => ({ ...p, entrega: e.target.value }))}
+                                            placeholder="Nombre de quien entrega" style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--neutral-200)', fontSize: '0.85rem', marginTop: '4px' }} />
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>Recibe</label>
+                                        <input value={traspasoForm.recibe} onChange={e => setTraspasoForm(p => ({ ...p, recibe: e.target.value }))}
+                                            placeholder="Nombre de quien recibe (opcional)" style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--neutral-200)', fontSize: '0.85rem', marginTop: '4px' }} />
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>Observaciones</label>
+                                        <textarea value={traspasoForm.notas} onChange={e => setTraspasoForm(p => ({ ...p, notas: e.target.value }))}
+                                            placeholder="Notas adicionales (opcional)" rows={2}
+                                            style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--neutral-200)', fontSize: '0.85rem', marginTop: '4px', resize: 'vertical' }} />
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                                    <button onClick={() => setShowTraspasoModal(false)}
+                                        style={{ padding: '8px 18px', borderRadius: '8px', border: '1px solid var(--neutral-200)', background: '#fff', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>Cancelar</button>
+                                    <button onClick={handleGenerarTraspaso} disabled={generando}
+                                        style={{
+                                            padding: '8px 24px', borderRadius: '8px', border: 'none',
+                                            background: 'linear-gradient(135deg, #6366F1, #4F46E5)', color: '#fff',
+                                            cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700,
+                                            opacity: generando ? 0.6 : 1,
+                                        }}>
+                                        {generando ? 'Generando...' : '📦 Generar e Imprimir'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            ) : activeTab === 'historial' ? (
+                /* ══════ HISTORIAL TAB ══════ */
+                <div className="animate-fade-in">
+                    {traspasosLoading ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+                            <Loader2 size={28} className="spin" style={{ color: '#6366F1' }} />
+                        </div>
+                    ) : traspasos.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--neutral-400)' }}>
+                            <PackageCheck size={48} strokeWidth={1.2} />
+                            <h3 style={{ margin: '12px 0 4px' }}>Sin traspasos</h3>
+                            <p style={{ fontSize: '0.85rem' }}>Aún no se generaron constancias de traspaso.</p>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {traspasos.map(t => (
+                                <div key={t.id} style={{
+                                    borderRadius: '10px', border: '1px solid var(--neutral-200)',
+                                    overflow: 'hidden', background: '#fff',
+                                }}>
+                                    <div onClick={async () => {
+                                        if (expandedTraspaso === t.id) { setExpandedTraspaso(null); return; }
+                                        setExpandedTraspaso(t.id);
+                                        if (!traspasoDetalle[t.id]) {
+                                            const items = await fetchTraspasoDetalle(t.id);
+                                            setTraspasoDetalle(prev => ({ ...prev, [t.id]: items }));
+                                        }
+                                    }}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '12px',
+                                            padding: '12px 16px', cursor: 'pointer',
+                                            background: expandedTraspaso === t.id ? 'var(--neutral-50)' : '#fff',
+                                        }}>
+                                        {expandedTraspaso === t.id ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                        <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.82rem', color: '#4338CA' }}>{t.codigo}</span>
+                                        <span style={{ fontSize: '0.8rem', color: 'var(--neutral-500)' }}>{new Date(t.fecha_traspaso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                        <span style={{ padding: '2px 8px', borderRadius: '10px', background: '#EEF2FF', color: '#4338CA', fontSize: '0.72rem', fontWeight: 700 }}>{t.cantidad_fichas} fichas</span>
+                                        <span style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>Entrega: {t.responsable_entrega}</span>
+                                        <button onClick={(e) => { e.stopPropagation(); handlePrintTraspaso(t); }}
+                                            style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#6366F1', padding: '4px' }}
+                                            title="Reimprimir">
+                                            <Printer size={16} />
+                                        </button>
+                                    </div>
+                                    {expandedTraspaso === t.id && traspasoDetalle[t.id] && (
+                                        <div style={{ borderTop: '1px solid var(--neutral-100)', padding: '12px 16px 12px 40px' }}>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                                                <thead>
+                                                    <tr style={{ background: '#F8FAFC' }}>
+                                                        <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 600, fontSize: '0.68rem', color: 'var(--neutral-500)' }}>N° ADM</th>
+                                                        <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 600, fontSize: '0.68rem', color: 'var(--neutral-500)' }}>PACIENTE</th>
+                                                        <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 600, fontSize: '0.68rem', color: 'var(--neutral-500)' }}>O.S.</th>
+                                                        <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 600, fontSize: '0.68rem', color: 'var(--neutral-500)' }}>MÉDICO</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {traspasoDetalle[t.id].map(a => (
+                                                        <tr key={a.id} style={{ borderTop: '1px solid var(--neutral-100)' }}>
+                                                            <td style={{ padding: '4px 8px', fontFamily: 'monospace', fontWeight: 600 }}>{a.numero_admision}</td>
+                                                            <td style={{ padding: '4px 8px', fontWeight: 600 }}>{a.paciente}</td>
+                                                            <td style={{ padding: '4px 8px', color: 'var(--neutral-500)' }}>{a.cliente || '—'}</td>
+                                                            <td style={{ padding: '4px 8px', color: 'var(--neutral-500)' }}>{a.doctor || '—'}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
             ) : (
             <>
 
@@ -732,6 +1106,17 @@ export default function AltasPanel({ addToast, currentUser }) {
                         <table className="cart__table" style={{ minWidth: '950px' }}>
                             <thead>
                                 <tr>
+                                    <th className="cart__th" style={{ width: '30px', textAlign: 'center' }}>
+                                        <input type="checkbox"
+                                            checked={selectedIds.size > 0 && sortedAltas.filter(a => a._effectiveEstado === 'Alta Adm' && !a.en_carrito_traspaso && !a.traspaso_id).every(a => selectedIds.has(a.id))}
+                                            onChange={e => {
+                                                if (e.target.checked) handleSelectAllAltaAdm();
+                                                else setSelectedIds(new Set());
+                                            }}
+                                            title="Seleccionar todas Alta Adm"
+                                            style={{ cursor: 'pointer', accentColor: '#6366F1' }}
+                                        />
+                                    </th>
                                     <th className="cart__th" style={{ width: '30px' }}></th>
                                     <FilterHeader label="Estado" col="estado" width="120px" />
                                     <th className="cart__th">Paciente</th>
@@ -817,6 +1202,18 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             onMouseOver={e => { if (!isExpanded) e.currentTarget.style.background = 'var(--neutral-50)'; }}
                                             onMouseOut={e => { if (!isExpanded) e.currentTarget.style.background = ''; }}
                                         >
+                                            {/* Checkbox */}
+                                            <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }} onClick={e => e.stopPropagation()}>
+                                                {(alta._effectiveEstado === 'Alta Adm' && !alta.en_carrito_traspaso && !alta.traspaso_id) ? (
+                                                    <input type="checkbox"
+                                                        checked={selectedIds.has(alta.id)}
+                                                        onChange={() => handleToggleSelect(alta.id)}
+                                                        style={{ cursor: 'pointer', accentColor: '#6366F1' }}
+                                                    />
+                                                ) : alta.en_carrito_traspaso ? (
+                                                    <ShoppingCart size={12} style={{ color: '#6366F1', opacity: 0.5 }} title="En carrito" />
+                                                ) : null}
+                                            </td>
                                             {/* Chevron */}
                                             <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }}>
                                                 <ChevronRight size={14} style={{
@@ -1110,6 +1507,43 @@ export default function AltasPanel({ addToast, currentUser }) {
                     </div>
                 )}
             </div>
+
+            {/* ── Floating action bar (selección) ── */}
+            {selectedIds.size > 0 && (
+                <div className="animate-fade-in" style={{
+                    position: 'sticky', bottom: '16px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px',
+                    padding: '12px 24px', borderRadius: '14px',
+                    background: 'linear-gradient(135deg, #312E81, #4338CA)',
+                    color: '#fff', boxShadow: '0 8px 30px rgba(67,56,202,0.4)',
+                    zIndex: 100,
+                }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>
+                        {selectedIds.size} ficha{selectedIds.size !== 1 ? 's' : ''} seleccionada{selectedIds.size !== 1 ? 's' : ''}
+                    </span>
+                    <button onClick={handleEnviarAlCarrito}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            padding: '8px 20px', borderRadius: '8px',
+                            background: '#fff', color: '#4338CA',
+                            border: 'none', cursor: 'pointer',
+                            fontSize: '0.82rem', fontWeight: 700,
+                        }}>
+                        <ShoppingCart size={16} /> Enviar al Carrito
+                    </button>
+                    <button onClick={() => setSelectedIds(new Set())}
+                        style={{
+                            background: 'transparent', border: '1px solid rgba(255,255,255,0.3)',
+                            color: '#fff', padding: '6px 12px', borderRadius: '8px',
+                            fontSize: '0.78rem', cursor: 'pointer',
+                        }}>
+                        Cancelar
+                    </button>
+                </div>
+            )}
+
+            </>
+            )}
             {/* ── Dropdown Portals ── */}
             {dropdownAnchor && (
                 createPortal(
@@ -1242,8 +1676,6 @@ export default function AltasPanel({ addToast, currentUser }) {
                     document.body
                 )
             )}
-        </>
-    )}
 </div>
     );
 }
