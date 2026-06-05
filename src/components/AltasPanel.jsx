@@ -166,7 +166,7 @@ export default function AltasPanel({ addToast, currentUser }) {
     const allProcessedAltas = useMemo(() => {
         return altas.filter(alta => {
             const doc = (alta.doctor || '').toLowerCase().trim();
-            if (doc.includes('qsoft') || doc.includes('profesional') && doc.includes('chequeo')) return false;
+            if (doc.includes('qsoft') || (doc.includes('profesional') && doc.includes('chequeo'))) return false;
             // Particulares: si paciente = obra social, no nos interesa
             const pac = (alta.paciente || '').trim().toUpperCase();
             const os = (alta.cliente || '').trim().toUpperCase();
@@ -175,7 +175,8 @@ export default function AltasPanel({ addToast, currentUser }) {
         }).map(alta => {
             const asignacion = matchAsignacion(criterios, alta.cliente, alta.especialidad, alta.proceso);
             const ctrlAdm = (alta.control_adm_finalizado || '').trim().toLowerCase();
-            const isCtrlAdmSi = ctrlAdm === 'sí' || ctrlAdm === 'si';
+            const isCtrlAdmSi = ctrlAdm === 'sí' || ctrlAdm === 'si' || ctrlAdm === 's' 
+                || ctrlAdm === 'true' || ctrlAdm === '1' || ctrlAdm === 'yes';
             const obsHasAltaAdm = (alta.observaciones || '').toLowerCase().includes('alta adm');
             // Alta Adm se detecta de 3 fuentes:
             // 1) SALUS control_adm_finalizado = 'Si'
@@ -224,7 +225,8 @@ export default function AltasPanel({ addToast, currentUser }) {
         return allProcessedAltas.filter(a => a._effectiveEstado === filterEstado);
     }, [allProcessedAltas, filterEstado]);
 
-    // Extraer valores únicos por columna
+    // Extraer valores únicos por columna — desde preFilteredAltas (SIN filtros de columna)
+    // para que los dropdowns no se reduzcan al aplicar filtros
     const uniqueValues = useMemo(() => {
         const cols = {
             estado: new Set(),

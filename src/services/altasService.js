@@ -40,7 +40,15 @@ export async function fetchAltas({ fromDate, toDate, search } = {}) {
         if (fromDate) query = query.gte('fecha_ingreso', fromDate);
         if (toDate) query = query.lte('fecha_ingreso', toDate);
         if (search) {
-            query = query.or(`paciente.ilike.%${search}%,doctor.ilike.%${search}%,cliente.ilike.%${search}%,numero_admision.ilike.%${search}%`);
+            // Sanitizar: escapar caracteres especiales de PostgREST para que la búsqueda
+            // no se rompa con comas, paréntesis, puntos, etc.
+            const sanitized = search
+                .replace(/\\/g, '\\\\')
+                .replace(/,/g, '\\,')
+                .replace(/\(/g, '\\(')
+                .replace(/\)/g, '\\)')
+                .replace(/%/g, '\\%');
+            query = query.or(`paciente.ilike.%${sanitized}%,doctor.ilike.%${sanitized}%,cliente.ilike.%${sanitized}%,numero_admision.ilike.%${sanitized}%`);
         }
 
         const { data, error } = await query;

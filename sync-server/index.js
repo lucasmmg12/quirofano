@@ -888,13 +888,17 @@ async function syncAltasAdministrativas(db) {
                 TA.[Doctor],
                 TA.[Motivo de alta],
                 TA.[Control ADM finalizado],
-                OBS.ValorM AS [Observaciones],
+                OBS.Observaciones AS [Observaciones],
                 ROW_NUMBER() OVER (PARTITION BY TA.[Paciente], CAST(TA.[Fecha ingreso] AS DATE) ORDER BY TA.[Número admisión] DESC) as rn
             FROM [SALUS].[dbo].[TABLEAU_Admisiones] TA
-            LEFT JOIN [PR InstRespHospi] OBS 
-                ON TA.idAdmision = OBS.idHospi 
-                AND OBS.idPreguntaPr = 6175 
-                AND OBS.activo = 1
+            OUTER APPLY (
+                SELECT STRING_AGG(CAST(O.ValorM AS NVARCHAR(MAX)), CHAR(13) + CHAR(10) + '---' + CHAR(13) + CHAR(10)) AS Observaciones
+                FROM [PR InstRespHospi] O
+                WHERE O.idHospi = TA.idAdmision
+                  AND O.activo = 1
+                  AND O.ValorM IS NOT NULL
+                  AND LEN(LTRIM(RTRIM(O.ValorM))) > 0
+            ) OBS
             WHERE 
                 TA.[Fecha ingreso] >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE))
                 AND TA.[Fecha ingreso] < DATEADD(DAY, 1, CAST(GETDATE() AS DATE))
@@ -908,6 +912,10 @@ async function syncAltasAdministrativas(db) {
         const numAdmision = r['Número admisión'] ? String(r['Número admisión']).trim() : null;
         if (!numAdmision) continue;
 
+        // Limpiar RTF de las observaciones si viene con formato
+        const rawObs = r.Observaciones?.trim() || null;
+        const cleanObs = rawObs ? stripRtf(rawObs) : null;
+
         records.push({
             numero_admision: numAdmision,
             paciente: r.Paciente?.trim() || 'Sin nombre',
@@ -917,7 +925,7 @@ async function syncAltasAdministrativas(db) {
             doctor: r.Doctor?.trim() || null,
             motivo_alta: r['Motivo de alta']?.trim() || null,
             control_adm_finalizado: r['Control ADM finalizado']?.trim() || null,
-            observaciones: r.Observaciones?.trim() || null,
+            observaciones: cleanObs,
             fecha_ingreso: formatDate(r['Fecha ingreso']),
             fecha_alta: formatDate(r['Fecha alta']),
         });
