@@ -214,7 +214,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                         Control de Facturación Internada
                     </h2>
                     <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--neutral-500)' }}>
-                        Fichas traspasadas desde Administración — PDV 21/31
+                        Control de facturación internada — PDV 21/31
                     </p>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -304,7 +304,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                 <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--neutral-400)' }}>
                     <Receipt size={48} strokeWidth={1.2} />
                     <h3 style={{ margin: '12px 0 4px' }}>Sin fichas</h3>
-                    <p style={{ fontSize: '0.85rem' }}>No hay fichas traspasadas en el rango seleccionado.</p>
+                    <p style={{ fontSize: '0.85rem' }}>No hay altas en el rango seleccionado.</p>
                 </div>
             ) : (
                 <div style={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid var(--neutral-200)', background: 'var(--card-bg, #fff)' }}>

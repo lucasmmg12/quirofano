@@ -181,7 +181,6 @@ export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
         let query = supabase
             .from('altas_administrativas')
             .select('*')
-            .not('traspaso_id', 'is', null)
             .order('fecha_ingreso', { ascending: false })
             .range(from, from + PAGE_SIZE - 1);
 
