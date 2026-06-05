@@ -1016,6 +1016,134 @@ async function syncAltasAdministrativas(db) {
     return summary;
 }
 
+// ═══════════════════════════════════════════════════
+// SYNC FACTURACIÓN INTERNADA — SQL Server → Supabase
+// Fuente: TABLEAU_Detalle de ventas Facturadas con Gastos y Honorarios
+// Filtra PDV 21 y 31 (facturación internada)
+// Cruza con altas_administrativas por numero_admision
+// ═══════════════════════════════════════════════════
+async function syncFacturacionInternada(db) {
+    console.log('🧾 [4b/10] Extrayendo facturación internada (PDV 21/31) de SALUS...');
+
+    const result = await db.request().query(`
+        SELECT 
+            [Fecha factura],
+            [Paciente],
+            [Paciente_NHC],
+            [Paciente_NIF],
+            [Cliente],
+            [Concepto],
+            [Numero factura],
+            [Nº Admision],
+            [Usuario creación factura]
+        FROM 
+            [SALUS].[dbo].[TABLEAU_Detalle de ventas Facturadas con Gastos y Honorarios]
+        WHERE 
+            [Fecha factura] >= DATEADD(DAY, -90, CAST(GETDATE() AS DATE))
+            AND (
+                [Numero factura] LIKE '00021%' 
+                OR [Numero factura] LIKE '00031%'
+            )
+        ORDER BY 
+            [Fecha factura] ASC
+    `);
+    console.log(`   📥 ${result.recordset.length} líneas de facturación extraídas`);
+
+    if (result.recordset.length === 0) {
+        return { total: 0, upserted: 0, skipped: 0, altasActualizadas: 0 };
+    }
+
+    const records = [];
+    for (const r of result.recordset) {
+        const numAdmision = r['Nº Admision'] ? String(r['Nº Admision']).trim() : null;
+        const numFactura = r['Numero factura'] ? String(r['Numero factura']).trim() : null;
+        if (!numAdmision || !numFactura) continue;
+
+        let pdv = null;
+        if (numFactura.startsWith('00021') || numFactura.startsWith('21')) pdv = '21';
+        else if (numFactura.startsWith('00031') || numFactura.startsWith('31')) pdv = '31';
+
+        const concepto = r.Concepto ? String(r.Concepto).trim() : null;
+        if (!concepto) continue;
+
+        records.push({
+            numero_admision: numAdmision,
+            numero_factura: numFactura,
+            fecha_factura: formatDate(r['Fecha factura']),
+            paciente: r.Paciente?.trim() || null,
+            paciente_nhc: r.Paciente_NHC ? String(r.Paciente_NHC).trim() : null,
+            paciente_nif: r.Paciente_NIF ? String(r.Paciente_NIF).trim() : null,
+            cliente: r.Cliente?.trim() || null,
+            concepto,
+            usuario_factura: r['Usuario creación factura']?.trim() || null,
+            pdv,
+        });
+    }
+
+    console.log(`   📦 ${records.length} registros válidos`);
+
+    let upserted = 0, skipped = 0;
+    const BATCH = 100;
+
+    for (let i = 0; i < records.length; i += BATCH) {
+        const batch = records.slice(i, i + BATCH);
+        const { data, error } = await supabase
+            .from('facturacion_internada')
+            .upsert(batch, {
+                onConflict: 'numero_factura,numero_admision,concepto',
+                ignoreDuplicates: false,
+            })
+            .select('id');
+
+        if (error) {
+            console.error(`   ❌ Batch ${Math.floor(i / BATCH) + 1} error:`, error.message);
+            skipped += batch.length;
+        } else if (data) {
+            upserted += data.length;
+        }
+    }
+
+    console.log(`   ✅ Facturación internada: ${upserted} upserted, ${skipped} errores`);
+
+    // ── Cruce automático con altas_administrativas ──
+    const facturadoMap = new Map();
+    for (const r of records) {
+        if (!facturadoMap.has(r.numero_admision)) {
+            facturadoMap.set(r.numero_admision, {
+                facturas: new Set(),
+                usuario: r.usuario_factura,
+                fecha: r.fecha_factura,
+            });
+        }
+        const entry = facturadoMap.get(r.numero_admision);
+        entry.facturas.add(r.numero_factura);
+        if (r.fecha_factura && (!entry.fecha || r.fecha_factura < entry.fecha)) {
+            entry.fecha = r.fecha_factura;
+        }
+    }
+
+    console.log(`   🔗 ${facturadoMap.size} admisiones con factura, cruzando con altas...`);
+
+    let altasActualizadas = 0;
+    for (const [numAdm, info] of facturadoMap.entries()) {
+        const { error } = await supabase
+            .from('altas_administrativas')
+            .update({
+                facturada: true,
+                facturada_at: info.fecha ? new Date(info.fecha + 'T12:00:00').toISOString() : new Date().toISOString(),
+                usuario_facturo: info.usuario,
+                cantidad_facturas: info.facturas.size,
+            })
+            .eq('numero_admision', numAdm);
+
+        if (!error) altasActualizadas++;
+    }
+
+    console.log(`   🔗 ${altasActualizadas} altas marcadas como facturadas`);
+    return { total: result.recordset.length, upserted, skipped, altasActualizadas };
+}
+
+
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // SYNC FACTURACIÃ“N SEDE — SQL Server â†’ Supabase
 // Fuente: PR_FACTURAS_QRY (dedup por idVisita)
@@ -1984,6 +2112,13 @@ app.get('/api/salus/sync-all', async (req, res) => {
         }
 
         try {
+            results.facturacionInternada = await syncFacturacionInternada(db);
+        } catch (err) {
+            console.error('\u274C Error en facturaci\u00F3n internada:', err.message);
+            results.facturacionInternada = { error: err.message };
+        }
+
+        try {
             results.facturacion = await syncFacturacionSede(db);
         } catch (err) {
             console.error('âŒ Error en facturación sede:', err.message);
@@ -2117,6 +2252,11 @@ app.get('/api/salus/sync/consultas-guardia', async (req, res) => {
 
 app.get('/api/salus/sync/recepciones', async (req, res) => {
     try { const db = await getPool(); res.json({ success: true, results: await syncRecepcionesVisitas(db) }); }
+    catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+app.get('/api/salus/sync/facturacion-internada', async (req, res) => {
+    try { const db = await getPool(); res.json({ success: true, results: await syncFacturacionInternada(db) }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 

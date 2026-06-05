@@ -29,6 +29,7 @@ import MetricsPanel from './components/MetricsPanel.jsx';
 import TurnoAdminPanel from './components/TurnoAdminPanel.jsx';
 import DeudasPanel from './components/DeudasPanel.jsx';
 import AltasPanel from './components/AltasPanel.jsx';
+import FacturacionPanel from './components/FacturacionPanel.jsx';
 import AsignacionPanel from './components/AsignacionPanel.jsx';
 import ConsultasPanel from './components/ConsultasPanel.jsx';
 import AuditoriaHistoriasPanel from './components/AuditoriaHistoriasPanel.jsx';
@@ -112,6 +113,7 @@ const VIEW_LABELS = {
     turnos: 'Cola de Turnos',
     deudas: 'Deudas',
     altas: 'Altas Administrativas',
+    facturacion: 'Control de Facturación',
     asignacion: 'Asignación',
     consultas: 'Consultas',
     auditoria_historias: 'Auditoría de Historias',
@@ -795,6 +797,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'altas' && (
                     <AltasPanel addToast={addToast} currentUser={currentUser} />
+                )}
+
+                {activeView === 'facturacion' && (
+                    <FacturacionPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'asignaciones' && (

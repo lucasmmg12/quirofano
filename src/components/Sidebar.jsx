@@ -3,7 +3,7 @@ import {
     ClipboardList, History, BookOpen, Settings, PanelLeftClose, PanelLeft,
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
     ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain, Users, PackageCheck, Microscope,
-    Activity, FileSpreadsheet, BookMarked, FolderOpen,
+    Activity, FileSpreadsheet, BookMarked, FolderOpen, Receipt,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '' }) {
@@ -15,6 +15,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     // Sub-items dentro de "Altas Adm"
     const altasSubItems = [
         { id: 'altas', label: 'Control de Altas', icon: ClipboardCheck },
+        { id: 'facturacion', label: 'Facturación', icon: Receipt },
         { id: 'asignaciones', label: 'Asignaciones', icon: Users },
         { id: 'auditoria_historias', label: 'Auditoría H.C.', icon: FileSpreadsheet },
     ];
