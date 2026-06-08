@@ -43,6 +43,7 @@ import BetoWidget from './components/BetoWidget.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
 import BetoAnalyticsPanel from './components/BetoAnalyticsPanel.jsx';
 import ManualProcedimientos from './components/ManualProcedimientos.jsx';
+import HelpButton from './components/HelpButton.jsx';
 import DocumentosPanel from './components/DocumentosPanel.jsx';
 import PacientesPanel from './components/PacientesPanel.jsx';
 import './App.css';
@@ -498,6 +499,7 @@ function App({ currentUser, onLogout }) {
                                 <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: 'var(--neutral-400)', fontWeight: 500 }}>
                                     <ChevronRight size={14} />
                                     <span style={{ color: 'var(--primary-500)', fontWeight: 600 }}>{VIEW_LABELS[activeView] || activeView}</span>
+                                    <HelpButton moduleId={activeView} />
                                 </span>
                             )}
                         </div>
