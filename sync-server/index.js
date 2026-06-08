@@ -1445,6 +1445,7 @@ async function syncAsociacionesCirugias(db) {
             AND CONVERT(DATE, LEFT([Fecha realización], 10), 103) >= '20260301'
             AND [Especialidad] IN (
                 'CIRUGIA', 
+                'GASTROENTEROLOGIA',
                 'OTORRINOLARINGOLOGIA', 
                 'CIRUGIA PEDIATRICA', 
                 'ORTOPEDIA / TRAUMATOLOGIA',
