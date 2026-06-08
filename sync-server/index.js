@@ -1133,6 +1133,8 @@ async function syncFacturacionInternada(db) {
                 facturada_at: info.fecha ? new Date(info.fecha + 'T12:00:00').toISOString() : new Date().toISOString(),
                 usuario_facturo: info.usuario,
                 cantidad_facturas: info.facturas.size,
+                estado_fac: 'Facturada',
+                responsable_fac: info.usuario,
             })
             .eq('numero_admision', numAdm);
 

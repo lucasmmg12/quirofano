@@ -120,7 +120,18 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                 toDate: toDate || undefined,
                 search: searchTerm,
             });
-            setAltas(data);
+            // Normalizar: si SALUS marcó facturada=true, reflejar en estado_fac y responsable
+            const normalized = data.map(a => {
+                if (a.facturada && (!a.estado_fac || a.estado_fac === 'Pendiente')) {
+                    return {
+                        ...a,
+                        estado_fac: 'Facturada',
+                        responsable_fac: a.responsable_fac || a.usuario_facturo || null,
+                    };
+                }
+                return a;
+            });
+            setAltas(normalized);
         } catch (err) {
             addToast?.('Error al cargar facturación: ' + err.message, 'error');
         } finally {

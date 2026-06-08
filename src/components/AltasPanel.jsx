@@ -1182,8 +1182,8 @@ export default function AltasPanel({ addToast, currentUser }) {
                         <p style={{ margin: 0, fontSize: '0.82rem' }}>No hay altas que coincidan con los filtros.</p>
                     </div>
                 ) : (
-                    <div className="cart__table-wrapper" style={{ overflowX: 'auto' }}>
-                        <table className="cart__table" style={{ minWidth: '950px' }}>
+                    <div className="cart__table-wrapper" style={{ overflowX: 'auto', width: '100%' }}>
+                        <table className="cart__table" style={{ width: '100%', tableLayout: 'auto' }}>
                             <thead>
                                 <tr>
                                     <th className="cart__th" style={{ width: '30px', textAlign: 'center' }}>
