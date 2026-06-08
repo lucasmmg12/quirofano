@@ -69,9 +69,22 @@ export async function fetchAltas({ fromDate, toDate, search } = {}) {
  * Actualiza el estado de un alta
  */
 export async function updateAltaEstado(id, estado, operador = 'operador') {
+    // Si el registro tiene devolución activa, limpiar los campos de devolución
+    const { data: current } = await supabase
+        .from('altas_administrativas')
+        .select('devolucion_id, estado_fac')
+        .eq('id', id)
+        .single();
+
+    const updatePayload = { estado, operador };
+    if (current?.devolucion_id && current?.estado_fac === 'Devuelta') {
+        updatePayload.devolucion_id = null;
+        updatePayload.estado_fac = 'Pendiente';
+    }
+
     const { data, error } = await supabase
         .from('altas_administrativas')
-        .update({ estado, operador })
+        .update(updatePayload)
         .eq('id', id)
         .select()
         .single();
