@@ -15,11 +15,12 @@ import {
 import {
     fetchAltas, updateAltaEstado, updateAltaNotas, updateAltaResponsable, ALTA_ESTADOS,
     fetchCarritoTraspaso, marcarParaTraspaso, quitarDeCarritoTraspaso,
-    generarTraspaso, fetchTraspasos, fetchTraspasoDetalle,
+    generarTraspaso, fetchTraspasos, fetchTraspasoDetalle, firmarTraspaso,
 } from '../services/altasService';
 import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
 import SalusSyncButton from './SalusSyncButton';
 import AltasMetricsPanel from './AltasMetricsPanel';
+import SignaturePad from './SignaturePad';
 
 // ── Helpers ──
 function formatDate(d) {
@@ -70,6 +71,8 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [showTraspasoModal, setShowTraspasoModal] = useState(false);
     const [traspasoForm, setTraspasoForm] = useState({ entrega: '', recibe: '', notas: '' });
     const [generando, setGenerando] = useState(false);
+    const [firmaEntrega, setFirmaEntrega] = useState(null);
+    const [firmaRecibe, setFirmaRecibe] = useState(null);
 
     // ── Filtros por columna (tipo Excel) ──
     const [columnFilters, setColumnFilters] = useState({});
@@ -187,9 +190,17 @@ export default function AltasPanel({ addToast, currentUser }) {
                 responsableRecibe: traspasoForm.recibe || null,
                 notas: traspasoForm.notas || null,
             });
+            // Guardar firmas si existen
+            if (firmaEntrega || firmaRecibe) {
+                await firmarTraspaso(traspaso.id, { firmaEntrega, firmaRecibe });
+                traspaso.firma_entrega = firmaEntrega;
+                traspaso.firma_recibe = firmaRecibe;
+            }
             addToast?.(`✅ Traspaso ${traspaso.codigo} generado — ${traspaso.cantidad_fichas} fichas`, 'success');
             setShowTraspasoModal(false);
             setTraspasoForm({ entrega: '', recibe: '', notas: '' });
+            setFirmaEntrega(null);
+            setFirmaRecibe(null);
             loadCarrito();
             loadData();
             // Auto-print
@@ -237,11 +248,13 @@ export default function AltasPanel({ addToast, currentUser }) {
                     <th>N° Adm</th><th>Paciente</th><th>Obra Social</th><th>Médico</th><th>Ingreso</th><th>Alta</th>
                 </tr></thead><tbody>${rows}</tbody></table>
                 <div style="display:flex;justify-content:space-between;margin-top:40px">
-                    <div style="text-align:center;width:200px">
+                    <div style="text-align:center;width:220px">
+                        ${traspaso.firma_entrega ? '<img src="' + traspaso.firma_entrega + '" style="height:60px;display:block;margin:4px auto 0" />' : ''}
                         <div style="border-top:1px solid #1f2937;padding-top:6px;font-size:11px;font-weight:600">${traspaso.responsable_entrega}</div>
                         <div style="font-size:9px;color:#9ca3af">Entrega — Administración</div>
                     </div>
-                    <div style="text-align:center;width:200px">
+                    <div style="text-align:center;width:220px">
+                        ${traspaso.firma_recibe ? '<img src="' + traspaso.firma_recibe + '" style="height:60px;display:block;margin:4px auto 0" />' : ''}
                         <div style="border-top:1px solid #1f2937;padding-top:6px;font-size:11px;font-weight:600">${traspaso.responsable_recibe || '________________________'}</div>
                         <div style="font-size:9px;color:#9ca3af">Recibe — Facturación</div>
                     </div>
@@ -355,13 +368,17 @@ export default function AltasPanel({ addToast, currentUser }) {
             // 1) SALUS control_adm_finalizado = 'Si'
             // 2) Observaciones contienen 'alta adm' (escrito por el personal)
             // 3) Estado manual = 'Alta Adm' (puesto por operador)
-            const effectiveEstado = (isCtrlAdmSi || obsHasAltaAdm || alta.estado === 'Alta Adm')
-                ? 'Alta Adm'
-                : (alta.estado || 'Vacío');
+            // Devuelta FAC: si tiene devolucion_id y estado_fac === 'Devuelta'
+            const isDevueltaFac = !!(alta.devolucion_id && alta.estado_fac === 'Devuelta');
+            const effectiveEstado = isDevueltaFac
+                ? 'Devuelta FAC'
+                : (isCtrlAdmSi || obsHasAltaAdm || alta.estado === 'Alta Adm')
+                    ? 'Alta Adm'
+                    : (alta.estado || 'Vacío');
             // Responsable: manual override tiene prioridad sobre auto-match
             const autoResp = asignacion?.responsable || '';
             const finalResp = alta.responsable_override || autoResp;
-            return { ...alta, _effectiveEstado: effectiveEstado, _responsable: finalResp, _autoResponsable: autoResp };
+            return { ...alta, _effectiveEstado: effectiveEstado, _responsable: finalResp, _autoResponsable: autoResp, _isDevueltaFac: isDevueltaFac };
         });
     }, [altas, criterios]);
 
@@ -863,8 +880,8 @@ export default function AltasPanel({ addToast, currentUser }) {
                         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                             onClick={() => setShowTraspasoModal(false)}>
                             <div onClick={e => e.stopPropagation()} style={{
-                                background: '#fff', borderRadius: '16px', padding: '28px', width: '420px', maxWidth: '90vw',
-                                boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+                                background: '#fff', borderRadius: '16px', padding: '28px', width: '520px', maxWidth: '90vw',
+                                boxShadow: '0 20px 60px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto',
                             }}>
                                 <h3 style={{ margin: '0 0 20px', fontSize: '1.1rem', fontWeight: 800 }}>
                                     📦 Generar Constancia de Traspaso
@@ -888,6 +905,21 @@ export default function AltasPanel({ addToast, currentUser }) {
                                         <textarea value={traspasoForm.notas} onChange={e => setTraspasoForm(p => ({ ...p, notas: e.target.value }))}
                                             placeholder="Notas adicionales (opcional)" rows={2}
                                             style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--neutral-200)', fontSize: '0.85rem', marginTop: '4px', resize: 'vertical' }} />
+                                    </div>
+                                    {/* Firmas digitales */}
+                                    <div style={{ borderTop: '1px solid var(--neutral-100)', paddingTop: '12px', marginTop: '4px' }}>
+                                        <SignaturePad
+                                            label="Firma de quien entrega"
+                                            onSignatureChange={setFirmaEntrega}
+                                            height={120}
+                                        />
+                                    </div>
+                                    <div>
+                                        <SignaturePad
+                                            label="Firma de quien recibe (opcional)"
+                                            onSignatureChange={setFirmaRecibe}
+                                            height={120}
+                                        />
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
@@ -1198,9 +1230,11 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             }}
                                             style={{
                                                 cursor: 'pointer', transition: 'background 0.15s',
+                                                background: alta._isDevueltaFac ? '#FEF2F2' : undefined,
+                                                borderLeft: alta._isDevueltaFac ? '3px solid #DC2626' : undefined,
                                             }}
-                                            onMouseOver={e => { if (!isExpanded) e.currentTarget.style.background = 'var(--neutral-50)'; }}
-                                            onMouseOut={e => { if (!isExpanded) e.currentTarget.style.background = ''; }}
+                                            onMouseOver={e => { if (!isExpanded && !alta._isDevueltaFac) e.currentTarget.style.background = 'var(--neutral-50)'; }}
+                                            onMouseOut={e => { if (!isExpanded && !alta._isDevueltaFac) e.currentTarget.style.background = alta._isDevueltaFac ? '#FEF2F2' : ''; }}
                                         >
                                             {/* Checkbox */}
                                             <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }} onClick={e => e.stopPropagation()}>

@@ -18,6 +18,7 @@ export const ALTA_ESTADOS = {
     'Particular':       { label: 'Particular',       color: '#6B7280', bg: '#F3F4F6', icon: '👤' },
     'Interconsulta':    { label: 'Interconsulta',    color: '#3B82F6', bg: '#EFF6FF', icon: '🔄' },
     'Vacío':            { label: 'Vacío',            color: '#94A3B8', bg: '#F8FAFC', icon: '◽' },
+    'Devuelta FAC':     { label: 'Devuelta FAC',     color: '#DC2626', bg: '#FEF2F2', icon: '🔙' },
 };
 
 /**
@@ -181,6 +182,7 @@ export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
         let query = supabase
             .from('altas_administrativas')
             .select('*')
+            .not('traspaso_id', 'is', null)
             .order('fecha_ingreso', { ascending: false })
             .range(from, from + PAGE_SIZE - 1);
 
@@ -372,4 +374,188 @@ export async function fetchTraspasoDetalle(traspasoId) {
 
     if (error) throw error;
     return data || [];
+}
+
+// ─── Firmas Digitales (Traspasos) ───
+
+/**
+ * Guardar firma en un traspaso existente
+ */
+export async function firmarTraspaso(traspasoId, { firmaEntrega, firmaRecibe }) {
+    const update = {};
+    if (firmaEntrega !== undefined) update.firma_entrega = firmaEntrega;
+    if (firmaRecibe !== undefined) update.firma_recibe = firmaRecibe;
+    if (firmaEntrega || firmaRecibe) update.firmado_sistema = true;
+
+    const { data, error } = await supabase
+        .from('altas_traspasos')
+        .update(update)
+        .eq('id', traspasoId)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
+}
+
+// ─── Carrito de Devolución (Facturación → Control de Altas) ───
+
+/**
+ * Marcar altas para devolución (en_carrito_devolucion flag)
+ */
+export async function marcarParaDevolucion(ids) {
+    const { data, error } = await supabase
+        .from('altas_administrativas')
+        .update({ en_carrito_devolucion: true })
+        .in('id', ids)
+        .not('traspaso_id', 'is', null)
+        .is('devolucion_id', null)
+        .select();
+
+    if (error) throw error;
+    return data;
+}
+
+/**
+ * Quitar un alta del carrito de devolución
+ */
+export async function quitarDeCarritoDevolucion(id) {
+    const { data, error } = await supabase
+        .from('altas_administrativas')
+        .update({ en_carrito_devolucion: false })
+        .eq('id', id)
+        .is('devolucion_id', null)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
+}
+
+/**
+ * Obtiene fichas en el carrito de devolución
+ */
+export async function fetchCarritoDevolucion() {
+    const { data, error } = await supabase
+        .from('altas_administrativas')
+        .select('*')
+        .eq('en_carrito_devolucion', true)
+        .is('devolucion_id', null)
+        .order('fecha_ingreso', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+}
+
+/**
+ * Genera una devolución (constancia/remito de devolución)
+ */
+export async function generarDevolucion({ responsableDevuelve, responsableRecibe, motivo, firmaDevuelve, firmaRecibe }) {
+    // Generar código
+    const year = new Date().getFullYear();
+    const prefix = `DEV-${year}-`;
+
+    const { data: lastCode } = await supabase
+        .from('facturacion_devoluciones')
+        .select('codigo')
+        .like('codigo', `${prefix}%`)
+        .order('codigo', { ascending: false })
+        .limit(1);
+
+    let nextNum = 1;
+    if (lastCode && lastCode.length > 0) {
+        const num = parseInt(lastCode[0].codigo.replace(prefix, ''), 10);
+        if (!isNaN(num)) nextNum = num + 1;
+    }
+    const codigo = `${prefix}${String(nextNum).padStart(4, '0')}`;
+
+    // Obtener items del carrito
+    const cartItems = await fetchCarritoDevolucion();
+    if (cartItems.length === 0) throw new Error('No hay fichas en el carrito de devolución');
+
+    const ahora = new Date().toISOString();
+
+    // Crear registro de devolución
+    const { data: devolucion, error: createErr } = await supabase
+        .from('facturacion_devoluciones')
+        .insert({
+            codigo,
+            fecha_devolucion: ahora,
+            responsable_devuelve: responsableDevuelve,
+            responsable_recibe: responsableRecibe || null,
+            motivo: motivo || null,
+            cantidad_fichas: cartItems.length,
+            firma_devuelve: firmaDevuelve || null,
+            firma_recibe: firmaRecibe || null,
+            firmado_sistema: !!(firmaDevuelve || firmaRecibe),
+        })
+        .select()
+        .single();
+
+    if (createErr) throw createErr;
+
+    // Actualizar las altas: vincular a devolución + cambiar estado
+    const ids = cartItems.map(i => i.id);
+    const { error: updateErr } = await supabase
+        .from('altas_administrativas')
+        .update({
+            devolucion_id: devolucion.id,
+            devuelta_at: ahora,
+            devuelta_por: responsableDevuelve,
+            en_carrito_devolucion: false,
+            estado_fac: 'Devuelta',
+        })
+        .in('id', ids);
+
+    if (updateErr) throw updateErr;
+
+    return devolucion;
+}
+
+/**
+ * Historial de devoluciones
+ */
+export async function fetchDevoluciones({ limit = 100 } = {}) {
+    const { data, error } = await supabase
+        .from('facturacion_devoluciones')
+        .select('*')
+        .order('fecha_devolucion', { ascending: false })
+        .limit(limit);
+
+    if (error) throw error;
+    return data || [];
+}
+
+/**
+ * Detalle de una devolución (fichas incluidas)
+ */
+export async function fetchDevolucionDetalle(devolucionId) {
+    const { data, error } = await supabase
+        .from('altas_administrativas')
+        .select('*')
+        .eq('devolucion_id', devolucionId)
+        .order('fecha_ingreso', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+}
+
+/**
+ * Guardar firma en una devolución existente (acuse de recibo diferido)
+ */
+export async function firmarDevolucion(devolucionId, { firmaDevuelve, firmaRecibe }) {
+    const update = {};
+    if (firmaDevuelve !== undefined) update.firma_devuelve = firmaDevuelve;
+    if (firmaRecibe !== undefined) update.firma_recibe = firmaRecibe;
+    if (firmaDevuelve || firmaRecibe) update.firmado_sistema = true;
+
+    const { data, error } = await supabase
+        .from('facturacion_devoluciones')
+        .update(update)
+        .eq('id', devolucionId)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
 }
