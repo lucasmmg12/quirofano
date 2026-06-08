@@ -2,17 +2,36 @@
  * SkeletonLoader — Reusable skeleton placeholders for loading states
  * Uses the .skeleton CSS class from index.css (shimmer animation)
  * 
- * Variants:
- * - SkeletonCard: Simple rectangular placeholder
- * - SkeletonRow: Table row placeholder
- * - SkeletonTable: Table with header + rows
- * - SkeletonKPI: Single KPI card
- * - SkeletonDashboard: Full dashboard layout (KPIs + content)
- * - SkeletonTablePanel: KPIs + filters + table (for panel views)
- * - SkeletonContactList: Chat contact list
- * - SkeletonChartGrid: Charts/metrics grid
- * - SkeletonFormPanel: Form/config layout
+ * All main variants accept an optional `message` prop to show a contextual
+ * loading label above the shimmer blocks.
  */
+import { Loader2 } from 'lucide-react';
+
+/* ── Helper: animated loading message ────────────────────────────────────── */
+function SkeletonMessage({ text = 'Buscando toda la información...' }) {
+    return (
+        <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: '10px', padding: '10px 0 4px',
+        }}>
+            <Loader2
+                size={15}
+                style={{
+                    color: 'var(--primary-400, #60A5FA)',
+                    animation: 'spin 1.2s linear infinite',
+                    flexShrink: 0,
+                }}
+            />
+            <span style={{
+                fontSize: '0.82rem', fontWeight: 600,
+                color: 'var(--neutral-400, #94A3B8)',
+                letterSpacing: '-0.1px',
+            }}>
+                {text}
+            </span>
+        </div>
+    );
+}
 
 export function SkeletonCard({ width = '100%', height = 120 }) {
     return (
@@ -32,11 +51,12 @@ export function SkeletonRow({ cols = 5 }) {
     );
 }
 
-export function SkeletonTable({ rows = 5, cols = 6 }) {
+export function SkeletonTable({ rows = 5, cols = 6, message }) {
     return (
         <div style={{ padding: '16px' }}>
+            <SkeletonMessage text={message || 'Buscando toda la información...'} />
             {/* Header skeleton */}
-            <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', marginTop: '10px' }}>
                 <div className="skeleton" style={{ height: 20, width: 120, borderRadius: '6px' }} />
                 <div className="skeleton" style={{ height: 20, width: 60, borderRadius: '12px' }} />
             </div>
@@ -77,9 +97,11 @@ export function SkeletonKPI() {
  * SkeletonTablePanel — For main panel views (KPIs + filter bar + table)
  * Used by: AltasPanel, FacturacionPanel, ConsultasPanel, DeudasPanel, LaboratoriosPanel, etc.
  */
-export function SkeletonTablePanel({ kpis = 4, cols = 7, rows = 8, showFilters = true }) {
+export function SkeletonTablePanel({ kpis = 4, cols = 7, rows = 8, showFilters = true, message }) {
     return (
         <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <SkeletonMessage text={message || 'Buscando toda la información...'} />
+
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -184,9 +206,10 @@ export function SkeletonContactList({ items = 8 }) {
 /**
  * SkeletonChartGrid — For MetricsPanel, BetoAnalyticsPanel
  */
-export function SkeletonChartGrid({ charts = 4, kpis = 4 }) {
+export function SkeletonChartGrid({ charts = 4, kpis = 4, message }) {
     return (
         <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <SkeletonMessage text={message || 'Cargando métricas y gráficos...'} />
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div className="skeleton" style={{ width: 200, height: 22, borderRadius: '6px' }} />
@@ -217,9 +240,10 @@ export function SkeletonChartGrid({ charts = 4, kpis = 4 }) {
 /**
  * SkeletonFormPanel — For ConfigPanel and similar form-based views
  */
-export function SkeletonFormPanel({ sections = 3, fieldsPerSection = 4 }) {
+export function SkeletonFormPanel({ sections = 3, fieldsPerSection = 4, message }) {
     return (
         <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            <SkeletonMessage text={message || 'Cargando configuración...'} />
             {/* Header */}
             <div>
                 <div className="skeleton" style={{ width: 220, height: 22, borderRadius: '6px', marginBottom: '6px' }} />
@@ -249,9 +273,10 @@ export function SkeletonFormPanel({ sections = 3, fieldsPerSection = 4 }) {
 /**
  * SkeletonCardGrid — For views with card-based layouts (RecepcionView, TurnoAdminPanel)
  */
-export function SkeletonCardGrid({ cards = 6, cols = 3 }) {
+export function SkeletonCardGrid({ cards = 6, cols = 3, message }) {
     return (
         <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <SkeletonMessage text={message || 'Buscando toda la información...'} />
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div className="skeleton" style={{ width: 200, height: 22, borderRadius: '6px' }} />
                 <div className="skeleton" style={{ width: 100, height: 34, borderRadius: '8px' }} />
@@ -276,9 +301,10 @@ export function SkeletonCardGrid({ cards = 6, cols = 3 }) {
     );
 }
 
-export default function SkeletonDashboard() {
+export default function SkeletonDashboard({ message }) {
     return (
         <div style={{ padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <SkeletonMessage text={message || 'Preparando el dashboard...'} />
             {/* KPI row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
                 {Array.from({ length: 4 }).map((_, i) => <SkeletonKPI key={i} />)}

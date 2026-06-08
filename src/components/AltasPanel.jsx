@@ -145,11 +145,11 @@ export default function AltasPanel({ addToast, currentUser }) {
         });
     };
 
-    const handleSelectAllAltaAdm = () => {
-        const altaAdmIds = sortedAltas
-            .filter(a => a._effectiveEstado === 'Alta Adm' && !a.en_carrito_traspaso && !a.traspaso_id)
+    const handleSelectAllSelectable = () => {
+        const selectableIds = sortedAltas
+            .filter(a => !a.en_carrito_traspaso && !a.traspaso_id)
             .map(a => a.id);
-        setSelectedIds(new Set(altaAdmIds));
+        setSelectedIds(new Set(selectableIds));
     };
 
     const handleEnviarAlCarrito = async () => {
@@ -1138,9 +1138,9 @@ export default function AltasPanel({ addToast, currentUser }) {
                                 <tr>
                                     <th className="cart__th" style={{ width: '30px', textAlign: 'center' }}>
                                         <input type="checkbox"
-                                            checked={selectedIds.size > 0 && sortedAltas.filter(a => a._effectiveEstado === 'Alta Adm' && !a.en_carrito_traspaso && !a.traspaso_id).every(a => selectedIds.has(a.id))}
+                                            checked={selectedIds.size > 0 && sortedAltas.filter(a => !a.en_carrito_traspaso && !a.traspaso_id).every(a => selectedIds.has(a.id))}
                                             onChange={e => {
-                                                if (e.target.checked) handleSelectAllAltaAdm();
+                                                if (e.target.checked) handleSelectAllSelectable();
                                                 else setSelectedIds(new Set());
                                             }}
                                             title="Seleccionar todas Alta Adm"
@@ -1236,7 +1236,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                         >
                                             {/* Checkbox */}
                                             <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }} onClick={e => e.stopPropagation()}>
-                                                {(alta._effectiveEstado === 'Alta Adm' && !alta.en_carrito_traspaso && !alta.traspaso_id) ? (
+                                                {(!alta.en_carrito_traspaso && !alta.traspaso_id) ? (
                                                     <input type="checkbox"
                                                         checked={selectedIds.has(alta.id)}
                                                         onChange={() => handleToggleSelect(alta.id)}
