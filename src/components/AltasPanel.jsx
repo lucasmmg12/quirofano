@@ -180,28 +180,21 @@ export default function AltasPanel({ addToast, currentUser }) {
     };
 
     const handleGenerarTraspaso = async () => {
-        if (!traspasoForm.entrega) {
-            addToast?.('Ingresá el nombre de quien entrega', 'error');
+        const entregaNombre = currentUser?.nombre || currentUser?.usuario || 'Operador';
+        if (!traspasoForm.recibe.trim()) {
+            addToast?.('Ingresá el nombre de quien recibe', 'error');
             return;
         }
         setGenerando(true);
         try {
             const traspaso = await generarTraspaso({
-                responsableEntrega: traspasoForm.entrega,
-                responsableRecibe: traspasoForm.recibe || null,
+                responsableEntrega: entregaNombre,
+                responsableRecibe: traspasoForm.recibe.trim(),
                 notas: traspasoForm.notas || null,
             });
-            // Guardar firmas si existen
-            if (firmaEntrega || firmaRecibe) {
-                await firmarTraspaso(traspaso.id, { firmaEntrega, firmaRecibe });
-                traspaso.firma_entrega = firmaEntrega;
-                traspaso.firma_recibe = firmaRecibe;
-            }
             addToast?.(`✅ Traspaso ${traspaso.codigo} generado — ${traspaso.cantidad_fichas} fichas`, 'success');
             setShowTraspasoModal(false);
             setTraspasoForm({ entrega: '', recibe: '', notas: '' });
-            setFirmaEntrega(null);
-            setFirmaRecibe(null);
             loadCarrito();
             loadData();
             // Auto-print
@@ -216,57 +209,104 @@ export default function AltasPanel({ addToast, currentUser }) {
     const handlePrintTraspaso = async (traspaso) => {
         try {
             const items = await fetchTraspasoDetalle(traspaso.id);
-            const today = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-            const rows = items.map(a => `<tr>
-                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px;font-family:monospace;font-weight:600">${a.numero_admision || '—'}</td>
-                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px;font-weight:600">${a.paciente || '—'}</td>
-                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px">${a.cliente || '—'}</td>
-                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px">${a.doctor || '—'}</td>
-                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px;font-family:monospace">${formatDate(a.fecha_ingreso)}</td>
-                <td style="padding:4px 8px;border:1px solid #e2e8f0;font-size:11px;font-family:monospace">${formatDate(a.fecha_alta)}</td>
+            const now = new Date();
+            const today = now.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const hora = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+            const logoUrl = window.location.origin + '/logosanatorio.png';
+
+            const rows = items.map((a, i) => `<tr style="background:${i % 2 === 0 ? '#fff' : '#F8FAFC'}">
+                <td style="padding:7px 10px;border-bottom:1px solid #E2E8F0;font-size:11px;font-family:'Courier New',monospace;font-weight:700;color:#1E5799">${a.numero_admision || '—'}</td>
+                <td style="padding:7px 10px;border-bottom:1px solid #E2E8F0;font-size:11px;font-weight:600;color:#1E293B">${a.paciente || '—'}</td>
+                <td style="padding:7px 10px;border-bottom:1px solid #E2E8F0;font-size:10px;color:#475569">${a.cliente || '—'}</td>
+                <td style="padding:7px 10px;border-bottom:1px solid #E2E8F0;font-size:10px;color:#475569">${a.doctor || '—'}</td>
+                <td style="padding:7px 10px;border-bottom:1px solid #E2E8F0;font-size:10px;font-family:'Courier New',monospace;color:#475569;text-align:center">${formatDate(a.fecha_ingreso)}</td>
+                <td style="padding:7px 10px;border-bottom:1px solid #E2E8F0;font-size:10px;font-family:'Courier New',monospace;color:#475569;text-align:center">${formatDate(a.fecha_alta)}</td>
             </tr>`).join('');
 
             const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Traspaso ${traspaso.codigo}</title>
             <style>
-                @page { margin: 15mm; }
-                body { font-family: -apple-system, 'Segoe UI', sans-serif; color: #1f2937; }
+                @page { margin: 12mm 15mm; }
+                * { box-sizing: border-box; }
+                body { font-family: 'Segoe UI', -apple-system, Arial, sans-serif; color: #1E293B; margin: 0; padding: 0; }
                 table { border-collapse: collapse; width: 100%; }
-                th { padding: 6px 8px; background: #f1f5f9; border: 1px solid #e2e8f0; font-size: 11px; font-weight: 700; text-align: left; }
-                tr:nth-child(even) td { background: #f9fafb; }
             </style></head><body>
-                <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-                    <div style="font-size:20px;font-weight:800">📦 Constancia de Traspaso</div>
-                    <div style="margin-left:auto;font-size:12px;color:#6b7280">${today}</div>
-                </div>
-                <div style="display:flex;gap:20px;margin-bottom:14px;font-size:12px">
-                    <div><strong>Código:</strong> ${traspaso.codigo}</div>
-                    <div><strong>Fichas:</strong> ${traspaso.cantidad_fichas}</div>
-                    <div><strong>Entrega:</strong> ${traspaso.responsable_entrega}</div>
-                    <div><strong>Recibe:</strong> ${traspaso.responsable_recibe || '________________________'}</div>
-                </div>
-                ${traspaso.notas ? '<div style="margin-bottom:12px;font-size:11px;color:#6b7280"><strong>Obs:</strong> ' + traspaso.notas + '</div>' : ''}
-                <table><thead><tr>
-                    <th>N° Adm</th><th>Paciente</th><th>Obra Social</th><th>Médico</th><th>Ingreso</th><th>Alta</th>
-                </tr></thead><tbody>${rows}</tbody></table>
-                <div style="display:flex;justify-content:space-between;margin-top:40px">
-                    <div style="text-align:center;width:220px">
-                        ${traspaso.firma_entrega ? '<img src="' + traspaso.firma_entrega + '" style="height:60px;display:block;margin:4px auto 0" />' : ''}
-                        <div style="border-top:1px solid #1f2937;padding-top:6px;font-size:11px;font-weight:600">${traspaso.responsable_entrega}</div>
-                        <div style="font-size:9px;color:#9ca3af">Entrega — Administración</div>
+                <!-- HEADER INSTITUCIONAL -->
+                <div style="display:flex;align-items:center;border-bottom:3px solid #1E5799;padding-bottom:14px;margin-bottom:18px">
+                    <img src="${logoUrl}" style="height:50px;margin-right:16px" alt="Logo" />
+                    <div style="flex:1">
+                        <div style="font-size:16px;font-weight:800;color:#1E5799;letter-spacing:-0.3px">SANATORIO ARGENTINO</div>
+                        <div style="font-size:9px;color:#64748B;margin-top:1px">Departamento de Admisión Quirúrgica</div>
                     </div>
-                    <div style="text-align:center;width:220px">
-                        ${traspaso.firma_recibe ? '<img src="' + traspaso.firma_recibe + '" style="height:60px;display:block;margin:4px auto 0" />' : ''}
-                        <div style="border-top:1px solid #1f2937;padding-top:6px;font-size:11px;font-weight:600">${traspaso.responsable_recibe || '________________________'}</div>
-                        <div style="font-size:9px;color:#9ca3af">Recibe — Facturación</div>
+                    <div style="text-align:right">
+                        <div style="font-size:10px;font-weight:700;color:#1E5799;background:#EFF6FF;padding:4px 12px;border-radius:6px;border:1px solid #BFDBFE;display:inline-block">${traspaso.codigo}</div>
+                        <div style="font-size:9px;color:#94A3B8;margin-top:4px">${today} — ${hora}</div>
                     </div>
                 </div>
-                <div style="margin-top:30px;font-size:9px;color:#9ca3af;text-align:center">Sanatorio Argentino — Sistema ADM-QUI — ${today}</div>
+
+                <!-- TITULO -->
+                <div style="text-align:center;margin-bottom:18px">
+                    <div style="font-size:15px;font-weight:800;color:#1E293B;text-transform:uppercase;letter-spacing:1px">Constancia de Traspaso a Facturación</div>
+                    <div style="width:60px;height:3px;background:#1E5799;margin:6px auto 0;border-radius:2px"></div>
+                </div>
+
+                <!-- DATOS DEL TRASPASO -->
+                <div style="display:flex;gap:0;margin-bottom:16px;border:1px solid #E2E8F0;border-radius:8px;overflow:hidden">
+                    <div style="flex:1;padding:10px 14px;border-right:1px solid #E2E8F0;background:#F8FAFC">
+                        <div style="font-size:8px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:0.5px">Entrega</div>
+                        <div style="font-size:12px;font-weight:700;color:#1E293B;margin-top:2px">${traspaso.responsable_entrega}</div>
+                        <div style="font-size:8px;color:#94A3B8">Admisión Quirúrgica</div>
+                    </div>
+                    <div style="flex:1;padding:10px 14px;border-right:1px solid #E2E8F0;background:#F8FAFC">
+                        <div style="font-size:8px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:0.5px">Recibe</div>
+                        <div style="font-size:12px;font-weight:700;color:#1E293B;margin-top:2px">${traspaso.responsable_recibe || '—'}</div>
+                        <div style="font-size:8px;color:#94A3B8">Facturación</div>
+                    </div>
+                    <div style="padding:10px 14px;background:#EFF6FF;min-width:100px;text-align:center">
+                        <div style="font-size:8px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:0.5px">Fichas</div>
+                        <div style="font-size:22px;font-weight:800;color:#1E5799;margin-top:0">${traspaso.cantidad_fichas}</div>
+                    </div>
+                </div>
+
+                ${traspaso.notas ? '<div style="margin-bottom:14px;padding:8px 12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:6px;font-size:10px;color:#92400E"><strong>Observaciones:</strong> ' + traspaso.notas + '</div>' : ''}
+
+                <!-- TABLA DE FICHAS -->
+                <table style="border:1px solid #E2E8F0;border-radius:8px;overflow:hidden">
+                    <thead>
+                        <tr style="background:#1E5799">
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;color:#fff;text-align:left;text-transform:uppercase;letter-spacing:0.5px">N° Adm</th>
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;color:#fff;text-align:left;text-transform:uppercase;letter-spacing:0.5px">Paciente</th>
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;color:#fff;text-align:left;text-transform:uppercase;letter-spacing:0.5px">Obra Social</th>
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;color:#fff;text-align:left;text-transform:uppercase;letter-spacing:0.5px">Médico</th>
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;color:#fff;text-align:center;text-transform:uppercase;letter-spacing:0.5px">Ingreso</th>
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;color:#fff;text-align:center;text-transform:uppercase;letter-spacing:0.5px">Alta</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+
+                <!-- FIRMAS -->
+                <div style="display:flex;justify-content:space-between;margin-top:50px;padding:0 20px">
+                    <div style="text-align:center;width:220px">
+                        <div style="border-top:2px solid #1E293B;padding-top:8px;font-size:11px;font-weight:700;color:#1E293B">${traspaso.responsable_entrega}</div>
+                        <div style="font-size:9px;color:#94A3B8;margin-top:2px">Entrega — Admisión Quirúrgica</div>
+                    </div>
+                    <div style="text-align:center;width:220px">
+                        <div style="border-top:2px solid #1E293B;padding-top:8px;font-size:11px;font-weight:700;color:#1E293B">${traspaso.responsable_recibe || '________________________'}</div>
+                        <div style="font-size:9px;color:#94A3B8;margin-top:2px">Recibe — Facturación</div>
+                    </div>
+                </div>
+
+                <!-- FOOTER -->
+                <div style="margin-top:40px;padding-top:10px;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:center">
+                    <div style="font-size:8px;color:#94A3B8">Documento generado por Sistema ADM-QUI — ${today} ${hora}</div>
+                    <div style="font-size:8px;color:#94A3B8">${traspaso.codigo} · Sanatorio Argentino</div>
+                </div>
             </body></html>`;
 
             const printWin = window.open('', '_blank', 'width=900,height=700');
             printWin.document.write(html);
             printWin.document.close();
-            setTimeout(() => printWin.print(), 400);
+            setTimeout(() => printWin.print(), 500);
         } catch (err) {
             addToast?.('Error al imprimir: ' + err.message, 'error');
         }
@@ -891,15 +931,39 @@ export default function AltasPanel({ addToast, currentUser }) {
                                     {carritoItems.length} ficha{carritoItems.length !== 1 ? 's' : ''} serán traspasadas a Facturación.
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    {/* Entrega: usuario logueado (solo lectura) */}
                                     <div>
-                                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>Entrega *</label>
-                                        <input value={traspasoForm.entrega} onChange={e => setTraspasoForm(p => ({ ...p, entrega: e.target.value }))}
-                                            placeholder="Nombre de quien entrega" style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--neutral-200)', fontSize: '0.85rem', marginTop: '4px' }} />
+                                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>Entrega</label>
+                                        <div style={{
+                                            width: '100%', padding: '8px 12px', borderRadius: '8px',
+                                            border: '1px solid var(--neutral-200)', fontSize: '0.85rem',
+                                            marginTop: '4px', background: 'var(--neutral-50)', color: 'var(--neutral-700)',
+                                            fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px',
+                                        }}>
+                                            <User size={14} style={{ color: 'var(--neutral-400)' }} />
+                                            {currentUser?.nombre || currentUser?.usuario || 'Usuario actual'}
+                                        </div>
                                     </div>
+                                    {/* Recibe: dropdown de responsables + opción de escribir */}
                                     <div>
-                                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>Recibe</label>
-                                        <input value={traspasoForm.recibe} onChange={e => setTraspasoForm(p => ({ ...p, recibe: e.target.value }))}
-                                            placeholder="Nombre de quien recibe (opcional)" style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--neutral-200)', fontSize: '0.85rem', marginTop: '4px' }} />
+                                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>Recibe *</label>
+                                        <div style={{ position: 'relative', marginTop: '4px' }}>
+                                            <input
+                                                list="recibe-options"
+                                                value={traspasoForm.recibe}
+                                                onChange={e => setTraspasoForm(p => ({ ...p, recibe: e.target.value }))}
+                                                placeholder="Seleccionar o escribir nombre..."
+                                                style={{
+                                                    width: '100%', padding: '8px 12px', borderRadius: '8px',
+                                                    border: '1px solid var(--neutral-200)', fontSize: '0.85rem',
+                                                }}
+                                            />
+                                            <datalist id="recibe-options">
+                                                {allResponsables.map(r => (
+                                                    <option key={r} value={r} />
+                                                ))}
+                                            </datalist>
+                                        </div>
                                     </div>
                                     <div>
                                         <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>Observaciones</label>
@@ -907,31 +971,17 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             placeholder="Notas adicionales (opcional)" rows={2}
                                             style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--neutral-200)', fontSize: '0.85rem', marginTop: '4px', resize: 'vertical' }} />
                                     </div>
-                                    {/* Firmas digitales */}
-                                    <div style={{ borderTop: '1px solid var(--neutral-100)', paddingTop: '12px', marginTop: '4px' }}>
-                                        <SignaturePad
-                                            label="Firma de quien entrega"
-                                            onSignatureChange={setFirmaEntrega}
-                                            height={120}
-                                        />
-                                    </div>
-                                    <div>
-                                        <SignaturePad
-                                            label="Firma de quien recibe (opcional)"
-                                            onSignatureChange={setFirmaRecibe}
-                                            height={120}
-                                        />
-                                    </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
                                     <button onClick={() => setShowTraspasoModal(false)}
                                         style={{ padding: '8px 18px', borderRadius: '8px', border: '1px solid var(--neutral-200)', background: '#fff', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>Cancelar</button>
-                                    <button onClick={handleGenerarTraspaso} disabled={generando}
+                                    <button onClick={handleGenerarTraspaso} disabled={generando || !traspasoForm.recibe.trim()}
                                         style={{
                                             padding: '8px 24px', borderRadius: '8px', border: 'none',
                                             background: 'linear-gradient(135deg, #6366F1, #4F46E5)', color: '#fff',
-                                            cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700,
-                                            opacity: generando ? 0.6 : 1,
+                                            cursor: (generando || !traspasoForm.recibe.trim()) ? 'not-allowed' : 'pointer',
+                                            fontSize: '0.82rem', fontWeight: 700,
+                                            opacity: (generando || !traspasoForm.recibe.trim()) ? 0.5 : 1,
                                         }}>
                                         {generando ? 'Generando...' : '📦 Generar e Imprimir'}
                                     </button>
