@@ -31,6 +31,7 @@ const SMART_SUGGESTIONS = {
     turnos: ['📊 Cola de turnos actual', '⏰ Próximos turnos', '📈 Estadísticas de espera', '🔔 Turnos demorados'],
     metricas: ['📊 Resumen mensual', '📈 Comparar con mes anterior', '🏥 Métricas por especialidad', '📥 Exportar métricas a Excel'],
     auditoria_historias: ['📊 ¿Cómo auditar historias clínicas?', '📋 Explicar pipeline de auditoría', '💡 ¿Qué significa Sin Fecha de Alta?', '🧭 Llevame a Inicio'],
+    facturacion: ['🧾 Fichas pendientes de facturar', '📊 Resumen de facturación del mes', '🔙 Fichas devueltas', '📚 Enseñame facturación'],
     default: ['🔔 ¿Qué hay pendiente?', '📊 Reporte del día', '📥 Exportar datos a Excel', '❓ ¿Cómo funciona esto?'],
 };
 
@@ -65,6 +66,11 @@ const PROACTIVE_NUDGES = {
     auditoria_historias: [
         '🔍 ¿Necesitás ayuda auditando las planillas de historias clínicas?',
         '📊 Puedo explicarte cómo funciona la auditoría de evolución y altas',
+    ],
+    facturacion: [
+        '🧾 ¿Querés ver las fichas pendientes de facturar?',
+        '📊 Puedo armar un resumen de estado de facturación',
+        '🔙 ¿Necesitás devolver fichas a Control de Altas?',
     ],
     default: [
         '👋 ¡Hola! ¿Sabías que puedo generar reportes en PDF?',
@@ -216,9 +222,9 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
 
         // #19 — Detect tutorial requests
         const tutorialMatch = text.match(/ense[ñn]ame|tutorial|como\s+(?:uso|funciona)|aprend/i);
-        const moduleMatch = text.match(/cirug[ií]a|deuda|pedido|mensaje|whatsapp|auditor[ií]a/i);
+        const moduleMatch = text.match(/cirug[ií]a|deuda|pedido|mensaje|whatsapp|auditor[ií]a|alta|facturaci[oó]n/i);
         if (tutorialMatch && moduleMatch) {
-            const modMap = { cirug: 'cirugias', deuda: 'deudas', pedido: 'pedidos', mensaj: 'mensajeria', whatsapp: 'mensajeria', auditor: 'auditoria_historias' };
+            const modMap = { cirug: 'cirugias', deuda: 'deudas', pedido: 'pedidos', mensaj: 'mensajeria', whatsapp: 'mensajeria', auditor: 'auditoria_historias', alta: 'altas', factur: 'facturacion' };
             const key = Object.keys(modMap).find(k => moduleMatch[0].toLowerCase().startsWith(k));
             if (key) { setTutorialId(modMap[key]); setInput(''); return; }
         }

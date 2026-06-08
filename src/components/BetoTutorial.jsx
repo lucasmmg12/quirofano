@@ -59,7 +59,35 @@ const TUTORIALS = {
             { target: null, title: '📥 Paso 5: Exportar y PDF', text: 'Podés descargar el reporte en PDF clínico o exportar un Excel con las columnas de auditoría agregadas al principio.', position: 'center' },
             { target: null, title: '✅ ¡Listo!', text: 'Ya conocés las funciones principales de auditoría de historias clínicas. ¡A auditar!', position: 'center' },
         ]
-    }
+    },
+    altas: {
+        title: 'Control de Altas Administrativas',
+        steps: [
+            { target: null, title: '📋 Bienvenido a Control de Altas', text: 'Acá gestionás las altas administrativas de pacientes internados. Te muestro cómo funciona todo el flujo.', position: 'center' },
+            { target: null, title: '📊 Paso 1: Revisar la Tabla', text: 'La tabla muestra todas las altas sincronizadas desde SALUS. Cada fila tiene estado, paciente, obra social, especialidad, médico, fechas y responsable asignado automáticamente por criterios.', position: 'center' },
+            { target: null, title: '🏷️ Paso 2: Gestionar Estados', text: 'Hacé clic en el badge de ESTADO para cambiar entre: Procesada → En auditoría → Prórroga → Con presupuesto → Alta Adm → Suspendida → Particular → Interconsulta. El estado se guarda instantáneamente.', position: 'center' },
+            { target: null, title: '💲 Estados Automáticos', text: 'Si la admisión ya tiene factura en SALUS (PDV 21/31), el estado cambia automáticamente a "Facturada" con badge verde y muestra quién la facturó. Si fue devuelta desde Facturación, aparece "Devuelta FAC" en rojo.', position: 'center' },
+            { target: null, title: '✅ Paso 3: Seleccionar para Traspaso', text: 'Usá los checkboxes de la izquierda para seleccionar fichas. Las que ya fueron traspasadas o están en el carrito no se pueden seleccionar (muestran ícono de carrito).', position: 'center' },
+            { target: null, title: '🛒 Paso 4: Enviar al Carrito', text: 'Con fichas seleccionadas, aparece una barra inferior con el botón "Enviar al carrito". Esto las marca para el traspaso a Facturación.', position: 'center' },
+            { target: null, title: '📦 Paso 5: Pestaña Carrito', text: 'Andá a la pestaña "Carrito" para ver las fichas pendientes de traspaso. Desde ahí podés generar el remito de traspaso e imprimir el PDF con membrete institucional.', position: 'center' },
+            { target: null, title: '📝 Paso 6: Generar Traspaso', text: 'Completá quién entrega (tu usuario) y quién recibe (dropdown de analistas o nombre libre). Al confirmar se genera un remito con código único y PDF imprimible.', position: 'center' },
+            { target: null, title: '📚 Paso 7: Historial', text: 'En la pestaña "Historial" podés ver todos los traspasos generados, expandirlos para ver el detalle y reimprimir el PDF en cualquier momento.', position: 'center' },
+            { target: null, title: '✅ ¡Listo!', text: 'Ya conocés el flujo completo de altas: estado → selección → carrito → traspaso → facturación. ¡Consultame cualquier duda!', position: 'center' },
+        ]
+    },
+    facturacion: {
+        title: 'Control de Facturación Internada',
+        steps: [
+            { target: null, title: '🧾 Bienvenido a Facturación', text: 'Este módulo muestra las fichas que fueron traspasadas desde Control de Altas. Acá se gestiona el proceso de facturación internada.', position: 'center' },
+            { target: null, title: '📊 Paso 1: KPIs Superiores', text: 'Los indicadores muestran: Total de fichas, Pendientes, En proceso, Facturadas (detectadas automáticamente en SALUS PDV 21/31), Devueltas y Auto-facturadas por SALUS.', position: 'center' },
+            { target: null, title: '👤 Paso 2: Asignar Responsable', text: 'Hacé clic en la columna "Asignar" de cada fila para asignar un analista de facturación. La lista incluye a todos los analistas del equipo.', position: 'center' },
+            { target: null, title: '🏷️ Paso 3: Cambiar Estado', text: 'Hacé clic en el badge de estado para cambiar entre: Pendiente → En proceso → Facturada → Devuelta. Si SALUS detectó la factura automáticamente, el estado se setea solo.', position: 'center' },
+            { target: null, title: '🔍 Paso 4: Ver Detalle', text: 'Hacé clic en una fila para expandir y ver las líneas de concepto de la factura (datos traídos desde SALUS). Incluye número de factura, concepto, usuario y PDV.', position: 'center' },
+            { target: null, title: '🔙 Paso 5: Devolver Fichas', text: 'Si una ficha tiene problemas, seleccionala con el checkbox y enviala al "Carrito Devolución". Desde ahí generás un remito de devolución con PDF y firma para enviarla de vuelta a Control de Altas.', position: 'center' },
+            { target: null, title: '📜 Paso 6: Historial de Devoluciones', text: 'En la pestaña "Historial Dev." podés ver todas las devoluciones generadas, con detalle de fichas, motivo y firmas.', position: 'center' },
+            { target: null, title: '✅ ¡Listo!', text: 'Ya conocés el flujo de facturación: recepción → asignación → estado → detalle SALUS → devolución si aplica. ¡Consultame!', position: 'center' },
+        ]
+    },
 };
 
 export default function BetoTutorial({ isOpen, onClose, tutorialId, onNavigate }) {

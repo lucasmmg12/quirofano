@@ -736,25 +736,78 @@ export async function generateManualPDF() {
             yn4 = checkPage(doc, yn4, counters, 50);
             tocEntries.push({ titulo: '   4.9  Altas Administrativas', page: counters.page });
             yn4 = subTitle(doc, '4.9  Altas Administrativas (AltasPanel)', yn4);
-            yn4 = para(doc, 'El módulo de Altas gestiona el proceso de alta administrativa de pacientes quirúrgicos e internados. Coordina la documentación necesaria para el egreso del paciente.', yn4 + 1);
+            yn4 = para(doc, 'El módulo de Altas gestiona el proceso completo de alta administrativa de pacientes internados, incluyendo el flujo de traspaso de fichas a Facturación, la detección automática de facturas en SALUS, y el circuito de devoluciones.', yn4 + 1);
+
+            yn4 = checkPage(doc, yn4, counters, 30);
+            yn4 = para(doc, 'Estados disponibles en Control de Altas:', yn4 + 1);
             yn4 = bulletList(doc, [
-                'Registro de alta médica con datos del episodio y médico responsable',
-                'Control de documentación pendiente (resumen de HC, epicrisis)',
-                'Notificación al área de facturación para cierre del episodio',
-                'Generación de constancia de entrega de documentación',
-                'Integración con el módulo de Asignaciones para coordinación post-alta',
+                'Procesada — Ficha recién creada, sin gestión',
+                'En auditoría — En revisión por el equipo',
+                'Prórroga — Se solicitó extensión de la internación',
+                'Con presupuesto — Se generó presupuesto para la OS',
+                'Alta Adm — Alta administrativa confirmada (detectada automáticamente desde SALUS o manualmente)',
+                'Suspendida — Ficha suspendida temporalmente',
+                'Facturada — Detectada automáticamente cuando existe factura en PDV 21/31 de SALUS',
+                'Devuelta FAC — La ficha fue devuelta desde el módulo de Facturación',
             ], yn4);
 
-            // ─── 4.10 Asignaciones ───────────────────────────────────────────
             yn4 = checkPage(doc, yn4, counters, 40);
-            tocEntries.push({ titulo: '   4.10  Asignaciones', page: counters.page });
-            yn4 = subTitle(doc, '4.10  Asignaciones (AsignacionPanel)', yn4);
+            yn4 = para(doc, 'Flujo de Traspaso a Facturación:', yn4 + 2);
+            yn4 = bulletList(doc, [
+                '1. Seleccionar fichas con los checkboxes de la columna izquierda',
+                '2. Hacer clic en "Enviar al carrito" (barra inferior flotante)',
+                '3. Ir a la pestaña "Carrito" para revisar las fichas seleccionadas',
+                '4. Hacer clic en "Generar Traspaso" — se abre el modal de remito',
+                '5. Completar: Entrega (usuario actual) y Recibe (dropdown de analistas o nombre libre)',
+                '6. Confirmar: se genera un remito con código único (TR-XXXXXX-X)',
+                '7. Imprimir el PDF del remito con membrete institucional del Sanatorio Argentino',
+                '8. Las fichas traspasadas aparecen automáticamente en el módulo de Facturación',
+            ], yn4);
+
+            yn4 = checkPage(doc, yn4, counters, 20);
+            yn4 = noteBox(doc, 'FACTURACIÓN AUTOMÁTICA: Cuando el sync-server detecta que el número de admisión existe en las facturas de SALUS (Punto de Venta 21 y 31), el sistema marca automáticamente la ficha como "Facturada" y asigna el usuario que facturó como responsable.', yn4, 'info');
+
+            // ─── 4.10 Facturación Internada ──────────────────────────────────
+            yn4 = checkPage(doc, yn4, counters, 50);
+            tocEntries.push({ titulo: '   4.10  Facturación Internada', page: counters.page });
+            yn4 = subTitle(doc, '4.10  Facturación Internada (FacturacionPanel)', yn4);
+            yn4 = para(doc, 'El módulo de Facturación Internada muestra las fichas que fueron traspasadas desde Control de Altas. Permite asignar analistas, gestionar estados, ver el detalle de facturación de SALUS y gestionar devoluciones.', yn4 + 1);
+
+            yn4 = checkPage(doc, yn4, counters, 30);
+            yn4 = para(doc, 'KPIs superiores:', yn4 + 1);
+            yn4 = bulletList(doc, [
+                'Total — Cantidad total de fichas traspasadas en el período',
+                'Pendientes — Fichas sin gestionar',
+                'En proceso — Fichas en proceso de facturación',
+                'Facturadas — Fichas con factura detectada en SALUS (PDV 21/31)',
+                'Devueltas — Fichas devueltas a Control de Altas',
+                'Auto (SALUS) — Fichas marcadas automáticamente por el cruce con facturación de SALUS',
+            ], yn4);
+
+            yn4 = checkPage(doc, yn4, counters, 40);
+            yn4 = para(doc, 'Flujo de Devolución a Control de Altas:', yn4 + 2);
+            yn4 = bulletList(doc, [
+                '1. Seleccionar fichas con problemas usando los checkboxes',
+                '2. Ir a la pestaña "Carrito Devolución"',
+                '3. Agregar motivo de devolución por cada ficha',
+                '4. Generar el remito de devolución con firma digital',
+                '5. Las fichas vuelven a Control de Altas con estado "Devuelta FAC"',
+                '6. El operador de Altas puede cambiar el estado para re-gestionarlas',
+            ], yn4);
+
+            yn4 = checkPage(doc, yn4, counters, 20);
+            yn4 = noteBox(doc, 'DETALLE DE FACTURA: Al expandir una fila se muestran las líneas de concepto traídas desde SALUS (tabla TABLEAU_Detalle de ventas). Incluye número de factura, concepto, usuario que facturó y punto de venta (21 o 31).', yn4, 'info');
+
+            // ─── 4.11 Asignaciones ───────────────────────────────────────────
+            yn4 = checkPage(doc, yn4, counters, 40);
+            tocEntries.push({ titulo: '   4.11  Asignaciones', page: counters.page });
+            yn4 = subTitle(doc, '4.11  Asignaciones (AsignacionPanel)', yn4);
             yn4 = para(doc, 'El módulo de Asignaciones gestiona la asignación de recursos, camas y personal a los pacientes. Permite el control de la disponibilidad operativa del área quirúrgica.', yn4 + 1);
 
-            // ─── 4.11 Auditoría de Historias Clínicas ────────────────────────
+            // ─── 4.12 Auditoría de Historias Clínicas ────────────────────────
             yn4 = checkPage(doc, yn4, counters, 60);
-            tocEntries.push({ titulo: '   4.11  Auditoría de Historias Clínicas', page: counters.page });
-            yn4 = subTitle(doc, '4.11  Auditoría de Historias Clínicas (AuditoriaHistoriasPanel)', yn4);
+            tocEntries.push({ titulo: '   4.12  Auditoría de Historias Clínicas', page: counters.page });
+            yn4 = subTitle(doc, '4.12  Auditoría de Historias Clínicas (AuditoriaHistoriasPanel)', yn4);
             yn4 = para(doc, 'Este módulo permite la revisión sistemática y el control de calidad de las historias clínicas de pacientes. Está orientado al personal del área de Auditoría Médica y Calidad.', yn4 + 1);
             yn4 = bulletList(doc, [
                 'Listado de historias clínicas pendientes de auditoría',
@@ -765,10 +818,10 @@ export async function generateManualPDF() {
                 'Exportación de datos de auditoría para el Departamento de Calidad',
             ], yn4);
 
-            // ─── 4.12 Cola de Turnos ─────────────────────────────────────────
+            // ─── 4.13 Cola de Turnos ─────────────────────────────────────────
             yn4 = checkPage(doc, yn4, counters, 50);
-            tocEntries.push({ titulo: '   4.12  Cola de Turnos (Kiosco)', page: counters.page });
-            yn4 = subTitle(doc, '4.12  Cola de Turnos — Sistema Kiosco (TurnoAdminPanel / TurnoKiosco)', yn4);
+            tocEntries.push({ titulo: '   4.13  Cola de Turnos (Kiosco)', page: counters.page });
+            yn4 = subTitle(doc, '4.13  Cola de Turnos — Sistema Kiosco (TurnoAdminPanel / TurnoKiosco)', yn4);
             yn4 = para(doc, 'El módulo de Turnos implementa un sistema tipo kiosco para la gestión de la cola de espera en el área de admisión. Incluye un panel de administración (para el personal) y una vista pública de kiosco para pacientes.', yn4 + 1);
             yn4 = bulletList(doc, [
                 'Panel de administración: creación, llamado y gestión de turnos',
@@ -778,16 +831,16 @@ export async function generateManualPDF() {
                 'Registro de tiempos de espera para métricas de calidad de atención',
             ], yn4);
 
-            // ─── 4.13 Consultas de Guardia ───────────────────────────────────
+            // ─── 4.14 Consultas de Guardia ───────────────────────────────────
             yn4 = checkPage(doc, yn4, counters, 40);
-            tocEntries.push({ titulo: '   4.13  Consultas de Guardia', page: counters.page });
-            yn4 = subTitle(doc, '4.13  Consultas de Guardia (ConsultasPanel)', yn4);
+            tocEntries.push({ titulo: '   4.14  Consultas de Guardia', page: counters.page });
+            yn4 = subTitle(doc, '4.14  Consultas de Guardia (ConsultasPanel)', yn4);
             yn4 = para(doc, 'Módulo de registro y seguimiento de consultas realizadas en el servicio de guardia. Permite el control estadístico de la demanda de guardia y la facturación de consultas.', yn4 + 1);
 
-            // ─── 4.14 Entrega Asociaciones ───────────────────────────────────
+            // ─── 4.15 Entrega Asociaciones ───────────────────────────────────
             yn4 = checkPage(doc, yn4, counters, 50);
-            tocEntries.push({ titulo: '   4.14  Entrega a Asociaciones', page: counters.page });
-            yn4 = subTitle(doc, '4.14  Entrega a Asociaciones (AsociacionesEntregaPanel)', yn4);
+            tocEntries.push({ titulo: '   4.15  Entrega a Asociaciones', page: counters.page });
+            yn4 = subTitle(doc, '4.15  Entrega a Asociaciones (AsociacionesEntregaPanel)', yn4);
             yn4 = para(doc, 'Módulo para el control de entrega de documentación y muestras a laboratorios de anatomía patológica externos y asociaciones médicas. Gestiona la trazabilidad de cada envío.', yn4 + 1);
             yn4 = bulletList(doc, [
                 'Registro de envíos con fecha, destinatario y contenido',
@@ -796,10 +849,10 @@ export async function generateManualPDF() {
                 'Alertas por entregas pendientes de confirmación',
             ], yn4);
 
-            // ─── 4.15 Laboratorios / Anatomía Patológica ─────────────────────
+            // ─── 4.16 Laboratorios / Anatomía Patológica ─────────────────────
             yn4 = checkPage(doc, yn4, counters, 50);
-            tocEntries.push({ titulo: '   4.15  Laboratorios y Anatomía Patológica', page: counters.page });
-            yn4 = subTitle(doc, '4.15  Laboratorios y Anatomía Patológica (LaboratoriosPanel)', yn4);
+            tocEntries.push({ titulo: '   4.16  Laboratorios y Anatomía Patológica', page: counters.page });
+            yn4 = subTitle(doc, '4.16  Laboratorios y Anatomía Patológica (LaboratoriosPanel)', yn4);
             yn4 = para(doc, 'Módulo integrado para la gestión de solicitudes de laboratorio y anatomía patológica. Se conecta con los laboratorios externos (LDA - Dra. Aguero/Rios, LAB. CEDAP, LAB. INST. PATOLOG. CUYO) a través de una vista pública autenticada (LabPortal).', yn4 + 1);
             yn4 = bulletList(doc, [
                 'Portal autenticado para cada laboratorio externo (/lab/aguero, /lab/cedap, /lab/cuyo)',
@@ -809,10 +862,10 @@ export async function generateManualPDF() {
                 'Vista pública legacy redirigida automáticamente a la nueva URL autenticada',
             ], yn4);
 
-            // ─── 4.16 Métricas e Indicadores ─────────────────────────────────
+            // ─── 4.17 Métricas e Indicadores ─────────────────────────────────
             yn4 = checkPage(doc, yn4, counters, 60);
-            tocEntries.push({ titulo: '   4.16  Métricas e Indicadores', page: counters.page });
-            yn4 = subTitle(doc, '4.16  Métricas e Indicadores (MetricsPanel / AltasMetricsPanel)', yn4);
+            tocEntries.push({ titulo: '   4.17  Métricas e Indicadores', page: counters.page });
+            yn4 = subTitle(doc, '4.17  Métricas e Indicadores (MetricsPanel / AltasMetricsPanel)', yn4);
             yn4 = para(doc, 'El módulo de Métricas ofrece un dashboard de indicadores de rendimiento del área de admisión quirúrgica. Los datos se actualizan en tiempo real desde la base de datos.', yn4 + 1);
             yn4 = bulletList(doc, [
                 'Volumen de cirugías programadas y realizadas por período',
