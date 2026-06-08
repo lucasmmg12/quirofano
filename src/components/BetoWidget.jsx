@@ -94,7 +94,7 @@ const THEMES = {
     warm: { name: 'Cálido', bg: '#FFFBF5', bubble: '#FFFFFF', accent: '#B45309', gradient: 'linear-gradient(135deg, #B45309 0%, #D97706 50%, #FBBF24 100%)' },
 };
 
-export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
+export default function BetoWidget({ currentUser, currentModule, onNavigate, hideFab = false }) {
     const [isOpen, setIsOpen] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [messages, setMessages] = useState([]);
@@ -357,6 +357,7 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate }) {
 
     // Floating button (minimized state) + proactive nudge bubble
     if (!isOpen && !showGreeting) {
+        if (hideFab) return null;
         return (
             <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9998, display: 'flex', alignItems: 'flex-end', gap: '10px' }}>
                 {/* Proactive notification bubble */}

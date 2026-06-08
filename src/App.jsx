@@ -918,11 +918,12 @@ function App({ currentUser, onLogout }) {
                 </div>
             )}
 
-            {/* Beto — AI Assistant Widget */}
+            {/* Beto — AI Assistant Widget (FAB hidden, accessible from sidebar) */}
             <BetoWidget
                 currentUser={currentUser}
                 currentModule={activeView}
                 onNavigate={(mod) => setActiveView(mod)}
+                hideFab={true}
             />
 
             {/* #4 — Command Palette (Ctrl+K) */}
