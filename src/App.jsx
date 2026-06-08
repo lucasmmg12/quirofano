@@ -133,6 +133,8 @@ function App({ currentUser, onLogout }) {
     // #4 Command Palette
     const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
     const betoWidgetRef = useRef(null);
+    // Beto widget open state (controlled from sidebar avatar)
+    const [betoWidgetOpen, setBetoWidgetOpen] = useState(false);
     const [activeView, setActiveViewRaw] = useState(() => localStorage.getItem('active_view') || 'inicio');
     // Dark mode
     const [darkMode, setDarkMode] = useState(() => localStorage.getItem('dark_mode') === 'true');
@@ -475,6 +477,7 @@ function App({ currentUser, onLogout }) {
                 onViewChange={setActiveView}
                 unreadMessageCount={globalUnreadCount}
                 className={mobileMenuOpen ? 'sidebar--mobile-open' : ''}
+                onOpenBeto={() => setBetoWidgetOpen(true)}
             />
 
             <main className={`main ${sidebarCollapsed ? 'main--expanded' : ''}`}>
@@ -918,6 +921,15 @@ function App({ currentUser, onLogout }) {
                 </div>
             )}
 
+            {/* Beto — AI Assistant Widget (FAB hidden, opened from sidebar) */}
+            <BetoWidget
+                currentUser={currentUser}
+                currentModule={activeView}
+                onNavigate={(mod) => setActiveView(mod)}
+                hideFab={true}
+                externalOpen={betoWidgetOpen}
+                onExternalClose={() => setBetoWidgetOpen(false)}
+            />
 
             {/* #4 — Command Palette (Ctrl+K) */}
             <CommandPalette

@@ -6,7 +6,7 @@ import {
     Activity, FileSpreadsheet, BookMarked, FolderOpen, Receipt,
 } from 'lucide-react';
 
-export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '' }) {
+export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '', onOpenBeto }) {
     const [pedidosOpen, setPedidosOpen] = useState(false);
     const [mensajeriaOpen, setMensajeriaOpen] = useState(false);
     const [altasOpen, setAltasOpen] = useState(false);
@@ -263,7 +263,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             <div className="sidebar__footer" style={{ padding: collapsed ? '12px 0' : '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                 {/* ─── Beto Animated Avatar ─── */}
                 <button
-                    onClick={() => onViewChange('beto')}
+                    onClick={() => onOpenBeto?.()}
                     title={collapsed ? 'Hablar con Beto' : undefined}
                     style={{
                         background: 'none', border: 'none', cursor: 'pointer',

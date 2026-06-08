@@ -94,7 +94,7 @@ const THEMES = {
     warm: { name: 'Cálido', bg: '#FFFBF5', bubble: '#FFFFFF', accent: '#B45309', gradient: 'linear-gradient(135deg, #B45309 0%, #D97706 50%, #FBBF24 100%)' },
 };
 
-export default function BetoWidget({ currentUser, currentModule, onNavigate, hideFab = false }) {
+export default function BetoWidget({ currentUser, currentModule, onNavigate, hideFab = false, externalOpen = false, onExternalClose }) {
     const [isOpen, setIsOpen] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [messages, setMessages] = useState([]);
@@ -129,6 +129,14 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
             setTimeout(() => inputRef.current?.focus(), 300);
         }
     }, [isOpen]);
+
+    // External open trigger (from sidebar avatar)
+    useEffect(() => {
+        if (externalOpen && !isOpen) {
+            setIsOpen(true);
+            setShowGreeting(false);
+        }
+    }, [externalOpen]);
 
     // ─── Proactive nudge system ───
     useEffect(() => {
@@ -214,7 +222,8 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
         setIsOpen(false);
         setIsFullscreen(false);
         setShowGreeting(false);
-    }, []);
+        onExternalClose?.();
+    }, [onExternalClose]);
 
     const handleSend = useCallback(async (overrideText) => {
         const text = (overrideText || input).trim();
