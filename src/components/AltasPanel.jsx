@@ -21,6 +21,7 @@ import { fetchAsignaciones, matchAsignacion } from '../services/asignacionServic
 import SalusSyncButton from './SalusSyncButton';
 import AltasMetricsPanel from './AltasMetricsPanel';
 import SignaturePad from './SignaturePad';
+import { SkeletonTablePanel } from './SkeletonLoader';
 
 // ── Helpers ──
 function formatDate(d) {
@@ -1123,10 +1124,7 @@ export default function AltasPanel({ addToast, currentUser }) {
             {/* ── Tabla ── */}
             <div className="cart animate-fade-in" style={{ overflow: 'visible', minHeight: 0, flex: '1 1 auto' }}>
                 {loading ? (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', gap: '10px', color: 'var(--neutral-400)' }}>
-                        <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} />
-                        <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>Cargando altas...</span>
-                    </div>
+                    <SkeletonTablePanel kpis={0} cols={9} rows={8} />
                 ) : altas.length === 0 ? (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 0', gap: '10px', color: 'var(--neutral-400)' }}>
                         <FileText size={48} strokeWidth={1.2} />

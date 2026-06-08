@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { SkeletonChartGrid } from './SkeletonLoader';
 import {
     BarChart3, Calendar, Users, Stethoscope, Upload, RefreshCw,
     TrendingUp, Building2, ChevronDown, FileSpreadsheet, Filter,
@@ -422,10 +423,7 @@ export default function ConsultasPanel() {
             )}
 
             {loading ? (
-                <div style={{ textAlign: 'center', padding: '60px', color: '#94A3B8' }}>
-                    <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite' }} />
-                    <p>Cargando datos...</p>
-                </div>
+                <SkeletonChartGrid kpis={6} charts={2} />
             ) : data.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '60px', color: '#94A3B8' }}>
                     <FileSpreadsheet size={48} strokeWidth={1} />

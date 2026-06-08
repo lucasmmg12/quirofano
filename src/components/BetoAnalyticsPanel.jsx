@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import { BarChart3, MessageSquare, CheckCircle, XCircle, Clock, TrendingUp, Loader2, RefreshCw, Brain } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { SkeletonChartGrid } from './SkeletonLoader';
 
 export default function BetoAnalyticsPanel({ addToast }) {
     const [data, setData] = useState(null);
@@ -101,10 +102,7 @@ export default function BetoAnalyticsPanel({ addToast }) {
             </div>
 
             {loading ? (
-                <div style={{ padding: 60, textAlign: 'center', color: '#94A3B8' }}>
-                    <Loader2 size={32} style={{ animation: 'spin 1s linear infinite' }} />
-                    <p style={{ margin: '12px 0 0', fontSize: '.85rem' }}>Cargando métricas...</p>
-                </div>
+                <SkeletonChartGrid />
             ) : (
                 <>
                     {/* KPI Cards */}

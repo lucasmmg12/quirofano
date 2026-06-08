@@ -38,6 +38,7 @@ import ChatWindow from './ChatWindow';
 import BudgetCollapsible from './BudgetCollapsible';
 import { fetchPatientsByIds } from '../services/patientService';
 import SalusSyncButton from './SalusSyncButton';
+import { SkeletonTable } from './SkeletonLoader';
 import BulkTemplateSender from './BulkTemplateSender';
 
 // ============================================================
@@ -2012,9 +2013,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 </div>
 
                 {loading && !initialLoadDone ? (
-                    <div className="cart__empty-state">
-                        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: 'var(--primary-400)' }} />
-                        <p style={{ marginTop: '12px' }}>Cargando cirugías...</p>
+                    <div style={{ padding: '8px' }}>
+                        <SkeletonTable rows={8} cols={8} />
                     </div>
                 ) : filtered.length === 0 ? (
                     <div className="cart__empty-state">

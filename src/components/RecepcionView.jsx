@@ -10,6 +10,7 @@ import {
     MessageSquare, ChevronDown, ChevronUp, Stethoscope,
     FileText,
 } from 'lucide-react';
+import { SkeletonCardGrid } from './SkeletonLoader';
 import { supabase } from '../lib/supabase';
 
 // WhatsApp icon SVG inline
@@ -392,13 +393,7 @@ export default function RecepcionView() {
                 zIndex: 10,
             }}>
                 {loading ? (
-                    <div style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        padding: '80px 0', color: '#94A3B8',
-                    }}>
-                        <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite', marginRight: '8px' }} />
-                        Cargando cirugías...
-                    </div>
+                    <SkeletonCardGrid cards={6} />
                 ) : filtered.length === 0 ? (
                     <div style={{
                         textAlign: 'center', padding: '80px 24px', color: '#94A3B8',

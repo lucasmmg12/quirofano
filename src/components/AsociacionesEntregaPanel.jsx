@@ -13,6 +13,7 @@ import {
     AlertCircle, RefreshCw, Loader2, X, PackageCheck, RotateCcw,
     Download,
 } from 'lucide-react';
+import { SkeletonTable } from './SkeletonLoader';
 import * as XLSX from 'xlsx';
 import {
     fetchAsociacionesCirugias,
@@ -1019,13 +1020,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
 
                     {/* Table */}
                     {loading ? (
-                        <div style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            padding: '60px', color: '#9CA3AF', gap: '8px',
-                        }}>
-                            <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
-                            Cargando cirugías...
-                        </div>
+                        <SkeletonTable rows={8} cols={8} />
                     ) : pendientesCirugias.length === 0 ? (
                         <div style={{
                             textAlign: 'center', padding: '60px 20px', color: '#9CA3AF',
@@ -1176,13 +1171,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
             {activeTab === 'carrito' && (
                 <div>
                     {carritoLoading ? (
-                        <div style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            padding: '60px', color: '#9CA3AF', gap: '8px',
-                        }}>
-                            <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
-                            Cargando carrito...
-                        </div>
+                        <SkeletonTable rows={5} cols={6} />
                     ) : Object.keys(carrito).length === 0 ? (
                         <div style={{
                             textAlign: 'center', padding: '60px 20px', color: '#9CA3AF',

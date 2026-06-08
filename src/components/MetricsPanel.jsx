@@ -6,11 +6,11 @@
  */
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
-    BarChart3, TrendingUp, TrendingDown, Users, MessageSquare, Stethoscope,
-    Calendar, Download, RefreshCw, Filter, ArrowUpRight, ArrowDownRight,
-    Activity, Phone, CheckCircle, XCircle, Clock, FileSpreadsheet, FileText,
-    ChevronDown, Loader,
+    BarChart3, Calendar, ChevronDown, RefreshCw, FileSpreadsheet, FileText,
+    Loader, TrendingUp, MessageSquare, Phone, Users, Stethoscope,
+    Activity, CheckCircle,
 } from 'lucide-react';
+import { SkeletonChartGrid } from './SkeletonLoader';
 import {
     BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -850,10 +850,7 @@ export default function MetricsPanel({ addToast }) {
             </div>
 
             {loading ? (
-                <div className="metrics-panel__loading">
-                    <Loader size={28} className="metrics-spin" />
-                    <span>Cargando métricas...</span>
-                </div>
+                <SkeletonChartGrid kpis={6} charts={4} />
             ) : (
                 <>
                     {/* ═══ KPI Cards ═══ */}

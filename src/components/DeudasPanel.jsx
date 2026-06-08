@@ -25,6 +25,7 @@ import { parseDeudaExcel } from '../utils/deudaExcelParser';
 import { subscribeToAllIncoming } from '../services/chatService';
 import ChatWindow from './ChatWindow';
 import * as XLSX from 'xlsx';
+import { SkeletonTablePanel } from './SkeletonLoader';
 
 const VIEWS = { LIST: 'list', DETAIL: 'detail' };
 
@@ -823,10 +824,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
 
                 {/* TABLA DEUDORES */}
                 {loading ? (
-                    <div style={{ textAlign: 'center', padding: '60px 0', color: '#94A3B8' }}>
-                        <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', marginBottom: '8px' }} />
-                        <p>Cargando deudores...</p>
-                    </div>
+                    <SkeletonTablePanel kpis={5} cols={8} rows={8} />
                 ) : deudores.length === 0 ? (
                     <div style={st.emptyState}>
                         <img src="/logosanatorio.png" alt="Sanatorio Argentino" style={{ width: 56, height: 56, objectFit: 'contain', opacity: 0.35 }} />

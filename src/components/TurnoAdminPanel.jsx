@@ -11,6 +11,7 @@ import {
     ChevronDown, Timer, TrendingUp, Hash,
     Building2, Baby, ShieldCheck,
 } from 'lucide-react';
+import { SkeletonCardGrid } from './SkeletonLoader';
 import {
     fetchColaActiva, fetchAtendidosHoy, fetchMetricasHoy,
     llamarTurno, iniciarAtencion, finalizarAtencion,
@@ -188,9 +189,8 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
 
     if (loading) {
         return (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 0', color: '#94A3B8' }}>
-                <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite', marginRight: '8px' }} />
-                Cargando cola de turnos...
+            <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto' }}>
+                <SkeletonCardGrid cards={6} />
             </div>
         );
     }

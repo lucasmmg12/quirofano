@@ -16,6 +16,7 @@ import {
 import { normalizeArgentinePhone } from '../services/builderbotApi';
 import { fetchUnreadCounts, subscribeToAllIncoming } from '../services/chatService';
 import ChatWindow from './ChatWindow';
+import { SkeletonTable, SkeletonCardGrid } from './SkeletonLoader';
 
 /**
  * Resolve best phone from patient record + detail data (cirugías, deudas)
@@ -292,10 +293,7 @@ export default function PacientesPanel({ addToast, currentUser }) {
                     boxShadow: 'var(--shadow-sm)',
                 }}>
                     {loading ? (
-                        <div style={{ padding: '60px', textAlign: 'center', color: 'var(--neutral-400)' }}>
-                            <Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} />
-                            <p style={{ marginTop: '8px', fontSize: '0.85rem' }}>Cargando pacientes...</p>
-                        </div>
+                        <SkeletonTable rows={10} cols={7} />
                     ) : pacientes.length === 0 ? (
                         <div style={{ padding: '60px', textAlign: 'center', color: 'var(--neutral-400)' }}>
                             <Users size={48} strokeWidth={1.2} style={{ marginBottom: '12px' }} />
@@ -672,10 +670,7 @@ export default function PacientesPanel({ addToast, currentUser }) {
 
             {/* Detalle sections */}
             {detalleLoading ? (
-                <div style={{ padding: '60px', textAlign: 'center', color: 'var(--neutral-400)' }}>
-                    <Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} />
-                    <p style={{ marginTop: '8px', fontSize: '0.85rem' }}>Cargando ficha 360°...</p>
-                </div>
+                <SkeletonCardGrid cards={4} />
             ) : detalle && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 

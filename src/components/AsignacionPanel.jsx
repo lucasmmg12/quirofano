@@ -13,6 +13,7 @@ import {
     fetchAsignaciones, upsertAsignacion, deleteAsignacion,
     importFromExcel, canEditAsignacion,
 } from '../services/asignacionService';
+import { SkeletonTable } from './SkeletonLoader';
 
 const PRIORIDAD_STYLES = {
     3: { label: 'OS + Espec + Proceso', color: '#10B981', bg: '#ECFDF5', border: '#10B98130' },
@@ -340,10 +341,7 @@ export default function AsignacionPanel({ addToast, currentUser }) {
             {/* ── Table ── */}
             <div className="cart animate-fade-in" style={{ overflow: 'visible' }}>
                 {loading ? (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', gap: '10px', color: 'var(--neutral-400)' }}>
-                        <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} />
-                        <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>Cargando reglas...</span>
-                    </div>
+                    <SkeletonTable rows={10} cols={6} />
                 ) : (
                     <div className="cart__table-wrapper" style={{ overflowX: 'auto' }}>
                         <table className="cart__table" style={{ minWidth: '900px' }}>

@@ -5,6 +5,7 @@ import {
     Phone, Briefcase, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { getAllConfig, updateMultipleConfigs, getAllWhatsAppLines, updateWhatsAppLine, testWhatsAppLineConnection } from '../services/configService';
+import { SkeletonCardGrid } from './SkeletonLoader';
 
 // Configuración de los campos con metadata para UI
 const FIELD_META = {
@@ -230,9 +231,8 @@ export default function ConfigPanel({ addToast }) {
     if (loading) {
         return (
             <div className="content no-print">
-                <div className="cart animate-fade-in" style={{ textAlign: 'center', padding: '60px 20px' }}>
-                    <RotateCw size={32} style={{ animation: 'spin 1s linear infinite', color: 'var(--primary-400)' }} />
-                    <p style={{ marginTop: '12px', color: 'var(--neutral-400)' }}>Cargando configuración...</p>
+                <div className="cart animate-fade-in" style={{ padding: '20px' }}>
+                    <SkeletonCardGrid cards={4} />
                 </div>
             </div>
         );

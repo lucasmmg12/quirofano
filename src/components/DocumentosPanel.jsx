@@ -17,6 +17,7 @@ import {
     getDocumentoPublicUrl, getCategorias, ACCEPT_STRING, MAX_FILE_SIZE,
     createCategoria, renameCategoria, deleteCategoria, updateDocumentoCategoria,
 } from '../services/documentosService';
+import { SkeletonCardGrid } from './SkeletonLoader';
 
 // ═══════ FILE TYPE HELPERS ═══════
 
@@ -413,10 +414,7 @@ export default function DocumentosPanel({ addToast, currentUser }) {
             {/* ═══════ CATEGORY VIEW ═══════ */}
             {viewMode === 'category' ? (
                 loading ? (
-                    <div style={{ padding: '60px', textAlign: 'center', color: 'var(--neutral-400)' }}>
-                        <Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} />
-                        <p style={{ marginTop: '8px', fontSize: '0.85rem' }}>Cargando...</p>
-                    </div>
+                    <SkeletonCardGrid cards={6} />
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         {Object.entries(docsByCategory).map(([catName, docs]) => {

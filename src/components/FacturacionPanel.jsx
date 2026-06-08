@@ -27,6 +27,7 @@ import {
 } from '../services/altasService';
 import SalusSyncButton from './SalusSyncButton';
 import SignaturePad from './SignaturePad';
+import { SkeletonTablePanel } from './SkeletonLoader';
 
 // ── Analistas de Facturación (extraídos de SALUS) ──
 const ANALISTAS_FAC = [
@@ -745,9 +746,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
 
                     {/* ── Tabla ── */}
                     {loading ? (
-                        <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}>
-                            <Loader2 size={32} className="spin" style={{ color: '#6366F1' }} />
-                        </div>
+                        <SkeletonTablePanel kpis={0} cols={8} rows={8} showFilters={false} />
                     ) : filteredAltas.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--neutral-400)' }}>
                             <Receipt size={48} strokeWidth={1.2} />

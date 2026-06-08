@@ -18,6 +18,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import ModulosQuantity from './ModulosQuantity';
+import { SkeletonTable } from './SkeletonLoader';
 import MuestrasEditor from './MuestrasEditor';
 import { getEstadoFacturacion } from '../utils/facturacionRules';
 import {
@@ -956,9 +957,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                 </thead>
                                 <tbody>
                                     {loading ? (
-                                        <tr><td colSpan={11} style={{ padding: '32px', textAlign: 'center', color: 'var(--neutral-400)' }}>
-                                            <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 12px' }} /> Cargando...
-                                        </td></tr>
+                                        <tr><td colSpan={11}><SkeletonTable rows={8} cols={11} /></td></tr>
                                     ) : filteredRecords.length === 0 ? (
                                         <tr><td colSpan={11} style={{ padding: '32px', textAlign: 'center', color: 'var(--neutral-400)' }}>
                                             Ningún registro coincide con los filtros.
@@ -1177,10 +1176,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
 
                         {/* Carrito content */}
                         {carritoLoading ? (
-                            <div style={{ padding: '40px', textAlign: 'center', color: '#64748B' }}>
-                                <Loader2 size={24} className="animate-spin" style={{ margin: '0 auto 12px' }} />
-                                Cargando carrito...
-                            </div>
+                            <SkeletonTable rows={5} cols={8} />
                         ) : carrito.length === 0 ? (
                             <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94A3B8' }}>
                                 <ShoppingCart size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
