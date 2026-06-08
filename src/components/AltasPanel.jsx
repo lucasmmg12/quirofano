@@ -10,7 +10,7 @@ import {
     Search, RefreshCw, ChevronRight, Clock, Calendar,
     Filter, X, Loader2, FileText, User, Building2,
     Stethoscope, ChevronDown, ChevronUp, StickyNote, Save,
-    ListFilter, Download, FileDown, ShoppingCart, Printer, Trash2, PackageCheck,
+    ListFilter, Download, FileDown, ShoppingCart, Printer, Trash2, PackageCheck, Receipt,
 } from 'lucide-react';
 import {
     fetchAltas, updateAltaEstado, updateAltaNotas, updateAltaResponsable, ALTA_ESTADOS,
@@ -409,17 +409,21 @@ export default function AltasPanel({ addToast, currentUser }) {
             // 1) SALUS control_adm_finalizado = 'Si'
             // 2) Observaciones contienen 'alta adm' (escrito por el personal)
             // 3) Estado manual = 'Alta Adm' (puesto por operador)
+            // Facturada: si existe factura en PDV 21/31 (cruce automático SALUS)
             // Devuelta FAC: si tiene devolucion_id y estado_fac === 'Devuelta'
-            const isDevueltaFac = !!(alta.devolucion_id && alta.estado_fac === 'Devuelta');
-            const effectiveEstado = isDevueltaFac
-                ? 'Devuelta FAC'
-                : (isCtrlAdmSi || obsHasAltaAdm || alta.estado === 'Alta Adm')
-                    ? 'Alta Adm'
-                    : (alta.estado || 'Vacío');
+            const isFacturada = !!(alta.facturada || alta.estado_fac === 'Facturada');
+            const isDevueltaFac = !!(alta.devolucion_id && alta.estado_fac === 'Devuelta' && !isFacturada);
+            const effectiveEstado = isFacturada
+                ? 'Facturada'
+                : isDevueltaFac
+                    ? 'Devuelta FAC'
+                    : (isCtrlAdmSi || obsHasAltaAdm || alta.estado === 'Alta Adm')
+                        ? 'Alta Adm'
+                        : (alta.estado || 'Vacío');
             // Responsable: manual override tiene prioridad sobre auto-match
             const autoResp = asignacion?.responsable || '';
             const finalResp = alta.responsable_override || autoResp;
-            return { ...alta, _effectiveEstado: effectiveEstado, _responsable: finalResp, _autoResponsable: autoResp, _isDevueltaFac: isDevueltaFac };
+            return { ...alta, _effectiveEstado: effectiveEstado, _responsable: finalResp, _autoResponsable: autoResp, _isDevueltaFac: isDevueltaFac, _isFacturada: isFacturada };
         });
     }, [altas, criterios]);
 
@@ -1396,7 +1400,19 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             </td>
                                             {/* Responsable (auto-matched or override) */}
                                             <td className="cart__td" style={{ position: 'relative' }}>
-                                                {isJcorrea ? (
+                                                {alta._isFacturada && alta.usuario_facturo ? (
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                        padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                                                        background: '#ECFDF5', color: '#059669',
+                                                        border: '1px solid #A7F3D0',
+                                                        fontSize: '0.7rem', fontWeight: 700,
+                                                        whiteSpace: 'nowrap',
+                                                    }}>
+                                                        <Receipt size={10} />
+                                                        {alta.usuario_facturo}
+                                                    </span>
+                                                ) : isJcorrea ? (
                                                     <div style={{ position: 'relative', display: 'inline-block' }}>
                                                         <button
                                                             onClick={e => {

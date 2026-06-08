@@ -18,6 +18,7 @@ export const ALTA_ESTADOS = {
     'Particular':       { label: 'Particular',       color: '#6B7280', bg: '#F3F4F6', icon: '👤' },
     'Interconsulta':    { label: 'Interconsulta',    color: '#3B82F6', bg: '#EFF6FF', icon: '🔄' },
     'Vacío':            { label: 'Vacío',            color: '#94A3B8', bg: '#F8FAFC', icon: '◽' },
+    'Facturada':        { label: 'Facturada',        color: '#059669', bg: '#ECFDF5', icon: '💲' },
     'Devuelta FAC':     { label: 'Devuelta FAC',     color: '#DC2626', bg: '#FEF2F2', icon: '🔙' },
 };
 
