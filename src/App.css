@@ -309,6 +309,24 @@
     letter-spacing: -0.01em;
 }
 
+/* Wave/flag animation on title letters */
+.topbar__title--wave {
+    display: flex;
+    align-items: baseline;
+}
+
+.topbar__wave-letter {
+    display: inline-block;
+    animation: title-wave 3s ease-in-out infinite;
+    font-weight: inherit;
+}
+
+@keyframes title-wave {
+    0%, 100% { transform: translateY(0); }
+    30%      { transform: translateY(-3px); }
+    60%      { transform: translateY(1px); }
+}
+
 /* Blue accent on 'Administración' */
 .topbar__title-accent {
     color: var(--primary-500);
