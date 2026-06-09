@@ -170,8 +170,16 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     <img src="/logosanatorio.png" alt="Sanatorio Argentino" className="sidebar__logo-img" style={{ width: collapsed ? 32 : 38, height: collapsed ? 32 : 38, borderRadius: '8px', objectFit: 'contain' }} />
                     {!collapsed && (
                         <div className="sidebar__brand-text animate-fade-in">
-                            <span className="sidebar__brand-name">Sanatorio</span>
-                            <span className="sidebar__brand-sub">Argentino</span>
+                            <span className="sidebar__brand-name" style={{ display: 'flex' }}>
+                                {'Sanatorio'.split('').map((char, i) => (
+                                    <span key={i} style={{ display: 'inline-block', animation: 'title-wave 3s ease-in-out infinite', animationDelay: `${i * 0.08}s` }}>{char}</span>
+                                ))}
+                            </span>
+                            <span className="sidebar__brand-sub" style={{ display: 'flex' }}>
+                                {'Argentino'.split('').map((char, i) => (
+                                    <span key={i} style={{ display: 'inline-block', animation: 'title-wave 3s ease-in-out infinite', animationDelay: `${(i + 9) * 0.08}s` }}>{char}</span>
+                                ))}
+                            </span>
                         </div>
                     )}
                 </div>
