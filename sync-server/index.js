@@ -1082,11 +1082,24 @@ async function syncFacturacionInternada(db) {
 
     console.log(`   📦 ${records.length} registros válidos`);
 
+    // Deduplicar por clave única (numero_factura + numero_admision + concepto)
+    // SALUS puede devolver la misma línea duplicada, lo que causa
+    // "ON CONFLICT DO UPDATE command cannot affect row a second time"
+    const dedupMap = new Map();
+    for (const r of records) {
+        const key = `${r.numero_factura}|${r.numero_admision}|${r.concepto}`;
+        dedupMap.set(key, r); // último gana
+    }
+    const dedupedRecords = [...dedupMap.values()];
+    if (dedupedRecords.length < records.length) {
+        console.log(`   🔄 Deduplicados: ${records.length} → ${dedupedRecords.length} (${records.length - dedupedRecords.length} duplicados removidos)`);
+    }
+
     let upserted = 0, skipped = 0;
     const BATCH = 100;
 
-    for (let i = 0; i < records.length; i += BATCH) {
-        const batch = records.slice(i, i + BATCH);
+    for (let i = 0; i < dedupedRecords.length; i += BATCH) {
+        const batch = dedupedRecords.slice(i, i + BATCH);
         const { data, error } = await supabase
             .from('facturacion_internada')
             .upsert(batch, {
