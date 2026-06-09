@@ -90,7 +90,7 @@ export default function DocumentosPanel({ addToast, currentUser }) {
     const [previewDoc, setPreviewDoc] = useState(null);
     const [deleteConfirm, setDeleteConfirm] = useState(null);
     const [showCatManager, setShowCatManager] = useState(false);
-    const [viewMode, setViewMode] = useState('grid'); // grid | category
+    const [viewMode, setViewMode] = useState('category'); // grid | category
     const [dragOverCat, setDragOverCat] = useState(null);
     const [draggedDoc, setDraggedDoc] = useState(null);
 

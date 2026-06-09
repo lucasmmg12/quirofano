@@ -44,7 +44,10 @@ export default function WelcomeOnboarding({ currentUser, onClose, onOpenBeto }) 
 
     if (!visible) return null;
 
-    const firstName = currentUser?.nombre?.split(' ')[0] || 'Usuario';
+    const firstName = currentUser?.nombre || 'Usuario';
+    const isFrojo = currentUser?.usuario === 'frojo';
+    const assistantName = isFrojo ? 'Tim Payne' : 'Beto';
+    const assistantTagline = isFrojo ? '"No Payne, No Gain" 💪' : 'Asistente virtual listo para ayudarte. ¡Hacé click para empezar!';
 
     return (
         <>
@@ -164,7 +167,7 @@ export default function WelcomeOnboarding({ currentUser, onClose, onOpenBeto }) 
                             fontSize: '0.88rem', color: '#64748B',
                             lineHeight: 1.6,
                         }}>
-                            Tu sesión está activa. Recordá que podés consultar a <strong style={{ color: '#0D3B66' }}>Beto</strong>, 
+                            Tu sesión está activa. Recordá que podés consultar a <strong style={{ color: '#0D3B66' }}>{assistantName}</strong>, 
                             nuestro asistente de IA, para resolver dudas, generar documentos o navegar el sistema más rápido.
                         </p>
 
@@ -191,18 +194,26 @@ export default function WelcomeOnboarding({ currentUser, onClose, onOpenBeto }) 
                                 e.currentTarget.style.borderColor = '#E0E7FF';
                             }}
                         >
-                            {/* Beto avatar */}
+                            {/* Assistant avatar */}
                             <div style={{
                                 width: '64px', height: '64px', borderRadius: '16px',
                                 overflow: 'hidden', flexShrink: 0,
                                 boxShadow: '0 4px 12px rgba(99, 102, 241, 0.2)',
                                 border: '2px solid rgba(99, 102, 241, 0.3)',
                             }}>
-                                <video
-                                    src="/the_avatar_is_greetings_202606091123.mp4"
-                                    autoPlay muted loop playsInline
-                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                />
+                                {isFrojo ? (
+                                    <img
+                                        src="/tim-payne-ya-supero-la-barrera-de-los-cinco-JYXMRXEMGZAUJOQH5XSJ2AY2DA.avif"
+                                        alt="Tim Payne"
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    />
+                                ) : (
+                                    <video
+                                        src="/the_avatar_is_greetings_202606091123.mp4"
+                                        autoPlay muted loop playsInline
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    />
+                                )}
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{
@@ -212,7 +223,7 @@ export default function WelcomeOnboarding({ currentUser, onClose, onOpenBeto }) 
                                     <span style={{
                                         fontSize: '0.95rem', fontWeight: 700,
                                         color: '#1E293B',
-                                    }}>Beto</span>
+                                    }}>{assistantName}</span>
                                     <span style={{
                                         fontSize: '0.65rem', fontWeight: 700,
                                         background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
@@ -225,7 +236,7 @@ export default function WelcomeOnboarding({ currentUser, onClose, onOpenBeto }) 
                                     margin: 0, fontSize: '0.8rem',
                                     color: '#64748B', lineHeight: 1.4,
                                 }}>
-                                    Asistente virtual listo para ayudarte. ¡Hacé click para empezar!
+                                    {assistantTagline}
                                 </p>
                             </div>
                             <ArrowRight size={20} style={{ color: '#6366F1', flexShrink: 0 }} />
