@@ -293,7 +293,7 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    opacity: 0.15;
+    opacity: 0.08;
 }
 
 /* Ensure all topbar children are above the video */
