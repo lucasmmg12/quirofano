@@ -39,6 +39,55 @@
     z-index: 100;
     transition: width var(--transition-normal);
     box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+/* Animated gradient overlay — subtle living background */
+.sidebar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        135deg,
+        rgba(99, 102, 241, 0.08) 0%,
+        transparent 25%,
+        rgba(79, 70, 229, 0.06) 50%,
+        transparent 75%,
+        rgba(129, 140, 248, 0.08) 100%
+    );
+    background-size: 300% 300%;
+    animation: sidebar-gradient-shift 12s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* All sidebar children above the gradient overlay */
+.sidebar > * {
+    position: relative;
+    z-index: 1;
+}
+
+@keyframes sidebar-gradient-shift {
+    0%   { background-position: 0% 0%; }
+    25%  { background-position: 100% 50%; }
+    50%  { background-position: 50% 100%; }
+    75%  { background-position: 0% 50%; }
+    100% { background-position: 0% 0%; }
+}
+
+/* ─── Smooth Accordion Transition ─── */
+.sidebar__accordion {
+    overflow: hidden;
+    transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+}
+
+.sidebar__accordion--open {
+    opacity: 1;
+}
+
+.sidebar__accordion--closed {
+    max-height: 0 !important;
+    opacity: 0;
 }
 
 .sidebar--collapsed {
@@ -215,6 +264,28 @@
     top: 3px;
     /* Below accent line */
     z-index: 50;
+    overflow: hidden;
+}
+
+/* Background video in topbar */
+.topbar__video-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+}
+
+.topbar__video-bg video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.15;
+}
+
+/* Ensure all topbar children are above the video */
+.topbar > *:not(.topbar__video-bg) {
+    position: relative;
+    z-index: 1;
 }
 
 .topbar__title {
@@ -3260,6 +3331,7 @@
     0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
     50% { transform: scale(1.2); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0); }
 }
+
 
 /* ─── Help Modal Animations ─── */
 @keyframes help-fade-in {

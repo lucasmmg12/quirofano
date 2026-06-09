@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
     ClipboardList, History, BookOpen, Settings, PanelLeftClose, PanelLeft,
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
@@ -48,6 +48,40 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const isAltasActive = altasSubItems.some(i => activeView === i.id);
     const isCirugiasActive = cirugiasSubItems.some(i => activeView === i.id);
 
+    // ── Smooth Accordion component ──
+    function AccordionContent({ isOpen, children }) {
+        const contentRef = useRef(null);
+        const [maxHeight, setMaxHeight] = useState(isOpen ? 'none' : '0px');
+
+        useEffect(() => {
+            if (!contentRef.current) return;
+            if (isOpen) {
+                const h = contentRef.current.scrollHeight;
+                setMaxHeight(`${h}px`);
+                // After transition, set to 'none' so dynamic content can grow
+                const timer = setTimeout(() => setMaxHeight('none'), 350);
+                return () => clearTimeout(timer);
+            } else {
+                // First set explicit height, then collapse on next frame
+                const h = contentRef.current.scrollHeight;
+                setMaxHeight(`${h}px`);
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => setMaxHeight('0px'));
+                });
+            }
+        }, [isOpen]);
+
+        return (
+            <div
+                ref={contentRef}
+                className={`sidebar__accordion ${isOpen ? 'sidebar__accordion--open' : 'sidebar__accordion--closed'}`}
+                style={{ maxHeight }}
+            >
+                {children}
+            </div>
+        );
+    }
+
     // Helper to render a collapsible group
     function renderGroup({ label, icon: GroupIcon, isOpen, setOpen, isGroupActive, subItems, badge }) {
         if (collapsed) {
@@ -86,14 +120,14 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     <span style={{ flex: 1 }}>{label}</span>
                     {badge}
                     <ChevronDown size={14} style={{
-                        transition: 'transform 0.2s ease',
+                        transition: 'transform 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
                         transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
                         opacity: 0.5,
                     }} />
                 </button>
 
-                {isOpen && (
-                    <div className="animate-fade-in" style={{
+                <AccordionContent isOpen={isOpen}>
+                    <div style={{
                         marginLeft: '20px', borderLeft: '2px solid rgba(255, 255, 255, 0.2)',
                         paddingLeft: '0', marginTop: '2px',
                     }}>
@@ -114,7 +148,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                             );
                         })}
                     </div>
-                )}
+                </AccordionContent>
             </div>
         );
     }
@@ -314,9 +348,17 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                         position: 'relative', zIndex: 2,
                         transition: 'all 0.3s ease',
                     }}>
-                        <img src="/beto.jpg" alt="Beto IA" style={{
-                            width: '100%', height: '100%', objectFit: 'cover',
-                        }} />
+                        <video
+                            src="/the_avatar_is_greetings_202606091123.mp4"
+                            autoPlay
+                            loop
+                            muted
+                            playsInline
+                            style={{
+                                width: '100%', height: '100%', objectFit: 'cover',
+                                pointerEvents: 'none',
+                            }}
+                        />
                     </div>
                     {/* Online indicator */}
                     <div style={{

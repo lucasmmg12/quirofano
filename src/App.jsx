@@ -484,6 +484,16 @@ function App({ currentUser, onLogout }) {
             <main className={`main ${sidebarCollapsed ? 'main--expanded' : ''}`}>
                 {/* Top Bar */}
                 <header className="topbar no-print" style={{ flexShrink: 0 }}>
+                    {/* Background video */}
+                    <div className="topbar__video-bg">
+                        <video
+                            src="/Blue_drop_moving_left_right_202606091400.mp4"
+                            autoPlay
+                            loop
+                            muted
+                            playsInline
+                        />
+                    </div>
                     {/* Mobile hamburger */}
                     <button
                         className="topbar__mobile-menu"

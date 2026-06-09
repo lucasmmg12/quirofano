@@ -262,7 +262,6 @@ export async function marcarParaTraspaso(ids) {
         .from('altas_administrativas')
         .update({ en_carrito_traspaso: true })
         .in('id', ids)
-        .is('traspaso_id', null)
         .select();
 
     if (error) throw error;
@@ -277,7 +276,6 @@ export async function quitarDeCarritoTraspaso(id) {
         .from('altas_administrativas')
         .update({ en_carrito_traspaso: false })
         .eq('id', id)
-        .is('traspaso_id', null)
         .select()
         .single();
 
@@ -293,7 +291,6 @@ export async function fetchCarritoTraspaso() {
         .from('altas_administrativas')
         .select('*')
         .eq('en_carrito_traspaso', true)
-        .is('traspaso_id', null)
         .order('fecha_ingreso', { ascending: false });
 
     if (error) throw error;

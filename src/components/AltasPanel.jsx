@@ -147,7 +147,7 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     const handleSelectAllSelectable = () => {
         const selectableIds = sortedAltas
-            .filter(a => !a.en_carrito_traspaso && !a.traspaso_id)
+            .filter(a => !a.en_carrito_traspaso)
             .map(a => a.id);
         setSelectedIds(new Set(selectableIds));
     };
@@ -1192,7 +1192,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                 <tr>
                                     <th className="cart__th" style={{ width: '30px', textAlign: 'center' }}>
                                         <input type="checkbox"
-                                            checked={selectedIds.size > 0 && sortedAltas.filter(a => !a.en_carrito_traspaso && !a.traspaso_id).every(a => selectedIds.has(a.id))}
+                                            checked={selectedIds.size > 0 && sortedAltas.filter(a => !a.en_carrito_traspaso).every(a => selectedIds.has(a.id))}
                                             onChange={e => {
                                                 if (e.target.checked) handleSelectAllSelectable();
                                                 else setSelectedIds(new Set());
@@ -1290,15 +1290,15 @@ export default function AltasPanel({ addToast, currentUser }) {
                                         >
                                             {/* Checkbox */}
                                             <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }} onClick={e => e.stopPropagation()}>
-                                                {(!alta.en_carrito_traspaso && !alta.traspaso_id) ? (
+                                                {!alta.en_carrito_traspaso ? (
                                                     <input type="checkbox"
                                                         checked={selectedIds.has(alta.id)}
                                                         onChange={() => handleToggleSelect(alta.id)}
                                                         style={{ cursor: 'pointer', accentColor: '#6366F1' }}
                                                     />
-                                                ) : alta.en_carrito_traspaso ? (
+                                                ) : (
                                                     <ShoppingCart size={12} style={{ color: '#6366F1', opacity: 0.5 }} title="En carrito" />
-                                                ) : null}
+                                                )}
                                             </td>
                                             {/* Chevron */}
                                             <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }}>
