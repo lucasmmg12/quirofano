@@ -480,6 +480,7 @@ function App({ currentUser, onLogout }) {
                 unreadMessageCount={globalUnreadCount}
                 className={mobileMenuOpen ? 'sidebar--mobile-open' : ''}
                 onOpenBeto={() => setBetoWidgetOpen(true)}
+                currentUser={currentUser}
             />
 
             <main className={`main ${sidebarCollapsed ? 'main--expanded' : ''}`}>
