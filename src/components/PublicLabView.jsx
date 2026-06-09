@@ -189,7 +189,7 @@ export default function PublicLabView({ labName }) {
         const months = new Set();
         records.forEach(r => {
             if (r.fecha_visita) {
-                const d = new Date(r.fecha_visita);
+                const d = new Date(r.fecha_visita + 'T12:00:00');
                 const label = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
                 months.add(label.charAt(0).toUpperCase() + label.slice(1));
             }
@@ -214,7 +214,7 @@ export default function PublicLabView({ labName }) {
             }
             // Date filter (by month)
             if (filterFecha !== 'all' && r.fecha_visita) {
-                const d = new Date(r.fecha_visita);
+                const d = new Date(r.fecha_visita + 'T12:00:00');
                 const label = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
                 const formatted = label.charAt(0).toUpperCase() + label.slice(1);
                 if (formatted !== filterFecha) return false;
@@ -265,7 +265,7 @@ export default function PublicLabView({ labName }) {
         const tableRows = [];
 
         filteredRecords.forEach(r => {
-            const date = r.fecha_visita ? new Date(r.fecha_visita).toLocaleDateString('es-AR') : '-';
+            const date = r.fecha_visita ? new Date(r.fecha_visita + 'T12:00:00').toLocaleDateString('es-AR') : '-';
             let biopsias = [];
             if (r.biopsia_congelacion) biopsias.push(`C: ${r.biopsia_congelacion}`);
             if (r.biopsia_simple) biopsias.push(`S: ${r.biopsia_simple}`);
@@ -313,7 +313,7 @@ export default function PublicLabView({ labName }) {
             const modSummary = modText.length > 0 ? modText.join(', ') : (r.modulo_asignado || 'Sin asignar');
 
             return {
-                Fecha: r.fecha_visita ? new Date(r.fecha_visita).toLocaleDateString('es-AR') : '',
+                Fecha: r.fecha_visita ? new Date(r.fecha_visita + 'T12:00:00').toLocaleDateString('es-AR') : '',
                 Paciente: r.paciente || '',
                 DNI: r.dni || '',
                 ObraSocial: r.cliente || '',
@@ -422,7 +422,7 @@ export default function PublicLabView({ labName }) {
                                     <React.Fragment key={r.id_visita}>
                                     <tr style={{ borderBottom: isExpanded ? 'none' : '1px solid #E2E8F0', cursor: 'pointer', transition: 'background 0.2s', background: isExpanded ? '#F8FAFC' : 'transparent' }} onMouseOver={e => { if(!isExpanded) e.currentTarget.style.background = '#F8FAFC' }} onMouseOut={e => { if(!isExpanded) e.currentTarget.style.background = 'transparent' }} onClick={() => setExpandedRow(isExpanded ? null : r.id_visita)}>
                                         <td style={{ padding: '16px', fontSize: '0.9rem', color: '#334155' }}>
-                                            {r.fecha_visita && new Date(r.fecha_visita).toLocaleDateString('es-AR')}
+                                            {r.fecha_visita && new Date(r.fecha_visita + 'T12:00:00').toLocaleDateString('es-AR')}
                                         </td>
                                         <td style={{ padding: '16px' }}>
                                             <div style={{ fontWeight: 600, color: '#1E293B' }}>{r.paciente}</div>

@@ -53,7 +53,8 @@ const thSmall = { ...thStyle, padding: '6px 10px', fontSize: '0.68rem' };
 
 const fmtFecha = (d) => {
     if (!d) return '—';
-    const date = new Date(d);
+    const dateStr = typeof d === 'string' && d.length === 10 ? d + 'T12:00:00' : d;
+    const date = new Date(dateStr);
     return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
@@ -720,7 +721,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
             if (r.modulo_b_qty > 0) modText.push(`B: ${r.modulo_b_qty}`);
             if (r.modulo_c_qty > 0) modText.push(`C: ${r.modulo_c_qty}`);
             return [
-                r.fecha_visita ? new Date(r.fecha_visita).toLocaleDateString('es-AR') : '-',
+                r.fecha_visita ? new Date(r.fecha_visita + 'T12:00:00').toLocaleDateString('es-AR') : '-',
                 r.n_admision || '-',
                 r.paciente || 'S/D', r.dni || 'S/D', r.cliente || '-', r.coseguro || '-',
                 r.laboratorio || '-', biopsias.join('\n') || '-',
@@ -743,7 +744,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
             if (r.modulo_b_qty > 0) modText.push(`B: ${r.modulo_b_qty}`);
             if (r.modulo_c_qty > 0) modText.push(`C: ${r.modulo_c_qty}`);
             return {
-                Fecha: r.fecha_visita ? new Date(r.fecha_visita).toLocaleDateString('es-AR') : '',
+                Fecha: r.fecha_visita ? new Date(r.fecha_visita + 'T12:00:00').toLocaleDateString('es-AR') : '',
                 'N° Admision': r.n_admision || '',
                 Paciente: r.paciente || '', DNI: r.dni || '', ObraSocial: r.cliente || '',
                 Coseguro: r.coseguro || '', Laboratorio: r.laboratorio || '',
@@ -975,7 +976,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                     onClick={() => setExpandedRow(isExpanded ? null : r.id_visita)}
                                                 >
                                                     <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                                                        {r.fecha_visita && new Date(r.fecha_visita).toLocaleDateString('es-AR')}
+                                                        {r.fecha_visita && new Date(r.fecha_visita + 'T12:00:00').toLocaleDateString('es-AR')}
                                                     </td>
                                                     <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
                                                         <span style={{
