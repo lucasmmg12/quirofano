@@ -3658,8 +3658,271 @@
     background: #334155 !important;
 }
 
-/* Clear fields button */
 [data-theme="dark"] .btn-clear-fields {
     border-color: #475569 !important;
     color: #94A3B8 !important;
+}
+
+/* ========================================
+   MICRO-ANIMATIONS — Premium UX System
+   ======================================== */
+
+/* ─── Universal Button Press Effect ─── */
+button:not(.no-micro):active,
+[role="button"]:not(.no-micro):active {
+    transform: scale(0.97) !important;
+    transition: transform 0.1s ease !important;
+}
+
+/* ─── Universal Button Hover Lift ─── */
+button:not(.no-micro):not(:disabled):hover,
+[role="button"]:not(.no-micro):not(:disabled):hover {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* ─── Ripple Effect on Click ─── */
+.ripple-container {
+    position: relative;
+    overflow: hidden;
+}
+
+.ripple-container::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.35);
+    transform: translate(-50%, -50%);
+    opacity: 0;
+}
+
+.ripple-container:active::after {
+    width: 200%;
+    height: 200%;
+    opacity: 0;
+    transition: width 0.4s ease-out, height 0.4s ease-out, opacity 0.4s ease-out;
+}
+
+/* ─── Input Focus Glow ─── */
+input:not([type="checkbox"]):not([type="radio"]):not(.no-micro):focus,
+textarea:not(.no-micro):focus,
+select:not(.no-micro):focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(30, 95, 166, 0.12), 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+    border-color: var(--primary-400) !important;
+    transition: box-shadow 0.25s ease, border-color 0.25s ease !important;
+}
+
+/* ─── Card Hover Lift ─── */
+.card-hover {
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.08),
+                0 4px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* ─── Sidebar Active Indicator Slide ─── */
+.sidebar__item--active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    background: linear-gradient(180deg, #818CF8, #6366F1);
+    border-radius: 0 4px 4px 0;
+    animation: sidebar-indicator-slide 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 8px rgba(99, 102, 241, 0.4);
+}
+
+@keyframes sidebar-indicator-slide {
+    from {
+        height: 0%;
+        opacity: 0;
+    }
+    to {
+        height: 60%;
+        opacity: 1;
+    }
+}
+
+/* ─── Checkbox Stroke Animation ─── */
+input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--neutral-300);
+    border-radius: 5px;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s ease;
+    background: var(--neutral-0);
+    flex-shrink: 0;
+}
+
+input[type="checkbox"]:hover {
+    border-color: var(--primary-400);
+    box-shadow: 0 0 0 3px rgba(30, 95, 166, 0.08);
+}
+
+input[type="checkbox"]:checked {
+    background: var(--primary-500);
+    border-color: var(--primary-500);
+    animation: checkbox-pop 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 1px;
+    width: 5px;
+    height: 10px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+    animation: checkbox-stroke 0.2s ease-out 0.1s both;
+}
+
+@keyframes checkbox-pop {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(1.15); }
+    100% { transform: scale(1); }
+}
+
+@keyframes checkbox-stroke {
+    from {
+        opacity: 0;
+        transform: rotate(45deg) scale(0);
+    }
+    to {
+        opacity: 1;
+        transform: rotate(45deg) scale(1);
+    }
+}
+
+/* ─── Badge Pulse (notifications, counts) ─── */
+.badge-pulse {
+    animation: badge-enter 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes badge-enter {
+    0%   { transform: scale(0); opacity: 0; }
+    60%  { transform: scale(1.2); }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+/* ─── Success Button Morph ─── */
+.btn-success-morph {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-success-morph--done {
+    background: #10B981 !important;
+    color: white !important;
+    transform: scale(1.02);
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.3);
+}
+
+/* ─── Row Hover Highlight ─── */
+tr.row-hover {
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+tr.row-hover:hover {
+    background: rgba(30, 95, 166, 0.03) !important;
+}
+
+/* ─── Tooltip Fade-in ─── */
+[title] {
+    position: relative;
+}
+
+/* ─── Smooth Scroll for all panels ─── */
+.main {
+    scroll-behavior: smooth;
+}
+
+/* ─── Focus Visible Ring (accessibility + premium) ─── */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+    outline: 2px solid var(--primary-400);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+}
+
+/* ─── Skeleton Shimmer Enhancement ─── */
+@keyframes micro-shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.shimmer {
+    background: linear-gradient(
+        90deg,
+        var(--neutral-100) 25%,
+        var(--neutral-50) 50%,
+        var(--neutral-100) 75%
+    );
+    background-size: 200% 100%;
+    animation: micro-shimmer 1.5s ease-in-out infinite;
+}
+
+/* ─── Toast Slide-in Enhancement ─── */
+.toast {
+    animation: toast-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+@keyframes toast-slide-in {
+    from {
+        opacity: 0;
+        transform: translateX(100%) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+}
+
+/* ─── Dark Mode Micro-animation Overrides ─── */
+[data-theme="dark"] input[type="checkbox"] {
+    background: #1E293B;
+    border-color: #475569;
+}
+
+[data-theme="dark"] input[type="checkbox"]:hover {
+    border-color: #818CF8;
+    box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.1);
+}
+
+[data-theme="dark"] input[type="checkbox"]:checked {
+    background: #6366F1;
+    border-color: #6366F1;
+}
+
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):focus,
+[data-theme="dark"] textarea:focus,
+[data-theme="dark"] select:focus {
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15), 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+    border-color: #818CF8 !important;
+}
+
+[data-theme="dark"] .card-hover:hover {
+    box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.3),
+                0 4px 10px -5px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] tr.row-hover:hover {
+    background: rgba(129, 140, 248, 0.05) !important;
 }
