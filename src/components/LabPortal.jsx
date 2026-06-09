@@ -53,12 +53,12 @@ export default function LabPortal({ labSlug }) {
     const sessionKey = SESSION_KEY_PREFIX + labSlug;
     const [labUser, setLabUser] = useState(() => {
         try {
-            const raw = localStorage.getItem(sessionKey);
+            const raw = sessionStorage.getItem(sessionKey);
             if (!raw) return null;
             const session = JSON.parse(raw);
             // Validate user matches this lab
             if (session?.usuario !== config?.usuario) {
-                localStorage.removeItem(sessionKey);
+                sessionStorage.removeItem(sessionKey);
                 return null;
             }
             return session;
@@ -66,12 +66,12 @@ export default function LabPortal({ labSlug }) {
     });
 
     const handleLogin = useCallback((user) => {
-        localStorage.setItem(sessionKey, JSON.stringify(user));
+        sessionStorage.setItem(sessionKey, JSON.stringify(user));
         setLabUser(user);
     }, [sessionKey]);
 
     const handleLogout = useCallback(() => {
-        localStorage.removeItem(sessionKey);
+        sessionStorage.removeItem(sessionKey);
         setLabUser(null);
     }, [sessionKey]);
 

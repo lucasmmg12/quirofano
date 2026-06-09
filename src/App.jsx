@@ -46,6 +46,7 @@ import ManualProcedimientos from './components/ManualProcedimientos.jsx';
 import HelpButton from './components/HelpButton.jsx';
 import DocumentosPanel from './components/DocumentosPanel.jsx';
 import PacientesPanel from './components/PacientesPanel.jsx';
+import WelcomeOnboarding from './components/WelcomeOnboarding.jsx';
 import './App.css';
 
 function AppRoot() {
@@ -979,6 +980,12 @@ function App({ currentUser, onLogout }) {
 
             {/* Easter egg: Homer idle overlay — solo para frojo */}
             {currentUser?.usuario === 'frojo' && <IdleHomerOverlay />}
+
+            {/* Welcome Onboarding — post-login, once per session */}
+            <WelcomeOnboarding
+                currentUser={currentUser}
+                onOpenBeto={() => setBetoWidgetOpen(true)}
+            />
         </div>
     );
 }

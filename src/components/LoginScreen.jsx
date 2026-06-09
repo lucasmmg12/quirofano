@@ -43,7 +43,7 @@ export default function LoginScreen({ onLogin }) {
                 triggerShake();
                 setPassword('');
                 // Clear the session that was just created
-                localStorage.removeItem('admqui_session');
+                sessionStorage.removeItem('admqui_session');
                 setLoading(false);
                 return;
             }

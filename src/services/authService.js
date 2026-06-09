@@ -2,7 +2,7 @@
  * Servicio de Autenticación
  * 
  * Login/logout con verificación de password via Supabase RPC (pgcrypto).
- * Sesión persistida en localStorage.
+ * Sesión persistida en sessionStorage (se pierde al cerrar la pestaña).
  * Máximo ~10 usuarios, todos con mismo rol.
  */
 import { supabase } from '../lib/supabase';
@@ -20,7 +20,7 @@ const SESSION_KEY = 'admqui_session';
  */
 export function getCurrentUser() {
     try {
-        const raw = localStorage.getItem(SESSION_KEY);
+        const raw = sessionStorage.getItem(SESSION_KEY);
         if (!raw) return null;
         const session = JSON.parse(raw);
         // Validar que tiene los campos mínimos
@@ -84,7 +84,7 @@ export async function login(usuario, password) {
             loginAt: new Date().toISOString(),
         };
 
-        localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
 
         // Track in Hub Monitor (non-blocking)
         trackLogin(supabase, user.usuario);
@@ -102,7 +102,7 @@ export async function login(usuario, password) {
 export function logout() {
     const user = getCurrentUser();
     if (user) trackLogout(supabase, user.usuario);
-    localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
 }
 
 
