@@ -155,6 +155,16 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
 
     return (
         <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''} ${className}`}>
+            {/* Animated video background */}
+            <div className="sidebar__video-bg">
+                <video
+                    src="/anima_la_imagen_202606091409.mp4"
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                />
+            </div>
             <div className="sidebar__brand">
                 <div className="sidebar__logo">
                     <img src="/logosanatorio.png" alt="Sanatorio Argentino" className="sidebar__logo-img" style={{ width: collapsed ? 32 : 38, height: collapsed ? 32 : 38, borderRadius: '8px', objectFit: 'contain' }} />

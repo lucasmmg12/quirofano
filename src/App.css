@@ -30,9 +30,7 @@
     top: 0;
     bottom: 0;
     width: var(--sidebar-width);
-    background: linear-gradient(rgba(10, 37, 64, 0.85), rgba(10, 37, 64, 0.95)), url('/SANARG2021_fondo.webp');
-    background-size: cover;
-    background-position: center;
+    background: linear-gradient(rgba(10, 37, 64, 0.92), rgba(10, 37, 64, 0.96));
     border-right: 1px solid rgba(255, 255, 255, 0.1);
     display: flex;
     flex-direction: column;
@@ -40,6 +38,22 @@
     transition: width var(--transition-normal);
     box-shadow: var(--shadow-sm);
     overflow: hidden;
+}
+
+/* Video background layer */
+.sidebar__video-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.sidebar__video-bg video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.12;
 }
 
 /* Animated gradient overlay — subtle living background */
@@ -58,13 +72,13 @@
     background-size: 300% 300%;
     animation: sidebar-gradient-shift 12s ease-in-out infinite;
     pointer-events: none;
-    z-index: 0;
+    z-index: 1;
 }
 
-/* All sidebar children above the gradient overlay */
-.sidebar > * {
+/* All sidebar children above the overlays */
+.sidebar > *:not(.sidebar__video-bg) {
     position: relative;
-    z-index: 1;
+    z-index: 2;
 }
 
 @keyframes sidebar-gradient-shift {
