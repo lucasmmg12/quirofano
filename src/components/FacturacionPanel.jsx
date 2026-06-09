@@ -120,16 +120,18 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                 toDate: toDate || undefined,
                 search: searchTerm,
             });
-            // Normalizar: si SALUS marcó facturada=true, reflejar en estado_fac y responsable
+            // Normalizar: mapear usuario_facturo de SALUS al responsable y estado
             const normalized = data.map(a => {
-                if (a.facturada && (!a.estado_fac || a.estado_fac === 'Pendiente')) {
-                    return {
-                        ...a,
-                        estado_fac: 'Facturada',
-                        responsable_fac: a.responsable_fac || a.usuario_facturo || null,
-                    };
+                let updates = {};
+                // Si SALUS tiene usuario_facturo y no hay responsable_fac manual, usarlo
+                if (a.usuario_facturo && !a.responsable_fac) {
+                    updates.responsable_fac = a.usuario_facturo;
                 }
-                return a;
+                // Si SALUS marcó facturada=true y estado aún es Pendiente, actualizar
+                if (a.facturada && (!a.estado_fac || a.estado_fac === 'Pendiente')) {
+                    updates.estado_fac = 'Facturada';
+                }
+                return Object.keys(updates).length > 0 ? { ...a, ...updates } : a;
             });
             setAltas(normalized);
         } catch (err) {
@@ -513,7 +515,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                     <Undo2 size={16} style={{ verticalAlign: 'middle', marginRight: '6px' }} />
                                     {carritoDevItems.length} ficha{carritoDevItems.length !== 1 ? 's' : ''} para devolver
                                 </div>
-                                <button onClick={() => setShowDevolucionModal(true)}
+                                <button onClick={() => { setDevolucionForm({ devuelve: currentUser?.nombre || '', recibe: '', motivo: '' }); setShowDevolucionModal(true); }}
                                     style={{
                                         display: 'flex', alignItems: 'center', gap: '6px',
                                         padding: '10px 20px', borderRadius: '10px',
@@ -766,7 +768,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                         </div>
                     ) : (
                         <div style={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid var(--neutral-200)', background: 'var(--card-bg, #fff)' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', tableLayout: 'fixed' }}>
                                 <thead>
                                     <tr style={{ background: 'var(--neutral-50)' }}>
                                         <th style={{ ...thStyle, width: '30px', textAlign: 'center' }}>
@@ -784,16 +786,16 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                 style={{ cursor: 'pointer', accentColor: '#EF4444' }}
                                             />
                                         </th>
-                                        <th style={thStyle}></th>
-                                        <th style={thStyle}>Admisión</th>
+                                        <th style={{ ...thStyle, width: '28px' }}></th>
+                                        <th style={{ ...thStyle, width: '90px' }}>Admisión</th>
                                         <th style={thStyle}>Paciente</th>
                                         <th style={thStyle}>Cliente</th>
-                                        <th style={thStyle}>Ingreso</th>
-                                        <th style={thStyle}>Alta</th>
-                                        <th style={thStyle}>Días</th>
-                                        <th style={{ ...thStyle, textAlign: 'center' }}>Facturada</th>
-                                        <th style={{ ...thStyle, minWidth: '130px' }}>Responsable FAC</th>
-                                        <th style={{ ...thStyle, minWidth: '120px' }}>Estado FAC</th>
+                                        <th style={{ ...thStyle, width: '90px' }}>Ingreso</th>
+                                        <th style={{ ...thStyle, width: '90px' }}>Alta</th>
+                                        <th style={{ ...thStyle, width: '50px', textAlign: 'center' }}>Días</th>
+                                        <th style={{ ...thStyle, width: '90px', textAlign: 'center' }}>Facturada</th>
+                                        <th style={{ ...thStyle, width: '170px' }}>Responsable FAC</th>
+                                        <th style={{ ...thStyle, width: '130px' }}>Estado FAC</th>
                                     </tr>
                                 </thead>
                                 <tbody>
