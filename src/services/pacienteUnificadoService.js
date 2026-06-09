@@ -17,7 +17,7 @@ export async function searchPacientes(query, { page = 0, pageSize = 50 } = {}) {
 
     let q = supabase
         .from(TABLE)
-        .select('id_paciente, nombre, dni, edad, sexo, email, centro, nhc, telefono, manual', { count: 'exact' })
+        .select('id_paciente, nombre, dni, edad, sexo, email, centro, nhc, telefono, manual, notas', { count: 'exact' })
         .order('nombre', { ascending: true })
         .range(from, from + pageSize - 1);
 
@@ -46,7 +46,7 @@ export async function fetchPacientes({ page = 0, pageSize = 50, search = '' } = 
 
     let q = supabase
         .from(TABLE)
-        .select('id_paciente, nombre, dni, edad, sexo, email, centro, nhc, telefono, manual, created_at', { count: 'exact' })
+        .select('id_paciente, nombre, dni, edad, sexo, email, centro, nhc, telefono, manual, notas, created_at', { count: 'exact' })
         .order('nombre', { ascending: true })
         .range(from, from + pageSize - 1);
 

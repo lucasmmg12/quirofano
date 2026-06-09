@@ -81,7 +81,7 @@ export async function fetchPatientsByIds(ids) {
         try {
             const { data, error } = await supabase
                 .from(PATIENTS_TABLE)
-                .select('id_paciente, nombre, dni, edad, sexo, email, centro')
+                .select('id_paciente, nombre, dni, edad, sexo, email, centro, notas')
                 .in('id_paciente', batch);
 
             if (error) {

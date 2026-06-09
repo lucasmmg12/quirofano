@@ -1310,7 +1310,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                         { label: 'Sexo', value: patientDataMap[surgery.id_paciente]?.sexo },
                                         { label: 'Centro', value: patientDataMap[surgery.id_paciente]?.centro },
                                         { label: 'Módulo', value: surgery.modulo },
-                                        { label: 'Notas', value: surgery.notas },
+                                        { label: 'Notas (Paciente)', value: patientDataMap[surgery.id_paciente]?.notas },
+                                        { label: 'Notas (Cirugía)', value: surgery.notas },
                                         { label: 'Operador', value: surgery.operador },
                                         { label: 'Creado', value: surgery.created_at ? new Date(surgery.created_at).toLocaleDateString('es-AR') : null },
                                     ].map(({ label, value }) => (

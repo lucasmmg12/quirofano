@@ -502,6 +502,21 @@ export default function PacientesPanel({ addToast, currentUser }) {
                             {pac?.telefono && <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><Phone size={13} /> {pac.telefono}</span>}
                             {pac?.email && <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><Mail size={13} /> {pac.email}</span>}
                         </div>
+                        {pac?.notas && (
+                            <div style={{
+                                marginTop: '12px',
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                background: 'rgba(255,255,255,0.12)',
+                                border: '1px solid rgba(255,255,255,0.15)',
+                                fontSize: '0.78rem',
+                                color: '#fff',
+                                maxWidth: '600px',
+                                lineHeight: '1.4',
+                            }}>
+                                <strong style={{ opacity: 0.85 }}>Notas del Paciente:</strong> {pac.notas}
+                            </div>
+                        )}
                     </div>
 
                     {/* Action buttons */}
