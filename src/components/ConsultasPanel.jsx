@@ -38,7 +38,7 @@ export default function ConsultasPanel() {
     const [vista, setVista] = useState('matriz'); // matriz | dia | semana | resumen
     const [importing, setImporting] = useState(false);
     const [importResult, setImportResult] = useState(null);
-    const [matrizAgrupar, setMatrizAgrupar] = useState('dia'); // dia | semana
+    const [matrizAgrupar, setMatrizAgrupar] = useState('dia'); // dia | semana | mes
     const [matrizColumnas, setMatrizColumnas] = useState('especialidad'); // especialidad | agenda | tipo_visita
     const [colsOcultas, setColsOcultas] = useState(new Set());
     // Registros (server-side paginated)
@@ -863,6 +863,8 @@ export default function ConsultasPanel() {
                                 const monday = new Date(d);
                                 monday.setDate(diff);
                                 key = monday.toISOString().split('T')[0];
+                            } else if (matrizAgrupar === 'mes') {
+                                key = r.fecha_visita.substring(0, 7); // 'YYYY-MM'
                             } else {
                                 key = r.fecha_visita;
                             }
@@ -920,6 +922,14 @@ export default function ConsultasPanel() {
                                 const e = new Date(s); e.setDate(e.getDate() + 6);
                                 return `${s.getDate()}/${s.getMonth() + 1} - ${e.getDate()}/${e.getMonth() + 1}`;
                             }
+                            if (matrizAgrupar === 'mes') {
+                                const parts = key.split('-');
+                                const year = parts[0];
+                                const monthIdx = parseInt(parts[1], 10) - 1;
+                                const d = new Date(year, monthIdx, 1);
+                                const monthName = d.toLocaleDateString('es-AR', { month: 'long' });
+                                return monthName.charAt(0).toUpperCase() + monthName.slice(1) + ' ' + year;
+                            }
                             return formatDate(key);
                         };
 
@@ -944,7 +954,7 @@ export default function ConsultasPanel() {
                                     <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: 0, color: '#1E293B' }}>📋 Matriz de Consultas por Obra Social</h3>
                                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                                         <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 600 }}>Agrupar:</span>
-                                        {[{ id: 'dia', label: 'Día' }, { id: 'semana', label: 'Semana' }].map(g => (
+                                        {[{ id: 'dia', label: 'Día' }, { id: 'semana', label: 'Semana' }, { id: 'mes', label: 'Mes' }].map(g => (
                                             <button key={g.id} onClick={() => setMatrizAgrupar(g.id)} style={{
                                                 padding: '4px 10px', borderRadius: '6px', border: '1px solid',
                                                 fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer',
@@ -992,7 +1002,7 @@ export default function ConsultasPanel() {
                                         <thead>
                                             <tr style={{ background: 'linear-gradient(135deg, #312E81, #4F46E5)' }}>
                                                 <th style={{ padding: '8px 10px', color: '#fff', fontWeight: 700, textAlign: 'left', position: 'sticky', left: 0, background: '#3730A3', zIndex: 2, minWidth: '70px' }}>
-                                                    {matrizAgrupar === 'semana' ? 'Semana' : 'Fecha'}
+                                                    {matrizAgrupar === 'semana' ? 'Semana' : matrizAgrupar === 'mes' ? 'Mes' : 'Fecha'}
                                                 </th>
                                                 <th style={{ padding: '8px 8px', color: '#fff', fontWeight: 700, textAlign: 'left', minWidth: '80px' }}>
                                                     OS
