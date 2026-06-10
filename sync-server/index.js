@@ -1633,10 +1633,13 @@ async function syncLaboratorios(db) {
           FROM [SALUS].[dbo].[VLIS_AnatomiaPatologica] AS AP
           LEFT JOIN [SALUS].[dbo].[VLISE_Visitas] AS V 
               ON AP.[idvisita] = V.[idVisita]
-          LEFT JOIN [SALUS].[dbo].[VLISE_PeticionesPruebas] AS PP 
-              ON AP.[idvisita] = PP.[idVisita]
+          OUTER APPLY (
+              SELECT TOP 1 PP_Sub.[N.Admision] 
+              FROM [SALUS].[dbo].[VLISE_PeticionesPruebas] AS PP_Sub
+              WHERE PP_Sub.[idVisita] = AP.[idvisita]
+                AND PP_Sub.[N.Admision] IS NOT NULL
+          ) AS PP
           WHERE AP.[Fecha visita] >= '20260301'
-            AND PP.[N.Admision] IS NOT NULL
           ORDER BY AP.[Fecha visita] DESC;
     `);
     console.log(`   📥 ${result.recordset.length} registros extraídos`);

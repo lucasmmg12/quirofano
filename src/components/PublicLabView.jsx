@@ -230,24 +230,27 @@ export default function PublicLabView({ labName }) {
     }, [records, searchTerm, filterFecha, filterOS]);
 
     const renderBiopsies = (r) => {
+        const hasCongelacion = r.biopsia_congelacion && r.biopsia_congelacion !== 'NO';
+        const hasSimple = r.biopsia_simple || r.material_biopsia_simple;
+        const hasAmpliada = r.biopsia_ampliada || r.material_biopsia_ampliada;
         return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {r.biopsia_congelacion && (
+                {hasCongelacion && (
                     <div style={{ background: '#E0F2FE', color: '#0369A1', padding: '4px 8px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '4px', width: 'fit-content', fontWeight: 600, border: '1px solid #BAE6FD', fontSize: '0.75rem' }}>
                         ❄️ Congelación: {r.biopsia_congelacion}
                     </div>
                 )}
-                {r.biopsia_simple && (
+                {hasSimple && (
                     <div style={{ background: '#DCFCE7', color: '#15803D', padding: '4px 8px', borderRadius: '4px', display: 'inline-block', width: 'fit-content', fontWeight: 600, border: '1px solid #BBF7D0', fontSize: '0.75rem' }}>
-                        Simple: {r.biopsia_simple}
+                        Simple: {r.biopsia_simple || '—'}
                     </div>
                 )}
-                {r.biopsia_ampliada && (
+                {hasAmpliada && (
                     <div style={{ background: '#FFEDD5', color: '#C2410C', padding: '4px 8px', borderRadius: '4px', display: 'inline-block', width: 'fit-content', fontWeight: 600, border: '1px solid #FED7AA', fontSize: '0.75rem' }}>
-                        Ampliada: {r.biopsia_ampliada}
+                        Ampliada: {r.biopsia_ampliada || '—'}
                     </div>
                 )}
-                {!r.biopsia_congelacion && !r.biopsia_simple && !r.biopsia_ampliada && (
+                {!hasCongelacion && !hasSimple && !hasAmpliada && (
                     <span style={{ color: '#94A3B8' }}>Ninguna</span>
                 )}
             </div>
@@ -267,9 +270,9 @@ export default function PublicLabView({ labName }) {
         filteredRecords.forEach(r => {
             const date = r.fecha_visita ? new Date(r.fecha_visita + 'T12:00:00').toLocaleDateString('es-AR') : '-';
             let biopsias = [];
-            if (r.biopsia_congelacion) biopsias.push(`C: ${r.biopsia_congelacion}`);
-            if (r.biopsia_simple) biopsias.push(`S: ${r.biopsia_simple}`);
-            if (r.biopsia_ampliada) biopsias.push(`A: ${r.biopsia_ampliada}`);
+            if (r.biopsia_congelacion && r.biopsia_congelacion !== 'NO') biopsias.push(`C: ${r.biopsia_congelacion}`);
+            if (r.biopsia_simple || r.material_biopsia_simple) biopsias.push(`S: ${r.biopsia_simple || '—'}`);
+            if (r.biopsia_ampliada || r.material_biopsia_ampliada) biopsias.push(`A: ${r.biopsia_ampliada || '—'}`);
             if (biopsias.length === 0) biopsias.push('Ninguna');
 
             let modText = [];
@@ -302,9 +305,9 @@ export default function PublicLabView({ labName }) {
     const exportToExcel = () => {
         const worksheetData = filteredRecords.map(r => {
             let biopsias = [];
-            if (r.biopsia_congelacion) biopsias.push(`C: ${r.biopsia_congelacion}`);
-            if (r.biopsia_simple) biopsias.push(`S: ${r.biopsia_simple}`);
-            if (r.biopsia_ampliada) biopsias.push(`A: ${r.biopsia_ampliada}`);
+            if (r.biopsia_congelacion && r.biopsia_congelacion !== 'NO') biopsias.push(`C: ${r.biopsia_congelacion}`);
+            if (r.biopsia_simple || r.material_biopsia_simple) biopsias.push(`S: ${r.biopsia_simple || '—'}`);
+            if (r.biopsia_ampliada || r.material_biopsia_ampliada) biopsias.push(`A: ${r.biopsia_ampliada || '—'}`);
 
             let modText = [];
             if (r.modulo_a_qty > 0) modText.push(`A: ${r.modulo_a_qty}`);

@@ -559,9 +559,9 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                     ? new Date(item.fecha_visita + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
                     : '—';
                 let biopsias = [];
-                if (item.biopsia_congelacion) biopsias.push(`C: ${item.biopsia_congelacion}`);
-                if (item.biopsia_simple) biopsias.push(`S: ${item.biopsia_simple}`);
-                if (item.biopsia_ampliada) biopsias.push(`A: ${item.biopsia_ampliada}`);
+                if (item.biopsia_congelacion && item.biopsia_congelacion !== 'NO') biopsias.push(`C: ${item.biopsia_congelacion}`);
+                if (item.biopsia_simple || item.material_biopsia_simple) biopsias.push(`S: ${item.biopsia_simple || '—'}`);
+                if (item.biopsia_ampliada || item.material_biopsia_ampliada) biopsias.push(`A: ${item.biopsia_ampliada || '—'}`);
                 let modText = [];
                 if (item.modulo_a_qty > 0) modText.push(`A:${item.modulo_a_qty}`);
                 if (item.modulo_b_qty > 0) modText.push(`B:${item.modulo_b_qty}`);
@@ -713,9 +713,9 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
         const tableColumn = ["Fecha", "N° Adm", "Paciente", "DNI", "Obra Social", "Coseguro", "Lab", "Biopsias", "Módulo", "Acción"];
         const tableRows = filteredRecords.map(r => {
             let biopsias = [];
-            if (r.biopsia_congelacion) biopsias.push(`C: ${r.biopsia_congelacion}`);
-            if (r.biopsia_simple) biopsias.push(`S: ${r.biopsia_simple}`);
-            if (r.biopsia_ampliada) biopsias.push(`A: ${r.biopsia_ampliada}`);
+            if (r.biopsia_congelacion && r.biopsia_congelacion !== 'NO') biopsias.push(`C: ${r.biopsia_congelacion}`);
+            if (r.biopsia_simple || r.material_biopsia_simple) biopsias.push(`S: ${r.biopsia_simple || '—'}`);
+            if (r.biopsia_ampliada || r.material_biopsia_ampliada) biopsias.push(`A: ${r.biopsia_ampliada || '—'}`);
             let modText = [];
             if (r.modulo_a_qty > 0) modText.push(`A: ${r.modulo_a_qty}`);
             if (r.modulo_b_qty > 0) modText.push(`B: ${r.modulo_b_qty}`);
@@ -736,9 +736,9 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
     const exportToExcel = () => {
         const worksheetData = filteredRecords.map(r => {
             let biopsias = [];
-            if (r.biopsia_congelacion) biopsias.push(`C: ${r.biopsia_congelacion}`);
-            if (r.biopsia_simple) biopsias.push(`S: ${r.biopsia_simple}`);
-            if (r.biopsia_ampliada) biopsias.push(`A: ${r.biopsia_ampliada}`);
+            if (r.biopsia_congelacion && r.biopsia_congelacion !== 'NO') biopsias.push(`C: ${r.biopsia_congelacion}`);
+            if (r.biopsia_simple || r.material_biopsia_simple) biopsias.push(`S: ${r.biopsia_simple || '—'}`);
+            if (r.biopsia_ampliada || r.material_biopsia_ampliada) biopsias.push(`A: ${r.biopsia_ampliada || '—'}`);
             let modText = [];
             if (r.modulo_a_qty > 0) modText.push(`A: ${r.modulo_a_qty}`);
             if (r.modulo_b_qty > 0) modText.push(`B: ${r.modulo_b_qty}`);
@@ -1027,10 +1027,10 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                     <td style={tdStyle}>{r.laboratorio || '-'}</td>
                                                     <td style={tdStyle}>
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                            {r.biopsia_congelacion && <div style={{ background: '#E0F2FE', color: '#0369A1', padding: '2px 6px', borderRadius: '4px', display: 'inline-block', width: 'fit-content', fontWeight: 600, border: '1px solid #BAE6FD', fontSize: '0.72rem' }}>❄️ C: {r.biopsia_congelacion}</div>}
-                                                            {r.biopsia_simple && <div style={{ background: '#DCFCE7', color: '#15803D', padding: '2px 6px', borderRadius: '4px', display: 'inline-block', width: 'fit-content', fontWeight: 600, border: '1px solid #BBF7D0', fontSize: '0.72rem' }}>S: {r.biopsia_simple}</div>}
-                                                            {r.biopsia_ampliada && <div style={{ background: '#FFEDD5', color: '#C2410C', padding: '2px 6px', borderRadius: '4px', display: 'inline-block', width: 'fit-content', fontWeight: 600, border: '1px solid #FED7AA', fontSize: '0.72rem' }}>A: {r.biopsia_ampliada}</div>}
-                                                            {!r.biopsia_congelacion && !r.biopsia_simple && !r.biopsia_ampliada && '—'}
+                                                            {r.biopsia_congelacion && r.biopsia_congelacion !== 'NO' && <div style={{ background: '#E0F2FE', color: '#0369A1', padding: '2px 6px', borderRadius: '4px', display: 'inline-block', width: 'fit-content', fontWeight: 600, border: '1px solid #BAE6FD', fontSize: '0.72rem' }}>❄️ C: {r.biopsia_congelacion}</div>}
+                                                            {(r.biopsia_simple || r.material_biopsia_simple) && <div style={{ background: '#DCFCE7', color: '#15803D', padding: '2px 6px', borderRadius: '4px', display: 'inline-block', width: 'fit-content', fontWeight: 600, border: '1px solid #BBF7D0', fontSize: '0.72rem' }}>S: {r.biopsia_simple || '—'}</div>}
+                                                            {(r.biopsia_ampliada || r.material_biopsia_ampliada) && <div style={{ background: '#FFEDD5', color: '#C2410C', padding: '2px 6px', borderRadius: '4px', display: 'inline-block', width: 'fit-content', fontWeight: 600, border: '1px solid #FED7AA', fontSize: '0.72rem' }}>A: {r.biopsia_ampliada || '—'}</div>}
+                                                            {!(r.biopsia_congelacion && r.biopsia_congelacion !== 'NO') && !(r.biopsia_simple || r.material_biopsia_simple) && !(r.biopsia_ampliada || r.material_biopsia_ampliada) && '—'}
                                                         </div>
                                                     </td>
                                                     <td style={{ ...tdStyle, textAlign: 'center' }}>
@@ -1275,9 +1275,9 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                             <td style={tdSmall}>{item.cliente || '—'}</td>
                                                             <td style={tdSmall}>
                                                                 {[
-                                                                    item.biopsia_congelacion && `C: ${item.biopsia_congelacion}`,
-                                                                    item.biopsia_simple && `S: ${item.biopsia_simple}`,
-                                                                    item.biopsia_ampliada && `A: ${item.biopsia_ampliada}`,
+                                                                    item.biopsia_congelacion && item.biopsia_congelacion !== 'NO' && `C: ${item.biopsia_congelacion}`,
+                                                                    (item.biopsia_simple || item.material_biopsia_simple) && `S: ${item.biopsia_simple || '—'}`,
+                                                                    (item.biopsia_ampliada || item.material_biopsia_ampliada) && `A: ${item.biopsia_ampliada || '—'}`,
                                                                 ].filter(Boolean).join(' | ') || '—'}
                                                             </td>
                                                             <td style={tdSmall}>
@@ -1479,9 +1479,9 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                                                     <td style={tdSmall}>{item.cliente || '—'}</td>
                                                                                     <td style={tdSmall}>
                                                                                         {[
-                                                                                            item.biopsia_congelacion && `C: ${item.biopsia_congelacion}`,
-                                                                                            item.biopsia_simple && `S: ${item.biopsia_simple}`,
-                                                                                            item.biopsia_ampliada && `A: ${item.biopsia_ampliada}`,
+                                                                                            item.biopsia_congelacion && item.biopsia_congelacion !== 'NO' && `C: ${item.biopsia_congelacion}`,
+                                                                                            (item.biopsia_simple || item.material_biopsia_simple) && `S: ${item.biopsia_simple || '—'}`,
+                                                                                            (item.biopsia_ampliada || item.material_biopsia_ampliada) && `A: ${item.biopsia_ampliada || '—'}`,
                                                                                         ].filter(Boolean).join(', ') || '—'}
                                                                                     </td>
                                                                                     <td style={tdSmall}>
