@@ -48,11 +48,22 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [dropdownDir, setDropdownDir] = useState('down'); // 'down' | 'up'
     const [processing, setProcessing] = useState(false);
 
-    // Filtros
-    const [fromDate, setFromDate] = useState('');
+    // Filtros — default: últimos 3 meses para carga rápida
+    const [fromDate, setFromDate] = useState(() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - 3);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+    });
     const [toDate, setToDate] = useState('');
     const [filterEstado, setFilterEstado] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    
+    // Debounce search term (500ms)
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearch(searchTerm), 500);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
     
     // Notas internas
     const [editingNotas, setEditingNotas] = useState(null);
@@ -89,7 +100,7 @@ export default function AltasPanel({ addToast, currentUser }) {
         try {
             setLoading(true);
             const [data, criteriosData] = await Promise.all([
-                fetchAltas({ fromDate, toDate: toDate || undefined, search: searchTerm }),
+                fetchAltas({ fromDate, toDate: toDate || undefined, search: debouncedSearch }),
                 fetchAsignaciones().catch(() => []),
             ]);
             setAltas(data);
@@ -99,7 +110,7 @@ export default function AltasPanel({ addToast, currentUser }) {
         } finally {
             setLoading(false);
         }
-    }, [fromDate, toDate, searchTerm, addToast]);
+    }, [fromDate, toDate, debouncedSearch, addToast]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
