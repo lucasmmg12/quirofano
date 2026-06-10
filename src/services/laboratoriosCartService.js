@@ -35,17 +35,16 @@ export async function fetchLabRecords({ soloSinCarrito = false, soloCarrito = fa
     let query = supabase
         .from('laboratorios_anatomia_patologica')
         .select('*')
-        .is('constancia_id', null)
         .order('fecha_visita', { ascending: false });
 
     if (fromDate) query = query.gte('fecha_visita', fromDate);
     if (toDate) query = query.lte('fecha_visita', toDate);
 
     if (soloSinCarrito) {
-        query = query.or('en_carrito.is.null,en_carrito.eq.false');
+        query = query.is('constancia_id', null).or('en_carrito.is.null,en_carrito.eq.false');
     }
     if (soloCarrito) {
-        query = query.eq('en_carrito', true);
+        query = query.is('constancia_id', null).eq('en_carrito', true);
     }
 
     const PAGE_SIZE = 1000;
