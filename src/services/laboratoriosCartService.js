@@ -32,20 +32,23 @@ export const LAB_LIST = Object.keys(LAB_COLORS);
  * @param {boolean} opts.soloCarrito    - If true, only fetch cart items
  */
 export async function fetchLabRecords({ soloSinCarrito = false, soloCarrito = false, fromDate = null, toDate = null } = {}) {
-    let query = supabase
-        .from('laboratorios_anatomia_patologica')
-        .select('*')
-        .order('fecha_visita', { ascending: false });
+    const buildQuery = () => {
+        let q = supabase
+            .from('laboratorios_anatomia_patologica')
+            .select('*')
+            .order('fecha_visita', { ascending: false });
 
-    if (fromDate) query = query.gte('fecha_visita', fromDate);
-    if (toDate) query = query.lte('fecha_visita', toDate);
+        if (fromDate) q = q.gte('fecha_visita', fromDate);
+        if (toDate) q = q.lte('fecha_visita', toDate);
 
-    if (soloSinCarrito) {
-        query = query.is('constancia_id', null).or('en_carrito.is.null,en_carrito.eq.false');
-    }
-    if (soloCarrito) {
-        query = query.is('constancia_id', null).eq('en_carrito', true);
-    }
+        if (soloSinCarrito) {
+            q = q.is('constancia_id', null).or('en_carrito.is.null,en_carrito.eq.false');
+        }
+        if (soloCarrito) {
+            q = q.is('constancia_id', null).eq('en_carrito', true);
+        }
+        return q;
+    };
 
     const PAGE_SIZE = 1000;
     let allData = [];
@@ -53,7 +56,7 @@ export async function fetchLabRecords({ soloSinCarrito = false, soloCarrito = fa
     let hasMore = true;
 
     while (hasMore) {
-        const { data, error } = await query.range(from, from + PAGE_SIZE - 1);
+        const { data, error } = await buildQuery().range(from, from + PAGE_SIZE - 1);
         if (error) throw error;
         allData = allData.concat(data || []);
         hasMore = (data || []).length === PAGE_SIZE;

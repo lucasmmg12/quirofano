@@ -154,7 +154,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 const lastDay = new Date(selectedMonth.year, selectedMonth.month + 1, 0).getDate();
                 toDate = `${selectedMonth.year}-${String(selectedMonth.month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
             }
-            const data = await fetchLabRecords({ soloSinCarrito: true, fromDate, toDate });
+            const data = await fetchLabRecords({ fromDate, toDate });
 
             // Enriquecer con coseguro desde hospital_pacientes
             const dnisNeedCoseguro = [...new Set(
