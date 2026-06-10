@@ -38,9 +38,9 @@ async function getSchemaContext(): Promise<string> {
                 'surgeries', 'surgery_events', 'surgery_templates',
                 'deudas_pacientes',
                 'asociaciones_cirugias',
-                'laboratorios_anatomia',
+                'laboratorios_anatomia_patologica',
                 'admqui_usuarios',
-                'altas_medicas',
+                'altas_administrativas', 'altas_traspasos', 'altas_asignacion',
                 'whatsapp_messages', 'whatsapp_templates',
                 'consultas_guardia', 'consultas_imports',
             ];
@@ -155,14 +155,81 @@ Los estados de cirugía son colores que representan un pipeline de gestión:
 - \`constancia_entregada\` (boolean)
 - \`carrito_id\` (uuid)
 
-### \`laboratorios_anatomia\` (Biopsias de anatomía patológica)
+### \`laboratorios_anatomia_patologica\` (Biopsias de anatomía patológica — ~1245 registros)
 - \`id\` (uuid PK)
-- \`paciente\` (text)
-- \`laboratorio\` (text) — Laboratorio asignado
-- \`fecha_visita\` (date)
-- \`biopsia_simple\` (integer)
-- \`biopsia_ampliada\` (integer)
-- \`obra_social\` (text)
+- \`id_visita\` (text UNIQUE) — ID de la visita en SALUS
+- \`n_admision\` (text) — Número de admisión
+- \`paciente\` (text) — Nombre completo del paciente
+- \`dni\` (text) — NIF/DNI del paciente
+- \`cliente\` (text) — Obra social, ej: "001 - PROVINCIA"
+- \`laboratorio\` (text) — Lab asignado: "LDA - Dra. Aguero o Dra Rios", "LAB. CEDAP", "LAB.INST.PATOLOG.CUYO"
+- \`fecha_visita\` (date) — Fecha de la visita
+- \`biopsia_congelacion\` (text) — Cantidad de biopsias por congelación ("NO" si no aplica)
+- \`biopsia_simple\` (text) — Cantidad de biopsias simples
+- \`material_biopsia_simple\` (text) — Material remitido de biopsia simple
+- \`biopsia_ampliada\` (text) — Cantidad de biopsias ampliadas
+- \`material_biopsia_ampliada\` (text) — Material remitido de biopsia ampliada
+- \`coseguro\` (text) — Coseguro del paciente
+- \`modulo_tipo\` (text) — Clasificación de módulo: 'A', 'B', 'C'
+- \`modulo_cantidad\` (integer) — Cantidad de módulos
+- \`modulo_portal\` (text) — Portal del módulo
+- \`modulo_fecha\` (date) — Fecha del módulo
+- \`en_carrito\` (boolean) — Si está en el carrito de entrega
+- \`constancia_id\` (uuid) — FK a constancia de entrega (null = pendiente)
+
+**REGLA DE ACCIÓN (FACTURAR vs ENTREGAR):**
+Cada biopsia tiene una "acción" que se determina cruzando Obra Social + Laboratorio:
+- **FACTURAR**: El Sanatorio factura la biopsia a la Obra Social (el laboratorio NO gestiona el cobro)
+- **ENTREGAR**: Solo se entrega la muestra al laboratorio; el lab cobra directo a la OS
+- La tabla de reglas está en el frontend (facturacionRules.js)
+- Ejemplo: PROVINCIA + Agüero = ENTREGAR, OSAPM + CEDAP = FACTURAR
+
+### \`altas_administrativas\` (Altas administrativas de internación — tabla principal)
+- \`id\` (uuid PK)
+- \`numero_admision\` (text) — Número de admisión SALUS
+- \`paciente\` (text) — Nombre completo del paciente
+- \`dni\` (text) — DNI del paciente
+- \`fecha_ingreso\` (date) — Fecha de ingreso hospitalario
+- \`fecha_alta\` (date) — Fecha de alta médica
+- \`especialidad\` (text) — Especialidad médica
+- \`doctor\` (text) — Médico tratante
+- \`cliente\` (text) — Obra social
+- \`proceso\` (text) — Tipo de proceso (internación, ambulatorio, etc.)
+- \`control_adm_finalizado\` (text) — "Sí" si el control administrativo finalizó
+- \`estado\` (text) — Estado manual: vacío, "Alta Adm" (alta administrativa completada)
+- \`responsable_override\` (text) — Responsable asignado manualmente
+- \`observaciones\` (text) — Notas internas
+- \`en_carrito_traspaso\` (boolean) — Si está en el carrito de traspaso
+- \`facturada\` (boolean) — Si la facturación internado fue completada
+- \`facturada_por\` (text) — Usuario que marcó como facturada
+- \`facturada_at\` (timestamptz) — Fecha de facturación
+- \`estado_fac\` (text) — Estado de facturación: "Facturada", "Devuelta"
+- \`devolucion_id\` (uuid) — ID de devolución si aplica
+
+**FLUJO DE ALTAS ADM:**
+1. Se sincronizan desde SALUS (internaciones activas y recientes)
+2. El responsable se asigna automáticamente según reglas (OS + Especialidad → Responsable)
+3. El estado puede ser vacío (pendiente) o "Alta Adm" (completada)
+4. Se pueden seleccionar fichas con checkbox para enviar al Carrito de Traspaso
+5. Desde el Carrito se genera constancia de traspaso con firmas
+6. Por separado, existe la sección de Facturación Internado
+
+### \`altas_traspasos\` (Constancias de traspaso de fichas)
+- \`id\` (uuid PK)
+- \`entrega\` (text) — Persona que entrega
+- \`recibe\` (text) — Persona que recibe
+- \`notas\` (text)
+- \`firma_entrega\` (text) — Firma digital (base64)
+- \`firma_recibe\` (text) — Firma digital (base64)
+- \`created_at\` (timestamptz)
+- \`fichas_count\` (integer)
+
+### \`altas_asignacion\` (Reglas de asignación automática de responsable)
+- \`id\` (uuid PK)
+- \`obra_social\` (text) — Patrón de obra social
+- \`especialidad\` (text) — Patrón de especialidad
+- \`proceso\` (text) — Tipo de proceso
+- \`responsable\` (text) — Responsable asignado
 
 ### \`admqui_usuarios\` (Usuarios del sistema)
 - \`id\` (uuid PK)
@@ -376,8 +443,9 @@ Cuando el usuario pida "exportar deudas", "Excel de cirugías", etc. sin filtros
 - **Cirugías**: SELECT nombre, dni, obra_social, fecha_cirugia, medico, modulo, status, ausente FROM surgeries WHERE excluido = false ORDER BY fecha_cirugia DESC LIMIT 500
 - **Consultas Guardia**: SELECT paciente, nif, cliente, agenda, tipo_visita, fecha_visita, visita_especialidad FROM consultas_guardia WHERE mes_periodo = '[mes_actual]' LIMIT 500
 - **Asociaciones**: SELECT nombre_paciente, nombre_cirugia, fecha_realizacion, cirujano, asociacion, especialidad, obra_social, docs_completos FROM asociaciones_cirugias ORDER BY fecha_realizacion DESC LIMIT 500
-- **Laboratorios**: SELECT paciente, laboratorio, fecha_visita, biopsia_simple, biopsia_ampliada, obra_social FROM laboratorios_anatomia ORDER BY fecha_visita DESC LIMIT 500
-- **Altas**: SELECT * FROM altas_medicas ORDER BY created_at DESC LIMIT 500
+- **Laboratorios**: SELECT paciente, dni, cliente, laboratorio, fecha_visita, biopsia_congelacion, biopsia_simple, biopsia_ampliada, modulo_tipo, modulo_cantidad, en_carrito, constancia_id FROM laboratorios_anatomia_patologica ORDER BY fecha_visita DESC LIMIT 500
+- **Altas**: SELECT paciente, dni, numero_admision, fecha_ingreso, fecha_alta, especialidad, doctor, cliente, estado, responsable_override, facturada, estado_fac FROM altas_administrativas ORDER BY fecha_ingreso DESC LIMIT 500
+- **Traspasos**: SELECT id, entrega, recibe, notas, fichas_count, created_at FROM altas_traspasos ORDER BY created_at DESC LIMIT 100
 - **Auditoría H.C.**: NOTA: La auditoría de historias clínicas no posee una tabla en la base de datos ya que procesa planillas Excel cargadas de forma dinámica y temporal en memoria.
 
 ## AUDITORÍA DE HISTORIAS CLÍNICAS (NUEVO)
@@ -1065,13 +1133,33 @@ Gestión de pedidos médicos con nomenclador integrado.
 Soporta prácticas ambulatorias e internación.`,
 
         altas: `## 📤 Altas Administrativas
-Control de altas médicas hospitalarias.
+Control de altas administrativas de internación hospitalaria.
 
-- 📅 Registro de fechas de ingreso y alta
-- 👨‍⚕️ Asignación de responsable
-- 📊 Estados: pendiente, en proceso, completada
-- 📝 Notas internas y observaciones
-- 📋 Seguimiento de diagnósticos`,
+**Tabla principal:** \`altas_administrativas\`
+
+**Secciones del panel:**
+- 📋 **Tabla de Altas** — Lista de internaciones con filtros por fecha, OS, especialidad, médico, estado
+- 📊 **Métricas** — KPIs de fichas pendientes, completadas, por responsable
+- 🛒 **Carrito de Traspaso** — Fichas seleccionadas para generar constancia de entrega
+- 📜 **Historial** — Traspasos anteriores con detalle y firmas
+- 💰 **Facturación Internado** — Control de facturación por separado
+
+**Columnas clave:**
+- ☑ Checkbox de selección → Enviar al Carrito de Traspaso
+- Estado: vacío (pendiente) o "Alta Adm" (completada)
+- Responsable: se asigna automáticamente según reglas (OS + Especialidad)
+- Facturada/Devuelta: estado de facturación de internación
+
+**Flujo:**
+1. Sync desde SALUS → fichas aparecen con estado vacío
+2. El responsable se auto-asigna según tabla \`altas_asignacion\`
+3. Se marca control administrativo → estado "Alta Adm"
+4. Se seleccionan fichas con ☑ → se envían al Carrito de Traspaso
+5. Desde el Carrito se genera constancia con firmas digitales
+6. Por separado, la sección Facturación Internado rastrea si se facturó
+
+**Tip para usuarios:** Los checks de la izquierda sirven para seleccionar fichas y enviarlas al Carrito de Traspaso.`,
+
 
         turnos: `## 🕐 Cola de Turnos
 Gestión de la cola de turnos del sanatorio.
@@ -1129,12 +1217,41 @@ Cirugías de asociaciones médicas profesionales.
 **Flujo:** Sync SALUS → Carritos mensuales → Documentación ✅/❌ → Constancia de entrega
 **Datos:** nombre_paciente, nombre_cirugia, fecha_realizacion, cirujano, asociacion, docs_completos`,
 
-        laboratorios: `## 🔬 Laboratorios
-Biopsias de anatomía patológica por laboratorio.
+        laboratorios: `## 🔬 Laboratorios (Anatomía Patológica)
+Gestión completa de muestras de biopsias de anatomía patológica. ~1245 registros activos.
 
-**Labs:** LDA - Dra. Aguero/Rios, CEDAP, INST.PATOLOG.CUYO
-**Tipos:** Congelación, Simple, Ampliada
-Cada lab tiene portal propio con sus biopsias asignadas.`,
+**Tabla:** \`laboratorios_anatomia_patologica\` (sincronizada desde SALUS)
+
+**Laboratorios:**
+- 🔬 LDA - Dra. Agüero o Dra Ríos
+- 🔬 LAB. CEDAP
+- 🔬 LAB.INST.PATOLOG.CUYO
+
+**Tipos de biopsia:**
+- ❄️ C = Congelación (urgente, intraoperatoria)
+- 🟢 S = Simple (estándar)
+- 🟠 A = Ampliada (mayor complejidad)
+
+**Columna ACCIÓN (MUY IMPORTANTE):**
+Se determina automáticamente cruzando Obra Social + Laboratorio:
+- 🔴 **FACTURAR**: El Sanatorio factura la biopsia a la Obra Social (el lab no cobra)
+- 🟢 **ENTREGAR**: Solo se entrega la muestra al laboratorio, que cobra directo a la OS
+- Ejemplo: PROVINCIA + Agüero = ENTREGAR | OSAPM + CEDAP = FACTURAR
+
+**Módulo:** Clasificación de complejidad del estudio (A, B o C)
+
+**Carrito de entrega:** Se agregan muestras al carrito → se genera constancia de entrega al laboratorio
+
+**Pestañas:**
+- Muestras — Todas las biopsias pendientes (sin filtro de estado)
+- Carrito — Biopsias seleccionadas para entrega
+- Historial — Constancias generadas previamente
+
+**Portales públicos:** Cada laboratorio tiene un link público que muestra solo sus biopsias asignadas.
+
+**Guía de columnas:**
+- Fecha, N° Adm, Paciente (nombre+DNI), OS (obra social), Coseguro, Laboratorio, Biopsias (tipo y cantidad), Módulo, Acción, Carrito`,
+
 
         auditoria_historias: `## 🔍 Auditoría de Historias Clínicas (Auditoría H.C.)
 Módulo de auditoría para verificar la calidad de las planillas Excel de historias clínicas.
