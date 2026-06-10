@@ -5,7 +5,7 @@ import {
     BarChart3, Calendar, Users, Stethoscope, Upload, RefreshCw,
     TrendingUp, Building2, ChevronDown, FileSpreadsheet, Filter,
     ChevronLeft, ChevronRight, Search, Table2, Check, Save, Loader,
-    GraduationCap, Clock,
+    GraduationCap, Clock, Download, FileDown,
 } from 'lucide-react';
 
 const MESES = [
@@ -975,6 +975,164 @@ export default function ConsultasPanel() {
                                                 borderColor: matrizColumnas === c.id ? '#10B981' : '#E2E8F0',
                                             }}>{c.label}</button>
                                         ))}
+                                        {/* Separator */}
+                                        <div style={{ width: '1px', height: '20px', background: '#E2E8F0', margin: '0 2px' }} />
+                                        {/* Export Excel */}
+                                        <button
+                                            onClick={() => {
+                                                const mesLabel = MESES.find(m => m.value === mes)?.label || mes;
+                                                const headers = [matrizAgrupar === 'semana' ? 'Semana' : matrizAgrupar === 'mes' ? 'Mes' : 'Fecha', 'OS', ...visibleCols, 'TOTAL'];
+                                                const csvRows = [headers];
+                                                flatRows.forEach(row => {
+                                                    const osS = { OSP: 'OSP', Prepagas: 'PREPAGAS', Particulares: 'PARTICULAR' };
+                                                    csvRows.push([
+                                                        row.isFirst ? formatRowLabel(row.dateKey) : '',
+                                                        osS[row.os] || row.os,
+                                                        ...visibleCols.map(c => row.cols[c] || 0),
+                                                        row.total,
+                                                    ]);
+                                                });
+                                                // Totals rows
+                                                OS_ORDER.forEach(os => {
+                                                    const osS = { OSP: 'OSP', Prepagas: 'PREPAGAS', Particulares: 'PARTICULAR' };
+                                                    csvRows.push(['TOTAL', osS[os] || os, ...visibleCols.map(c => osTotals[os].cols[c] || 0), osTotals[os].total]);
+                                                });
+                                                // Sistema
+                                                csvRows.push(['SISTEMA', '', ...visibleCols.map(c => colTotals[c] || 0), grandTotal]);
+                                                // Recibidas
+                                                if (matrizColumnas === 'especialidad') {
+                                                    csvRows.push(['RECIBIDAS', '', ...visibleCols.map(c => recibidasData[c] || 0), visibleCols.reduce((s, c) => s + (recibidasData[c] || 0), 0)]);
+                                                    csvRows.push(['DIFERENCIA', '', ...visibleCols.map(c => (colTotals[c] || 0) - (recibidasData[c] || 0)), grandTotal - visibleCols.reduce((s, c) => s + (recibidasData[c] || 0), 0)]);
+                                                }
+                                                const csv = csvRows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(';')).join('\n');
+                                                const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+                                                const url = URL.createObjectURL(blob);
+                                                const a = document.createElement('a');
+                                                a.href = url; a.download = `consultas_guardia_${mes}.csv`; a.click();
+                                                URL.revokeObjectURL(url);
+                                            }}
+                                            title="Exportar a Excel (.csv)"
+                                            style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                padding: '4px 10px', borderRadius: '6px',
+                                                background: '#fff', color: '#059669',
+                                                border: '1px solid #05966930',
+                                                fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer',
+                                                transition: 'all 0.2s',
+                                            }}
+                                            onMouseOver={e => { e.currentTarget.style.background = '#ECFDF5'; e.currentTarget.style.borderColor = '#059669'; }}
+                                            onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#05966930'; }}
+                                        >
+                                            <FileDown size={12} /> Excel
+                                        </button>
+                                        {/* Export PDF */}
+                                        <button
+                                            onClick={() => {
+                                                const mesLabel = MESES.find(m => m.value === mes)?.label || mes;
+                                                const now = new Date();
+                                                const today = now.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                                                const hora = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+                                                const logoUrl = window.location.origin + '/logosanatorio.png';
+                                                const OS_S = { OSP: { label: 'OSP', color: '#0369A1', bg: '#E0F2FE', hdrBg: '#0284C7' }, Prepagas: { label: 'PREPAGAS', color: '#7C3AED', bg: '#F3E8FF', hdrBg: '#7C3AED' }, Particulares: { label: 'PARTICULAR', color: '#EA580C', bg: '#FFF7ED', hdrBg: '#EA580C' } };
+                                                // Build table rows
+                                                let tbodyHtml = '';
+                                                flatRows.forEach((row, idx) => {
+                                                    const osS = OS_S[row.os] || { label: row.os, color: '#666', bg: '#f9f9f9' };
+                                                    const borderTop = row.isFirst && idx > 0 ? 'border-top:2px solid #E2E8F0;' : '';
+                                                    tbodyHtml += `<tr style="${borderTop}">`;
+                                                    if (row.isFirst) {
+                                                        tbodyHtml += `<td rowspan="3" style="padding:6px 10px;font-weight:700;color:#334155;border-right:2px solid #E2E8F0;vertical-align:middle;font-size:11px">${formatRowLabel(row.dateKey)}</td>`;
+                                                    }
+                                                    tbodyHtml += `<td style="padding:3px 8px;font-weight:700;font-size:10px;color:${osS.color};background:${osS.bg};border-right:1px solid #E2E8F0;white-space:nowrap;letter-spacing:0.3px">${osS.label}</td>`;
+                                                    visibleCols.forEach(col => {
+                                                        const val = row.cols[col] || 0;
+                                                        tbodyHtml += `<td style="padding:3px 6px;text-align:center;font-weight:${val > 0 ? 600 : 400};color:${val > 0 ? '#1E293B' : '#E2E8F0'};font-size:11px">${val || ''}</td>`;
+                                                    });
+                                                    tbodyHtml += `<td style="padding:3px 10px;text-align:center;font-weight:700;color:${OS_S[row.os]?.color || '#666'};background:#F8FAFC;border-left:2px solid #E2E8F0;font-size:11px">${row.total || ''}</td></tr>`;
+                                                });
+                                                // TOTAL rows
+                                                OS_ORDER.forEach((os, osIdx) => {
+                                                    const osS = OS_S[os];
+                                                    const t = osTotals[os];
+                                                    tbodyHtml += `<tr style="background:${osS.bg};${osIdx === 0 ? 'border-top:3px solid #4F46E5;' : 'border-top:1px solid #E2E8F0;'}">`;
+                                                    if (osIdx === 0) tbodyHtml += `<td rowspan="3" style="padding:8px 10px;font-weight:900;color:#1E293B;background:#E2E8F0;border-right:2px solid #CBD5E1;vertical-align:middle;font-size:12px">TOTAL</td>`;
+                                                    tbodyHtml += `<td style="padding:5px 8px;font-weight:800;font-size:10px;color:#fff;background:${osS.hdrBg};white-space:nowrap;letter-spacing:0.3px">${osS.label}</td>`;
+                                                    visibleCols.forEach(col => { tbodyHtml += `<td style="padding:5px 6px;text-align:center;font-weight:800;color:${osS.color};font-size:11px">${t.cols[col] || ''}</td>`; });
+                                                    tbodyHtml += `<td style="padding:5px 10px;text-align:center;font-weight:900;color:${osS.color};font-size:12px;border-left:2px solid #CBD5E1">${t.total}</td></tr>`;
+                                                });
+                                                // SISTEMA
+                                                tbodyHtml += `<tr style="background:#EEF2FF;border-top:2.5px double #4F46E5"><td colspan="2" style="padding:6px 10px;font-weight:900;color:#4F46E5;border-right:2px solid #CBD5E1;font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Sistema</td>`;
+                                                visibleCols.forEach(col => { tbodyHtml += `<td style="padding:6px 6px;text-align:center;font-weight:900;color:#4F46E5;font-size:11px">${colTotals[col] || 0}</td>`; });
+                                                tbodyHtml += `<td style="padding:6px 10px;text-align:center;font-weight:900;color:#4F46E5;font-size:12px;border-left:2px solid #CBD5E1">${grandTotal}</td></tr>`;
+                                                // RECIBIDAS + DIFERENCIA (solo especialidad)
+                                                if (matrizColumnas === 'especialidad') {
+                                                    const recTot = visibleCols.reduce((s, c) => s + (recibidasData[c] || 0), 0);
+                                                    tbodyHtml += `<tr style="background:#F5F3FF;border-top:1px solid #DDD6FE"><td colspan="2" style="padding:6px 10px;font-weight:900;color:#7C3AED;border-right:2px solid #CBD5E1;font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Recibidas</td>`;
+                                                    visibleCols.forEach(col => { tbodyHtml += `<td style="padding:6px 6px;text-align:center;font-weight:900;color:#7C3AED;font-size:11px">${recibidasData[col] || 0}</td>`; });
+                                                    tbodyHtml += `<td style="padding:6px 10px;text-align:center;font-weight:900;color:#7C3AED;font-size:12px;border-left:2px solid #CBD5E1">${recTot}</td></tr>`;
+                                                    tbodyHtml += `<tr style="background:#F8FAFC;border-top:1px solid #E2E8F0;border-bottom:2px solid #CBD5E1"><td colspan="2" style="padding:6px 10px;font-weight:900;color:#475569;border-right:2px solid #CBD5E1;font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Diferencia</td>`;
+                                                    visibleCols.forEach(col => {
+                                                        const diff = (colTotals[col] || 0) - (recibidasData[col] || 0);
+                                                        const dColor = diff === 0 ? '#16A34A' : diff > 0 ? '#DC2626' : '#2563EB';
+                                                        tbodyHtml += `<td style="padding:6px 6px;text-align:center;font-weight:900;color:${dColor};font-size:11px">${diff === 0 ? '✔' : diff > 0 ? '+' + diff : diff}</td>`;
+                                                    });
+                                                    const diffTot = grandTotal - recTot;
+                                                    const dTotColor = diffTot === 0 ? '#16A34A' : diffTot > 0 ? '#DC2626' : '#2563EB';
+                                                    tbodyHtml += `<td style="padding:6px 10px;text-align:center;font-weight:900;color:${dTotColor};font-size:12px;border-left:2px solid #CBD5E1">${diffTot === 0 ? '✔' : diffTot > 0 ? '+' + diffTot : diffTot}</td></tr>`;
+                                                }
+                                                // Column headers
+                                                const colHeaders = visibleCols.map(col => `<th style="padding:8px 6px;color:#fff;font-weight:600;text-align:center;white-space:nowrap;font-size:10px">${col.length > 14 ? col.substring(0, 12) + '…' : col}</th>`).join('');
+                                                const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Consultas de Guardia — ${mesLabel}</title>
+                                                <style>@page{size:landscape;margin:12mm 10mm}*{box-sizing:border-box}body{font-family:'Segoe UI',-apple-system,Arial,sans-serif;color:#1E293B;margin:0;padding:0}table{border-collapse:collapse;width:100%}</style></head><body>
+                                                <div style="display:flex;align-items:center;border-bottom:3px solid #1E5799;padding-bottom:14px;margin-bottom:18px">
+                                                    <img src="${logoUrl}" style="height:50px;margin-right:16px" alt="Logo" />
+                                                    <div style="flex:1">
+                                                        <div style="font-size:16px;font-weight:800;color:#1E5799;letter-spacing:-0.3px">SANATORIO ARGENTINO</div>
+                                                        <div style="font-size:9px;color:#64748B;margin-top:1px">Departamento de Admisión Quirúrgica — Consultas de Guardia</div>
+                                                    </div>
+                                                    <div style="text-align:right">
+                                                        <div style="font-size:13px;font-weight:700;color:#1E5799">${mesLabel}</div>
+                                                        <div style="font-size:9px;color:#94A3B8;margin-top:2px">${today} — ${hora}</div>
+                                                    </div>
+                                                </div>
+                                                <div style="text-align:center;margin-bottom:14px">
+                                                    <div style="font-size:14px;font-weight:800;color:#1E293B;text-transform:uppercase;letter-spacing:1px">Matriz de Consultas por Obra Social</div>
+                                                    <div style="font-size:10px;color:#94A3B8;margin-top:2px">Agrupado por ${matrizAgrupar === 'semana' ? 'Semana' : matrizAgrupar === 'mes' ? 'Mes' : 'Día'} · Columnas: ${matrizColumnas.charAt(0).toUpperCase() + matrizColumnas.slice(1)} · ${grandTotal} consultas</div>
+                                                    <div style="width:60px;height:3px;background:#1E5799;margin:6px auto 0;border-radius:2px"></div>
+                                                </div>
+                                                <table style="border:1px solid #E2E8F0;border-radius:8px;overflow:hidden">
+                                                    <thead><tr style="background:linear-gradient(135deg,#312E81,#4F46E5)">
+                                                        <th style="padding:8px 10px;color:#fff;font-weight:700;text-align:left;min-width:70px;font-size:10px">${matrizAgrupar === 'semana' ? 'Semana' : matrizAgrupar === 'mes' ? 'Mes' : 'Fecha'}</th>
+                                                        <th style="padding:8px 8px;color:#fff;font-weight:700;text-align:left;min-width:80px;font-size:10px">OS</th>
+                                                        ${colHeaders}
+                                                        <th style="padding:8px 10px;color:#FDE68A;font-weight:800;text-align:center;min-width:50px;border-left:2px solid rgba(255,255,255,0.2);font-size:10px">TOTAL</th>
+                                                    </tr></thead>
+                                                    <tbody>${tbodyHtml}</tbody>
+                                                </table>
+                                                <div style="margin-top:30px;padding-top:10px;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:center">
+                                                    <div style="font-size:8px;color:#94A3B8">Documento generado por Sistema ADM-QUI — ${today} ${hora}</div>
+                                                    <div style="font-size:8px;color:#94A3B8">Consultas de Guardia · Sanatorio Argentino</div>
+                                                </div>
+                                                </body></html>`;
+                                                const printWin = window.open('', '_blank', 'width=1200,height=800');
+                                                printWin.document.write(html);
+                                                printWin.document.close();
+                                                setTimeout(() => printWin.print(), 500);
+                                            }}
+                                            title="Exportar a PDF"
+                                            style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                padding: '4px 10px', borderRadius: '6px',
+                                                background: '#fff', color: '#DC2626',
+                                                border: '1px solid #DC262630',
+                                                fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer',
+                                                transition: 'all 0.2s',
+                                            }}
+                                            onMouseOver={e => { e.currentTarget.style.background = '#FEF2F2'; e.currentTarget.style.borderColor = '#DC2626'; }}
+                                            onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#DC262630'; }}
+                                        >
+                                            <Download size={12} /> PDF
+                                        </button>
                                     </div>
                                 </div>
 
