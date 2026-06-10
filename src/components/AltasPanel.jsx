@@ -1192,17 +1192,30 @@ export default function AltasPanel({ addToast, currentUser }) {
                     </div>
                 ) : (
                     <div className="cart__table-wrapper" style={{ overflowX: 'auto', width: '100%' }}>
+                        {/* Hint: carrito de traspaso */}
+                        {selectedIds.size === 0 && (
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                padding: '8px 14px', marginBottom: '8px', borderRadius: '8px',
+                                background: 'linear-gradient(135deg, #EEF2FF, #F5F3FF)',
+                                border: '1px solid #C7D2FE',
+                                fontSize: '0.78rem', color: '#4338CA',
+                            }}>
+                                <ShoppingCart size={14} style={{ flexShrink: 0 }} />
+                                <span><strong>Tip:</strong> Seleccioná fichas con los <strong>☑ checks</strong> de la izquierda para enviarlas al <strong>Carrito de Traspaso</strong>.</span>
+                            </div>
+                        )}
                         <table className="cart__table" style={{ width: '100%', tableLayout: 'auto' }}>
                             <thead>
                                 <tr>
-                                    <th className="cart__th" style={{ width: '30px', textAlign: 'center' }}>
+                                    <th className="cart__th" style={{ width: '30px', textAlign: 'center' }} title="Seleccioná fichas para enviar al Carrito de Traspaso">
                                         <input type="checkbox"
                                             checked={selectedIds.size > 0 && sortedAltas.filter(a => !a.en_carrito_traspaso).every(a => selectedIds.has(a.id))}
                                             onChange={e => {
                                                 if (e.target.checked) handleSelectAllSelectable();
                                                 else setSelectedIds(new Set());
                                             }}
-                                            title="Seleccionar todas Alta Adm"
+                                            title="Seleccionar todas las fichas para el carrito"
                                             style={{ cursor: 'pointer', accentColor: '#6366F1' }}
                                         />
                                     </th>
