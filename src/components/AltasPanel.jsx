@@ -49,9 +49,7 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [processing, setProcessing] = useState(false);
 
     // Filtros
-    const today = new Date();
-    const firstDayOfMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
-    const [fromDate, setFromDate] = useState(firstDayOfMonth);
+    const [fromDate, setFromDate] = useState('');
     const [toDate, setToDate] = useState('');
     const [filterEstado, setFilterEstado] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -1156,9 +1154,9 @@ export default function AltasPanel({ addToast, currentUser }) {
                         onBlur={e => e.currentTarget.style.borderColor = 'var(--neutral-200)'}
                     />
                 </div>
-                {(searchTerm || toDate || filterEstado !== 'all') && (
+                {(searchTerm || fromDate || toDate || filterEstado !== 'all') && (
                     <button
-                        onClick={() => { setSearchTerm(''); setToDate(''); setFilterEstado('all'); }}
+                        onClick={() => { setSearchTerm(''); setFromDate(''); setToDate(''); setFilterEstado('all'); }}
                         style={{
                             display: 'inline-flex', alignItems: 'center', gap: '4px',
                             padding: '5px 10px', borderRadius: '6px',
