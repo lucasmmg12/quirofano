@@ -413,13 +413,9 @@ export default function AltasPanel({ addToast, currentUser }) {
             // Devuelta FAC: si tiene devolucion_id y estado_fac === 'Devuelta'
             const isFacturada = !!(alta.facturada || alta.estado_fac === 'Facturada');
             const isDevueltaFac = !!(alta.devolucion_id && alta.estado_fac === 'Devuelta' && !isFacturada);
-            const effectiveEstado = isFacturada
-                ? 'Facturada'
-                : isDevueltaFac
-                    ? 'Devuelta FAC'
-                    : (isCtrlAdmSi || obsHasAltaAdm || alta.estado === 'Alta Adm')
-                        ? 'Alta Adm'
-                        : (alta.estado || 'Vacío');
+            const effectiveEstado = (isCtrlAdmSi || obsHasAltaAdm || alta.estado === 'Alta Adm')
+                ? 'Alta Adm'
+                : (alta.estado || 'Vacío');
             // Responsable: manual override tiene prioridad sobre auto-match
             const autoResp = asignacion?.responsable || '';
             const finalResp = alta.responsable_override || autoResp;
@@ -1233,10 +1229,11 @@ export default function AltasPanel({ addToast, currentUser }) {
                                     </th>
                                     <th className="cart__th" style={{ width: '110px' }}>Alta</th>
                                     <FilterHeader label="Responsable" col="responsable" width="90px" />
+                                    <th className="cart__th" style={{ width: '120px' }}>Facturación</th>
                                 </tr>
                                 {activeFilterCount > 0 && (
                                     <tr>
-                                        <td colSpan={10} style={{ padding: '4px 10px', background: '#EFF6FF', borderBottom: '1px solid #DBEAFE' }}>
+                                        <td colSpan={12} style={{ padding: '4px 10px', background: '#EFF6FF', borderBottom: '1px solid #DBEAFE' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                                 <ListFilter size={12} color="#4F46E5" />
                                                 <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#4F46E5' }}>
@@ -1400,19 +1397,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             </td>
                                             {/* Responsable (auto-matched or override) */}
                                             <td className="cart__td" style={{ position: 'relative' }}>
-                                                {alta._isFacturada && alta.usuario_facturo ? (
-                                                    <span style={{
-                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                        padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                                                        background: '#ECFDF5', color: '#059669',
-                                                        border: '1px solid #A7F3D0',
-                                                        fontSize: '0.7rem', fontWeight: 700,
-                                                        whiteSpace: 'nowrap',
-                                                    }}>
-                                                        <Receipt size={10} />
-                                                        {alta.usuario_facturo}
-                                                    </span>
-                                                ) : isJcorrea ? (
+                                                {isJcorrea ? (
                                                     <div style={{ position: 'relative', display: 'inline-block' }}>
                                                         <button
                                                             onClick={e => {
@@ -1457,12 +1442,41 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                     ) : <span style={{ color: 'var(--neutral-300)', fontSize: '0.75rem' }}>—</span>
                                                 )}
                                             </td>
+                                            {/* Facturación */}
+                                            <td className="cart__td">
+                                                {alta._isFacturada ? (
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                        padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                                                        background: '#ECFDF5', color: '#059669',
+                                                        border: '1px solid #A7F3D0',
+                                                        fontSize: '0.7rem', fontWeight: 700,
+                                                        whiteSpace: 'nowrap',
+                                                    }}>
+                                                        <Receipt size={10} />
+                                                        {alta.usuario_facturo || 'Facturada'}
+                                                    </span>
+                                                ) : alta._isDevueltaFac ? (
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                        padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                                                        background: '#FEF2F2', color: '#DC2626',
+                                                        border: '1px solid #FECACA',
+                                                        fontSize: '0.7rem', fontWeight: 700,
+                                                        whiteSpace: 'nowrap',
+                                                    }}>
+                                                        🔙 Devuelta
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ color: 'var(--neutral-300)', fontSize: '0.75rem' }}>—</span>
+                                                )}
+                                            </td>
                                         </tr>,
 
                                         // ── Expanded Detail ──
                                         isExpanded && (
                                             <tr key={`${alta.id}-detail`}>
-                                                <td colSpan={10} style={{
+                                                <td colSpan={12} style={{
                                                     padding: 0, background: 'var(--neutral-50)',
                                                     borderLeft: `4px solid ${cfg?.color || '#CBD5E1'}`,
                                                     animation: 'fadeIn 0.2s ease-out',
