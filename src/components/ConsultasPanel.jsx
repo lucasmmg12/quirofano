@@ -64,6 +64,14 @@ export default function ConsultasPanel() {
     const [colFilterOptions, setColFilterOptions] = useState({}); // cached unique values per column
     const colFilterRef = useRef(null);
 
+    // Conciliación de Guardias: state variables
+    const [recibidasData, setRecibidasData] = useState({});
+    const [recibidasEdits, setRecibidasEdits] = useState({});
+    const [recibidasLoading, setRecibidasLoading] = useState(false);
+    const [recibidasSaving, setRecibidasSaving] = useState({});
+    const [recibidasSaved, setRecibidasSaved] = useState({});
+    const recibidasTimers = useRef({});
+
     // Close dropdown on click outside
     useEffect(() => {
         const handleClickOutside = (e) => {
@@ -98,7 +106,81 @@ export default function ConsultasPanel() {
         setLoading(false);
     }, [mes]);
 
-    useEffect(() => { fetchData(); }, [fetchData]);
+    const fetchRecibidas = useCallback(async () => {
+        setRecibidasLoading(true);
+        try {
+            const { data: rows, error } = await supabase
+                .from('consultas_guardia_recibidas')
+                .select('especialidad, recibidas')
+                .eq('mes_periodo', mes);
+            if (!error && rows) {
+                const map = {};
+                const edits = {};
+                rows.forEach(r => {
+                    map[r.especialidad] = r.recibidas;
+                    edits[r.especialidad] = String(r.recibidas);
+                });
+                setRecibidasData(map);
+                setRecibidasEdits(edits);
+            } else {
+                setRecibidasData({});
+                setRecibidasEdits({});
+            }
+        } catch (err) {
+            console.error('Error fetching recibidas:', err);
+        } finally {
+            setRecibidasLoading(false);
+        }
+    }, [mes]);
+
+    const saveRecibida = useCallback(async (esp, value) => {
+        setRecibidasSaving(prev => ({ ...prev, [esp]: true }));
+        try {
+            const numVal = value === '' ? 0 : parseInt(value, 10);
+            if (isNaN(numVal)) return;
+
+            const { error } = await supabase
+                .from('consultas_guardia_recibidas')
+                .upsert({
+                    mes_periodo: mes,
+                    especialidad: esp,
+                    recibidas: numVal
+                }, { onConflict: 'mes_periodo,especialidad' });
+
+            if (!error) {
+                setRecibidasSaved(prev => ({ ...prev, [esp]: true }));
+                setTimeout(() => setRecibidasSaved(prev => ({ ...prev, [esp]: false })), 1500);
+                setRecibidasData(prev => ({ ...prev, [esp]: numVal }));
+            } else {
+                console.error('Error saving recibidas:', error);
+            }
+        } catch (err) {
+            console.error('Error saving recibidas:', err);
+        } finally {
+            setRecibidasSaving(prev => ({ ...prev, [esp]: false }));
+        }
+    }, [mes]);
+
+    const handleRecibidasChange = useCallback((esp, value) => {
+        setRecibidasEdits(prev => ({ ...prev, [esp]: value }));
+        
+        if (recibidasTimers.current[esp]) clearTimeout(recibidasTimers.current[esp]);
+        recibidasTimers.current[esp] = setTimeout(() => {
+            saveRecibida(esp, value);
+        }, 1000);
+    }, [saveRecibida]);
+
+    useEffect(() => {
+        fetchData();
+        fetchRecibidas();
+    }, [mes, fetchData, fetchRecibidas]);
+
+    useEffect(() => {
+        return () => {
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            Object.values(recibidasTimers.current).forEach(clearTimeout);
+        };
+    }, []);
 
     // Fetch unique column values for filter dropdowns
     const fetchColFilterOptions = useCallback(async (colKey) => {
@@ -452,6 +534,120 @@ export default function ConsultasPanel() {
                                 </div>
                             </div>
                         ))}
+                    </div>
+
+                    {/* Conciliación de Fichas de Guardia */}
+                    <div style={{
+                        background: '#fff',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '16px',
+                        padding: '18px 20px',
+                        marginBottom: '24px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.02), 0 1px 2px rgba(0,0,0,0.04)'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+                            <div>
+                                <h3 style={{ fontSize: '0.88rem', fontWeight: 800, margin: 0, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <Users size={16} style={{ color: '#4F46E5' }} />
+                                    Conciliación de Fichas de Guardia
+                                </h3>
+                                <p style={{ fontSize: '0.7rem', color: '#94A3B8', margin: 0 }}>Carga de planillas físicas recibidas para contrastar contra los registros cargados en el Sistema.</p>
+                            </div>
+                            {recibidasLoading && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: '#94A3B8', fontWeight: 600 }}>
+                                    <Loader size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                                    Cargando conciliación...
+                                </div>
+                            )}
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
+                            {especialidades.map(([esp, count]) => {
+                                const color = ESP_COLORS[esp] || '#64748B';
+                                const editVal = recibidasEdits[esp] ?? '';
+                                const diff = count - (editVal === '' ? 0 : parseInt(editVal, 10));
+                                const isSaving = recibidasSaving[esp];
+                                const isSaved = recibidasSaved[esp];
+
+                                return (
+                                    <div key={esp} style={{
+                                        border: '1px solid #F1F5F9',
+                                        borderRadius: '12px',
+                                        padding: '12px',
+                                        background: '#F8FAFC',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '6px'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: color }} />
+                                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>{esp}</span>
+                                        </div>
+
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.68rem' }}>
+                                            <span style={{ color: '#64748B', fontWeight: 500 }}>Sistema (Sync)</span>
+                                            <span style={{ fontWeight: 750, color: '#1E293B' }}>{count}</span>
+                                        </div>
+
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.68rem', gap: '8px' }}>
+                                            <span style={{ color: '#64748B', fontWeight: 500 }}>Recibidas</span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '68px', position: 'relative' }}>
+                                                <input
+                                                    type="text"
+                                                    value={editVal}
+                                                    onChange={e => {
+                                                        const val = e.target.value.replace(/\D/g, ''); // only digits
+                                                        handleRecibidasChange(esp, val);
+                                                    }}
+                                                    placeholder="0"
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '3px 6px',
+                                                        borderRadius: '6px',
+                                                        border: '1px solid #E2E8F0',
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: 700,
+                                                        background: '#fff',
+                                                        textAlign: 'right',
+                                                        outline: 'none',
+                                                        color: '#1E293B',
+                                                        transition: 'border-color 0.15s',
+                                                    }}
+                                                    onFocus={e => e.target.style.borderColor = '#4F46E5'}
+                                                    onBlur={e => e.target.style.borderColor = '#E2E8F0'}
+                                                />
+                                                {isSaving && <Loader size={10} style={{ color: '#94A3B8', animation: 'spin 1s linear infinite', position: 'absolute', left: '-12px' }} />}
+                                                {isSaved && <Check size={10} style={{ color: '#16A34A', position: 'absolute', left: '-12px' }} />}
+                                            </div>
+                                        </div>
+
+                                        <div style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            fontSize: '0.68rem',
+                                            borderTop: '1px solid #E2E8F0',
+                                            paddingTop: '6px',
+                                            marginTop: '2px'
+                                        }}>
+                                            <span style={{ color: '#64748B', fontWeight: 500 }}>Diferencia</span>
+                                            {diff === 0 ? (
+                                                <span style={{ color: '#16A34A', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                                    <Check size={10} strokeWidth={3} /> OK
+                                                </span>
+                                            ) : (
+                                                <span style={{
+                                                    color: diff > 0 ? '#DC2626' : '#2563EB',
+                                                    fontWeight: 800
+                                                }}>
+                                                    {diff > 0 ? `+${diff}` : diff}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
 
                     {/* Filters row */}
