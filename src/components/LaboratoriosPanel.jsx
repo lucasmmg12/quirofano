@@ -118,6 +118,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
     const [filterLaboratorio, setFilterLaboratorio] = useState('all');
     const [filterObraSocial, setFilterObraSocial] = useState('all');
     const [expandedRow, setExpandedRow] = useState(null);
+    const [showHelp, setShowHelp] = useState(false);
 
     // Filtro por mes (default: null = todos los meses)
     const [selectedMonth, setSelectedMonth] = useState(null);
@@ -855,6 +856,48 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 </div>
             </div>
 
+            {/* Help Guide */}
+            <div style={{ marginBottom: '12px' }}>
+                <button onClick={() => setShowHelp(p => !p)} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    padding: '5px 12px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 600,
+                    background: showHelp ? '#EFF6FF' : '#F8FAFC', color: showHelp ? '#1E40AF' : '#64748B',
+                    border: `1px solid ${showHelp ? '#93C5FD' : '#E2E8F0'}`, cursor: 'pointer', transition: 'all 0.2s',
+                }}>
+                    ℹ️ {showHelp ? 'Ocultar guía' : 'Guía de columnas'}
+                </button>
+                {showHelp && (
+                    <div style={{
+                        marginTop: '8px', padding: '16px 20px', borderRadius: '10px',
+                        background: '#F0F9FF', border: '1px solid #BAE6FD',
+                        fontSize: '0.8rem', color: '#1E3A5F', lineHeight: '1.6',
+                    }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
+                            <div><strong>📅 Fecha:</strong> Fecha de la visita médica en SALUS.</div>
+                            <div><strong>🏷️ N° Adm:</strong> Número de admisión del paciente.</div>
+                            <div><strong>👤 Paciente:</strong> Nombre y DNI del paciente.</div>
+                            <div><strong>🏥 OS:</strong> Obra Social / Cobertura médica.</div>
+                            <div><strong>💰 Coseguro:</strong> Monto de coseguro si aplica.</div>
+                            <div><strong>🔬 Laboratorio:</strong> Lab de anatomía patológica (Agüero, CEDAP o Cuyo).</div>
+                            <div><strong>🧬 Biopsias:</strong> <span style={{ background: '#E0F2FE', padding: '1px 4px', borderRadius: '3px' }}>C</span>=Congelación, <span style={{ background: '#DCFCE7', padding: '1px 4px', borderRadius: '3px' }}>S</span>=Simple, <span style={{ background: '#FFEDD5', padding: '1px 4px', borderRadius: '3px' }}>A</span>=Ampliada. El número indica la cantidad.</div>
+                            <div><strong>📦 Módulo:</strong> Clasificación de complejidad del estudio (A, B o C).</div>
+                            <div style={{ gridColumn: '1 / -1', padding: '8px 12px', background: '#fff', borderRadius: '8px', border: '1px solid #93C5FD' }}>
+                                <strong>⚡ Acción</strong> — Se determina automáticamente según la combinación <strong>Obra Social + Laboratorio</strong>:<br/>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                                    <span style={{ background: '#FEF2F2', color: '#DC2626', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, border: '1px solid #FECACA', fontSize: '0.75rem' }}>FACTURAR</span>
+                                    El Sanatorio debe facturar la biopsia a la Obra Social (el laboratorio no gestiona el cobro).
+                                </span><br/>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                                    <span style={{ background: '#F0FDF4', color: '#16A34A', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, border: '1px solid #BBF7D0', fontSize: '0.75rem' }}>ENTREGAR</span>
+                                    Solo se entrega la muestra al laboratorio; el laboratorio cobra directo a la OS.
+                                </span>
+                            </div>
+                            <div><strong>🛒 Carrito:</strong> Envía la muestra al carrito de entrega para generar constancia de traspaso.</div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
             {/* Tabs */}
             <div style={{
                 display: 'flex', gap: '0', marginBottom: '0',
@@ -957,16 +1000,16 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '900px' }}>
                                 <thead>
                                     <tr>
-                                        <th style={thStyle}>Fecha</th>
-                                        <th style={thStyle}>N° Adm</th>
-                                        <th style={thStyle}>Paciente</th>
-                                        <th style={thStyle}>OS</th>
-                                        <th style={thStyle}>Coseguro</th>
-                                        <th style={thStyle}>Laboratorio</th>
-                                        <th style={thStyle}>Biopsias</th>
-                                        <th style={{ ...thStyle, textAlign: 'center' }}>Módulo</th>
-                                        <th style={{ ...thStyle, textAlign: 'center' }}>Acción</th>
-                                        <th style={{ ...thStyle, textAlign: 'center', width: '100px' }}>Carrito</th>
+                                        <th style={thStyle} title="Fecha de la visita médica (extraída de SALUS)">Fecha</th>
+                                        <th style={thStyle} title="Número de Admisión del paciente en SALUS">N° Adm</th>
+                                        <th style={thStyle} title="Nombre completo del paciente y DNI">Paciente</th>
+                                        <th style={thStyle} title="Obra Social / Cobertura del paciente">OS</th>
+                                        <th style={thStyle} title="Monto de coseguro si aplica">Coseguro</th>
+                                        <th style={thStyle} title="Laboratorio de anatomía patológica asignado (Agüero, CEDAP o Cuyo)">Laboratorio</th>
+                                        <th style={thStyle} title="Tipos de biopsia: C=Congelación, S=Simple, A=Ampliada. El número indica cantidad de muestras">Biopsias</th>
+                                        <th style={{ ...thStyle, textAlign: 'center' }} title="Clasificación de módulo de complejidad asignado al estudio (A, B o C)">Módulo</th>
+                                        <th style={{ ...thStyle, textAlign: 'center' }} title="FACTURAR: el Sanatorio factura la biopsia a la OS. ENTREGAR: el Sanatorio solo entrega la muestra al laboratorio, que cobra directo a la OS. Se determina automáticamente según la combinación OS + Laboratorio.">Acción</th>
+                                        <th style={{ ...thStyle, textAlign: 'center', width: '100px' }} title="Enviar al carrito de entrega para generar constancia de traspaso al laboratorio">Carrito</th>
                                         <th style={{ ...thStyle, width: '40px' }}></th>
                                     </tr>
                                 </thead>
