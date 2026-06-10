@@ -119,11 +119,8 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
     const [filterObraSocial, setFilterObraSocial] = useState('all');
     const [expandedRow, setExpandedRow] = useState(null);
 
-    // Filtro por mes (default: mes actual)
-    const [selectedMonth, setSelectedMonth] = useState(() => {
-        const now = new Date();
-        return { year: now.getFullYear(), month: now.getMonth() }; // 0-indexed
-    });
+    // Filtro por mes (default: null = todos los meses)
+    const [selectedMonth, setSelectedMonth] = useState(null);
 
     // Carrito state
     const [carrito, setCarrito] = useState([]);
@@ -151,9 +148,12 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
     const loadPendientes = useCallback(async () => {
         setLoading(true);
         try {
-            const fromDate = `${selectedMonth.year}-${String(selectedMonth.month + 1).padStart(2, '0')}-01`;
-            const lastDay = new Date(selectedMonth.year, selectedMonth.month + 1, 0).getDate();
-            const toDate = `${selectedMonth.year}-${String(selectedMonth.month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+            let fromDate = null, toDate = null;
+            if (selectedMonth) {
+                fromDate = `${selectedMonth.year}-${String(selectedMonth.month + 1).padStart(2, '0')}-01`;
+                const lastDay = new Date(selectedMonth.year, selectedMonth.month + 1, 0).getDate();
+                toDate = `${selectedMonth.year}-${String(selectedMonth.month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+            }
             const data = await fetchLabRecords({ soloSinCarrito: true, fromDate, toDate });
 
             // Enriquecer con coseguro desde hospital_pacientes
@@ -805,17 +805,21 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                         background: '#F8FAFC', border: '1px solid #E2E8F0',
                     }}>
                         <button onClick={() => setSelectedMonth(p => {
-                            const d = new Date(p.year, p.month - 1, 1);
+                            const base = p || { year: new Date().getFullYear(), month: new Date().getMonth() };
+                            const d = new Date(base.year, base.month - 1, 1);
                             return { year: d.getFullYear(), month: d.getMonth() };
                         })} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '6px', display: 'flex', color: '#64748B' }}
                             title="Mes anterior">
                             <ChevronLeft size={16} />
                         </button>
                         <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0D3B66', minWidth: '120px', textAlign: 'center', textTransform: 'capitalize' }}>
-                            {new Date(selectedMonth.year, selectedMonth.month).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}
+                            {selectedMonth
+                                ? new Date(selectedMonth.year, selectedMonth.month).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+                                : 'Todos los meses'}
                         </span>
                         <button onClick={() => setSelectedMonth(p => {
-                            const d = new Date(p.year, p.month + 1, 1);
+                            const base = p || { year: new Date().getFullYear(), month: new Date().getMonth() };
+                            const d = new Date(base.year, base.month + 1, 1);
                             return { year: d.getFullYear(), month: d.getMonth() };
                         })} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '6px', display: 'flex', color: '#64748B' }}
                             title="Mes siguiente">
@@ -827,6 +831,16 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                         }} style={{ fontSize: '0.68rem', fontWeight: 600, padding: '2px 8px', borderRadius: '6px', background: '#EFF6FF', color: '#2563EB', border: '1px solid #93C5FD50', cursor: 'pointer' }}
                             title="Ir al mes actual">
                             Hoy
+                        </button>
+                        <button onClick={() => setSelectedMonth(null)} style={{
+                            fontSize: '0.68rem', fontWeight: 600, padding: '2px 8px', borderRadius: '6px',
+                            background: !selectedMonth ? '#ECFDF5' : '#F8FAFC',
+                            color: !selectedMonth ? '#059669' : '#64748B',
+                            border: `1px solid ${!selectedMonth ? '#05966950' : '#E2E8F0'}`,
+                            cursor: 'pointer',
+                        }}
+                            title="Ver todos los meses">
+                            Todos
                         </button>
                     </div>
                     <button onClick={() => copyPublicLinkLab('LDA - Dra. Aguero o Dra Rios', 'Agüero')} style={{ padding: '6px 12px', borderRadius: '8px', background: '#EBF5FF', color: '#0D3B66', fontWeight: 600, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #B5D3E8', cursor: 'pointer' }}>
