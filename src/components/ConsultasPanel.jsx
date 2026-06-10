@@ -1090,6 +1090,91 @@ export default function ConsultasPanel() {
                                                     </tr>
                                                 );
                                             })}
+
+                                            {/* Comparison Rows */}
+                                            {matrizColumnas === 'especialidad' && (
+                                                <>
+                                                    {/* SISTEMA */}
+                                                    <tr style={{ background: '#EEF2FF', borderTop: '2.5px double #4F46E5' }}>
+                                                        <td colSpan={2} style={{
+                                                            padding: '6px 10px', fontWeight: 900, color: '#4F46E5',
+                                                            position: 'sticky', left: 0, background: '#EEF2FF',
+                                                            borderRight: '2px solid #CBD5E1', zIndex: 1,
+                                                            fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px'
+                                                        }}>
+                                                            Sistema
+                                                        </td>
+                                                        {visibleCols.map(col => (
+                                                            <td key={col} style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 900, color: '#4F46E5', fontSize: '0.72rem' }}>
+                                                                {colTotals[col] || 0}
+                                                            </td>
+                                                        ))}
+                                                        <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 900, color: '#4F46E5', fontSize: '0.78rem', borderLeft: '2px solid #CBD5E1' }}>
+                                                            {grandTotal}
+                                                        </td>
+                                                    </tr>
+
+                                                    {/* RECIBIDAS */}
+                                                    <tr style={{ background: '#F5F3FF', borderTop: '1px solid #DDD6FE' }}>
+                                                        <td colSpan={2} style={{
+                                                            padding: '6px 10px', fontWeight: 900, color: '#7C3AED',
+                                                            position: 'sticky', left: 0, background: '#F5F3FF',
+                                                            borderRight: '2px solid #CBD5E1', zIndex: 1,
+                                                            fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px'
+                                                        }}>
+                                                            Recibidas
+                                                        </td>
+                                                        {visibleCols.map(col => (
+                                                            <td key={col} style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 900, color: '#7C3AED', fontSize: '0.72rem' }}>
+                                                                {recibidasData[col] !== undefined ? recibidasData[col] : 0}
+                                                            </td>
+                                                        ))}
+                                                        <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 900, color: '#7C3AED', fontSize: '0.78rem', borderLeft: '2px solid #CBD5E1' }}>
+                                                            {visibleCols.reduce((sum, col) => sum + (recibidasData[col] || 0), 0)}
+                                                        </td>
+                                                    </tr>
+
+                                                    {/* DIFERENCIA */}
+                                                    <tr style={{ background: '#F8FAFC', borderTop: '1px solid #E2E8F0', borderBottom: '2px solid #CBD5E1' }}>
+                                                        <td colSpan={2} style={{
+                                                            padding: '6px 10px', fontWeight: 900, color: '#475569',
+                                                            position: 'sticky', left: 0, background: '#F8FAFC',
+                                                            borderRight: '2px solid #CBD5E1', zIndex: 1,
+                                                            fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px'
+                                                        }}>
+                                                            Diferencia
+                                                        </td>
+                                                        {visibleCols.map(col => {
+                                                            const sys = colTotals[col] || 0;
+                                                            const rec = recibidasData[col] || 0;
+                                                            const diff = sys - rec;
+                                                            return (
+                                                                <td key={col} style={{
+                                                                    padding: '6px 6px', textAlign: 'center', fontWeight: 900,
+                                                                    color: diff === 0 ? '#16A34A' : diff > 0 ? '#DC2626' : '#2563EB',
+                                                                    fontSize: '0.72rem'
+                                                                }}>
+                                                                    {diff === 0 ? '✔ OK' : diff > 0 ? `+${diff}` : diff}
+                                                                </td>
+                                                            );
+                                                        })}
+                                                        {(() => {
+                                                            const sysTot = grandTotal;
+                                                            const recTot = visibleCols.reduce((sum, col) => sum + (recibidasData[col] || 0), 0);
+                                                            const diffTot = sysTot - recTot;
+                                                            return (
+                                                                <td style={{
+                                                                    padding: '6px 10px', textAlign: 'center', fontWeight: 900,
+                                                                    color: diffTot === 0 ? '#16A34A' : diffTot > 0 ? '#DC2626' : '#2563EB',
+                                                                    fontSize: '0.78rem', borderLeft: '2px solid #CBD5E1'
+                                                                }}>
+                                                                    {diffTot === 0 ? '✔ OK' : diffTot > 0 ? `+${diffTot}` : diffTot}
+                                                                </td>
+                                                            );
+                                                        })()}
+                                                    </tr>
+                                                </>
+                                            )}
                                         </tfoot>
                                     </table>
                                 </div>
