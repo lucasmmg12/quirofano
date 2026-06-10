@@ -888,17 +888,19 @@ async function syncAltasAdministrativas(db) {
                 TA.[Doctor],
                 TA.[Motivo de alta],
                 TA.[Control ADM finalizado],
-                OBS.Observaciones AS [Observaciones],
+                (
+                    SELECT STUFF((
+                        SELECT CHAR(13) + CHAR(10) + '---' + CHAR(13) + CHAR(10) + CAST(O.ValorM AS NVARCHAR(MAX))
+                        FROM [PR InstRespHospi] O
+                        WHERE O.idHospi = TA.idAdmision
+                          AND O.activo = 1
+                          AND O.ValorM IS NOT NULL
+                          AND LEN(LTRIM(RTRIM(CAST(O.ValorM AS NVARCHAR(MAX))))) > 0
+                        FOR XML PATH(''), TYPE
+                    ).value('.', 'NVARCHAR(MAX)'), 1, 7, '')
+                ) AS [Observaciones],
                 ROW_NUMBER() OVER (PARTITION BY TA.[Paciente], CAST(TA.[Fecha ingreso] AS DATE) ORDER BY TA.[Número admisión] DESC) as rn
             FROM [SALUS].[dbo].[TABLEAU_Admisiones] TA
-            OUTER APPLY (
-                SELECT STRING_AGG(CAST(O.ValorM AS NVARCHAR(MAX)), CHAR(13) + CHAR(10) + '---' + CHAR(13) + CHAR(10)) AS Observaciones
-                FROM [PR InstRespHospi] O
-                WHERE O.idHospi = TA.idAdmision
-                  AND O.activo = 1
-                  AND O.ValorM IS NOT NULL
-                  AND LEN(LTRIM(RTRIM(O.ValorM))) > 0
-            ) OBS
             WHERE 
                 TA.[Fecha ingreso] >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE))
                 AND TA.[Fecha ingreso] < DATEADD(DAY, 1, CAST(GETDATE() AS DATE))
