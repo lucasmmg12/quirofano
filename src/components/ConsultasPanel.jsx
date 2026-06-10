@@ -171,6 +171,8 @@ export default function ConsultasPanel() {
     }, [saveRecibida]);
 
     useEffect(() => {
+        setRecibidasData({});
+        setRecibidasEdits({});
         fetchData();
         fetchRecibidas();
     }, [mes, fetchData, fetchRecibidas]);
@@ -1134,11 +1136,43 @@ export default function ConsultasPanel() {
                                                         }}>
                                                             Recibidas
                                                         </td>
-                                                        {visibleCols.map(col => (
-                                                            <td key={col} style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 900, color: '#7C3AED', fontSize: '0.72rem' }}>
-                                                                {recibidasData[col] !== undefined ? recibidasData[col] : 0}
-                                                            </td>
-                                                        ))}
+                                                        {visibleCols.map(col => {
+                                                            const editVal = recibidasEdits[col] ?? '';
+                                                            const isSaving = recibidasSaving[col];
+                                                            const isSaved = recibidasSaved[col];
+                                                            return (
+                                                                <td key={col} style={{ padding: '4px 6px', textAlign: 'center' }}>
+                                                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', position: 'relative', justifyContent: 'center' }}>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={editVal}
+                                                                            onChange={e => {
+                                                                                const val = e.target.value.replace(/\D/g, '');
+                                                                                handleRecibidasChange(col, val);
+                                                                            }}
+                                                                            placeholder="0"
+                                                                            style={{
+                                                                                width: '60px',
+                                                                                padding: '2px 4px',
+                                                                                borderRadius: '6px',
+                                                                                border: '1px solid #DDD6FE',
+                                                                                fontSize: '0.72rem',
+                                                                                fontWeight: 700,
+                                                                                background: '#fff',
+                                                                                textAlign: 'center',
+                                                                                outline: 'none',
+                                                                                color: '#7C3AED',
+                                                                                transition: 'border-color 0.15s',
+                                                                            }}
+                                                                            onFocus={e => e.target.style.borderColor = '#7C3AED'}
+                                                                            onBlur={e => e.target.style.borderColor = '#DDD6FE'}
+                                                                        />
+                                                                        {isSaving && <Loader size={10} style={{ color: '#94A3B8', animation: 'spin 1s linear infinite', position: 'absolute', right: '-12px' }} />}
+                                                                        {isSaved && <Check size={10} style={{ color: '#16A34A', position: 'absolute', right: '-12px' }} />}
+                                                                    </div>
+                                                                </td>
+                                                            );
+                                                        })}
                                                         <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 900, color: '#7C3AED', fontSize: '0.78rem', borderLeft: '2px solid #CBD5E1' }}>
                                                             {visibleCols.reduce((sum, col) => sum + (recibidasData[col] || 0), 0)}
                                                         </td>
