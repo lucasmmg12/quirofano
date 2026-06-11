@@ -8,7 +8,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     Search, RefreshCw, Calendar, User, Clock,
     MessageSquare, ChevronDown, ChevronUp, Stethoscope,
-    FileText,
+    FileText, HelpCircle, X, ArrowRight, ArrowLeft, Info,
+    AlertTriangle, Phone, Eye,
 } from 'lucide-react';
 import { SkeletonCardGrid } from './SkeletonLoader';
 import { supabase } from '../lib/supabase';
@@ -46,6 +47,113 @@ export default function RecepcionView() {
     const [dateTab, setDateTab] = useState('hoy');
     const [expandedCards, setExpandedCards] = useState(new Set());
     const [lastRefresh, setLastRefresh] = useState(new Date());
+
+    // === Tutorial state ===
+    const [showTutorial, setShowTutorial] = useState(() => {
+        return !localStorage.getItem('recepcion_tutorial_seen');
+    });
+    const [tutorialStep, setTutorialStep] = useState(0);
+
+    const TUTORIAL_STEPS = [
+        {
+            icon: <Info size={28} />,
+            title: '¿Qué es esta pantalla?',
+            color: '#1565C0',
+            content: [
+                'Esta es la vista de **Recepción de Quirófanos** del Sanatorio Argentino.',
+                'Aquí se muestran todas las **cirugías programadas** con las observaciones que deja el equipo de administración.',
+                'Es una vista de **solo lectura** — no requiere usuario ni contraseña.',
+                'Su objetivo es que el personal de recepción pueda consultar rápidamente los datos del paciente y las indicaciones del equipo administrativo antes de la intervención.',
+            ],
+        },
+        {
+            icon: <Calendar size={28} />,
+            title: 'Filtro por Fecha',
+            color: '#7C3AED',
+            content: [
+                '**Hoy**: Muestra únicamente las cirugías programadas para el día de hoy.',
+                '**Mañana**: Cirugías programadas para el día siguiente.',
+                '**Próximos 3 días**: Vista extendida de los próximos 3 días calendario.',
+                '**Todos**: Muestra desde 7 días atrás hasta 14 días adelante.',
+                'Al cambiar de pestaña, la lista se actualiza automáticamente.',
+            ],
+        },
+        {
+            icon: <Search size={28} />,
+            title: 'Buscador',
+            color: '#0891B2',
+            content: [
+                'Podés buscar por **nombre del paciente**, **DNI**, **teléfono**, **ID paciente**, **médico** u **obra social**.',
+                'La búsqueda es instantánea y filtra las tarjetas en tiempo real.',
+                'El contador a la derecha (ej: "12 cirugías") se actualiza mostrando cuántos resultados coinciden.',
+            ],
+        },
+        {
+            icon: <User size={28} />,
+            title: 'Tarjeta de Cirugía',
+            color: '#059669',
+            content: [
+                'Cada tarjeta representa **una cirugía programada** para un paciente.',
+                '**Nombre del paciente**: En negrita, encabezando la tarjeta.',
+                '**Badge de estado**: Indica el estado del proceso administrativo (Pendiente, En revisión, Autorizado, Confirmado, Problema, Precaución).',
+                '**Datos del paciente**: ID Paciente, DNI, Fecha de Cirugía, Médico, Obra Social, y Edad/Sexo.',
+                'Hacé clic en cualquier parte de la tarjeta para **expandir/colapsar** los detalles.',
+            ],
+        },
+        {
+            icon: <Eye size={28} />,
+            title: 'Barra de Color Lateral',
+            color: '#1565C0',
+            content: [
+                'Cada tarjeta tiene una **barra de color en el borde izquierdo** que indica visualmente su situación:',
+                '🔵 **Azul**: Cirugía normal, sin observaciones pendientes.',
+                '🟡 **Ámbar/Amarillo**: La cirugía tiene **observaciones del equipo administrativo** que deben leerse.',
+                '🔴 **Rojo**: La cirugía está **suspendida**. El nombre aparecerá tachado y la tarjeta semi-transparente.',
+            ],
+        },
+        {
+            icon: <Phone size={28} />,
+            title: 'Botón de WhatsApp',
+            color: '#16A34A',
+            content: [
+                'A la derecha de cada tarjeta hay un **botón verde con el número de teléfono** del paciente.',
+                'Al hacer clic, se abre **WhatsApp Web** directamente con ese número, listo para enviar un mensaje.',
+                'Si el paciente no tiene teléfono registrado, aparecerá "Sin tel." en gris.',
+            ],
+        },
+        {
+            icon: <MessageSquare size={28} />,
+            title: 'Observaciones e Instrucciones',
+            color: '#D97706',
+            content: [
+                'Al expandir una tarjeta, se muestran tres secciones posibles:',
+                '📋 **Procedimiento**: El tipo de cirugía/módulo programado (ej: "(CX) CESAREA").',
+                '💬 **Observaciones**: Comentarios internos del equipo de administración. Cada uno muestra quién lo escribió, cuándo, y el contenido del mensaje. Las tarjetas con observaciones se **expanden automáticamente**.',
+                '📄 **Instrucciones de Quirófano**: Indicaciones específicas cargadas desde el sistema SALUS para esa intervención.',
+            ],
+        },
+        {
+            icon: <RefreshCw size={28} />,
+            title: 'Actualización de Datos',
+            color: '#6366F1',
+            content: [
+                'Los datos **NO se actualizan automáticamente**. Debés presionar el botón **"Actualizar"** en la esquina superior derecha.',
+                'El badge verde junto al botón muestra la **hora de la última actualización** (ej: "14:30:15").',
+                'Se recomienda actualizar al inicio del turno y antes de cada cirugía para tener la información más reciente.',
+                'Los datos provienen del sistema SALUS y de las observaciones cargadas por el equipo administrativo en el panel de Cirugías.',
+            ],
+        },
+    ];
+
+    const closeTutorial = () => {
+        setShowTutorial(false);
+        setTutorialStep(0);
+        localStorage.setItem('recepcion_tutorial_seen', '1');
+    };
+
+    const renderMarkdown = (text) => {
+        return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    };
 
     // === Date range helpers ===
     const getDateRange = useCallback((tab) => {
@@ -309,6 +417,22 @@ export default function RecepcionView() {
                         onMouseOut={e => { e.currentTarget.style.background = 'rgba(21, 101, 192, 0.06)'; }}
                     >
                         <RefreshCw size={13} /> Actualizar
+                    </button>
+                    <button
+                        onClick={() => { setShowTutorial(true); setTutorialStep(0); }}
+                        title="Ver tutorial de ayuda"
+                        style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            width: '34px', height: '34px', borderRadius: '10px',
+                            border: '1px solid rgba(99, 102, 241, 0.2)',
+                            background: 'rgba(99, 102, 241, 0.06)',
+                            cursor: 'pointer', color: '#6366F1',
+                            transition: 'all 0.2s',
+                        }}
+                        onMouseOver={e => { e.currentTarget.style.background = 'rgba(99, 102, 241, 0.15)'; }}
+                        onMouseOut={e => { e.currentTarget.style.background = 'rgba(99, 102, 241, 0.06)'; }}
+                    >
+                        <HelpCircle size={16} />
                     </button>
                 </div>
             </header>
@@ -807,6 +931,262 @@ export default function RecepcionView() {
                 ::-webkit-scrollbar-thumb { background: rgba(21, 101, 192, 0.15); border-radius: 3px; }
                 ::-webkit-scrollbar-thumb:hover { background: rgba(21, 101, 192, 0.3); }
             `}</style>
+
+            {/* === TUTORIAL MODAL === */}
+            {showTutorial && (
+                <div
+                    className="tutorial-overlay"
+                    onClick={(e) => { if (e.target === e.currentTarget) closeTutorial(); }}
+                >
+                    <div className="tutorial-modal">
+                        {/* Close button */}
+                        <button
+                            className="tutorial-close"
+                            onClick={closeTutorial}
+                            title="Cerrar tutorial"
+                        >
+                            <X size={18} />
+                        </button>
+
+                        {/* Step indicator */}
+                        <div className="tutorial-steps-bar">
+                            {TUTORIAL_STEPS.map((_, idx) => (
+                                <button
+                                    key={idx}
+                                    className={`tutorial-step-dot${idx === tutorialStep ? ' active' : ''}${idx < tutorialStep ? ' completed' : ''}`}
+                                    onClick={() => setTutorialStep(idx)}
+                                    style={{
+                                        '--dot-color': idx === tutorialStep
+                                            ? TUTORIAL_STEPS[tutorialStep].color
+                                            : idx < tutorialStep ? '#94A3B8' : '#E2E8F0',
+                                    }}
+                                />
+                            ))}
+                        </div>
+
+                        {/* Icon + Title */}
+                        <div className="tutorial-header" style={{ color: TUTORIAL_STEPS[tutorialStep].color }}>
+                            <div className="tutorial-icon" style={{ background: `${TUTORIAL_STEPS[tutorialStep].color}12`, color: TUTORIAL_STEPS[tutorialStep].color }}>
+                                {TUTORIAL_STEPS[tutorialStep].icon}
+                            </div>
+                            <div>
+                                <span className="tutorial-step-label">Paso {tutorialStep + 1} de {TUTORIAL_STEPS.length}</span>
+                                <h2 className="tutorial-title">{TUTORIAL_STEPS[tutorialStep].title}</h2>
+                            </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="tutorial-content">
+                            {TUTORIAL_STEPS[tutorialStep].content.map((line, idx) => (
+                                <div
+                                    key={idx}
+                                    className="tutorial-line"
+                                    dangerouslySetInnerHTML={{ __html: renderMarkdown(line) }}
+                                />
+                            ))}
+                        </div>
+
+                        {/* Navigation */}
+                        <div className="tutorial-nav">
+                            <button
+                                className="tutorial-btn tutorial-btn--secondary"
+                                onClick={() => setTutorialStep(s => Math.max(0, s - 1))}
+                                disabled={tutorialStep === 0}
+                            >
+                                <ArrowLeft size={14} /> Anterior
+                            </button>
+                            <span className="tutorial-counter">{tutorialStep + 1} / {TUTORIAL_STEPS.length}</span>
+                            {tutorialStep < TUTORIAL_STEPS.length - 1 ? (
+                                <button
+                                    className="tutorial-btn tutorial-btn--primary"
+                                    onClick={() => setTutorialStep(s => s + 1)}
+                                    style={{ background: TUTORIAL_STEPS[tutorialStep].color }}
+                                >
+                                    Siguiente <ArrowRight size={14} />
+                                </button>
+                            ) : (
+                                <button
+                                    className="tutorial-btn tutorial-btn--primary"
+                                    onClick={closeTutorial}
+                                    style={{ background: '#16A34A' }}
+                                >
+                                    ¡Entendido! ✓
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Tutorial CSS */}
+            <style>{`
+                .tutorial-overlay {
+                    position: fixed;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(15, 23, 42, 0.6);
+                    backdrop-filter: blur(6px);
+                    -webkit-backdrop-filter: blur(6px);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 10000;
+                    animation: tutorialFadeIn 0.25s ease;
+                    padding: 20px;
+                }
+                @keyframes tutorialFadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+                .tutorial-modal {
+                    background: #fff;
+                    border-radius: 20px;
+                    width: 100%;
+                    max-width: 560px;
+                    box-shadow: 0 24px 80px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.04);
+                    position: relative;
+                    overflow: hidden;
+                    animation: tutorialSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                }
+                @keyframes tutorialSlideUp {
+                    from { transform: translateY(30px); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
+                }
+                .tutorial-close {
+                    position: absolute;
+                    top: 16px; right: 16px;
+                    width: 32px; height: 32px;
+                    border-radius: 8px;
+                    border: none;
+                    background: rgba(241,245,249,0.8);
+                    color: #64748B;
+                    cursor: pointer;
+                    display: flex; align-items: center; justify-content: center;
+                    transition: all 0.15s;
+                    z-index: 2;
+                }
+                .tutorial-close:hover {
+                    background: #F1F5F9;
+                    color: #1E293B;
+                }
+                .tutorial-steps-bar {
+                    display: flex;
+                    gap: 6px;
+                    padding: 20px 24px 0;
+                    justify-content: center;
+                }
+                .tutorial-step-dot {
+                    width: 32px; height: 4px;
+                    border-radius: 2px;
+                    border: none;
+                    background: var(--dot-color, #E2E8F0);
+                    cursor: pointer;
+                    transition: all 0.25s;
+                    padding: 0;
+                }
+                .tutorial-step-dot.active {
+                    width: 48px;
+                }
+                .tutorial-step-dot.completed {
+                    opacity: 0.5;
+                }
+                .tutorial-header {
+                    display: flex;
+                    align-items: center;
+                    gap: 14px;
+                    padding: 20px 24px 0;
+                }
+                .tutorial-icon {
+                    width: 52px; height: 52px;
+                    border-radius: 14px;
+                    display: flex; align-items: center; justify-content: center;
+                    flex-shrink: 0;
+                }
+                .tutorial-step-label {
+                    font-size: 0.7rem;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.06em;
+                    opacity: 0.7;
+                }
+                .tutorial-title {
+                    margin: 2px 0 0;
+                    font-size: 1.25rem;
+                    font-weight: 800;
+                    color: #0F2B46;
+                    letter-spacing: -0.3px;
+                }
+                .tutorial-content {
+                    padding: 16px 24px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                    max-height: 320px;
+                    overflow-y: auto;
+                }
+                .tutorial-line {
+                    font-size: 0.88rem;
+                    line-height: 1.65;
+                    color: #334155;
+                    padding: 8px 12px;
+                    background: #F8FAFC;
+                    border-radius: 10px;
+                    border-left: 3px solid #E2E8F0;
+                }
+                .tutorial-line strong {
+                    color: #0F2B46;
+                    font-weight: 700;
+                }
+                .tutorial-nav {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 16px 24px;
+                    border-top: 1px solid #F1F5F9;
+                    background: #FAFBFC;
+                    border-radius: 0 0 20px 20px;
+                }
+                .tutorial-counter {
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                    color: #94A3B8;
+                }
+                .tutorial-btn {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 9px 18px;
+                    border-radius: 10px;
+                    border: none;
+                    font-size: 0.82rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    transition: all 0.15s;
+                    font-family: inherit;
+                }
+                .tutorial-btn--secondary {
+                    background: #F1F5F9;
+                    color: #64748B;
+                }
+                .tutorial-btn--secondary:hover:not(:disabled) {
+                    background: #E2E8F0;
+                    color: #334155;
+                }
+                .tutorial-btn--secondary:disabled {
+                    opacity: 0.4;
+                    cursor: not-allowed;
+                }
+                .tutorial-btn--primary {
+                    background: #1565C0;
+                    color: #fff;
+                    box-shadow: 0 2px 8px rgba(21,101,192,0.25);
+                }
+                .tutorial-btn--primary:hover {
+                    filter: brightness(1.1);
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(21,101,192,0.3);
+                }
+            `}</style>
         </div>
+
     );
 }
