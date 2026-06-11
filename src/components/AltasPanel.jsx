@@ -93,10 +93,7 @@ export default function AltasPanel({ addToast, currentUser }) {
         return () => clearTimeout(timer);
     }, [searchTerm]);
 
-    // Reset página al cambiar filtros
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [selectedMonth, debouncedSearch, filterEstado, columnFilters]);
+
 
     // Auto-scroll al mes seleccionado en el selector
     useEffect(() => {
@@ -134,6 +131,11 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     // ── Ordenamiento fecha ingreso ──
     const [ingresoSort, setIngresoSort] = useState('desc');
+
+    // Reset página al cambiar filtros
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [selectedMonth, debouncedSearch, filterEstado, columnFilters]);
 
     // ── Tab activo ──
     const [activeTab, setActiveTab] = useState('tabla'); // 'tabla' | 'metricas' | 'carrito' | 'historial'
