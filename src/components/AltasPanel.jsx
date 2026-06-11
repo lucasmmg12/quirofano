@@ -64,17 +64,20 @@ export default function AltasPanel({ addToast, currentUser }) {
         return `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
     }, [selectedMonth]);
 
-    // Generar lista de meses (últimos 12 + mes actual)
+    // Generar lista de meses (desde Abril 2026 hasta mes actual)
     const monthOptions = useMemo(() => {
         const months = [];
         const now = nowRef.current;
-        for (let i = 11; i >= 0; i--) {
-            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const start = new Date(2026, 3, 1); // Abril 2026
+        const end = new Date(now.getFullYear(), now.getMonth(), 1);
+        const d = new Date(start);
+        while (d <= end) {
             const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            const label = d.toLocaleDateString('es-AR', { month: 'long' });
-            const year = d.getFullYear();
+            const label = d.toLocaleDateString('es-AR', { month: 'short' }).replace('.', '');
+            const fullLabel = `${label.charAt(0).toUpperCase() + label.slice(1)} ${d.getFullYear()}`;
             const isCurrent = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-            months.push({ key, label, year, isCurrent });
+            months.push({ key, fullLabel, isCurrent });
+            d.setMonth(d.getMonth() + 1);
         }
         return months;
     }, []);
@@ -1216,8 +1219,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                             className={`month-pill${m.key === selectedMonth ? ' month-pill--active' : ''}${m.isCurrent ? ' month-pill--current' : ''}`}
                             onClick={() => setSelectedMonth(m.key)}
                         >
-                            <span className="month-pill__month">{m.label}</span>
-                            <span className="month-pill__year">{m.year}</span>
+                            {m.fullLabel}
                         </button>
                     ))}
                 </div>
