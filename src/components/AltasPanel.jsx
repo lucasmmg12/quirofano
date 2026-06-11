@@ -4,10 +4,10 @@
  * Vista tabular con estados coloreados, detalle expandible con observaciones,
  * filtros por fecha/estado/búsqueda, y KPIs resumidos.
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-    Search, RefreshCw, ChevronRight, Clock, Calendar,
+    Search, RefreshCw, ChevronRight, ChevronLeft, Clock, Calendar,
     Filter, X, Loader2, FileText, User, Building2,
     Stethoscope, ChevronDown, ChevronUp, StickyNote, Save,
     ListFilter, Download, FileDown, ShoppingCart, Printer, Trash2, PackageCheck, Receipt,
@@ -48,22 +48,65 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [dropdownDir, setDropdownDir] = useState('down'); // 'down' | 'up'
     const [processing, setProcessing] = useState(false);
 
-    // Filtros — default: últimos 3 meses para carga rápida
-    const [fromDate, setFromDate] = useState(() => {
+    // ── Selector de Mes (reemplaza inputs de fecha manuales) ──
+    const nowRef = useRef(new Date());
+    const [selectedMonth, setSelectedMonth] = useState(() => {
         const d = new Date();
-        d.setMonth(d.getMonth() - 3);
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     });
-    const [toDate, setToDate] = useState('');
+    const monthScrollRef = useRef(null);
+
+    // Derivar fromDate/toDate del mes seleccionado
+    const fromDate = useMemo(() => `${selectedMonth}-01`, [selectedMonth]);
+    const toDate = useMemo(() => {
+        const [y, m] = selectedMonth.split('-').map(Number);
+        const lastDay = new Date(y, m, 0).getDate();
+        return `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+    }, [selectedMonth]);
+
+    // Generar lista de meses (últimos 12 + mes actual)
+    const monthOptions = useMemo(() => {
+        const months = [];
+        const now = nowRef.current;
+        for (let i = 11; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const label = d.toLocaleDateString('es-AR', { month: 'long' });
+            const year = d.getFullYear();
+            const isCurrent = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+            months.push({ key, label, year, isCurrent });
+        }
+        return months;
+    }, []);
+
     const [filterEstado, setFilterEstado] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
+
+    // ── Paginación ──
+    const PAGE_SIZE = 50;
+    const [currentPage, setCurrentPage] = useState(1);
     
     // Debounce search term (500ms)
     useEffect(() => {
         const timer = setTimeout(() => setDebouncedSearch(searchTerm), 500);
         return () => clearTimeout(timer);
     }, [searchTerm]);
+
+    // Reset página al cambiar filtros
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [selectedMonth, debouncedSearch, filterEstado, columnFilters]);
+
+    // Auto-scroll al mes seleccionado en el selector
+    useEffect(() => {
+        if (monthScrollRef.current) {
+            const activeBtn = monthScrollRef.current.querySelector('.month-pill--active');
+            if (activeBtn) {
+                activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+        }
+    }, [selectedMonth]);
     
     // Notas internas
     const [editingNotas, setEditingNotas] = useState(null);
@@ -100,7 +143,7 @@ export default function AltasPanel({ addToast, currentUser }) {
         try {
             setLoading(true);
             const [data, criteriosData] = await Promise.all([
-                fetchAltas({ fromDate, toDate: toDate || undefined, search: debouncedSearch }),
+                fetchAltas({ fromDate, toDate, search: debouncedSearch }),
                 fetchAsignaciones().catch(() => []),
             ]);
             setAltas(data);
@@ -517,6 +560,32 @@ export default function AltasPanel({ addToast, currentUser }) {
     }, [filteredAltas, ingresoSort]);
 
     const activeFilterCount = Object.keys(columnFilters).length;
+
+    // ── Paginación: solo renderizar PAGE_SIZE filas ──
+    const totalPages = Math.max(1, Math.ceil(sortedAltas.length / PAGE_SIZE));
+    const paginatedAltas = useMemo(() => {
+        const start = (currentPage - 1) * PAGE_SIZE;
+        return sortedAltas.slice(start, start + PAGE_SIZE);
+    }, [sortedAltas, currentPage, PAGE_SIZE]);
+    const paginationStart = (currentPage - 1) * PAGE_SIZE + 1;
+    const paginationEnd = Math.min(currentPage * PAGE_SIZE, sortedAltas.length);
+
+    // Generar números de página para la barra
+    const getPageNumbers = () => {
+        const pages = [];
+        if (totalPages <= 7) {
+            for (let i = 1; i <= totalPages; i++) pages.push(i);
+        } else {
+            pages.push(1);
+            if (currentPage > 3) pages.push('...');
+            const start = Math.max(2, currentPage - 1);
+            const end = Math.min(totalPages - 1, currentPage + 1);
+            for (let i = start; i <= end; i++) pages.push(i);
+            if (currentPage < totalPages - 2) pages.push('...');
+            pages.push(totalPages);
+        }
+        return pages;
+    };
 
     // ── Exportar a Excel (CSV con BOM para UTF-8) ──
     const exportToExcel = () => {
@@ -1125,29 +1194,50 @@ export default function AltasPanel({ addToast, currentUser }) {
                 })}
             </div>
 
-            {/* ── Filtros ── */}
+            {/* ── Selector de Mes ── */}
+            <div className="month-selector">
+                <button
+                    className="month-selector__arrow"
+                    onClick={() => {
+                        const idx = monthOptions.findIndex(m => m.key === selectedMonth);
+                        if (idx > 0) setSelectedMonth(monthOptions[idx - 1].key);
+                    }}
+                    disabled={monthOptions.findIndex(m => m.key === selectedMonth) === 0}
+                    title="Mes anterior"
+                >
+                    <ChevronLeft size={16} />
+                </button>
+                <div className="month-selector__scroll" ref={monthScrollRef}>
+                    {monthOptions.map(m => (
+                        <button
+                            key={m.key}
+                            className={`month-pill${m.key === selectedMonth ? ' month-pill--active' : ''}${m.isCurrent ? ' month-pill--current' : ''}`}
+                            onClick={() => setSelectedMonth(m.key)}
+                        >
+                            <span className="month-pill__month">{m.label}</span>
+                            <span className="month-pill__year">{m.year}</span>
+                        </button>
+                    ))}
+                </div>
+                <button
+                    className="month-selector__arrow"
+                    onClick={() => {
+                        const idx = monthOptions.findIndex(m => m.key === selectedMonth);
+                        if (idx < monthOptions.length - 1) setSelectedMonth(monthOptions[idx + 1].key);
+                    }}
+                    disabled={monthOptions.findIndex(m => m.key === selectedMonth) === monthOptions.length - 1}
+                    title="Mes siguiente"
+                >
+                    <ChevronRight size={16} />
+                </button>
+            </div>
+
+            {/* ── Barra de búsqueda ── */}
             <div style={{
                 display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap',
                 padding: '10px 14px', borderRadius: '12px',
                 background: '#FAFAFA', border: '1px solid var(--neutral-100)',
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Calendar size={14} color="var(--neutral-400)" />
-                    <span style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', fontWeight: 600 }}>F. Ingreso:</span>
-                    <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
-                        style={{
-                            padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--neutral-200)',
-                            fontSize: '0.78rem', color: 'var(--neutral-700)',
-                        }}
-                    />
-                    <span style={{ fontSize: '0.75rem', color: 'var(--neutral-400)' }}>a</span>
-                    <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-                        style={{
-                            padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--neutral-200)',
-                            fontSize: '0.78rem', color: 'var(--neutral-700)',
-                        }}
-                    />
-                </div>
                 <div style={{ flex: 1, position: 'relative', minWidth: '200px' }}>
                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
                     <input
@@ -1165,9 +1255,9 @@ export default function AltasPanel({ addToast, currentUser }) {
                         onBlur={e => e.currentTarget.style.borderColor = 'var(--neutral-200)'}
                     />
                 </div>
-                {(searchTerm || fromDate || toDate || filterEstado !== 'all') && (
+                {(searchTerm || filterEstado !== 'all') && (
                     <button
-                        onClick={() => { setSearchTerm(''); setFromDate(''); setToDate(''); setFilterEstado('all'); }}
+                        onClick={() => { setSearchTerm(''); setFilterEstado('all'); }}
                         style={{
                             display: 'inline-flex', alignItems: 'center', gap: '4px',
                             padding: '5px 10px', borderRadius: '6px',
@@ -1191,6 +1281,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                         <p style={{ margin: 0, fontSize: '0.82rem' }}>No hay altas que coincidan con los filtros.</p>
                     </div>
                 ) : (
+                    <>
                     <div className="cart__table-wrapper" style={{ overflowX: 'auto', width: '100%' }}>
                         {/* Hint: carrito de traspaso */}
                         {selectedIds.size === 0 && (
@@ -1282,7 +1373,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                 )}
                             </thead>
                             <tbody>
-                                {sortedAltas.map(alta => {
+                                {paginatedAltas.map(alta => {
                                     const effectiveEstado = alta._effectiveEstado;
                                     const cfg = effectiveEstado ? (ALTA_ESTADOS[effectiveEstado] || ALTA_ESTADOS['Procesada']) : null;
                                     const isExpanded = expandedId === alta.id;
@@ -1639,6 +1730,45 @@ export default function AltasPanel({ addToast, currentUser }) {
                             </tbody>
                         </table>
                     </div>
+
+                    {/* ── Barra de Paginación ── */}
+                    {sortedAltas.length > PAGE_SIZE && (
+                        <div className="pagination-bar">
+                            <div className="pagination-bar__info">
+                                Mostrando <strong>{paginationStart}–{paginationEnd}</strong> de <strong>{sortedAltas.length}</strong> registros
+                            </div>
+                            <div className="pagination-bar__controls">
+                                <button
+                                    className="pagination-btn pagination-btn--nav"
+                                    disabled={currentPage === 1}
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                >
+                                    <ChevronLeft size={14} /> Anterior
+                                </button>
+                                {getPageNumbers().map((page, idx) =>
+                                    page === '...' ? (
+                                        <span key={`dots-${idx}`} className="pagination-dots">…</span>
+                                    ) : (
+                                        <button
+                                            key={page}
+                                            className={`pagination-btn${page === currentPage ? ' pagination-btn--active' : ''}`}
+                                            onClick={() => setCurrentPage(page)}
+                                        >
+                                            {page}
+                                        </button>
+                                    )
+                                )}
+                                <button
+                                    className="pagination-btn pagination-btn--nav"
+                                    disabled={currentPage === totalPages}
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                >
+                                    Siguiente <ChevronRight size={14} />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                    </>
                 )}
             </div>
 
