@@ -19,7 +19,7 @@ import {
     updateDeudor, fetchPresupuestosPorNhc, MIN_DEUDA,
     fetchAltasPorAdmisiones, fetchPlanesPago, createPlanPago,
     marcarCuotaPagada, cancelarPlan, fetchResponsablesPorNombres,
-    fetchCobros, fetchNotasCredito,
+    fetchCobros, fetchNotasCredito, fetchDeudaCanceladaInfo,
 } from '../services/deudaService';
 import { parseDeudaExcel } from '../utils/deudaExcelParser';
 import { subscribeToAllIncoming } from '../services/chatService';
@@ -208,13 +208,24 @@ export default function DeudasPanel({ addToast, currentUser }) {
         setFinancialTab('facturas');
         setPlanForm(p => ({ ...p, montoOriginal: deudor.deuda_total || '' }));
         try {
-            const [facts, segs, planesData, cobrosData, ncData] = await Promise.all([
+            const [facts, segs, planesData, cobrosData, ncData, cancelInfo] = await Promise.all([
                 fetchFacturas(deudor.id),
                 fetchSeguimiento(deudor.id),
                 fetchPlanesPago(deudor.id),
                 fetchCobros(deudor.id),
                 fetchNotasCredito(deudor.id),
+                deudor.categoria === 'deuda_cancelada'
+                    ? fetchDeudaCanceladaInfo(deudor.id)
+                    : Promise.resolve(null),
             ]);
+            // Enriquecer deudor con info de cancelación si existe
+            if (cancelInfo?.deuda_cancelada_at) {
+                setSelectedDeudor(prev => ({
+                    ...prev,
+                    deuda_cancelada_at: cancelInfo.deuda_cancelada_at,
+                    deuda_cancelada_por: cancelInfo.deuda_cancelada_por,
+                }));
+            }
             setFacturas(facts);
             setCobros(cobrosData);
             setNotasCredito(ncData);
@@ -332,14 +343,44 @@ export default function DeudasPanel({ addToast, currentUser }) {
     // ─── Categoría ───
     const handleChangeCategoria = useCallback(async (newCat) => {
         if (!selectedDeudor) return;
+
+        // ─── Protección: Deuda ya cancelada no puede re-cancelarse ───
+        if (newCat === 'deuda_cancelada' && selectedDeudor.categoria === 'deuda_cancelada') {
+            addToast?.('⛔ Esta deuda ya fue cancelada. No se puede volver a cancelar.', 'warning');
+            return;
+        }
+
+        // ─── Confirmación al cancelar deuda (genera ingreso) ───
+        if (newCat === 'deuda_cancelada') {
+            const ok = confirm(
+                `¿Confirmás que la deuda de ${selectedDeudor.nombre} fue CANCELADA?\n\n` +
+                `• Monto: $${Number(selectedDeudor.deuda_total).toLocaleString('es-AR')}\n` +
+                `• Esto indica que el paciente pagó y se generó un ingreso al sanatorio.\n` +
+                `• Esta acción NO se puede revertir.`
+            );
+            if (!ok) return;
+        }
+
         try {
             await updateDeudorCategoria(selectedDeudor.id, newCat, empleadoNombre);
-            setSelectedDeudor(prev => ({ ...prev, categoria: newCat }));
+            setSelectedDeudor(prev => ({
+                ...prev,
+                categoria: newCat,
+                ...(newCat === 'deuda_cancelada' ? {
+                    deuda_cancelada_at: new Date().toISOString(),
+                    deuda_cancelada_por: empleadoNombre,
+                } : {}),
+            }));
             const segs = await fetchSeguimiento(selectedDeudor.id);
             setSeguimiento(segs);
-            addToast?.(`Categoría: ${CATEGORIAS_DEUDOR[newCat]?.label}`, 'success');
+            addToast?.(
+                newCat === 'deuda_cancelada'
+                    ? `✅ Deuda cancelada — Ingreso registrado`
+                    : `Categoría: ${CATEGORIAS_DEUDOR[newCat]?.label}`,
+                'success'
+            );
         } catch (err) {
-            addToast?.('Error al cambiar categoría', 'error');
+            addToast?.(err.message || 'Error al cambiar categoría', 'error');
         }
     }, [selectedDeudor, empleadoNombre, addToast]);
 
@@ -599,6 +640,16 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                 <div><span style={{ ...st.statValue, color: '#0D9488' }}>-{formatMoney(metricas.deudaDescontada)}</span><span style={st.statLabel}>Descontada</span></div>
                             </div>
                         )}
+                        {metricas.totalCanceladas > 0 && (
+                            <div style={{ ...st.statCard, borderColor: '#6366F120', background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(224,231,255,0.4))' }}>
+                                <Banknote size={18} style={{ color: '#6366F1' }} />
+                                <div>
+                                    <span style={{ ...st.statValue, color: '#6366F1' }}>{metricas.totalCanceladas}</span>
+                                    <span style={st.statLabel}>Deudas Canceladas</span>
+                                    <span style={{ display: 'block', fontSize: '0.62rem', color: '#6366F1', fontWeight: 700 }}>{formatMoney(metricas.montoCancelado)} ingresado</span>
+                                </div>
+                            </div>
+                        )}
                         <div style={st.statCard}>
                             <Phone size={18} style={{ color: '#16A34A' }} />
                             <div><span style={st.statValue}>{metricas.conTelefono}</span><span style={st.statLabel}>Con teléfono</span></div>
@@ -697,7 +748,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                     <div style={st.kpiValue}>{formatMoney(metricas.promedioPorPaciente)}</div>
                                 </div>
 
-                                <div style={{ ...st.kpiRow, borderBottom: 'none', marginBottom: 0 }}>
+                                <div style={st.kpiRow}>
                                     <UserX size={16} color="#EF4444" />
                                     <div style={{ flex: 1 }}>
                                         <div style={st.kpiLabel}>Pendientes de Gestión</div>
@@ -705,6 +756,17 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                     </div>
                                     <div style={{ ...st.kpiValue, color: '#EF4444' }}>
                                         {metricas.conTelefono - metricas.contactados} pac.
+                                    </div>
+                                </div>
+
+                                <div style={{ ...st.kpiRow, borderBottom: 'none', marginBottom: 0, background: metricas.totalCanceladas > 0 ? '#E0E7FF40' : 'transparent', borderRadius: '8px', padding: '10px 8px' }}>
+                                    <Banknote size={16} color="#6366F1" />
+                                    <div style={{ flex: 1 }}>
+                                        <div style={st.kpiLabel}>Tasa de Recuperación</div>
+                                        <div style={st.kpiSub}>Deudas canceladas / total</div>
+                                    </div>
+                                    <div style={{ ...st.kpiValue, color: '#6366F1' }}>
+                                        {metricas.tasaRecuperacion}%
                                     </div>
                                 </div>
                             </div>
@@ -1085,22 +1147,77 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         <div style={st.card}>
                             <h4 style={st.cardTitle}><Filter size={14} /> Categoría del Deudor</h4>
                             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                {Object.entries(CATEGORIAS_DEUDOR).map(([key, cfg]) => (
-                                    <button key={key}
-                                        onClick={() => handleChangeCategoria(key)}
-                                        style={{
-                                            padding: '8px 14px', borderRadius: '12px',
-                                            border: selectedDeudor.categoria === key ? `2px solid ${cfg.color}` : '2px solid #E2E8F0',
-                                            background: selectedDeudor.categoria === key ? cfg.bg : '#FAFBFC',
-                                            color: selectedDeudor.categoria === key ? cfg.color : '#64748B',
-                                            fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
-                                            transition: 'all 0.15s',
-                                        }}
-                                    >
-                                        {cfg.icon} {cfg.label}
-                                    </button>
-                                ))}
+                                {Object.entries(CATEGORIAS_DEUDOR).map(([key, cfg]) => {
+                                    const isCancelada = selectedDeudor.categoria === 'deuda_cancelada';
+                                    const isThisCancelada = key === 'deuda_cancelada';
+                                    // Bloquear botón de cancelar si ya está cancelada
+                                    const isDisabled = isCancelada && isThisCancelada;
+                                    return (
+                                        <button key={key}
+                                            onClick={() => !isDisabled && handleChangeCategoria(key)}
+                                            title={isDisabled ? 'Esta deuda ya fue cancelada — no se puede volver a cancelar' : cfg.label}
+                                            style={{
+                                                padding: '8px 14px', borderRadius: '12px',
+                                                border: selectedDeudor.categoria === key ? `2px solid ${cfg.color}` : '2px solid #E2E8F0',
+                                                background: selectedDeudor.categoria === key ? cfg.bg : '#FAFBFC',
+                                                color: selectedDeudor.categoria === key ? cfg.color : '#64748B',
+                                                fontSize: '0.8rem', fontWeight: 700,
+                                                cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                                opacity: isDisabled ? 0.6 : 1,
+                                                transition: 'all 0.15s',
+                                            }}
+                                        >
+                                            {cfg.icon} {cfg.label}
+                                        </button>
+                                    );
+                                })}
                             </div>
+
+                            {/* ─── Banner de Deuda Cancelada ─── */}
+                            {selectedDeudor.categoria === 'deuda_cancelada' && (
+                                <div style={{
+                                    marginTop: '12px', padding: '14px 18px',
+                                    background: 'linear-gradient(135deg, #E0E7FF 0%, #EDE9FE 100%)',
+                                    borderRadius: '12px', border: '1px solid #A5B4FC',
+                                    display: 'flex', alignItems: 'center', gap: '12px',
+                                }}>
+                                    <div style={{
+                                        width: '36px', height: '36px', borderRadius: '10px',
+                                        background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        boxShadow: '0 3px 10px rgba(99,102,241,0.3)',
+                                        flexShrink: 0,
+                                    }}>
+                                        <CheckCircle size={18} style={{ color: '#fff' }} />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#4338CA' }}>
+                                            ✅ Deuda Cancelada — Ingreso Registrado
+                                        </div>
+                                        <div style={{ fontSize: '0.72rem', color: '#6366F1', marginTop: '2px' }}>
+                                            {selectedDeudor.deuda_cancelada_at ? (
+                                                <>
+                                                    Pagada el {new Date(selectedDeudor.deuda_cancelada_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                                                    {' a las '}{new Date(selectedDeudor.deuda_cancelada_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                                                    {selectedDeudor.deuda_cancelada_por && (
+                                                        <> · Registrado por <strong>{selectedDeudor.deuda_cancelada_por}</strong></>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                'Deuda marcada como cancelada.'
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div style={{
+                                        padding: '4px 12px', borderRadius: '8px',
+                                        background: '#6366F1', color: '#fff',
+                                        fontSize: '0.68rem', fontWeight: 800,
+                                        letterSpacing: '0.02em', whiteSpace: 'nowrap',
+                                    }}>
+                                        PAGADA
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
 

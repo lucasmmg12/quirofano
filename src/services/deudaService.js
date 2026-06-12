@@ -87,13 +87,45 @@ export async function updateDeudorTelefono(id, telefono) {
 }
 
 export async function updateDeudorCategoria(id, categoria, usuario) {
-    await updateDeudor(id, { categoria });
+    // ─── Protección: Deuda ya cancelada no se puede volver a cancelar ───
+    if (categoria === 'deuda_cancelada') {
+        const { data: current } = await supabase
+            .from('deudas_pacientes')
+            .select('categoria, deuda_cancelada_at')
+            .eq('id', id)
+            .single();
+        if (current?.categoria === 'deuda_cancelada' && current?.deuda_cancelada_at) {
+            throw new Error('Esta deuda ya fue cancelada previamente. No se puede volver a cancelar.');
+        }
+        // Registrar fecha y usuario de cancelación
+        await updateDeudor(id, {
+            categoria,
+            deuda_cancelada_at: new Date().toISOString(),
+            deuda_cancelada_por: usuario,
+        });
+    } else {
+        await updateDeudor(id, { categoria });
+    }
     // Registrar en seguimiento
     await addSeguimiento(id, {
         tipo: 'cambio_categoria',
-        descripcion: `Categoría cambiada a: ${CATEGORIAS_DEUDOR[categoria]?.label || categoria}`,
+        descripcion: categoria === 'deuda_cancelada'
+            ? `✅ Deuda Cancelada — Pago efectivo registrado por ${usuario}. Ingreso generado al sanatorio.`
+            : `Categoría cambiada a: ${CATEGORIAS_DEUDOR[categoria]?.label || categoria}`,
         usuario,
     });
+}
+
+// ─── Info de cancelación ───
+
+export async function fetchDeudaCanceladaInfo(id) {
+    const { data, error } = await supabase
+        .from('deudas_pacientes')
+        .select('deuda_cancelada_at, deuda_cancelada_por')
+        .eq('id', id)
+        .single();
+    if (error) throw error;
+    return data;
 }
 
 // ─── Facturas ───
@@ -422,7 +454,7 @@ export async function importarDeudas(registros, usuario, onProgress) {
 export async function fetchMetricasDeudas(filtros = {}) {
     let query = supabase
         .from('deudas_pacientes')
-        .select('id, nombre, nhc, deuda_total, categoria, telefono, telefono_invalido, ultimo_contacto_at, ultima_respuesta_at, cantidad_facturas')
+        .select('id, nombre, nhc, deuda_total, categoria, telefono, telefono_invalido, ultimo_contacto_at, ultima_respuesta_at, cantidad_facturas, deuda_cancelada_at')
         .gte('deuda_total', MIN_DEUDA)
         .order('deuda_total', { ascending: false });
 
@@ -463,6 +495,11 @@ export async function fetchMetricasDeudas(filtros = {}) {
 
     const top10 = all.filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria)).slice(0, 10);
 
+    // ─── Deudas Canceladas (ingreso generado) ───
+    const canceladas = all.filter(p => p.categoria === 'deuda_cancelada' && p.deuda_cancelada_at);
+    const totalCanceladas = canceladas.length;
+    const montoCancelado = canceladas.reduce((s, p) => s + Number(p.deuda_total), 0);
+
     // ─── Contactados y Respondieron: cruzar con whatsapp_messages ───
     // Obtener teléfonos únicos de deudores que tienen teléfono
     const telefonosDeudores = [...new Set(all.filter(p => p.telefono).map(p => p.telefono))];
@@ -500,6 +537,7 @@ export async function fetchMetricasDeudas(filtros = {}) {
     const promedioPorPaciente = deudoresActivos > 0 ? deudaTotal / deudoresActivos : 0;
     const tasaContactabilidad = conTelefono > 0 ? Math.round((contactados / conTelefono) * 100) : 0;
     const tasaRespuesta = contactados > 0 ? Math.round((respondieron / contactados) * 100) : 0;
+    const tasaRecuperacion = total > 0 ? Math.round((totalCanceladas / total) * 100) : 0;
 
     return {
         total,
@@ -517,6 +555,10 @@ export async function fetchMetricasDeudas(filtros = {}) {
         promedioPorPaciente,
         tasaContactabilidad,
         tasaRespuesta,
+        // Canceladas — Ingreso efectivo
+        totalCanceladas,
+        montoCancelado,
+        tasaRecuperacion,
     };
 }
 
