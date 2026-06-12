@@ -562,6 +562,41 @@ export async function fetchMetricasDeudas(filtros = {}) {
     };
 }
 
+/**
+ * Obtener deudas canceladas (pagos efectivos) en un período.
+ * IMPORTANTE: Filtra por `deuda_cancelada_at` (fecha del pago real),
+ * NO por `fecha_ultima_factura` (fecha de la deuda original).
+ * Una deuda de abril pagada en junio aparece en el reporte de junio.
+ */
+export async function fetchDeudasCanceladasEnPeriodo(filtros = {}) {
+    let query = supabase
+        .from('deudas_pacientes')
+        .select('id, nombre, nhc, deuda_total, deuda_cancelada_at, deuda_cancelada_por, fecha_ultima_factura, obra_social')
+        .eq('categoria', 'deuda_cancelada')
+        .not('deuda_cancelada_at', 'is', null)
+        .order('deuda_cancelada_at', { ascending: false });
+
+    // Filtrar por período de CANCELACIÓN (no de factura)
+    if (filtros.fechaDesde) {
+        query = query.gte('deuda_cancelada_at', filtros.fechaDesde);
+    }
+    if (filtros.fechaHasta) {
+        query = query.lte('deuda_cancelada_at', filtros.fechaHasta);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const canceladas = data || [];
+    const totalMonto = canceladas.reduce((s, p) => s + Number(p.deuda_total), 0);
+
+    return {
+        canceladas,
+        totalCanceladas: canceladas.length,
+        montoTotalIngresado: totalMonto,
+    };
+}
+
 // ─── Altas vinculadas por N° Admisión ───
 
 export async function fetchAltasPorAdmisiones(admisiones) {

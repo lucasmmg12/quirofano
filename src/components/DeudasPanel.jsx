@@ -20,6 +20,7 @@ import {
     fetchAltasPorAdmisiones, fetchPlanesPago, createPlanPago,
     marcarCuotaPagada, cancelarPlan, fetchResponsablesPorNombres,
     fetchCobros, fetchNotasCredito, fetchDeudaCanceladaInfo,
+    fetchDeudasCanceladasEnPeriodo,
 } from '../services/deudaService';
 import { parseDeudaExcel } from '../utils/deudaExcelParser';
 import { subscribeToAllIncoming } from '../services/chatService';
@@ -41,6 +42,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
     const [sortDir, setSortDir] = useState('desc');
     const [metricas, setMetricas] = useState(null);
     const [showMetricas, setShowMetricas] = useState(false);
+    const [canceladasPeriodo, setCanceladasPeriodo] = useState(null); // { canceladas: [], totalCanceladas, montoTotalIngresado }
 
     // ─── Filtros de tiempo ───
     const [datePreset, setDatePreset] = useState('todos'); // 'todos' | 'este_mes' | 'mes_pasado' | 'custom'
@@ -136,6 +138,15 @@ export default function DeudasPanel({ addToast, currentUser }) {
             setDeudores(data);
             const m = await fetchMetricasDeudas(dateFilters);
             setMetricas(m);
+
+            // Fetch deudas canceladas filtradas por fecha de CANCELACIÓN (no de factura)
+            try {
+                const cp = await fetchDeudasCanceladasEnPeriodo(dateFilters);
+                setCanceladasPeriodo(cp);
+            } catch (e) {
+                console.warn('Error cargando canceladas del período:', e);
+                setCanceladasPeriodo(null);
+            }
 
             // Fetch responsables from altas by patient name (batch, non-blocking)
             const nombres = data.map(d => d.nombre).filter(Boolean);
@@ -771,6 +782,151 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                 </div>
                             </div>
                         </div>
+
+                        {/* ─── PANEL DETALLADO: Ingresos por Deuda Cancelada ─── */}
+                        {canceladasPeriodo && canceladasPeriodo.totalCanceladas > 0 && (
+                            <div style={{
+                                marginTop: '16px', padding: '20px',
+                                background: 'linear-gradient(135deg, #E0E7FF 0%, #EDE9FE 50%, #E0E7FF 100%)',
+                                borderRadius: '16px', border: '1px solid #A5B4FC',
+                            }}>
+                                {/* Header */}
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <div style={{
+                                            width: '36px', height: '36px', borderRadius: '10px',
+                                            background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            boxShadow: '0 3px 10px rgba(99,102,241,0.3)',
+                                        }}>
+                                            <Banknote size={18} style={{ color: '#fff' }} />
+                                        </div>
+                                        <div>
+                                            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#312E81' }}>
+                                                💰 Ingresos por Deuda Cancelada
+                                            </h4>
+                                            <p style={{ margin: '2px 0 0', fontSize: '0.68rem', color: '#6366F1', fontWeight: 500 }}>
+                                                {datePreset === 'todos'
+                                                    ? 'Todos los períodos — Mostrando todas las deudas que fueron pagadas por pacientes'
+                                                    : datePreset === 'este_mes'
+                                                        ? `Junio ${new Date().getFullYear()} — Deudas que fueron pagadas ESTE MES (independientemente de cuándo se originó la deuda)`
+                                                        : datePreset === 'mes_pasado'
+                                                            ? 'Mes pasado — Deudas que fueron pagadas el mes anterior'
+                                                            : 'Período personalizado — Deudas pagadas en el rango seleccionado'
+                                                }
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#312E81', letterSpacing: '-0.5px' }}>
+                                            {formatMoney(canceladasPeriodo.montoTotalIngresado)}
+                                        </div>
+                                        <div style={{ fontSize: '0.65rem', color: '#6366F1', fontWeight: 600 }}>
+                                            {canceladasPeriodo.totalCanceladas} deuda{canceladasPeriodo.totalCanceladas !== 1 ? 's' : ''} cancelada{canceladasPeriodo.totalCanceladas !== 1 ? 's' : ''}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Explicación para el usuario */}
+                                <div style={{
+                                    padding: '10px 14px', borderRadius: '10px',
+                                    background: 'rgba(255,255,255,0.7)', border: '1px solid #C7D2FE',
+                                    marginBottom: '14px', fontSize: '0.72rem', color: '#4338CA',
+                                    lineHeight: '1.5',
+                                }}>
+                                    <strong>¿Qué estás viendo?</strong> Esta sección muestra los pacientes que <strong>efectivamente pagaron</strong> su deuda
+                                    en el período seleccionado. La fecha que importa es <strong>cuándo se registró el pago</strong> (no cuándo se originó la deuda).
+                                    Por ejemplo: una deuda de abril que se pagó en junio aparece en el reporte de junio como ingreso.
+                                    Cada fila representa un ingreso real al sanatorio.
+                                </div>
+
+                                {/* Tabla de canceladas */}
+                                <div style={{
+                                    background: 'rgba(255,255,255,0.85)', borderRadius: '12px',
+                                    border: '1px solid #C7D2FE', overflow: 'hidden',
+                                }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                        <thead>
+                                            <tr>
+                                                <th style={{ ...st.th, background: '#EEF2FF', color: '#4338CA', borderColor: '#C7D2FE' }}>Paciente</th>
+                                                <th style={{ ...st.th, background: '#EEF2FF', color: '#4338CA', borderColor: '#C7D2FE', width: '80px' }}>NHC</th>
+                                                <th style={{ ...st.th, background: '#EEF2FF', color: '#4338CA', borderColor: '#C7D2FE', width: '130px', textAlign: 'right' }}>Monto Pagado</th>
+                                                <th style={{ ...st.th, background: '#EEF2FF', color: '#4338CA', borderColor: '#C7D2FE', width: '130px' }}>Fecha Pago</th>
+                                                <th style={{ ...st.th, background: '#EEF2FF', color: '#4338CA', borderColor: '#C7D2FE', width: '100px' }}>Deuda Original</th>
+                                                <th style={{ ...st.th, background: '#EEF2FF', color: '#4338CA', borderColor: '#C7D2FE', width: '120px' }}>Registrado por</th>
+                                                <th style={{ ...st.th, background: '#EEF2FF', color: '#4338CA', borderColor: '#C7D2FE', width: '36px' }}></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {canceladasPeriodo.canceladas.map(c => (
+                                                <tr key={c.id}
+                                                    style={{ ...st.tr, borderColor: '#E0E7FF' }}
+                                                    onClick={() => openDetail(c)}
+                                                    onMouseEnter={e => e.currentTarget.style.background = '#F5F3FF'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                >
+                                                    <td style={st.td}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <span style={{
+                                                                width: '24px', height: '24px', borderRadius: '6px',
+                                                                background: '#6366F1', color: '#fff',
+                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                fontSize: '0.65rem', fontWeight: 800, flexShrink: 0,
+                                                            }}>✓</span>
+                                                            <span style={{ fontWeight: 700, color: '#0D3B66', fontSize: '0.85rem' }}>{c.nombre}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ ...st.td, fontFamily: 'monospace', fontSize: '0.78rem', color: '#64748B' }}>{c.nhc}</td>
+                                                    <td style={{ ...st.td, textAlign: 'right', fontWeight: 800, color: '#16A34A', fontSize: '0.9rem' }}>
+                                                        {formatMoney(c.deuda_total)}
+                                                    </td>
+                                                    <td style={st.td}>
+                                                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#4338CA' }}>
+                                                            {new Date(c.deuda_cancelada_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.65rem', color: '#94A3B8' }}>
+                                                            {new Date(c.deuda_cancelada_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                                                        </div>
+                                                    </td>
+                                                    <td style={st.td}>
+                                                        <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
+                                                            {c.fecha_ultima_factura
+                                                                ? new Date(c.fecha_ultima_factura).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' })
+                                                                : '—'}
+                                                        </span>
+                                                    </td>
+                                                    <td style={st.td}>
+                                                        <span style={{
+                                                            padding: '3px 10px', borderRadius: '12px',
+                                                            background: '#EEF2FF', color: '#4338CA',
+                                                            fontSize: '0.68rem', fontWeight: 600,
+                                                            whiteSpace: 'nowrap',
+                                                        }}>
+                                                            {c.deuda_cancelada_por || '—'}
+                                                        </span>
+                                                    </td>
+                                                    <td style={st.td}>
+                                                        <ChevronRight size={14} style={{ color: '#A5B4FC' }} />
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                    {/* Footer resumen */}
+                                    <div style={{
+                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                        padding: '12px 16px', background: '#EEF2FF', borderTop: '1px solid #C7D2FE',
+                                    }}>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#4338CA' }}>
+                                            Total ingresado en el período
+                                        </span>
+                                        <span style={{ fontSize: '1rem', fontWeight: 900, color: '#312E81' }}>
+                                            {formatMoney(canceladasPeriodo.montoTotalIngresado)}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
