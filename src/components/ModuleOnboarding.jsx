@@ -130,7 +130,7 @@ export default function ModuleOnboarding({ currentUser, onComplete, isReconfig =
         }
     };
 
-    const firstName = currentUser?.nombre?.split(' ')[0] || currentUser?.usuario || 'Usuario';
+    const firstName = currentUser?.nombre || currentUser?.usuario || 'Usuario';
 
     return (
         <>
@@ -311,38 +311,47 @@ export default function ModuleOnboarding({ currentUser, onComplete, isReconfig =
                     {/* Footer */}
                     <div style={{
                         padding: '12px 24px 16px', borderTop: '1px solid #E2E8F0',
-                        display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0,
-                        background: '#FAFAFA',
+                        flexShrink: 0, background: '#FAFAFA',
                     }}>
-                        <span style={{ fontSize: '0.72rem', color: '#94A3B8', flex: 1 }}>
-                            {selected.size} de {ALL_MODULE_IDS.length} módulos seleccionados
-                        </span>
-                        <button
-                            onClick={selectAll}
-                            style={{
-                                padding: '8px 16px', borderRadius: '8px',
-                                border: '1px solid #E2E8F0', background: 'transparent',
-                                color: '#64748B', fontSize: '0.78rem', fontWeight: 600,
-                                cursor: 'pointer', transition: 'all 0.15s',
-                            }}
-                        >
-                            Seleccionar todos
-                        </button>
-                        <button
-                            onClick={handleSave}
-                            disabled={saving || selected.size === 0}
-                            style={{
-                                padding: '8px 20px', borderRadius: '8px',
-                                border: 'none', cursor: saving ? 'wait' : 'pointer',
-                                background: 'linear-gradient(135deg, #0D3B66 0%, #1E5A8C 100%)',
-                                color: '#fff', fontSize: '0.82rem', fontWeight: 700,
-                                boxShadow: '0 3px 12px rgba(13, 59, 102, 0.3)',
-                                transition: 'all 0.15s',
-                                opacity: selected.size === 0 ? 0.5 : 1,
-                            }}
-                        >
-                            {saving ? 'Guardando...' : isReconfig ? 'Guardar cambios' : 'Continuar'}
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span style={{ fontSize: '0.72rem', color: '#94A3B8', flex: 1 }}>
+                                {selected.size} de {ALL_MODULE_IDS.length} módulos seleccionados
+                            </span>
+                            <button
+                                onClick={selectAll}
+                                style={{
+                                    padding: '8px 16px', borderRadius: '8px',
+                                    border: '1px solid #E2E8F0', background: 'transparent',
+                                    color: '#64748B', fontSize: '0.78rem', fontWeight: 600,
+                                    cursor: 'pointer', transition: 'all 0.15s',
+                                }}
+                            >
+                                Seleccionar todos
+                            </button>
+                            <button
+                                onClick={handleSave}
+                                disabled={saving || selected.size === 0}
+                                style={{
+                                    padding: '8px 20px', borderRadius: '8px',
+                                    border: 'none', cursor: saving ? 'wait' : 'pointer',
+                                    background: 'linear-gradient(135deg, #0D3B66 0%, #1E5A8C 100%)',
+                                    color: '#fff', fontSize: '0.82rem', fontWeight: 700,
+                                    boxShadow: '0 3px 12px rgba(13, 59, 102, 0.3)',
+                                    transition: 'all 0.15s',
+                                    opacity: selected.size === 0 ? 0.5 : 1,
+                                }}
+                            >
+                                {saving ? 'Guardando...' : isReconfig ? 'Guardar cambios' : 'Continuar'}
+                            </button>
+                        </div>
+                        {!isReconfig && (
+                            <p style={{
+                                margin: '8px 0 0', fontSize: '0.7rem', color: '#94A3B8',
+                                textAlign: 'center', lineHeight: 1.4,
+                            }}>
+                                💡 Podés cambiar esto en cualquier momento desde <strong style={{ color: '#64748B' }}>Configuración → Personalizar Módulos</strong>
+                            </p>
+                        )}
                     </div>
                 </div>
             </div>
