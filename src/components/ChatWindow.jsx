@@ -184,6 +184,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
     const [linesLoading, setLinesLoading] = useState(true);
     // Meta WhatsApp 24h window state
     const [metaTemplates, setMetaTemplates] = useState([]);
+    const [metaTemplateError, setMetaTemplateError] = useState(null);
     const [showMetaTemplatePicker, setShowMetaTemplatePicker] = useState(false);
     const [pendingMetaTemplate, setPendingMetaTemplate] = useState(null);
     const [sendingMetaTemplate, setSendingMetaTemplate] = useState(false);
@@ -355,8 +356,15 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
     // Fetch Meta templates when line is Meta
     useEffect(() => {
         if (!isMetaLine || !open) return;
-        fetchMetaTemplates(assignedLineId).then(setMetaTemplates).catch(err => {
+        setMetaTemplateError(null);
+        fetchMetaTemplates(assignedLineId).then(templates => {
+            setMetaTemplates(templates);
+            if (templates._apiError) {
+                setMetaTemplateError(templates._apiError);
+            }
+        }).catch(err => {
             console.warn('[ChatWindow] Error fetching Meta templates:', err);
+            setMetaTemplateError(err.message || 'Error cargando plantillas');
         });
     }, [isMetaLine, open, assignedLineId]);
 
@@ -1365,8 +1373,11 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                                         <span style={{ fontSize: '0.78rem', color: '#166534', fontWeight: 600 }}>Enviando plantilla...</span>
                                     </div>
                                 ) : metaTemplates.filter(t => t.status === 'APPROVED').length === 0 ? (
-                                    <span style={{ fontSize: '0.72rem', color: '#A16207', fontStyle: 'italic', textAlign: 'center', padding: '6px 0' }}>
-                                        No hay plantillas aprobadas disponibles
+                                    <span style={{ fontSize: '0.72rem', color: '#A16207', fontStyle: 'italic', textAlign: 'center', padding: '6px 0', display: 'block', lineHeight: 1.4 }}>
+                                        {metaTemplateError
+                                            ? `⚠️ Error de configuración: ${metaTemplateError}`
+                                            : 'No hay plantillas aprobadas disponibles'
+                                        }
                                     </span>
                                 ) : (
                                     <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', padding: '2px 0', flexWrap: 'nowrap' }}>

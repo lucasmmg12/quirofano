@@ -102,6 +102,17 @@ Deno.serve(async (req) => {
             });
             
             const data = await response.json();
+            
+            // Check for API errors (BuilderBot returns {success: false, error: "..."} on config issues)
+            if (!response.ok || data?.success === false) {
+                const errorMsg = data?.error || `HTTP ${response.status}`;
+                console.error(`[send-whatsapp] list_templates ERROR: ${errorMsg}`);
+                return new Response(
+                    JSON.stringify({ success: false, error: errorMsg, templates: [] }),
+                    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+            
             const templates = Array.isArray(data) ? data : data?.templates || data?.data || [];
             
             return new Response(

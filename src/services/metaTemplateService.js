@@ -22,7 +22,15 @@ export async function fetchMetaTemplates(lineId = 'line_b') {
         });
 
         if (error) throw error;
-        if (!data?.success) throw new Error(data?.error || 'Error desconocido');
+        
+        // Check if the API returned an error (e.g. portfolio not configured)
+        if (!data?.success && data?.error) {
+            console.warn('[metaTemplateService] API error:', data.error);
+            // Return templates with _apiError property so UI can show the real error
+            const result = data.templates || [];
+            result._apiError = data.error;
+            return result;
+        }
 
         const templates = data.templates || [];
         // Ordenar: APPROVED primero, luego el resto (PENDING, REJECTED, etc.)
