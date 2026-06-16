@@ -47,6 +47,8 @@ import HelpButton from './components/HelpButton.jsx';
 import DocumentosPanel from './components/DocumentosPanel.jsx';
 import PacientesPanel from './components/PacientesPanel.jsx';
 import WelcomeOnboarding from './components/WelcomeOnboarding.jsx';
+import UserActivityPanel from './components/UserActivityPanel.jsx';
+import { startSession, endSession, trackModuleChange } from './lib/activityTracker';
 import './App.css';
 
 function AppRoot() {
@@ -57,10 +59,13 @@ function AppRoot() {
 
     const handleLogin = useCallback((user) => {
         setCurrentUser(user);
+        // Start activity tracking session
+        startSession(user);
     }, []);
 
     const handleLogout = useCallback(async () => {
         await logAction('logout', { usuario: currentUser?.usuario });
+        await endSession();
         authLogout();
         setCurrentUser(null);
     }, [currentUser]);
@@ -127,6 +132,7 @@ const VIEW_LABELS = {
     manual: 'Manual del Sistema',
     documentos: 'Documentos',
     pacientes: 'Pacientes',
+    actividad_usuarios: 'Actividad de Usuarios',
 };
 
 function App({ currentUser, onLogout }) {
@@ -150,11 +156,24 @@ function App({ currentUser, onLogout }) {
         localStorage.setItem('dark_mode', darkMode);
     }, [darkMode]);
 
+    // Start activity tracking on mount (handles page refresh with existing session)
+    useEffect(() => {
+        if (currentUser) {
+            startSession(currentUser);
+            // Track initial module
+            const initialView = localStorage.getItem('active_view') || 'inicio';
+            trackModuleChange(initialView, VIEW_LABELS[initialView] || initialView);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const setActiveView = useCallback((view) => {
         setActiveViewRaw(view);
         setViewKey(k => k + 1);
         setMobileMenuOpen(false);
         localStorage.setItem('active_view', view);
+        // Track module navigation
+        trackModuleChange(view, VIEW_LABELS[view] || view);
     }, []);
 
     // Patient data
@@ -868,6 +887,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'manual' && (
                     <ManualProcedimientos />
+                )}
+
+                {activeView === 'actividad_usuarios' && (
+                    <UserActivityPanel />
                 )}
             </main>
 

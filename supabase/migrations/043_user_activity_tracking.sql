@@ -1,0 +1,162 @@
+-- ============================================================
+-- SISTEMA ADM-QUI — Migración 043: User Activity Tracking
+-- Fecha: 2026-06-16
+-- ============================================================
+-- Tracking de sesiones y uso de módulos por usuario.
+-- Permite saber: quién usa más el sistema, cuántas horas,
+-- y qué módulos visita cada usuario.
+-- ============================================================
+
+-- =========================
+-- TABLA: user_sessions
+-- Una fila por cada sesión de usuario (login → logout/timeout)
+-- =========================
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES admqui_usuarios(id) ON DELETE SET NULL,
+  usuario TEXT NOT NULL,
+  started_at TIMESTAMPTZ DEFAULT NOW(),
+  last_heartbeat TIMESTAMPTZ DEFAULT NOW(),
+  ended_at TIMESTAMPTZ,
+  duration_minutes INT DEFAULT 0,
+  ip_address TEXT,
+  user_agent TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_sessions_usuario ON user_sessions(usuario);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_started ON user_sessions(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_active ON user_sessions(ended_at) WHERE ended_at IS NULL;
+
+ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS allow_all_user_sessions ON user_sessions;
+CREATE POLICY allow_all_user_sessions ON user_sessions FOR ALL USING (true) WITH CHECK (true);
+
+-- =========================
+-- TABLA: user_module_usage
+-- Una fila por cada visita a un módulo dentro de una sesión
+-- =========================
+CREATE TABLE IF NOT EXISTS user_module_usage (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  session_id UUID REFERENCES user_sessions(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES admqui_usuarios(id) ON DELETE SET NULL,
+  usuario TEXT NOT NULL,
+  module_id TEXT NOT NULL,
+  module_label TEXT,
+  entered_at TIMESTAMPTZ DEFAULT NOW(),
+  left_at TIMESTAMPTZ,
+  duration_seconds INT DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_module_usage_session ON user_module_usage(session_id);
+CREATE INDEX IF NOT EXISTS idx_user_module_usage_usuario ON user_module_usage(usuario);
+CREATE INDEX IF NOT EXISTS idx_user_module_usage_module ON user_module_usage(module_id);
+CREATE INDEX IF NOT EXISTS idx_user_module_usage_entered ON user_module_usage(entered_at DESC);
+
+ALTER TABLE user_module_usage ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS allow_all_user_module_usage ON user_module_usage;
+CREATE POLICY allow_all_user_module_usage ON user_module_usage FOR ALL USING (true) WITH CHECK (true);
+
+-- =========================
+-- RPC: get_user_activity_summary
+-- Resumen agregado de actividad por usuario en un rango de fechas
+-- =========================
+CREATE OR REPLACE FUNCTION get_user_activity_summary(
+  p_desde TIMESTAMPTZ DEFAULT NOW() - INTERVAL '30 days',
+  p_hasta TIMESTAMPTZ DEFAULT NOW()
+)
+RETURNS TABLE(
+  usuario TEXT,
+  nombre TEXT,
+  iniciales TEXT,
+  total_sessions BIGINT,
+  total_minutes BIGINT,
+  last_seen TIMESTAMPTZ,
+  top_modules JSONB
+) AS $$
+BEGIN
+  RETURN QUERY
+  WITH session_stats AS (
+    SELECT
+      s.usuario,
+      COUNT(*)::BIGINT AS total_sessions,
+      COALESCE(SUM(
+        CASE
+          WHEN s.ended_at IS NOT NULL THEN
+            EXTRACT(EPOCH FROM (s.ended_at - s.started_at)) / 60
+          ELSE
+            EXTRACT(EPOCH FROM (s.last_heartbeat - s.started_at)) / 60
+        END
+      ), 0)::BIGINT AS total_minutes,
+      MAX(COALESCE(s.ended_at, s.last_heartbeat)) AS last_seen
+    FROM user_sessions s
+    WHERE s.started_at >= p_desde
+      AND s.started_at <= p_hasta
+    GROUP BY s.usuario
+  ),
+  module_stats AS (
+    SELECT
+      m.usuario,
+      jsonb_agg(
+        jsonb_build_object('module_id', m.module_id, 'module_label', m.module_label, 'total_seconds', m.total_secs)
+        ORDER BY m.total_secs DESC
+      ) AS top_modules
+    FROM (
+      SELECT
+        mu.usuario,
+        mu.module_id,
+        MAX(mu.module_label) AS module_label,
+        SUM(mu.duration_seconds)::BIGINT AS total_secs
+      FROM user_module_usage mu
+      WHERE mu.entered_at >= p_desde
+        AND mu.entered_at <= p_hasta
+        AND mu.duration_seconds > 0
+      GROUP BY mu.usuario, mu.module_id
+    ) m
+    GROUP BY m.usuario
+  )
+  SELECT
+    ss.usuario,
+    COALESCE(u.nombre, ss.usuario) AS nombre,
+    COALESCE(u.iniciales, UPPER(LEFT(ss.usuario, 2))) AS iniciales,
+    ss.total_sessions,
+    ss.total_minutes,
+    ss.last_seen,
+    COALESCE(ms.top_modules, '[]'::JSONB) AS top_modules
+  FROM session_stats ss
+  LEFT JOIN admqui_usuarios u ON u.usuario = ss.usuario
+  LEFT JOIN module_stats ms ON ms.usuario = ss.usuario
+  ORDER BY ss.total_minutes DESC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- =========================
+-- RPC: get_module_usage_global
+-- Uso global de módulos (todos los usuarios) en un rango
+-- =========================
+CREATE OR REPLACE FUNCTION get_module_usage_global(
+  p_desde TIMESTAMPTZ DEFAULT NOW() - INTERVAL '30 days',
+  p_hasta TIMESTAMPTZ DEFAULT NOW()
+)
+RETURNS TABLE(
+  module_id TEXT,
+  module_label TEXT,
+  total_seconds BIGINT,
+  unique_users BIGINT,
+  visit_count BIGINT
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    mu.module_id,
+    MAX(mu.module_label) AS module_label,
+    COALESCE(SUM(mu.duration_seconds), 0)::BIGINT AS total_seconds,
+    COUNT(DISTINCT mu.usuario)::BIGINT AS unique_users,
+    COUNT(*)::BIGINT AS visit_count
+  FROM user_module_usage mu
+  WHERE mu.entered_at >= p_desde
+    AND mu.entered_at <= p_hasta
+    AND mu.duration_seconds > 0
+  GROUP BY mu.module_id
+  ORDER BY total_seconds DESC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
