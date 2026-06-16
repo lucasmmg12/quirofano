@@ -154,6 +154,7 @@ function App({ currentUser, onLogout }) {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     // Module preferences (onboarding)
     const [selectedModules, setSelectedModules] = useState(null); // null = loading/all
+    const [needsModuleOnboarding, setNeedsModuleOnboarding] = useState(false); // flag: needs onboarding after welcome
     const [showModuleOnboarding, setShowModuleOnboarding] = useState(false);
     const [showModuleReconfig, setShowModuleReconfig] = useState(false);
 
@@ -178,8 +179,15 @@ function App({ currentUser, onLogout }) {
                     if (data?.completed_onboarding) {
                         setSelectedModules(data.selected_modules || null);
                     } else {
-                        // No preferences yet — show onboarding
-                        setShowModuleOnboarding(true);
+                        // No preferences yet — defer to after WelcomeOnboarding closes
+                        const alreadyShownWelcome = sessionStorage.getItem('admqui_onboarding_shown');
+                        if (alreadyShownWelcome) {
+                            // Welcome already dismissed this session → show module onboarding now
+                            setShowModuleOnboarding(true);
+                        } else {
+                            // Welcome will show first → set flag for after it closes
+                            setNeedsModuleOnboarding(true);
+                        }
                     }
                 })
                 .catch(err => console.warn('[App] module prefs fetch error:', err));
@@ -1030,6 +1038,13 @@ function App({ currentUser, onLogout }) {
             <WelcomeOnboarding
                 currentUser={currentUser}
                 onOpenBeto={() => setBetoWidgetOpen(true)}
+                onClose={() => {
+                    // After welcome closes, show module onboarding if needed
+                    if (needsModuleOnboarding) {
+                        setTimeout(() => setShowModuleOnboarding(true), 500);
+                        setNeedsModuleOnboarding(false);
+                    }
+                }}
             />
 
             {/* Module Onboarding — first-time module selection */}
