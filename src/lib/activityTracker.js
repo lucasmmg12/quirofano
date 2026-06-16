@@ -35,6 +35,9 @@ export async function startSession(user) {
     _usuario = user.usuario;
 
     try {
+        // Close stale sessions for this user first (prevents duplicates from refresh/StrictMode)
+        await supabase.rpc('close_stale_sessions', { p_user_id: user.id }).catch(() => {});
+
         const { data, error } = await supabase
             .from('user_sessions')
             .insert({

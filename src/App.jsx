@@ -48,7 +48,9 @@ import DocumentosPanel from './components/DocumentosPanel.jsx';
 import PacientesPanel from './components/PacientesPanel.jsx';
 import WelcomeOnboarding from './components/WelcomeOnboarding.jsx';
 import UserActivityPanel from './components/UserActivityPanel.jsx';
+import ModuleOnboarding from './components/ModuleOnboarding.jsx';
 import { startSession, endSession, trackModuleChange } from './lib/activityTracker';
+import { supabase } from './lib/supabase';
 import './App.css';
 
 function AppRoot() {
@@ -150,19 +152,37 @@ function App({ currentUser, onLogout }) {
     const [viewKey, setViewKey] = useState(0);
     // Mobile sidebar
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    // Module preferences (onboarding)
+    const [selectedModules, setSelectedModules] = useState(null); // null = loading/all
+    const [showModuleOnboarding, setShowModuleOnboarding] = useState(false);
+    const [showModuleReconfig, setShowModuleReconfig] = useState(false);
 
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
         localStorage.setItem('dark_mode', darkMode);
     }, [darkMode]);
 
-    // Start activity tracking on mount (handles page refresh with existing session)
+    // Start activity tracking + fetch module preferences on mount
     useEffect(() => {
         if (currentUser) {
             startSession(currentUser);
             // Track initial module
             const initialView = localStorage.getItem('active_view') || 'inicio';
             trackModuleChange(initialView, VIEW_LABELS[initialView] || initialView);
+            // Fetch module preferences
+            supabase.from('user_module_preferences')
+                .select('selected_modules, completed_onboarding')
+                .eq('user_id', currentUser.id)
+                .maybeSingle()
+                .then(({ data }) => {
+                    if (data?.completed_onboarding) {
+                        setSelectedModules(data.selected_modules || null);
+                    } else {
+                        // No preferences yet — show onboarding
+                        setShowModuleOnboarding(true);
+                    }
+                })
+                .catch(err => console.warn('[App] module prefs fetch error:', err));
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -500,6 +520,7 @@ function App({ currentUser, onLogout }) {
                 className={mobileMenuOpen ? 'sidebar--mobile-open' : ''}
                 onOpenBeto={() => setBetoWidgetOpen(true)}
                 currentUser={currentUser}
+                selectedModules={selectedModules}
             />
 
             <main className={`main ${sidebarCollapsed ? 'main--expanded' : ''}`}>
@@ -860,7 +881,7 @@ function App({ currentUser, onLogout }) {
                 )}
 
                 {activeView === 'config' && (
-                    <ConfigPanel addToast={addToast} />
+                    <ConfigPanel addToast={addToast} onReconfigModules={() => setShowModuleReconfig(true)} />
                 )}
 
                 {activeView === 'metricas' && (
@@ -1010,6 +1031,29 @@ function App({ currentUser, onLogout }) {
                 currentUser={currentUser}
                 onOpenBeto={() => setBetoWidgetOpen(true)}
             />
+
+            {/* Module Onboarding — first-time module selection */}
+            {showModuleOnboarding && (
+                <ModuleOnboarding
+                    currentUser={currentUser}
+                    onComplete={(modules) => {
+                        setShowModuleOnboarding(false);
+                        if (modules) setSelectedModules(modules);
+                    }}
+                />
+            )}
+
+            {/* Module Reconfiguration — from ConfigPanel */}
+            {showModuleReconfig && (
+                <ModuleOnboarding
+                    currentUser={{ ...currentUser, _modulePrefs: selectedModules }}
+                    isReconfig
+                    onComplete={(modules) => {
+                        setShowModuleReconfig(false);
+                        if (modules) setSelectedModules(modules);
+                    }}
+                />
+            )}
         </div>
     );
 }

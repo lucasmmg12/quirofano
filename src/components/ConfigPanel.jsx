@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
     Settings, Eye, EyeOff, Save, RotateCw, CheckCircle, AlertTriangle,
     Smartphone, Key, Building2, Globe, Copy, ExternalLink, Zap, Shield,
-    Phone, Briefcase, ToggleLeft, ToggleRight,
+    Phone, Briefcase, ToggleLeft, ToggleRight, LayoutGrid,
 } from 'lucide-react';
 import { getAllConfig, updateMultipleConfigs, getAllWhatsAppLines, updateWhatsAppLine, testWhatsAppLineConnection } from '../services/configService';
 import { SkeletonCardGrid } from './SkeletonLoader';
@@ -44,7 +44,7 @@ const CATEGORY_LABELS = {
     general: { label: 'General', icon: Building2, color: '#6366F1' },
 };
 
-export default function ConfigPanel({ addToast }) {
+export default function ConfigPanel({ addToast, onReconfigModules }) {
     const [configs, setConfigs] = useState([]);
     const [editValues, setEditValues] = useState({});
     const [loading, setLoading] = useState(true);
@@ -257,6 +257,19 @@ export default function ConfigPanel({ addToast }) {
                         </div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                            onClick={onReconfigModules}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                padding: '8px 16px', borderRadius: 'var(--radius-md)',
+                                background: 'linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%)',
+                                color: '#4F46E5', border: '1px solid #C7D2FE',
+                                cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
+                                transition: 'all 0.15s',
+                            }}
+                        >
+                            <LayoutGrid size={14} /> Personalizar Módulos
+                        </button>
                         <button
                             onClick={loadConfig}
                             disabled={saving}

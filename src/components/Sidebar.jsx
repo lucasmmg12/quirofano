@@ -6,8 +6,16 @@ import {
     Activity, FileSpreadsheet, BookMarked, FolderOpen, Receipt,
 } from 'lucide-react';
 
-export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '', onOpenBeto, currentUser }) {
+export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '', onOpenBeto, currentUser, selectedModules }) {
     const isFrojo = currentUser?.usuario === 'frojo';
+
+    // Module visibility: null/empty = show all, array = only show listed + always-visible
+    const ALWAYS_VISIBLE = ['inicio', 'config', 'manual'];
+    const isModuleVisible = (id) => {
+        if (!selectedModules || selectedModules.length === 0) return true;
+        if (ALWAYS_VISIBLE.includes(id)) return true;
+        return selectedModules.includes(id);
+    };
     const [pedidosOpen, setPedidosOpen] = useState(false);
     const [mensajeriaOpen, setMensajeriaOpen] = useState(false);
     const [altasOpen, setAltasOpen] = useState(false);
@@ -19,7 +27,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         { id: 'facturacion', label: 'Facturación', icon: Receipt },
         { id: 'asignaciones', label: 'Asignaciones', icon: Users },
         { id: 'auditoria_historias', label: 'Auditoría H.C.', icon: FileSpreadsheet },
-    ];
+    ].filter(i => isModuleVisible(i.id));
 
     // Sub-items dentro de "Emisión de Pedidos"
     const pedidosSubItems = [
@@ -27,13 +35,13 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         { id: 'historial', label: 'Historial', icon: History },
         { id: 'nomenclador', label: 'Nomenclador', icon: BookOpen },
         { id: 'pedidos_marcela', label: 'Pedidos Marcela', icon: ClipboardPlus },
-    ];
+    ].filter(i => isModuleVisible(i.id));
 
     // Sub-items dentro de "Mensajería"
     const mensajeriaSubItems = [
         { id: 'mensajeria', label: 'Chat', icon: MessageCircle },
         { id: 'plantillas', label: 'Plantillas WhatsApp', icon: MessageSquareText },
-    ];
+    ].filter(i => isModuleVisible(i.id));
 
     // Sub-items dentro de "Control de Cirugías"
     const cirugiasSubItems = [
@@ -42,7 +50,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         { id: 'metricas', label: 'Métricas', icon: BarChart3 },
         { id: 'asociaciones_entrega', label: 'Entrega Asociaciones', icon: PackageCheck },
         { id: 'laboratorios', label: 'Anatomía Pat.', icon: Microscope },
-    ];
+    ].filter(i => isModuleVisible(i.id));
 
     const isPedidosActive = pedidosSubItems.some(i => activeView === i.id);
     const isMensajeriaActive = mensajeriaSubItems.some(i => activeView === i.id);
@@ -85,6 +93,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
 
     // Helper to render a collapsible group
     function renderGroup({ label, icon: GroupIcon, isOpen, setOpen, isGroupActive, subItems, badge }) {
+        if (!subItems || subItems.length === 0) return null; // All items filtered out
         if (collapsed) {
             return subItems.map(item => {
                 const Icon = item.icon;
@@ -263,7 +272,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     { id: 'deudas', label: 'Deudas', icon: DollarSign },
                     { id: 'consultas', label: 'Consultas Guardia', icon: Activity },
                     { id: 'documentos', label: 'Documentos', icon: FolderOpen },
-                ].map(item => {
+                ].filter(item => isModuleVisible(item.id)).map(item => {
                     const Icon = item.icon;
                     const isActive = activeView === item.id;
                     return (
@@ -296,7 +305,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     ...(currentUser?.usuario === 'lmarinero' ? [{ id: 'actividad_usuarios', label: 'Actividad Usuarios', icon: Activity }] : []),
                     { id: 'manual', label: 'Manual del Sistema', icon: BookMarked },
                     { id: 'config', label: 'Configuración', icon: Settings },
-                ].map(item => {
+                ].filter(item => isModuleVisible(item.id)).map(item => {
                     const Icon = item.icon;
                     const isActive = activeView === item.id;
                     return (
