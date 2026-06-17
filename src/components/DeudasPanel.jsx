@@ -584,18 +584,6 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         <button onClick={() => setShowMetricas(p => !p)} style={st.btnSmall}>
                             <BarChart3 size={14} /> {showMetricas ? 'Ocultar' : 'Métricas'}
                         </button>
-                        <button onClick={loadDeudores} style={st.btnSmall}>
-                            <RefreshCw size={14} /> Actualizar
-                        </button>
-                        <button
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={importing}
-                            style={{ ...st.btnSmall, background: '#3B82F6', color: '#fff', border: 'none', boxShadow: '0 2px 8px rgba(59,130,246,0.25)' }}
-                        >
-                            {importing ? <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Upload size={14} />}
-                            {importing ? 'Importando...' : 'Importar Excel'}
-                        </button>
-                        <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFileSelect} style={{ display: 'none' }} />
                     </div>
                 </div>
 
@@ -662,20 +650,12 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         <div style={{ ...st.statCard, borderColor: '#6366F120', background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(224,231,255,0.4))' }}>
                             <Banknote size={18} style={{ color: '#6366F1' }} />
                             <div>
-                                <span style={{ ...st.statValue, color: '#6366F1' }}>{metricas.totalCanceladas || 0}</span>
+                                <span style={{ ...st.statValue, color: '#6366F1' }}>{canceladasPeriodo?.totalCanceladas || 0}</span>
                                 <span style={st.statLabel}>Deudas Canceladas</span>
-                                {metricas.montoCancelado > 0 && (
-                                    <span style={{ display: 'block', fontSize: '0.62rem', color: '#6366F1', fontWeight: 700 }}>{formatMoney(metricas.montoCancelado)} ingresado</span>
+                                {canceladasPeriodo?.montoTotalIngresado > 0 && (
+                                    <span style={{ display: 'block', fontSize: '0.62rem', color: '#6366F1', fontWeight: 700 }}>{formatMoney(canceladasPeriodo.montoTotalIngresado)} ingresado</span>
                                 )}
                             </div>
-                        </div>
-                        <div style={st.statCard}>
-                            <Phone size={18} style={{ color: '#16A34A' }} />
-                            <div><span style={st.statValue}>{metricas.conTelefono}</span><span style={st.statLabel}>Con teléfono</span></div>
-                        </div>
-                        <div style={st.statCard}>
-                            <PhoneOff size={18} style={{ color: '#EF4444' }} />
-                            <div><span style={st.statValue}>{metricas.sinTelefono}</span><span style={st.statLabel}>Sin teléfono</span></div>
                         </div>
                         <div style={st.statCard}>
                             <Send size={18} style={{ color: '#8B5CF6' }} />
