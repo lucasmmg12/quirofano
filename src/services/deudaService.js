@@ -41,8 +41,8 @@ export async function fetchDeudores(filters = {}) {
     if (filters.conTelefono === false) {
         query = query.is('telefono', null);
     }
-    // Filtro por rango de fechas (campo dinámico: fecha_ultima_factura o updated_at)
-    const dateField = filters.dateField || 'fecha_ultima_factura';
+    // Filtro por rango de fechas (campo dinámico: fecha_ultima_factura o deuda_cancelada_at)
+    const dateField = (filters.dateField === 'deuda_cancelada_at') ? 'deuda_cancelada_at' : 'fecha_ultima_factura';
     if (filters.fechaDesde) {
         query = query.gte(dateField, filters.fechaDesde);
     }
@@ -460,7 +460,7 @@ export async function fetchMetricasDeudas(filtros = {}) {
         .order('deuda_total', { ascending: false });
 
     // Filtro por rango de fechas (campo dinámico)
-    const dateField = filtros.dateField || 'fecha_ultima_factura';
+    const dateField = (filtros.dateField === 'deuda_cancelada_at') ? 'deuda_cancelada_at' : 'fecha_ultima_factura';
     if (filtros.fechaDesde) {
         query = query.gte(dateField, filtros.fechaDesde);
     }
@@ -579,7 +579,7 @@ export async function fetchDeudasCanceladasEnPeriodo(filtros = {}) {
 
     // Filtrar por período de CANCELACIÓN — usa deuda_cancelada_at por defecto,
     // pero si el usuario eligió updated_at como campo de filtro, usar ese.
-    const cancelField = (filtros.dateField === 'updated_at') ? 'updated_at' : 'deuda_cancelada_at';
+    const cancelField = 'deuda_cancelada_at';
     if (filtros.fechaDesde) {
         query = query.gte(cancelField, filtros.fechaDesde);
     }

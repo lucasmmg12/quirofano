@@ -48,7 +48,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
     const [datePreset, setDatePreset] = useState('todos'); // 'todos' | 'este_mes' | 'mes_pasado' | 'custom'
     const [customDateFrom, setCustomDateFrom] = useState('');
     const [customDateTo, setCustomDateTo] = useState('');
-    const [dateFilterField, setDateFilterField] = useState('fecha_ultima_factura'); // 'fecha_ultima_factura' | 'updated_at'
+    const [dateFilterField, setDateFilterField] = useState('fecha_ultima_factura'); // 'fecha_ultima_factura' | 'deuda_cancelada_at'
 
     // ─── Importación ───
     const [importing, setImporting] = useState(false);
@@ -1069,7 +1069,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         }}>
                             {[
                                 { id: 'fecha_ultima_factura', label: 'Fecha Factura', icon: '📄' },
-                                { id: 'updated_at', label: 'Cambio Estado', icon: '🔄' },
+                                { id: 'deuda_cancelada_at', label: 'Cambio Estado', icon: '🔄' },
                             ].map(f => (
                                 <button
                                     key={f.id}
