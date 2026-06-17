@@ -659,16 +659,16 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                 <div><span style={{ ...st.statValue, color: '#0D9488' }}>-{formatMoney(metricas.deudaDescontada)}</span><span style={st.statLabel}>Descontada</span></div>
                             </div>
                         )}
-                        {metricas.totalCanceladas > 0 && (
-                            <div style={{ ...st.statCard, borderColor: '#6366F120', background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(224,231,255,0.4))' }}>
-                                <Banknote size={18} style={{ color: '#6366F1' }} />
-                                <div>
-                                    <span style={{ ...st.statValue, color: '#6366F1' }}>{metricas.totalCanceladas}</span>
-                                    <span style={st.statLabel}>Deudas Canceladas</span>
+                        <div style={{ ...st.statCard, borderColor: '#6366F120', background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(224,231,255,0.4))' }}>
+                            <Banknote size={18} style={{ color: '#6366F1' }} />
+                            <div>
+                                <span style={{ ...st.statValue, color: '#6366F1' }}>{metricas.totalCanceladas || 0}</span>
+                                <span style={st.statLabel}>Deudas Canceladas</span>
+                                {metricas.montoCancelado > 0 && (
                                     <span style={{ display: 'block', fontSize: '0.62rem', color: '#6366F1', fontWeight: 700 }}>{formatMoney(metricas.montoCancelado)} ingresado</span>
-                                </div>
+                                )}
                             </div>
-                        )}
+                        </div>
                         <div style={st.statCard}>
                             <Phone size={18} style={{ color: '#16A34A' }} />
                             <div><span style={st.statValue}>{metricas.conTelefono}</span><span style={st.statLabel}>Con teléfono</span></div>
