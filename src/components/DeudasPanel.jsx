@@ -43,6 +43,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
     const [metricas, setMetricas] = useState(null);
     const [showMetricas, setShowMetricas] = useState(false);
     const [canceladasPeriodo, setCanceladasPeriodo] = useState(null); // { canceladas: [], totalCanceladas, montoTotalIngresado }
+    const [helpTooltip, setHelpTooltip] = useState(null); // index of open tooltip
 
     // ─── Filtros de tiempo ───
     const [datePreset, setDatePreset] = useState('todos'); // 'todos' | 'este_mes' | 'mes_pasado' | 'custom'
@@ -633,34 +634,83 @@ export default function DeudasPanel({ addToast, currentUser }) {
                 {/* QUICK STATS */}
                 {metricas && (
                     <div style={st.quickStats}>
-                        <div style={st.statCard}>
-                            <Users size={18} style={{ color: '#3B82F6' }} />
-                            <div><span style={st.statValue}>{metricas.deudoresActivos}</span><span style={st.statLabel}>Deudores Activos</span></div>
-                        </div>
-                        <div style={st.statCard}>
-                            <DollarSign size={18} style={{ color: '#F59E0B' }} />
-                            <div><span style={st.statValue}>{formatMoney(metricas.deudaTotal)}</span><span style={st.statLabel}>Deuda Activa</span></div>
-                        </div>
-                        {metricas.deudaDescontada > 0 && (
-                            <div style={{ ...st.statCard, borderColor: '#0D948820' }}>
-                                <CheckCircle size={18} style={{ color: '#0D9488' }} />
-                                <div><span style={{ ...st.statValue, color: '#0D9488' }}>-{formatMoney(metricas.deudaDescontada)}</span><span style={st.statLabel}>Descontada</span></div>
-                            </div>
-                        )}
-                        <div style={{ ...st.statCard, borderColor: '#6366F120', background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(224,231,255,0.4))' }}>
-                            <Banknote size={18} style={{ color: '#6366F1' }} />
-                            <div>
-                                <span style={{ ...st.statValue, color: '#6366F1' }}>{canceladasPeriodo?.totalCanceladas || 0}</span>
-                                <span style={st.statLabel}>Deudas Canceladas</span>
-                                {canceladasPeriodo?.montoTotalIngresado > 0 && (
-                                    <span style={{ display: 'block', fontSize: '0.62rem', color: '#6366F1', fontWeight: 700 }}>{formatMoney(canceladasPeriodo.montoTotalIngresado)} ingresado</span>
+                        {[
+                            {
+                                icon: <Users size={18} style={{ color: '#3B82F6' }} />,
+                                value: metricas.deudoresActivos,
+                                label: 'Deudores Activos',
+                                help: 'Cantidad de pacientes con deuda activa (no cancelada ni descuento) mayor o igual a $50.000. Excluye deudas canceladas y descuentos por liquidación.',
+                                style: {},
+                            },
+                            {
+                                icon: <DollarSign size={18} style={{ color: '#F59E0B' }} />,
+                                value: formatMoney(metricas.deudaTotal),
+                                label: 'Deuda Activa',
+                                help: 'Suma total del monto adeudado por todos los deudores activos actualmente. Incluye todas las categorías excepto canceladas y descuentos.',
+                                style: {},
+                            },
+                            metricas.deudaDescontada > 0 ? {
+                                icon: <CheckCircle size={18} style={{ color: '#0D9488' }} />,
+                                value: `-${formatMoney(metricas.deudaDescontada)}`,
+                                label: 'Descontada',
+                                help: 'Monto total de deudas que fueron descontadas por liquidación o marcadas como "Sin Deuda en SALUS". Es dinero que ya no se gestiona activamente.',
+                                style: { borderColor: '#0D948820' },
+                                valueStyle: { color: '#0D9488' },
+                            } : null,
+                            {
+                                icon: <Banknote size={18} style={{ color: '#6366F1' }} />,
+                                value: canceladasPeriodo?.totalCanceladas || 0,
+                                label: 'Deudas Canceladas',
+                                sub: canceladasPeriodo?.montoTotalIngresado > 0 ? `${formatMoney(canceladasPeriodo.montoTotalIngresado)} ingresado` : null,
+                                help: 'Pacientes que pagaron su deuda y fueron marcados como "Deuda Cancelada". El monto muestra el dinero efectivamente cobrado. Se filtra según el período seleccionado usando la fecha en que se cambió el estado.',
+                                style: { borderColor: '#6366F120', background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(224,231,255,0.4))' },
+                                valueStyle: { color: '#6366F1' },
+                                subStyle: { display: 'block', fontSize: '0.62rem', color: '#6366F1', fontWeight: 700 },
+                            },
+                            {
+                                icon: <Send size={18} style={{ color: '#8B5CF6' }} />,
+                                value: metricas.contactados,
+                                label: 'Contactados',
+                                help: 'Cantidad de deudores a los que se les envió al menos un mensaje de WhatsApp desde el sistema. Indica el avance de la gestión de cobro.',
+                                style: {},
+                            },
+                        ].filter(Boolean).map((card, idx) => (
+                            <div key={idx} style={{ ...st.statCard, ...card.style, position: 'relative' }}>
+                                {card.icon}
+                                <div style={{ flex: 1 }}>
+                                    <span style={{ ...st.statValue, ...(card.valueStyle || {}) }}>{card.value}</span>
+                                    <span style={st.statLabel}>{card.label}</span>
+                                    {card.sub && <span style={card.subStyle}>{card.sub}</span>}
+                                </div>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setHelpTooltip(helpTooltip === idx ? null : idx);
+                                    }}
+                                    style={{
+                                        position: 'absolute', top: '6px', right: '6px',
+                                        width: '18px', height: '18px', borderRadius: '50%',
+                                        border: '1.5px solid #CBD5E1', background: helpTooltip === idx ? '#EFF6FF' : '#fff',
+                                        fontSize: '0.6rem', fontWeight: 800, color: helpTooltip === idx ? '#3B82F6' : '#94A3B8',
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        transition: 'all 0.2s', lineHeight: 1,
+                                    }}
+                                >?</button>
+                                {helpTooltip === idx && (
+                                    <div style={{
+                                        position: 'absolute', top: '28px', right: '0', zIndex: 50,
+                                        width: '240px', padding: '10px 12px',
+                                        background: '#fff', borderRadius: '10px',
+                                        border: '1px solid #E2E8F0',
+                                        boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
+                                        fontSize: '0.72rem', lineHeight: 1.5, color: '#475569',
+                                        fontWeight: 500,
+                                    }}>
+                                        {card.help}
+                                    </div>
                                 )}
                             </div>
-                        </div>
-                        <div style={st.statCard}>
-                            <Send size={18} style={{ color: '#8B5CF6' }} />
-                            <div><span style={st.statValue}>{metricas.contactados}</span><span style={st.statLabel}>Contactados</span></div>
-                        </div>
+                        ))}
                     </div>
                 )}
 
