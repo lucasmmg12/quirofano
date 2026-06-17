@@ -33,6 +33,7 @@ import FacturacionPanel from './components/FacturacionPanel.jsx';
 import AsignacionPanel from './components/AsignacionPanel.jsx';
 import ConsultasPanel from './components/ConsultasPanel.jsx';
 import AuditoriaHistoriasPanel from './components/AuditoriaHistoriasPanel.jsx';
+import AuditoriaPDFPanel from './components/AuditoriaPDFPanel.jsx';
 import BetoPanel from './components/BetoPanel.jsx';
 import AsociacionesEntregaPanel from './components/AsociacionesEntregaPanel.jsx';
 import LaboratoriosPanel from './components/LaboratoriosPanel.jsx';
@@ -882,6 +883,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'auditoria_historias' && (
                     <AuditoriaHistoriasPanel addToast={addToast} currentUser={currentUser} />
+                )}
+
+                {activeView === 'auditoria_pdf' && (
+                    <AuditoriaPDFPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'beto' && (

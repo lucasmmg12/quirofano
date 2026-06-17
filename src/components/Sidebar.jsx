@@ -3,7 +3,7 @@ import {
     ClipboardList, History, BookOpen, Settings, PanelLeftClose, PanelLeft,
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
     ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain, Users, PackageCheck, Microscope,
-    Activity, FileSpreadsheet, BookMarked, FolderOpen, Receipt,
+    Activity, FileSpreadsheet, BookMarked, FolderOpen, Receipt, FileCheck,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '', onOpenBeto, currentUser, selectedModules }) {
@@ -27,6 +27,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         { id: 'facturacion', label: 'Facturación', icon: Receipt },
         { id: 'asignaciones', label: 'Asignaciones', icon: Users },
         { id: 'auditoria_historias', label: 'Auditoría H.C.', icon: FileSpreadsheet },
+        { id: 'auditoria_pdf', label: 'Auditoría HC PDF', icon: FileCheck },
     ].filter(i => isModuleVisible(i.id));
 
     // Sub-items dentro de "Emisión de Pedidos"
