@@ -48,6 +48,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
     const [datePreset, setDatePreset] = useState('todos'); // 'todos' | 'este_mes' | 'mes_pasado' | 'custom'
     const [customDateFrom, setCustomDateFrom] = useState('');
     const [customDateTo, setCustomDateTo] = useState('');
+    const [dateFilterField, setDateFilterField] = useState('fecha_ultima_factura'); // 'fecha_ultima_factura' | 'updated_at'
 
     // ─── Importación ───
     const [importing, setImporting] = useState(false);
@@ -122,6 +123,12 @@ export default function DeudasPanel({ addToast, currentUser }) {
         }
     }, [datePreset, customDateFrom, customDateTo]);
 
+    // Merge dateFilterField into the filters passed downstream
+    const dateFiltersWithField = useMemo(() => {
+        if (!dateFilters.fechaDesde && !dateFilters.fechaHasta) return dateFilters;
+        return { ...dateFilters, dateField: dateFilterField };
+    }, [dateFilters, dateFilterField]);
+
     const loadDeudores = useCallback(async () => {
         setLoading(true);
         try {
@@ -131,17 +138,18 @@ export default function DeudasPanel({ addToast, currentUser }) {
             if (telFilter !== null) filters.conTelefono = telFilter;
             filters.sortBy = sortBy;
             filters.sortDir = sortDir;
-            // Filtros de fecha
-            if (dateFilters.fechaDesde) filters.fechaDesde = dateFilters.fechaDesde;
-            if (dateFilters.fechaHasta) filters.fechaHasta = dateFilters.fechaHasta;
+            // Filtros de fecha (con campo dinámico)
+            if (dateFiltersWithField.fechaDesde) filters.fechaDesde = dateFiltersWithField.fechaDesde;
+            if (dateFiltersWithField.fechaHasta) filters.fechaHasta = dateFiltersWithField.fechaHasta;
+            if (dateFiltersWithField.dateField) filters.dateField = dateFiltersWithField.dateField;
             const data = await fetchDeudores(filters);
             setDeudores(data);
-            const m = await fetchMetricasDeudas(dateFilters);
+            const m = await fetchMetricasDeudas(dateFiltersWithField);
             setMetricas(m);
 
             // Fetch deudas canceladas filtradas por fecha de CANCELACIÓN (no de factura)
             try {
-                const cp = await fetchDeudasCanceladasEnPeriodo(dateFilters);
+                const cp = await fetchDeudasCanceladasEnPeriodo(dateFiltersWithField);
                 setCanceladasPeriodo(cp);
             } catch (e) {
                 console.warn('Error cargando canceladas del período:', e);
@@ -164,7 +172,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
         } finally {
             setLoading(false);
         }
-    }, [catFilter, search, telFilter, sortBy, sortDir, dateFilters, addToast]);
+    }, [catFilter, search, telFilter, sortBy, sortDir, dateFiltersWithField, addToast]);
 
     useEffect(() => { loadDeudores(); }, [loadDeudores]);
 
@@ -963,6 +971,32 @@ export default function DeudasPanel({ addToast, currentUser }) {
                     {/* FILTROS DE TIEMPO */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <Calendar size={15} style={{ color: '#94A3B8', flexShrink: 0 }} />
+                        {/* Selector: qué campo de fecha filtrar */}
+                        <div style={{
+                            display: 'flex', gap: '2px', padding: '2px',
+                            background: 'var(--neutral-100, #F1F5F9)', borderRadius: '8px',
+                        }}>
+                            {[
+                                { id: 'fecha_ultima_factura', label: '📄 Fecha Factura' },
+                                { id: 'updated_at', label: '🔄 Cambio Estado' },
+                            ].map(f => (
+                                <button
+                                    key={f.id}
+                                    onClick={() => setDateFilterField(f.id)}
+                                    style={{
+                                        padding: '4px 10px', borderRadius: '6px', border: 'none',
+                                        fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                        background: dateFilterField === f.id ? '#fff' : 'transparent',
+                                        color: dateFilterField === f.id ? '#6366F1' : '#94A3B8',
+                                        boxShadow: dateFilterField === f.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                                    }}
+                                >
+                                    {f.label}
+                                </button>
+                            ))}
+                        </div>
+                        <span style={{ fontSize: '0.65rem', color: '#CBD5E1', margin: '0 2px' }}>│</span>
                         <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: '4px' }}>Período:</span>
                         {[
                             { id: 'todos', label: '📊 Todos' },

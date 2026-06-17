@@ -41,12 +41,13 @@ export async function fetchDeudores(filters = {}) {
     if (filters.conTelefono === false) {
         query = query.is('telefono', null);
     }
-    // Filtro por rango de fechas (fecha_ultima_factura)
+    // Filtro por rango de fechas (campo dinámico: fecha_ultima_factura o updated_at)
+    const dateField = filters.dateField || 'fecha_ultima_factura';
     if (filters.fechaDesde) {
-        query = query.gte('fecha_ultima_factura', filters.fechaDesde);
+        query = query.gte(dateField, filters.fechaDesde);
     }
     if (filters.fechaHasta) {
-        query = query.lte('fecha_ultima_factura', filters.fechaHasta);
+        query = query.lte(dateField, filters.fechaHasta);
     }
 
     const { data, error } = await query;
@@ -458,12 +459,13 @@ export async function fetchMetricasDeudas(filtros = {}) {
         .gte('deuda_total', MIN_DEUDA)
         .order('deuda_total', { ascending: false });
 
-    // Filtro por rango de fechas (fecha_ultima_factura)
+    // Filtro por rango de fechas (campo dinámico)
+    const dateField = filtros.dateField || 'fecha_ultima_factura';
     if (filtros.fechaDesde) {
-        query = query.gte('fecha_ultima_factura', filtros.fechaDesde);
+        query = query.gte(dateField, filtros.fechaDesde);
     }
     if (filtros.fechaHasta) {
-        query = query.lte('fecha_ultima_factura', filtros.fechaHasta);
+        query = query.lte(dateField, filtros.fechaHasta);
     }
 
     const { data: pacientes } = await query;
@@ -576,12 +578,14 @@ export async function fetchDeudasCanceladasEnPeriodo(filtros = {}) {
         .not('deuda_cancelada_at', 'is', null)
         .order('deuda_cancelada_at', { ascending: false });
 
-    // Filtrar por período de CANCELACIÓN (no de factura)
+    // Filtrar por período de CANCELACIÓN — usa deuda_cancelada_at por defecto,
+    // pero si el usuario eligió updated_at como campo de filtro, usar ese.
+    const cancelField = (filtros.dateField === 'updated_at') ? 'updated_at' : 'deuda_cancelada_at';
     if (filtros.fechaDesde) {
-        query = query.gte('deuda_cancelada_at', filtros.fechaDesde);
+        query = query.gte(cancelField, filtros.fechaDesde);
     }
     if (filtros.fechaHasta) {
-        query = query.lte('deuda_cancelada_at', filtros.fechaHasta);
+        query = query.lte(cancelField, filtros.fechaHasta);
     }
 
     const { data, error } = await query;
