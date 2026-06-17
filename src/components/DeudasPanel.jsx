@@ -938,137 +938,231 @@ export default function DeudasPanel({ addToast, currentUser }) {
                     </div>
                 )}
 
-                {/* FILTROS */}
-                <div style={st.filters}>
-                    <div style={st.searchWrap}>
-                        <Search size={16} style={{ color: '#94A3B8' }} />
-                        <input
-                            type="text"
-                            placeholder="Buscar por nombre, NHC o teléfono..."
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                            style={st.searchInput}
-                        />
-                        {search && <button onClick={() => setSearch('')} style={st.clearBtn}><X size={14} /></button>}
-                    </div>
-                    <div style={st.filterBtns}>
-                        <button onClick={() => setCatFilter(null)} style={{ ...st.filterBtn, ...(catFilter === null ? st.filterBtnActive : {}) }}>Todos</button>
-                        {Object.entries(CATEGORIAS_DEUDOR).map(([key, cfg]) => (
-                            <button key={key} onClick={() => setCatFilter(key)}
-                                style={{
-                                    ...st.filterBtn,
-                                    ...(catFilter === key ? { ...st.filterBtnActive, background: cfg.bg, borderColor: cfg.color + '40', color: cfg.color } : {}),
-                                }}>
-                                {cfg.icon} {cfg.label}
-                            </button>
-                        ))}
-                    </div>
-                    <div style={st.filterBtns}>
-                        <button onClick={() => setTelFilter(null)} style={{ ...st.filterBtn, ...(telFilter === null ? st.filterBtnActive : {}) }}>📱 Todos</button>
-                        <button onClick={() => setTelFilter(true)} style={{ ...st.filterBtn, ...(telFilter === true ? st.filterBtnActive : {}) }}>✅ Con teléfono</button>
-                        <button onClick={() => setTelFilter(false)} style={{ ...st.filterBtn, ...(telFilter === false ? st.filterBtnActive : {}) }}>❌ Sin teléfono</button>
-                    </div>
-                    {/* FILTROS DE TIEMPO */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <Calendar size={15} style={{ color: '#94A3B8', flexShrink: 0 }} />
-                        {/* Selector: qué campo de fecha filtrar */}
+                {/* ═══ FILTROS — REDISEÑO UX ═══ */}
+                <div style={{
+                    display: 'flex', flexDirection: 'column', gap: '0',
+                    marginBottom: '16px', borderRadius: '16px',
+                    background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)',
+                    border: '1px solid rgba(226,232,240,0.6)',
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.03)',
+                    overflow: 'hidden',
+                }}>
+                    {/* ─── ROW 1: Búsqueda + Teléfono ─── */}
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: '10px',
+                        padding: '12px 16px',
+                        borderBottom: '1px solid #F1F5F9',
+                    }}>
                         <div style={{
-                            display: 'flex', gap: '2px', padding: '2px',
-                            background: 'var(--neutral-100, #F1F5F9)', borderRadius: '8px',
+                            flex: 1, display: 'flex', alignItems: 'center', gap: '10px',
+                            padding: '8px 14px', borderRadius: '10px',
+                            background: '#F8FAFC', border: '1.5px solid #E2E8F0',
+                            transition: 'border-color 0.2s',
+                        }}>
+                            <Search size={15} style={{ color: '#94A3B8', flexShrink: 0 }} />
+                            <input
+                                type="text"
+                                placeholder="Buscar por nombre, NHC o teléfono..."
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                style={{
+                                    flex: 1, border: 'none', background: 'none', outline: 'none',
+                                    fontSize: '0.85rem', color: '#0D3B66', fontWeight: 500,
+                                }}
+                            />
+                            {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: '2px', display: 'flex' }}><X size={14} /></button>}
+                        </div>
+                        {/* Teléfono inline */}
+                        <div style={{
+                            display: 'flex', gap: '2px', padding: '3px',
+                            background: '#F1F5F9', borderRadius: '10px', flexShrink: 0,
                         }}>
                             {[
-                                { id: 'fecha_ultima_factura', label: '📄 Fecha Factura' },
-                                { id: 'updated_at', label: '🔄 Cambio Estado' },
+                                { val: null, label: '📱 Todos' },
+                                { val: true, label: '✅ Tel.' },
+                                { val: false, label: '❌ Tel.' },
+                            ].map(opt => (
+                                <button
+                                    key={String(opt.val)}
+                                    onClick={() => setTelFilter(opt.val)}
+                                    style={{
+                                        padding: '5px 10px', borderRadius: '8px', border: 'none',
+                                        fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                        background: telFilter === opt.val ? '#fff' : 'transparent',
+                                        color: telFilter === opt.val ? '#0D3B66' : '#94A3B8',
+                                        boxShadow: telFilter === opt.val ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                                    }}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* ─── ROW 2: Categorías ─── */}
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        padding: '10px 16px',
+                        borderBottom: '1px solid #F1F5F9',
+                        overflowX: 'auto',
+                    }}>
+                        <span style={{
+                            fontSize: '0.62rem', fontWeight: 700, color: '#94A3B8',
+                            textTransform: 'uppercase', letterSpacing: '0.06em',
+                            marginRight: '4px', flexShrink: 0, whiteSpace: 'nowrap',
+                        }}>Estado</span>
+                        <button
+                            onClick={() => setCatFilter(null)}
+                            style={{
+                                padding: '5px 12px', borderRadius: '8px',
+                                border: catFilter === null ? '1.5px solid #93C5FD' : '1.5px solid transparent',
+                                background: catFilter === null ? '#EFF6FF' : 'transparent',
+                                fontSize: '0.72rem', fontWeight: catFilter === null ? 700 : 600,
+                                color: catFilter === null ? '#2563EB' : '#64748B',
+                                cursor: 'pointer', transition: 'all 0.15s',
+                                whiteSpace: 'nowrap',
+                            }}
+                        >
+                            Todos
+                        </button>
+                        {Object.entries(CATEGORIAS_DEUDOR).map(([key, cfg]) => {
+                            const isActive = catFilter === key;
+                            return (
+                                <button
+                                    key={key}
+                                    onClick={() => setCatFilter(key)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '5px',
+                                        padding: '5px 10px', borderRadius: '8px',
+                                        border: isActive ? `1.5px solid ${cfg.color}40` : '1.5px solid transparent',
+                                        background: isActive ? cfg.bg : 'transparent',
+                                        fontSize: '0.72rem', fontWeight: isActive ? 700 : 500,
+                                        color: isActive ? cfg.color : '#64748B',
+                                        cursor: 'pointer', transition: 'all 0.15s',
+                                        whiteSpace: 'nowrap',
+                                    }}
+                                >
+                                    <span style={{
+                                        width: '7px', height: '7px', borderRadius: '50%',
+                                        background: cfg.color, flexShrink: 0,
+                                        opacity: isActive ? 1 : 0.5,
+                                    }} />
+                                    {cfg.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* ─── ROW 3: Filtro temporal ─── */}
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: '10px',
+                        padding: '10px 16px',
+                        background: '#FAFBFE',
+                    }}>
+                        <Calendar size={14} style={{ color: '#94A3B8', flexShrink: 0 }} />
+
+                        {/* Segmented control: campo de fecha */}
+                        <div style={{
+                            display: 'flex', gap: '2px', padding: '3px',
+                            background: '#EEF2FF', borderRadius: '8px', flexShrink: 0,
+                        }}>
+                            {[
+                                { id: 'fecha_ultima_factura', label: 'Fecha Factura', icon: '📄' },
+                                { id: 'updated_at', label: 'Cambio Estado', icon: '🔄' },
                             ].map(f => (
                                 <button
                                     key={f.id}
                                     onClick={() => setDateFilterField(f.id)}
                                     style={{
-                                        padding: '4px 10px', borderRadius: '6px', border: 'none',
+                                        padding: '5px 10px', borderRadius: '6px', border: 'none',
                                         fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer',
                                         transition: 'all 0.2s',
                                         background: dateFilterField === f.id ? '#fff' : 'transparent',
-                                        color: dateFilterField === f.id ? '#6366F1' : '#94A3B8',
-                                        boxShadow: dateFilterField === f.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                                        color: dateFilterField === f.id ? '#4F46E5' : '#94A3B8',
+                                        boxShadow: dateFilterField === f.id ? '0 1px 4px rgba(79,70,229,0.12)' : 'none',
                                     }}
                                 >
-                                    {f.label}
+                                    {f.icon} {f.label}
                                 </button>
                             ))}
                         </div>
-                        <span style={{ fontSize: '0.65rem', color: '#CBD5E1', margin: '0 2px' }}>│</span>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: '4px' }}>Período:</span>
-                        {[
-                            { id: 'todos', label: '📊 Todos' },
-                            { id: 'este_mes', label: '📅 Este mes' },
-                            { id: 'mes_pasado', label: '⏪ Mes pasado' },
-                            { id: 'custom', label: '📆 Personalizado' },
-                        ].map(p => (
-                            <button
-                                key={p.id}
-                                onClick={() => setDatePreset(p.id)}
-                                style={{
-                                    ...st.filterBtn,
-                                    ...(datePreset === p.id ? {
-                                        background: '#F0FDF4',
-                                        borderColor: '#86EFAC',
-                                        color: '#16A34A',
-                                        fontWeight: 700,
-                                    } : {}),
-                                }}
-                            >
-                                {p.label}
-                            </button>
-                        ))}
+
+                        <div style={{ width: '1px', height: '20px', background: '#E2E8F0', flexShrink: 0 }} />
+
+                        {/* Period pills */}
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', flex: 1 }}>
+                            {[
+                                { id: 'todos', label: 'Todo el historial' },
+                                { id: 'este_mes', label: 'Este mes' },
+                                { id: 'mes_pasado', label: 'Mes pasado' },
+                                { id: 'custom', label: 'Personalizado' },
+                            ].map(p => {
+                                const isActive = datePreset === p.id;
+                                return (
+                                    <button
+                                        key={p.id}
+                                        onClick={() => setDatePreset(p.id)}
+                                        style={{
+                                            padding: '5px 12px', borderRadius: '8px',
+                                            border: isActive ? '1.5px solid #86EFAC' : '1.5px solid transparent',
+                                            background: isActive ? '#F0FDF4' : 'transparent',
+                                            fontSize: '0.72rem', fontWeight: isActive ? 700 : 500,
+                                            color: isActive ? '#16A34A' : '#64748B',
+                                            cursor: 'pointer', transition: 'all 0.15s',
+                                            whiteSpace: 'nowrap',
+                                        }}
+                                    >
+                                        {p.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Custom date inputs */}
                         {datePreset === 'custom' && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                                 <input
                                     type="date"
                                     value={customDateFrom}
                                     onChange={e => setCustomDateFrom(e.target.value)}
                                     style={{
-                                        ...st.filterBtn,
-                                        padding: '5px 10px',
-                                        fontSize: '0.78rem',
-                                        fontWeight: 600,
-                                        color: '#0D3B66',
-                                        cursor: 'text',
-                                        borderColor: customDateFrom ? '#93C5FD' : '#E2E8F0',
-                                        background: customDateFrom ? '#EFF6FF' : '#FAFBFC',
+                                        padding: '5px 8px', borderRadius: '8px',
+                                        border: `1.5px solid ${customDateFrom ? '#93C5FD' : '#E2E8F0'}`,
+                                        background: customDateFrom ? '#EFF6FF' : '#fff',
+                                        fontSize: '0.75rem', fontWeight: 600, color: '#0D3B66',
+                                        outline: 'none', cursor: 'text',
                                     }}
                                 />
-                                <span style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 600 }}>→</span>
+                                <span style={{ fontSize: '0.75rem', color: '#CBD5E1', fontWeight: 600 }}>→</span>
                                 <input
                                     type="date"
                                     value={customDateTo}
                                     onChange={e => setCustomDateTo(e.target.value)}
                                     style={{
-                                        ...st.filterBtn,
-                                        padding: '5px 10px',
-                                        fontSize: '0.78rem',
-                                        fontWeight: 600,
-                                        color: '#0D3B66',
-                                        cursor: 'text',
-                                        borderColor: customDateTo ? '#93C5FD' : '#E2E8F0',
-                                        background: customDateTo ? '#EFF6FF' : '#FAFBFC',
+                                        padding: '5px 8px', borderRadius: '8px',
+                                        border: `1.5px solid ${customDateTo ? '#93C5FD' : '#E2E8F0'}`,
+                                        background: customDateTo ? '#EFF6FF' : '#fff',
+                                        fontSize: '0.75rem', fontWeight: 600, color: '#0D3B66',
+                                        outline: 'none', cursor: 'text',
                                     }}
                                 />
                             </div>
                         )}
+
                         {datePreset !== 'todos' && (
                             <button
                                 onClick={() => { setDatePreset('todos'); setCustomDateFrom(''); setCustomDateTo(''); }}
                                 style={{
-                                    ...st.filterBtn,
-                                    padding: '4px 8px',
-                                    background: '#FEE2E2',
-                                    borderColor: '#FCA5A5',
-                                    color: '#DC2626',
-                                    fontSize: '0.72rem',
+                                    display: 'flex', alignItems: 'center', gap: '3px',
+                                    padding: '5px 8px', borderRadius: '8px', border: 'none',
+                                    background: '#FEE2E2', color: '#DC2626',
+                                    fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer',
+                                    transition: 'all 0.15s', flexShrink: 0,
                                 }}
                                 title="Limpiar filtro de fecha"
                             >
-                                <X size={12} /> Limpiar
+                                <X size={11} /> Limpiar
                             </button>
                         )}
                     </div>
