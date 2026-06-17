@@ -498,7 +498,7 @@ export async function fetchMetricasDeudas(filtros = {}) {
     const top10 = all.filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria)).slice(0, 10);
 
     // ─── Deudas Canceladas (ingreso generado) ───
-    const canceladas = all.filter(p => p.categoria === 'deuda_cancelada' && p.deuda_cancelada_at);
+    const canceladas = all.filter(p => p.categoria === 'deuda_cancelada');
     const totalCanceladas = canceladas.length;
     const montoCancelado = canceladas.reduce((s, p) => s + Number(p.deuda_total), 0);
 
@@ -573,10 +573,9 @@ export async function fetchMetricasDeudas(filtros = {}) {
 export async function fetchDeudasCanceladasEnPeriodo(filtros = {}) {
     let query = supabase
         .from('deudas_pacientes')
-        .select('id, nombre, nhc, deuda_total, deuda_cancelada_at, deuda_cancelada_por, fecha_ultima_factura, obra_social')
+        .select('id, nombre, nhc, deuda_total, deuda_cancelada_at, deuda_cancelada_por, fecha_ultima_factura, obra_social, updated_at')
         .eq('categoria', 'deuda_cancelada')
-        .not('deuda_cancelada_at', 'is', null)
-        .order('deuda_cancelada_at', { ascending: false });
+        .order('updated_at', { ascending: false });
 
     // Filtrar por período de CANCELACIÓN — usa deuda_cancelada_at por defecto,
     // pero si el usuario eligió updated_at como campo de filtro, usar ese.

@@ -890,10 +890,10 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                                     </td>
                                                     <td style={st.td}>
                                                         <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#4338CA' }}>
-                                                            {new Date(c.deuda_cancelada_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                            {new Date(c.deuda_cancelada_at || c.updated_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
                                                         </div>
                                                         <div style={{ fontSize: '0.65rem', color: '#94A3B8' }}>
-                                                            {new Date(c.deuda_cancelada_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                                                            {new Date(c.deuda_cancelada_at || c.updated_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
                                                         </div>
                                                     </td>
                                                     <td style={st.td}>
