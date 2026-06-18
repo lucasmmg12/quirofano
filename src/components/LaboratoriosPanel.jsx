@@ -304,6 +304,24 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
         }
     };
 
+    // Inline edit handler for quick Excel-like editing
+    const handleInlineEdit = async (id_visita, field, value) => {
+        // Optimistic update
+        setRecords(prev => prev.map(r =>
+            r.id_visita === id_visita ? { ...r, [field]: value } : r
+        ));
+        try {
+            const { error } = await supabase
+                .from('laboratorios_anatomia_patologica')
+                .update({ [field]: value })
+                .eq('id_visita', id_visita);
+            if (error) throw error;
+        } catch (err) {
+            addToast?.(`Error al editar ${field}`, 'error');
+            loadPendientes(); // rollback
+        }
+    };
+
     const handleDeleteModulo = async (id_visita) => {
         try {
             const { error } = await supabase
@@ -760,6 +778,48 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
         XLSX.writeFile(wb, `Patologica_${new Date().toISOString().slice(0, 10)}.xlsx`);
     };
 
+    const exportCarritoExcel = () => {
+        const worksheetData = carritoFiltrado.map(r => {
+            let biopsias = [];
+            if (r.biopsia_congelacion && r.biopsia_congelacion !== 'NO') biopsias.push(`C: ${r.biopsia_congelacion}`);
+            if (r.biopsia_simple || r.material_biopsia_simple) biopsias.push(`S: ${r.biopsia_simple || '—'}`);
+            if (r.biopsia_ampliada || r.material_biopsia_ampliada) biopsias.push(`A: ${r.biopsia_ampliada || '—'}`);
+            let modText = [];
+            if (r.modulo_a_qty > 0) modText.push(`A: ${r.modulo_a_qty}`);
+            if (r.modulo_b_qty > 0) modText.push(`B: ${r.modulo_b_qty}`);
+            if (r.modulo_c_qty > 0) modText.push(`C: ${r.modulo_c_qty}`);
+            return {
+                Fecha: r.fecha_visita ? new Date(r.fecha_visita + 'T12:00:00').toLocaleDateString('es-AR') : '',
+                'N° Admision': r.n_admision || '', Paciente: r.paciente || '', DNI: r.dni || '',
+                ObraSocial: r.cliente || '', Coseguro: r.coseguro || '', Laboratorio: r.laboratorio || '',
+                Biopsias: biopsias.join(' | '),
+                Modulo: modText.length > 0 ? modText.join(', ') : '',
+            };
+        });
+        const ws = XLSX.utils.json_to_sheet(worksheetData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Carrito");
+        XLSX.writeFile(wb, `Carrito_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        addToast?.(`📊 Excel del carrito exportado (${carritoFiltrado.length} registros)`, 'success');
+    };
+
+    const exportHistorialExcel = () => {
+        const worksheetData = constancias.map(c => ({
+            Codigo: c.codigo,
+            Laboratorio: LAB_SHORT_NAMES[c.laboratorio] || c.laboratorio,
+            'Fecha Entrega': c.fecha_entrega ? new Date(c.fecha_entrega).toLocaleString('es-AR') : '',
+            Registros: c.cantidad_registros,
+            Responsable: c.responsable_entrega || '',
+            Cadete: c.nombre_cadete || '',
+            Notas: c.notas || '',
+        }));
+        const ws = XLSX.utils.json_to_sheet(worksheetData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Historial");
+        XLSX.writeFile(wb, `Historial_Constancias_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        addToast?.(`📊 Excel del historial exportado (${constancias.length} constancias)`, 'success');
+    };
+
     const copyPublicLinkLab = (labString, toastName) => {
         const slugMap = {
             'LDA - Dra. Aguero o Dra Rios': 'aguero',
@@ -1077,11 +1137,61 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                             return null;
                                                         })()}
                                                     </td>
-                                                    <td style={{ ...tdStyle, maxWidth: '180px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.cliente}>
-                                                        {r.cliente || '-'}
+                                                    <td style={{ ...tdStyle, maxWidth: '180px', padding: '4px 6px' }} onClick={e => e.stopPropagation()}>
+                                                        <select
+                                                            value={r.cliente || ''}
+                                                            onChange={e => handleInlineEdit(r.id_visita, 'cliente', e.target.value)}
+                                                            style={{
+                                                                width: '100%', padding: '4px 6px', fontSize: '0.78rem',
+                                                                border: '1px solid transparent', borderRadius: '4px',
+                                                                background: 'transparent', cursor: 'pointer',
+                                                                color: '#334155', fontWeight: 500,
+                                                            }}
+                                                            onFocus={e => { e.target.style.border = '1px solid #93C5FD'; e.target.style.background = '#fff'; }}
+                                                            onBlur={e => { e.target.style.border = '1px solid transparent'; e.target.style.background = 'transparent'; }}
+                                                        >
+                                                            <option value="">-</option>
+                                                            {obrasSocialesUnicas.map(os => (
+                                                                <option key={os} value={os}>{os}</option>
+                                                            ))}
+                                                        </select>
                                                     </td>
-                                                    <td style={tdStyle}>{r.coseguro || '-'}</td>
-                                                    <td style={tdStyle}>{r.laboratorio || '-'}</td>
+                                                    <td style={{ ...tdStyle, padding: '4px 6px' }} onClick={e => e.stopPropagation()}>
+                                                        <input
+                                                            type="text"
+                                                            defaultValue={r.coseguro || ''}
+                                                            onBlur={e => {
+                                                                const newVal = e.target.value.trim();
+                                                                if (newVal !== (r.coseguro || '')) handleInlineEdit(r.id_visita, 'coseguro', newVal || null);
+                                                            }}
+                                                            onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                                                            style={{
+                                                                width: '80px', padding: '4px 6px', fontSize: '0.78rem',
+                                                                border: '1px solid transparent', borderRadius: '4px',
+                                                                background: 'transparent', color: '#334155',
+                                                            }}
+                                                            onFocus={e => { e.target.style.border = '1px solid #93C5FD'; e.target.style.background = '#fff'; }}
+                                                        />
+                                                    </td>
+                                                    <td style={{ ...tdStyle, padding: '4px 6px' }} onClick={e => e.stopPropagation()}>
+                                                        <select
+                                                            value={r.laboratorio || ''}
+                                                            onChange={e => handleInlineEdit(r.id_visita, 'laboratorio', e.target.value)}
+                                                            style={{
+                                                                width: '100%', padding: '4px 6px', fontSize: '0.78rem',
+                                                                border: '1px solid transparent', borderRadius: '4px',
+                                                                background: 'transparent', cursor: 'pointer',
+                                                                color: '#334155', fontWeight: 500,
+                                                            }}
+                                                            onFocus={e => { e.target.style.border = '1px solid #93C5FD'; e.target.style.background = '#fff'; }}
+                                                            onBlur={e => { e.target.style.border = '1px solid transparent'; e.target.style.background = 'transparent'; }}
+                                                        >
+                                                            <option value="">-</option>
+                                                            {LAB_LIST.map(lab => (
+                                                                <option key={lab} value={lab}>{LAB_SHORT_NAMES[lab] || lab}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
                                                     <td style={tdStyle}>
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                                             {r.biopsia_congelacion && r.biopsia_congelacion !== 'NO' && <div style={{ background: '#E0F2FE', color: '#0369A1', padding: '2px 6px', borderRadius: '4px', display: 'inline-block', width: 'fit-content', fontWeight: 600, border: '1px solid #BAE6FD', fontSize: '0.72rem' }}>❄️ C: {r.biopsia_congelacion}</div>}
@@ -1094,32 +1204,62 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                         <ModulosQuantity record={r} displayMode="badge" />
                                                     </td>
                                                     <td style={{ ...tdStyle, textAlign: 'center' }}>
-                                                        <div style={{
-                                                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                            padding: '3px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                                                            background: estadoAccion === 'FACTURAR' ? '#FEF2F2' : estadoAccion === 'ENTREGAR' ? '#F0FDF4' : '#F8FAFC',
-                                                            color: estadoAccion === 'FACTURAR' ? '#DC2626' : estadoAccion === 'ENTREGAR' ? '#16A34A' : '#94A3B8',
-                                                            border: `1px solid ${estadoAccion === 'FACTURAR' ? '#FECACA' : estadoAccion === 'ENTREGAR' ? '#BBF7D0' : '#E2E8F0'}`,
-                                                        }}>
-                                                            {estadoAccion}
-                                                        </div>
+                                                        {r.constancia_id ? (
+                                                            <div style={{
+                                                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                                                                padding: '3px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                                                                background: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE',
+                                                            }}>
+                                                                <CheckCircle2 size={12} /> ENTREGADO
+                                                            </div>
+                                                        ) : (
+                                                            <div style={{
+                                                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                                padding: '3px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                                                                background: estadoAccion === 'FACTURAR' ? '#FEF2F2' : estadoAccion === 'ENTREGAR' ? '#F0FDF4' : '#F8FAFC',
+                                                                color: estadoAccion === 'FACTURAR' ? '#DC2626' : estadoAccion === 'ENTREGAR' ? '#16A34A' : '#94A3B8',
+                                                                border: `1px solid ${estadoAccion === 'FACTURAR' ? '#FECACA' : estadoAccion === 'ENTREGAR' ? '#BBF7D0' : '#E2E8F0'}`,
+                                                            }}>
+                                                                {estadoAccion}
+                                                            </div>
+                                                        )}
                                                     </td>
                                                     <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                                                        <button
-                                                            onClick={() => handleEnviarAlCarrito(r)}
-                                                            title="Enviar al carrito de entrega"
-                                                            style={{
+                                                        {r.constancia_id ? (
+                                                            <span style={{
                                                                 display: 'inline-flex', alignItems: 'center', gap: '4px',
                                                                 padding: '4px 10px', fontSize: '0.72rem', fontWeight: 600,
-                                                                borderRadius: '6px', border: '1px solid #C4B5FD',
-                                                                background: '#F5F3FF', color: '#7C3AED',
-                                                                cursor: 'pointer', transition: 'all 0.2s',
-                                                            }}
-                                                            onMouseOver={e => { e.currentTarget.style.background = '#EDE9FE'; }}
-                                                            onMouseOut={e => { e.currentTarget.style.background = '#F5F3FF'; }}
-                                                        >
-                                                            <ShoppingCart size={12} /> Carrito
-                                                        </button>
+                                                                borderRadius: '6px', border: '1px solid #BFDBFE',
+                                                                background: '#EFF6FF', color: '#2563EB',
+                                                            }}>
+                                                                <CheckCircle2 size={12} /> Entregado
+                                                            </span>
+                                                        ) : r.en_carrito ? (
+                                                            <span style={{
+                                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                                padding: '4px 10px', fontSize: '0.72rem', fontWeight: 600,
+                                                                borderRadius: '6px', border: '1px solid #FDE68A',
+                                                                background: '#FFFBEB', color: '#D97706',
+                                                            }}>
+                                                                <ShoppingCart size={12} /> En carrito
+                                                            </span>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => handleEnviarAlCarrito(r)}
+                                                                title="Enviar al carrito de entrega"
+                                                                style={{
+                                                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                                    padding: '4px 10px', fontSize: '0.72rem', fontWeight: 600,
+                                                                    borderRadius: '6px', border: '1px solid #C4B5FD',
+                                                                    background: '#F5F3FF', color: '#7C3AED',
+                                                                    cursor: 'pointer', transition: 'all 0.2s',
+                                                                }}
+                                                                onMouseOver={e => { e.currentTarget.style.background = '#EDE9FE'; }}
+                                                                onMouseOut={e => { e.currentTarget.style.background = '#F5F3FF'; }}
+                                                            >
+                                                                <ShoppingCart size={12} /> Carrito
+                                                            </button>
+                                                        )}
                                                     </td>
                                                     <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--neutral-400)' }}>
                                                         {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -1191,6 +1331,16 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                         </div>
                                     </>
                                 )}
+                                <div style={{ marginLeft: 'auto' }}>
+                                    <button onClick={exportCarritoExcel} style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                        padding: '5px 12px', borderRadius: '6px', border: '1px solid #C4B5FD',
+                                        background: '#fff', color: '#7C3AED', fontSize: '0.78rem',
+                                        fontWeight: 600, cursor: 'pointer',
+                                    }}>
+                                        <Download size={14} /> Excel
+                                    </button>
+                                </div>
                             </div>
                         )}
 
@@ -1377,7 +1527,17 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                 <p style={{ fontSize: '0.85rem' }}>Las constancias generadas aparecerán aquí</p>
                             </div>
                         ) : (
-                            <div style={{ overflowX: 'auto' }}>
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+                                    <button onClick={exportHistorialExcel} style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                        padding: '5px 12px', borderRadius: '6px', border: '1px solid #BBF7D0',
+                                        background: '#F0FDF4', color: '#16A34A', fontSize: '0.78rem',
+                                        fontWeight: 600, cursor: 'pointer',
+                                    }}>
+                                        <Download size={14} /> Excel
+                                    </button>
+                                </div>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
                                     <thead>
                                         <tr>
