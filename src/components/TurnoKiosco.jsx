@@ -11,13 +11,13 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     Receipt, ShieldCheck, Building2, Users, Baby,
     HelpCircle, ArrowLeft, CheckCircle, RefreshCw,
-    ChevronRight,
+    ChevronRight, FileText, Microscope,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getBoxesDisponibles, getBoxBalanceado } from '../services/boxService';
 
 const ICON_MAP = {
-    Receipt, ShieldCheck, Building2, Users, Baby, HelpCircle,
+    Receipt, ShieldCheck, Building2, Users, Baby, HelpCircle, FileText, Microscope,
 };
 
 const STEPS = { DNI: 'dni', SELECT: 'select', SUB_SELECT: 'sub_select', TICKET: 'ticket' };
