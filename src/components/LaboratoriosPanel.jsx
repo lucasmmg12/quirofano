@@ -1259,14 +1259,21 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                     ) : filteredRecords.map(r => {
                                         const estadoAccion = getEstadoFacturacion(r.cliente, r.laboratorio);
                                         const isExpanded = expandedRow === r.id_visita;
+                                        const isEntregado = !!r.constancia_id;
 
                                         return (
                                             <React.Fragment key={r.id_visita}>
                                                 <tr
-                                                    style={{ borderBottom: isExpanded ? 'none' : '1px solid var(--neutral-100)', cursor: 'pointer', background: isExpanded ? '#F8FAFC' : 'transparent', transition: 'background 0.2s' }}
-                                                    onMouseOver={e => { if (!isExpanded) e.currentTarget.style.background = '#F8FAFC'; }}
-                                                    onMouseOut={e => { if (!isExpanded) e.currentTarget.style.background = 'transparent'; }}
-                                                    onClick={() => setExpandedRow(isExpanded ? null : r.id_visita)}
+                                                    style={{
+                                                        borderBottom: isExpanded ? 'none' : '1px solid var(--neutral-100)',
+                                                        cursor: isEntregado ? 'default' : 'pointer',
+                                                        background: isEntregado ? '#F3F4F6' : isExpanded ? '#F8FAFC' : 'transparent',
+                                                        opacity: isEntregado ? 0.55 : 1,
+                                                        transition: 'background 0.2s, opacity 0.2s',
+                                                    }}
+                                                    onMouseOver={e => { if (!isExpanded && !isEntregado) e.currentTarget.style.background = '#F8FAFC'; }}
+                                                    onMouseOut={e => { if (!isExpanded && !isEntregado) e.currentTarget.style.background = isEntregado ? '#F3F4F6' : 'transparent'; }}
+                                                    onClick={() => !isEntregado && setExpandedRow(isExpanded ? null : r.id_visita)}
                                                 >
                                                     <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
                                                         {r.fecha_visita && new Date(r.fecha_visita + 'T12:00:00').toLocaleDateString('es-AR')}
