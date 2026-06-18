@@ -241,7 +241,7 @@ export default function TurnoKiosco() {
         // Detalles en una zona compacta
         t += LEFT;
         t += tramiteLabel + '\n';
-        t += 'Box ' + turno.box_asignado + (turno.dni ? '  DNI ' + turno.dni : '') + '\n';
+        if (turno.dni) t += 'DNI ' + turno.dni + '\n';
         t += hora + '\n';
 
         // Footer
@@ -598,17 +598,12 @@ export default function TurnoKiosco() {
 
                             {/* Info compacta */}
                             <div style={{
-                                display: 'flex', justifyContent: 'center', gap: '24px',
+                                display: 'flex', justifyContent: 'center',
                                 marginBottom: '20px', animation: 'fadeInUp 0.7s ease-out',
                             }}>
                                 <div style={{ textAlign: 'center' }}>
-                                    <span style={{ display: 'block', fontSize: '0.72rem', color: '#94A3B8', fontWeight: 600 }}>Trámite</span>
-                                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0D3B66' }}>{getTicketTramiteLabel()}</span>
-                                </div>
-                                <div style={{ width: '1px', background: '#E2E8F0' }} />
-                                <div style={{ textAlign: 'center' }}>
-                                    <span style={{ display: 'block', fontSize: '0.72rem', color: '#94A3B8', fontWeight: 600 }}>Diríjase a</span>
-                                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0D3B66' }}>Box {turno.box_asignado}</span>
+                                    <span style={{ display: 'block', fontSize: '0.85rem', color: '#94A3B8', fontWeight: 600, marginBottom: '4px' }}>Trámite</span>
+                                    <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0D3B66' }}>{getTicketTramiteLabel()}</span>
                                 </div>
                             </div>
 
@@ -653,7 +648,6 @@ export default function TurnoKiosco() {
                         </div>
                         <div style={{ fontSize: '12px', borderTop: '1px dashed #000', paddingTop: '8px' }}>
                             <div><strong>Trámite:</strong> {getTicketTramiteLabel()}</div>
-                            <div><strong>Box:</strong> {turno.box_asignado}</div>
                             {turno.dni && <div><strong>DNI:</strong> {turno.dni}</div>}
                             <div><strong>Hora:</strong> {new Date(turno.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</div>
                             <div><strong>Fecha:</strong> {new Date(turno.created_at).toLocaleDateString('es-AR')}</div>
