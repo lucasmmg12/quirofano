@@ -58,6 +58,145 @@ const fmtFecha = (d) => {
     return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
+// ═══════════════════════════════════════════
+// Excel-like Column Filter Header
+// ═══════════════════════════════════════════
+function ColumnFilterHeader({ label, columnKey, records, columnFilters, setColumnFilters, openFilterCol, setOpenFilterCol, filterSearchTerm, setFilterSearchTerm, title, style, valueExtractor }) {
+    const isOpen = openFilterCol === columnKey;
+    const activeFilter = columnFilters[columnKey];
+    const isFiltered = !!activeFilter;
+
+    // Get unique values from ALL records (not filtered)
+    const uniqueValues = useMemo(() => {
+        const vals = new Set();
+        records.forEach(r => {
+            const v = valueExtractor ? valueExtractor(r) : (r[columnKey] || '');
+            vals.add(v);
+        });
+        return Array.from(vals).sort((a, b) => String(a).localeCompare(String(b)));
+    }, [records, columnKey, valueExtractor]);
+
+    const filteredValues = useMemo(() => {
+        if (!filterSearchTerm) return uniqueValues;
+        return uniqueValues.filter(v => String(v).toLowerCase().includes(filterSearchTerm.toLowerCase()));
+    }, [uniqueValues, filterSearchTerm]);
+
+    const toggleFilter = (e) => {
+        e.stopPropagation();
+        if (isOpen) {
+            setOpenFilterCol(null);
+            setFilterSearchTerm('');
+        } else {
+            setOpenFilterCol(columnKey);
+            setFilterSearchTerm('');
+        }
+    };
+
+    const selectAll = () => {
+        setColumnFilters(prev => { const n = { ...prev }; delete n[columnKey]; return n; });
+    };
+
+    const selectNone = () => {
+        setColumnFilters(prev => ({ ...prev, [columnKey]: new Set() }));
+    };
+
+    const toggleValue = (val) => {
+        setColumnFilters(prev => {
+            const current = prev[columnKey] ? new Set(prev[columnKey]) : new Set(uniqueValues);
+            if (current.has(val)) current.delete(val); else current.add(val);
+            // If all selected, remove filter entirely
+            if (current.size === uniqueValues.length) { const n = { ...prev }; delete n[columnKey]; return n; }
+            return { ...prev, [columnKey]: current };
+        });
+    };
+
+    const selectedSet = activeFilter || new Set(uniqueValues);
+
+    return (
+        <th style={{ ...thStyle, ...style, position: 'relative', cursor: 'pointer', userSelect: 'none' }} title={title} onClick={toggleFilter}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: style?.textAlign === 'center' ? 'center' : 'flex-start' }}>
+                {label}
+                <Filter size={11} style={{
+                    color: isFiltered ? '#2563EB' : '#CBD5E1',
+                    flexShrink: 0,
+                    transition: 'color 0.2s',
+                }} />
+                {isFiltered && <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#2563EB', flexShrink: 0 }}></span>}
+            </div>
+            {isOpen && (
+                <div
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                        position: 'absolute', top: '100%', left: 0, zIndex: 100,
+                        background: '#fff', border: '1px solid #E2E8F0', borderRadius: '8px',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: '200px', maxWidth: '320px',
+                        padding: '8px 0', textTransform: 'none', fontWeight: 400,
+                    }}
+                >
+                    {/* Search */}
+                    <div style={{ padding: '4px 10px 8px' }}>
+                        <input
+                            type="text" placeholder="Buscar..." autoFocus
+                            value={filterSearchTerm} onChange={e => setFilterSearchTerm(e.target.value)}
+                            style={{
+                                width: '100%', padding: '6px 8px', fontSize: '0.78rem',
+                                border: '1px solid #E2E8F0', borderRadius: '4px', outline: 'none',
+                            }}
+                            onFocus={e => { e.target.style.borderColor = '#93C5FD'; }}
+                            onBlur={e => { e.target.style.borderColor = '#E2E8F0'; }}
+                        />
+                    </div>
+                    {/* Select all / none */}
+                    <div style={{ display: 'flex', gap: '8px', padding: '2px 10px 6px', borderBottom: '1px solid #F1F5F9' }}>
+                        <button onClick={selectAll} style={{
+                            fontSize: '0.7rem', color: '#2563EB', background: 'none', border: 'none',
+                            cursor: 'pointer', fontWeight: 600, padding: 0,
+                        }}>Todos</button>
+                        <button onClick={selectNone} style={{
+                            fontSize: '0.7rem', color: '#DC2626', background: 'none', border: 'none',
+                            cursor: 'pointer', fontWeight: 600, padding: 0,
+                        }}>Ninguno</button>
+                        {isFiltered && (
+                            <button onClick={() => { selectAll(); setOpenFilterCol(null); }} style={{
+                                fontSize: '0.7rem', color: '#7C3AED', background: 'none', border: 'none',
+                                cursor: 'pointer', fontWeight: 600, padding: 0, marginLeft: 'auto',
+                            }}>Limpiar ✕</button>
+                        )}
+                    </div>
+                    {/* Values list */}
+                    <div style={{ maxHeight: '240px', overflowY: 'auto', padding: '4px 0' }}>
+                        {filteredValues.length === 0 ? (
+                            <div style={{ padding: '12px', textAlign: 'center', color: '#94A3B8', fontSize: '0.75rem' }}>Sin resultados</div>
+                        ) : filteredValues.map((val, i) => {
+                            const isChecked = selectedSet.has(val);
+                            const displayVal = val === '' ? '(vacío)' : String(val);
+                            return (
+                                <label key={i}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                        padding: '4px 10px', cursor: 'pointer', fontSize: '0.78rem',
+                                        color: '#334155', transition: 'background 0.15s',
+                                    }}
+                                    onMouseOver={e => { e.currentTarget.style.background = '#F8FAFC'; }}
+                                    onMouseOut={e => { e.currentTarget.style.background = 'transparent'; }}
+                                >
+                                    <input type="checkbox" checked={isChecked} onChange={() => toggleValue(val)}
+                                        style={{ accentColor: '#2563EB', width: '14px', height: '14px', cursor: 'pointer' }}
+                                    />
+                                    <span style={{
+                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                        color: val === '' ? '#94A3B8' : '#334155', fontStyle: val === '' ? 'italic' : 'normal',
+                                    }}>{displayVal}</span>
+                                </label>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+        </th>
+    );
+}
+
 export default function LaboratoriosPanel({ addToast, currentUser }) {
     // ═══════════════════════════════════════
     // State
@@ -119,6 +258,11 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
     const [filterObraSocial, setFilterObraSocial] = useState('all');
     const [expandedRow, setExpandedRow] = useState(null);
     const [showHelp, setShowHelp] = useState(false);
+
+    // Excel-like column filters: { columnKey: Set of selected values } — null means "all"
+    const [columnFilters, setColumnFilters] = useState({});
+    const [openFilterCol, setOpenFilterCol] = useState(null);
+    const [filterSearchTerm, setFilterSearchTerm] = useState('');
 
     // Filtro por mes (default: null = todos los meses)
     const [selectedMonth, setSelectedMonth] = useState(null);
@@ -213,6 +357,14 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
         loadHistorial();
     }, [loadPendientes, loadCarrito, loadHistorial]);
 
+    // Close column filter dropdown on outside click
+    useEffect(() => {
+        if (!openFilterCol) return;
+        const handleClick = () => { setOpenFilterCol(null); setFilterSearchTerm(''); };
+        const timer = setTimeout(() => document.addEventListener('click', handleClick), 0);
+        return () => { clearTimeout(timer); document.removeEventListener('click', handleClick); };
+    }, [openFilterCol]);
+
     // ═══════════════════════════════════════
     // Derived
     // ═══════════════════════════════════════
@@ -240,9 +392,23 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 r.modulo_asignado === filterModulo;
             const matchLab = filterLaboratorio === 'all' || r.laboratorio === filterLaboratorio;
             const matchOS = filterObraSocial === 'all' || r.cliente === filterObraSocial;
-            return matchSearch && matchFilter && matchLab && matchOS;
+
+            // Excel-like column filters — supports virtual/computed columns
+            let matchColFilters = true;
+            const colValueExtractors = {
+                fecha_visita: rec => rec.fecha_visita ? new Date(rec.fecha_visita + 'T12:00:00').toLocaleDateString('es-AR') : '',
+                _accion: rec => rec.constancia_id ? 'ENTREGADO' : getEstadoFacturacion(rec.cliente, rec.laboratorio),
+            };
+            for (const [colKey, allowedSet] of Object.entries(columnFilters)) {
+                if (!allowedSet) continue;
+                const extractor = colValueExtractors[colKey];
+                const cellValue = extractor ? extractor(r) : (r[colKey] || '');
+                if (!allowedSet.has(cellValue)) { matchColFilters = false; break; }
+            }
+
+            return matchSearch && matchFilter && matchLab && matchOS && matchColFilters;
         });
-    }, [records, searchTerm, filterModulo, filterLaboratorio, filterObraSocial]);
+    }, [records, searchTerm, filterModulo, filterLaboratorio, filterObraSocial, columnFilters]);
 
     // Carrito stats
     const carritoStats = useMemo(() => {
@@ -1041,7 +1207,17 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                     <option value="assigned">Ya Asignados</option>
                                 </select>
                             </div>
-                            <div style={{ display: 'flex', gap: '6px' }}>
+                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                {Object.keys(columnFilters).length > 0 && (
+                                    <button onClick={() => setColumnFilters({})} style={{
+                                        padding: '8px 14px', borderRadius: '8px', background: '#EFF6FF',
+                                        color: '#2563EB', fontWeight: 600, fontSize: '0.82rem',
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        border: '1px solid #BFDBFE', cursor: 'pointer',
+                                    }}>
+                                        <X size={14} /> Limpiar filtros ({Object.keys(columnFilters).length})
+                                    </button>
+                                )}
                                 <button onClick={exportToPDF} style={{ padding: '8px 14px', borderRadius: '8px', background: '#FEE2E2', color: '#DC2626', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #FECACA', cursor: 'pointer' }}>
                                     <FileText size={15} /> PDF
                                 </button>
@@ -1059,17 +1235,17 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                         <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '900px' }}>
                                 <thead>
-                                    <tr>
-                                        <th style={thStyle} title="Fecha de la visita médica (extraída de SALUS)">Fecha</th>
-                                        <th style={thStyle} title="Número de Admisión del paciente en SALUS">N° Adm</th>
-                                        <th style={thStyle} title="Nombre completo del paciente y DNI">Paciente</th>
-                                        <th style={thStyle} title="Obra Social / Cobertura del paciente">OS</th>
-                                        <th style={thStyle} title="Monto de coseguro si aplica">Coseguro</th>
-                                        <th style={thStyle} title="Laboratorio de anatomía patológica asignado (Agüero, CEDAP o Cuyo)">Laboratorio</th>
-                                        <th style={thStyle} title="Tipos de biopsia: C=Congelación, S=Simple, A=Ampliada. El número indica cantidad de muestras">Biopsias</th>
-                                        <th style={{ ...thStyle, textAlign: 'center' }} title="Clasificación de módulo de complejidad asignado al estudio (A, B o C)">Módulo</th>
-                                        <th style={{ ...thStyle, textAlign: 'center' }} title="FACTURAR: el Sanatorio factura la biopsia a la OS. ENTREGAR: el Sanatorio solo entrega la muestra al laboratorio, que cobra directo a la OS. Se determina automáticamente según la combinación OS + Laboratorio.">Acción</th>
-                                        <th style={{ ...thStyle, textAlign: 'center', width: '100px' }} title="Enviar al carrito de entrega para generar constancia de traspaso al laboratorio">Carrito</th>
+                                    <tr onClick={() => setOpenFilterCol(null)}>
+                                        <ColumnFilterHeader label="Fecha" columnKey="fecha_visita" records={records} columnFilters={columnFilters} setColumnFilters={setColumnFilters} openFilterCol={openFilterCol} setOpenFilterCol={setOpenFilterCol} filterSearchTerm={filterSearchTerm} setFilterSearchTerm={setFilterSearchTerm} title="Fecha de la visita médica" valueExtractor={r => r.fecha_visita ? new Date(r.fecha_visita + 'T12:00:00').toLocaleDateString('es-AR') : ''} />
+                                        <th style={thStyle} title="Número de Admisión">N° Adm</th>
+                                        <ColumnFilterHeader label="Paciente" columnKey="paciente" records={records} columnFilters={columnFilters} setColumnFilters={setColumnFilters} openFilterCol={openFilterCol} setOpenFilterCol={setOpenFilterCol} filterSearchTerm={filterSearchTerm} setFilterSearchTerm={setFilterSearchTerm} title="Nombre completo del paciente" />
+                                        <ColumnFilterHeader label="OS" columnKey="cliente" records={records} columnFilters={columnFilters} setColumnFilters={setColumnFilters} openFilterCol={openFilterCol} setOpenFilterCol={setOpenFilterCol} filterSearchTerm={filterSearchTerm} setFilterSearchTerm={setFilterSearchTerm} title="Obra Social / Cobertura" />
+                                        <ColumnFilterHeader label="Coseguro" columnKey="coseguro" records={records} columnFilters={columnFilters} setColumnFilters={setColumnFilters} openFilterCol={openFilterCol} setOpenFilterCol={setOpenFilterCol} filterSearchTerm={filterSearchTerm} setFilterSearchTerm={setFilterSearchTerm} title="Monto de coseguro" />
+                                        <ColumnFilterHeader label="Laboratorio" columnKey="laboratorio" records={records} columnFilters={columnFilters} setColumnFilters={setColumnFilters} openFilterCol={openFilterCol} setOpenFilterCol={setOpenFilterCol} filterSearchTerm={filterSearchTerm} setFilterSearchTerm={setFilterSearchTerm} title="Laboratorio de anatomía patológica" />
+                                        <th style={thStyle} title="Tipos de biopsia: C=Congelación, S=Simple, A=Ampliada">Biopsias</th>
+                                        <ColumnFilterHeader label="Módulo" columnKey="modulo_asignado" records={records} columnFilters={columnFilters} setColumnFilters={setColumnFilters} openFilterCol={openFilterCol} setOpenFilterCol={setOpenFilterCol} filterSearchTerm={filterSearchTerm} setFilterSearchTerm={setFilterSearchTerm} title="Módulo de complejidad" style={{ textAlign: 'center' }} />
+                                        <ColumnFilterHeader label="Acción" columnKey="_accion" records={records} columnFilters={columnFilters} setColumnFilters={setColumnFilters} openFilterCol={openFilterCol} setOpenFilterCol={setOpenFilterCol} filterSearchTerm={filterSearchTerm} setFilterSearchTerm={setFilterSearchTerm} title="Facturar / Entregar / Entregado" style={{ textAlign: 'center' }} valueExtractor={r => r.constancia_id ? 'ENTREGADO' : getEstadoFacturacion(r.cliente, r.laboratorio)} />
+                                        <th style={{ ...thStyle, textAlign: 'center', width: '100px' }} title="Enviar al carrito">Carrito</th>
                                         <th style={{ ...thStyle, width: '40px' }}></th>
                                     </tr>
                                 </thead>
