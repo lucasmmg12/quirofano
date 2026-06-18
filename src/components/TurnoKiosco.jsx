@@ -14,6 +14,7 @@ import {
     ChevronRight,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { getBoxesDisponibles, getBoxBalanceado } from '../services/boxService';
 
 const ICON_MAP = {
     Receipt, ShieldCheck, Building2, Users, Baby, HelpCircle,
@@ -31,11 +32,22 @@ export default function TurnoKiosco() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [colaCount, setColaCount] = useState({});
+    const [boxesDisponibles, setBoxesDisponibles] = useState(null); // null = loading, [] = none
 
-    // Cargar configuración
+    // Cargar configuración + verificar boxes disponibles
     useEffect(() => {
         supabase.from('turnos_config').select('*').eq('activo', true).order('orden')
             .then(({ data }) => setConfig(data || []));
+
+        // Check box availability on mount and every 60s
+        const checkBoxes = () => {
+            getBoxesDisponibles()
+                .then(boxes => setBoxesDisponibles(boxes))
+                .catch(() => setBoxesDisponibles([]));
+        };
+        checkBoxes();
+        const boxInterval = setInterval(checkBoxes, 60000);
+        return () => clearInterval(boxInterval);
     }, []);
 
     // Construir estructura jerárquica
@@ -105,7 +117,7 @@ export default function TurnoKiosco() {
         return children.reduce((sum, c) => sum + (colaCount[c.tipo_tramite] || 0), 0);
     }, [colaCount]);
 
-    // Crear turno
+    // Crear turno con asignación balanceada de box
     const handleCreateTurno = useCallback(async (tipo) => {
         setLoading(true);
         setError(null);
@@ -115,9 +127,9 @@ export default function TurnoKiosco() {
                 .rpc('next_turno_number', { p_tipo: tipo });
             if (numErr) throw numErr;
 
-            // 2. Obtener box default
+            // 2. Obtener box disponible con balanceo inteligente
             const cfgItem = config.find(c => c.tipo_tramite === tipo);
-            const boxAsignado = cfgItem?.box_default || 1;
+            const boxAsignado = await getBoxBalanceado();
 
             // 3. Buscar nombre del paciente por DNI
             let nombrePaciente = null;
@@ -141,7 +153,7 @@ export default function TurnoKiosco() {
                     tipo_tramite: tipo,
                     dni: dni.trim() || null,
                     nombre_paciente: nombrePaciente,
-                    box_asignado: boxAsignado,
+                    box_asignado: boxAsignado || 1,
                     estado: 'esperando',
                 })
                 .select()
@@ -313,8 +325,49 @@ export default function TurnoKiosco() {
 
             {/* Content */}
             <main style={styles.main}>
+                {/* ═══ FUERA DE HORARIO ═══ */}
+                {boxesDisponibles !== null && boxesDisponibles.length === 0 && step !== STEPS.TICKET && (
+                    <div style={{
+                        display: 'flex', flexDirection: 'column',
+                        alignItems: 'center', justifyContent: 'center',
+                        textAlign: 'center', padding: '40px 24px',
+                        minHeight: 'calc(100vh - 200px)',
+                        animation: 'fadeInUp 0.5s ease-out',
+                    }} className="no-print">
+                        <div style={{
+                            width: '100px', height: '100px', borderRadius: '28px',
+                            background: 'linear-gradient(135deg, #1E293B 0%, #334155 100%)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            marginBottom: '24px',
+                            boxShadow: '0 8px 32px rgba(30,41,59,0.3)',
+                        }}>
+                            <span style={{ fontSize: '3rem' }}>🌙</span>
+                        </div>
+                        <h2 style={{
+                            margin: '0 0 12px', fontSize: '1.8rem', fontWeight: 800,
+                            color: '#0D3B66', lineHeight: 1.3,
+                        }}>
+                            Fuera de horario<br/>de atención
+                        </h2>
+                        <p style={{
+                            margin: '0 0 24px', fontSize: '1.2rem',
+                            color: '#64748B', fontWeight: 500, lineHeight: 1.5,
+                            maxWidth: '380px',
+                        }}>
+                            En este momento no hay boxes disponibles para la atención.
+                        </p>
+                        <div style={{
+                            padding: '16px 28px', borderRadius: '16px',
+                            background: '#EFF6FF', border: '2px solid #BFDBFE',
+                            fontSize: '1.1rem', fontWeight: 700, color: '#1565C0',
+                        }}>
+                            Horario de atención: 07:00 a 20:00 hs
+                        </div>
+                    </div>
+                )}
+
                 {/* ═══ PASO 1: SELECCIONAR TRÁMITE (Menú principal) ═══ */}
-                {step === STEPS.SELECT && (
+                {step === STEPS.SELECT && (boxesDisponibles === null || boxesDisponibles.length > 0) && (
                     <div style={styles.selectContainer} className="no-print">
                         {/* DNI input (optional) */}
                         <div style={styles.dniSection}>

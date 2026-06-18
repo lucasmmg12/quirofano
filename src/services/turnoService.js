@@ -23,14 +23,10 @@ export async function crearTurno(tipoTramite, dni = null) {
     if (numErr) throw numErr;
     const numeroTurno = numData;
 
-    // 2. Obtener box default del config
-    const { data: config } = await supabase
-        .from('turnos_config')
-        .select('box_default')
-        .eq('tipo_tramite', tipoTramite)
-        .single();
-
-    const boxAsignado = config?.box_default || 1;
+    // 2. Obtener box disponible con balanceo inteligente
+    const { getBoxBalanceado } = await import('./boxService');
+    const boxAsignado = await getBoxBalanceado();
+    // Si no hay boxes disponibles, el turno se crea sin box (admin asigna después)
 
     // 3. Buscar nombre del paciente si tiene DNI
     let nombrePaciente = null;
@@ -55,7 +51,7 @@ export async function crearTurno(tipoTramite, dni = null) {
             tipo_tramite: tipoTramite,
             dni: dni?.trim() || null,
             nombre_paciente: nombrePaciente,
-            box_asignado: boxAsignado,
+            box_asignado: boxAsignado || 1,
             estado: 'esperando',
         })
         .select()

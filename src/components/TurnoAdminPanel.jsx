@@ -9,7 +9,7 @@ import {
     Clock, CheckCircle, XCircle, BarChart3, RefreshCw,
     User, FileText, Receipt, Microscope, HelpCircle,
     ChevronDown, Timer, TrendingUp, Hash,
-    Building2, Baby, ShieldCheck,
+    Building2, Baby, ShieldCheck, Monitor,
 } from 'lucide-react';
 import { SkeletonCardGrid } from './SkeletonLoader';
 import {
@@ -17,6 +17,7 @@ import {
     llamarTurno, iniciarAtencion, finalizarAtencion,
     cancelarTurno, derivarTurno, subscribeToCola, fetchTurnoConfig,
 } from '../services/turnoService';
+import BoxManagerPanel from './BoxManagerPanel';
 
 const ICON_MAP = { FileText, Receipt, Microscope, HelpCircle, Building2, Users, Baby, ShieldCheck };
 
@@ -38,10 +39,12 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
     const [tipoFilter, setTipoFilter] = useState(null);
     const [showMetricas, setShowMetricas] = useState(false);
     const [showAtendidos, setShowAtendidos] = useState(false);
+    const [showBoxManager, setShowBoxManager] = useState(false);
     const [activeTimers, setActiveTimers] = useState({}); // turnoId → elapsed seconds
     const timerInterval = useRef(null);
     const [derivarModal, setDerivarModal] = useState(null); // turnoId
     const [cancelarModal, setCancelarModal] = useState(null); // turno object
+    const [allUsers, setAllUsers] = useState([]);
 
     const empleadoNombre = currentUser?.nombre || 'Administrador';
     const empleadoBox = boxFilter || 1;
@@ -69,6 +72,12 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
 
     useEffect(() => {
         loadData();
+        // Cargar usuarios para BoxManagerPanel
+        import('../lib/supabase').then(({ supabase }) => {
+            supabase.from('admqui_usuarios').select('id, usuario, nombre, iniciales')
+                .eq('activo', true).order('nombre')
+                .then(({ data }) => setAllUsers(data || []));
+        });
     }, [loadData]);
 
     // ─── Realtime subscription ───
@@ -234,6 +243,13 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                         </div>
                     )}
                     <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                        <button onClick={() => setShowBoxManager(p => !p)}
+                            style={{
+                                ...s.actionBtnSmall,
+                                ...(showBoxManager ? { background: '#1565C0', color: '#fff', borderColor: '#1565C0' } : {}),
+                            }}>
+                            <Monitor size={14} /> {showBoxManager ? 'Ocultar' : 'Boxes'}
+                        </button>
                         <button onClick={() => setShowMetricas(p => !p)} style={s.actionBtnSmall}>
                             <BarChart3 size={14} /> {showMetricas ? 'Ocultar' : 'Métricas'}
                         </button>
@@ -246,6 +262,44 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                     </div>
                 </div>
             </div>
+
+            {/* ═══ GESTIÓN DE BOXES ═══ */}
+            {showBoxManager && (
+                <div style={{
+                    marginBottom: '16px', padding: '16px',
+                    borderRadius: '14px',
+                    background: 'rgba(255,255,255,0.85)',
+                    border: '2px solid #1565C020',
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+                }}>
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: '10px',
+                        marginBottom: '14px', paddingBottom: '10px',
+                        borderBottom: '1px solid #E2E8F0',
+                    }}>
+                        <div style={{
+                            width: '32px', height: '32px', borderRadius: '8px',
+                            background: '#1565C015', display: 'flex',
+                            alignItems: 'center', justifyContent: 'center',
+                        }}>
+                            <Monitor size={16} color="#1565C0" />
+                        </div>
+                        <div>
+                            <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: '#0D3B66' }}>
+                                Gestión de Boxes
+                            </h4>
+                            <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                Encender, apagar y asignar boxes de atención
+                            </span>
+                        </div>
+                    </div>
+                    <BoxManagerPanel
+                        addToast={addToast}
+                        currentUser={currentUser}
+                        allUsers={allUsers}
+                    />
+                </div>
+            )}
 
             {/* ═══ FILTROS ═══ */}
             <div style={s.filters}>
