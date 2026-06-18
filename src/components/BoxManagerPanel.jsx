@@ -20,6 +20,18 @@ const DIA_OPTIONS = [
     ...DIAS.map((d, i) => ({ value: String(i), label: d })),
 ];
 
+// Mapa de video-avatar por username → archivo en /public
+const USER_AVATARS = {
+    frojo: '/Man_smiles_and_nods_directly_202606181046.mp4',
+};
+
+// Helper: obtener username a partir del usuario_id del box
+function getUsernameForBox(box, allUsers) {
+    if (!box.usuario_id || !allUsers?.length) return null;
+    const user = allUsers.find(u => u.id === box.usuario_id);
+    return user?.usuario || null;
+}
+
 export default function BoxManagerPanel({ addToast, currentUser, allUsers }) {
     const [boxes, setBoxes] = useState([]);
     const [horarios, setHorarios] = useState([]);
@@ -167,24 +179,57 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers }) {
                             display: 'flex', alignItems: 'center', gap: '14px',
                             padding: '14px 16px',
                         }}>
-                            {/* Box icon + number */}
-                            <div style={{
-                                width: '48px', height: '48px', borderRadius: '12px',
-                                background: box.activo
-                                    ? 'linear-gradient(135deg, #22C55E 0%, #16A34A 100%)'
-                                    : 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                flexShrink: 0,
-                                boxShadow: box.activo
-                                    ? '0 3px 12px rgba(34,197,94,0.3)'
-                                    : '0 3px 12px rgba(239,68,68,0.2)',
-                            }}>
-                                <span style={{
-                                    color: '#fff', fontWeight: 900, fontSize: '1.3rem',
-                                }}>
-                                    {box.numero}
-                                </span>
-                            </div>
+                            {/* Box icon + number / video avatar */}
+                            {(() => {
+                                const username = getUsernameForBox(box, allUsers);
+                                const avatarSrc = username ? USER_AVATARS[username] : null;
+                                const borderColor = box.activo ? '#22C55E' : '#EF4444';
+                                if (avatarSrc) {
+                                    return (
+                                        <div style={{
+                                            width: '52px', height: '52px', borderRadius: '50%',
+                                            border: `3px solid ${borderColor}`,
+                                            overflow: 'hidden', flexShrink: 0,
+                                            boxShadow: box.activo
+                                                ? '0 3px 14px rgba(34,197,94,0.35)'
+                                                : '0 3px 14px rgba(239,68,68,0.25)',
+                                            position: 'relative',
+                                        }}>
+                                            <video
+                                                src={avatarSrc}
+                                                autoPlay
+                                                loop
+                                                muted
+                                                playsInline
+                                                style={{
+                                                    width: '100%', height: '100%',
+                                                    objectFit: 'cover',
+                                                    display: 'block',
+                                                }}
+                                            />
+                                        </div>
+                                    );
+                                }
+                                return (
+                                    <div style={{
+                                        width: '48px', height: '48px', borderRadius: '12px',
+                                        background: box.activo
+                                            ? 'linear-gradient(135deg, #22C55E 0%, #16A34A 100%)'
+                                            : 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        flexShrink: 0,
+                                        boxShadow: box.activo
+                                            ? '0 3px 12px rgba(34,197,94,0.3)'
+                                            : '0 3px 12px rgba(239,68,68,0.2)',
+                                    }}>
+                                        <span style={{
+                                            color: '#fff', fontWeight: 900, fontSize: '1.3rem',
+                                        }}>
+                                            {box.numero}
+                                        </span>
+                                    </div>
+                                );
+                            })()}
 
                             {/* Info */}
                             <div style={{ flex: 1 }}>
