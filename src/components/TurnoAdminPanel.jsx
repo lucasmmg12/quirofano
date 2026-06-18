@@ -4,6 +4,7 @@
  * Funciones: Ver cola, Llamar, Iniciar atención, Finalizar, Derivar, Métricas rápidas
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { fetchBoxes } from '../services/boxService';
 import {
     Users, PhoneCall, Play, Square, ArrowRightLeft,
     Clock, CheckCircle, XCircle, BarChart3, RefreshCw,
@@ -29,6 +30,28 @@ const ESTADO_BADGES = {
     cancelado: { label: 'Cancelado', color: '#EF4444', bg: '#FEE2E2', icon: XCircle },
 };
 
+// Sonido de alerta para derivaciones (3 tonos ascendentes)
+function playDerivAlert() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const notes = [523, 659, 784]; // C5, E5, G5
+        notes.forEach((freq, i) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.value = freq;
+            osc.type = 'sine';
+            gain.gain.setValueAtTime(0.3, ctx.currentTime + i * 0.2);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.2 + 0.18);
+            osc.start(ctx.currentTime + i * 0.2);
+            osc.stop(ctx.currentTime + i * 0.2 + 0.2);
+        });
+    } catch (e) {
+        console.warn('Audio alert failed:', e);
+    }
+}
+
 export default function TurnoAdminPanel({ addToast, currentUser }) {
     const [config, setConfig] = useState([]);
     const [cola, setCola] = useState([]);
@@ -45,6 +68,9 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
     const [derivarModal, setDerivarModal] = useState(null); // turnoId
     const [cancelarModal, setCancelarModal] = useState(null); // turno object
     const [allUsers, setAllUsers] = useState([]);
+    const [myBoxNum, setMyBoxNum] = useState(null); // box asignado al usuario actual
+    const [derivNotif, setDerivNotif] = useState(null); // { turnoNum, fromBox, toBox }
+    const prevColaRef = useRef([]); // para detectar derivaciones comparando snapshots
 
     const empleadoNombre = currentUser?.nombre || 'Administrador';
     const empleadoBox = boxFilter || 1;
@@ -78,16 +104,44 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                 .eq('activo', true).order('nombre')
                 .then(({ data }) => setAllUsers(data || []));
         });
-    }, [loadData]);
+        // Detectar mi box asignado
+        if (currentUser?.id) {
+            fetchBoxes().then(boxes => {
+                const mine = boxes.find(b => b.usuario_id === currentUser.id);
+                if (mine) setMyBoxNum(mine.numero);
+            });
+        }
+    }, [loadData, currentUser]);
 
-    // ─── Realtime subscription ───
+    // ─── Realtime subscription con detección de derivaciones ───
     useEffect(() => {
-        const unsub = subscribeToCola(() => {
-            // Refrescar datos cuando cambia la cola
+        const unsub = subscribeToCola((payload) => {
+            // Detectar derivación: UPDATE donde box_asignado cambió hacia MI box
+            if (payload.eventType === 'UPDATE' && myBoxNum) {
+                const newData = payload.new;
+                const oldData = payload.old;
+                if (
+                    newData.box_asignado === myBoxNum &&
+                    oldData.box_asignado !== myBoxNum &&
+                    newData.estado === 'esperando'
+                ) {
+                    // ¡Me derivaron un turno!
+                    setDerivNotif({
+                        turnoNum: newData.numero_turno,
+                        fromBox: oldData.box_asignado,
+                        toBox: myBoxNum,
+                        tipo: newData.tipo_tramite,
+                    });
+                    // Sonido de alerta
+                    playDerivAlert();
+                    // Auto-dismiss en 15s
+                    setTimeout(() => setDerivNotif(null), 15000);
+                }
+            }
             loadData();
         });
         return () => unsub();
-    }, [loadData]);
+    }, [loadData, myBoxNum]);
 
     // ─── Timer para turnos en atención ───
     useEffect(() => {
@@ -206,7 +260,69 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
 
     return (
         <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto' }}>
-            {/* ═══ HEADER + MÉTRICAS RÁPIDAS ═══ */}
+            {/* ═══ NOTIFICACIÓN DE DERIVACIÓN ═══ */}
+            {derivNotif && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+                    padding: '0 16px',
+                    animation: 'slideDown 0.4s ease-out',
+                }}>
+                    <div style={{
+                        maxWidth: '800px', margin: '16px auto',
+                        padding: '18px 24px',
+                        borderRadius: '16px',
+                        background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                        boxShadow: '0 8px 40px rgba(245,158,11,0.45), 0 0 0 4px rgba(245,158,11,0.2)',
+                        display: 'flex', alignItems: 'center', gap: '16px',
+                        animation: 'pulse 2s ease-in-out infinite',
+                    }}>
+                        <div style={{
+                            width: '52px', height: '52px', borderRadius: '14px',
+                            background: 'rgba(255,255,255,0.25)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            flexShrink: 0,
+                        }}>
+                            <ArrowRightLeft size={26} color="#fff" />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                            <div style={{
+                                fontSize: '1.1rem', fontWeight: 800, color: '#fff',
+                                marginBottom: '2px',
+                            }}>
+                                🔔 Turno {derivNotif.turnoNum} derivado a tu Box {derivNotif.toBox}
+                            </div>
+                            <div style={{
+                                fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)',
+                                fontWeight: 600,
+                            }}>
+                                Proviene del Box {derivNotif.fromBox} · Está esperando atención
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setDerivNotif(null)}
+                            style={{
+                                padding: '8px 18px', borderRadius: '10px',
+                                border: '2px solid rgba(255,255,255,0.4)',
+                                background: 'rgba(255,255,255,0.2)',
+                                color: '#fff', fontWeight: 700, fontSize: '0.85rem',
+                                cursor: 'pointer', transition: 'all 0.15s',
+                            }}
+                        >
+                            Entendido
+                        </button>
+                    </div>
+                </div>
+            )}
+            <style>{`
+                @keyframes slideDown {
+                    from { transform: translateY(-100%); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
+                }
+                @keyframes pulse {
+                    0%, 100% { box-shadow: 0 8px 40px rgba(245,158,11,0.45), 0 0 0 4px rgba(245,158,11,0.2); }
+                    50% { box-shadow: 0 8px 40px rgba(245,158,11,0.6), 0 0 0 8px rgba(245,158,11,0.15); }
+                }
+            `}</style>
             <div style={s.header}>
                 <div style={s.headerLeft}>
                     <div style={s.headerIcon}>
