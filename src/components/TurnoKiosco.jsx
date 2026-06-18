@@ -195,34 +195,94 @@ export default function TurnoKiosco() {
         }
     }, [step, handleReset]);
 
+    // Helper: descripción largo para el ticket (incluye grupo si aplica)
+    const getTicketTramiteLabel = useCallback(() => {
+        if (!selectedType) return '';
+        if (selectedType.grupo_label) {
+            return `${selectedType.grupo_label} \u2014 ${selectedType.label}`;
+        }
+        return selectedType.label;
+    }, [selectedType]);
+
+    // ─── RawBT / Thermal Printing ───────────────────────────────────
+    const isAndroid = /android/i.test(navigator.userAgent);
+
+    // Genera texto plano formateado para impresora térmica 57mm (~32 chars/línea)
+    const buildTicketText = useCallback(() => {
+        if (!turno || !selectedType) return '';
+        const W = 32; // ancho en caracteres para 57mm
+        const center = (txt) => {
+            const pad = Math.max(0, Math.floor((W - txt.length) / 2));
+            return ' '.repeat(pad) + txt;
+        };
+        const line = '-'.repeat(W);
+        const dblLine = '='.repeat(W);
+
+        const tramiteLabel = getTicketTramiteLabel();
+        const hora = new Date(turno.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+        const fecha = new Date(turno.created_at).toLocaleDateString('es-AR');
+
+        let text = '';
+        text += center('SANATORIO ARGENTINO') + '\n';
+        text += center('Adm. y Atencion') + '\n';
+        text += center('al Paciente') + '\n';
+        text += dblLine + '\n';
+        text += '\n';
+        text += center('SU TURNO') + '\n';
+        text += '\n';
+        text += center('** ' + turno.numero_turno + ' **') + '\n';
+        text += '\n';
+        text += line + '\n';
+        text += 'Tramite: ' + tramiteLabel + '\n';
+        text += 'Box: ' + turno.box_asignado + '\n';
+        if (turno.dni) text += 'DNI: ' + turno.dni + '\n';
+        text += 'Hora: ' + hora + '\n';
+        text += 'Fecha: ' + fecha + '\n';
+        text += line + '\n';
+        text += '\n';
+        text += center('Aguarde a ser') + '\n';
+        text += center('llamado/a') + '\n';
+        text += '\n';
+        text += '\n';
+        text += '\n'; // Feed extra para corte
+
+        return text;
+    }, [turno, selectedType, getTicketTramiteLabel]);
+
+    // Envía texto directamente a RawBT via intent URI (silencioso)
+    const printViaRawBT = useCallback((text) => {
+        const encoded = encodeURI(text);
+        const intentURI = 'intent:' + encoded
+            + '#Intent;'
+            + 'scheme=rawbt;'
+            + 'package=ru.a402d.rawbtprinter;'
+            + 'end;';
+        window.location.href = intentURI;
+    }, []);
+
+    // Imprimir ticket: RawBT en Android, window.print() en PC
+    const handlePrint = useCallback(() => {
+        if (isAndroid) {
+            const text = buildTicketText();
+            if (text) printViaRawBT(text);
+        } else {
+            window.print();
+        }
+    }, [isAndroid, buildTicketText, printViaRawBT]);
+
     // Auto-imprimir el ticket apenas se genera
     useEffect(() => {
         if (step === STEPS.TICKET) {
-            // Pequeño delay para asegurar que React termine de renderizar el DOM del ticket
             const timer = setTimeout(() => {
-                window.print();
-            }, 300);
+                handlePrint();
+            }, 500);
             return () => clearTimeout(timer);
         }
-    }, [step]);
-
-    // Intentar imprimir ticket
-    const handlePrint = () => {
-        window.print();
-    };
+    }, [step, handlePrint]);
 
     const now = new Date();
     const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
     const dateStr = now.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
-
-    // Helper: descripción largo para el ticket (incluye grupo si aplica)
-    const getTicketTramiteLabel = () => {
-        if (!selectedType) return '';
-        if (selectedType.grupo_label) {
-            return `${selectedType.grupo_label} — ${selectedType.label}`;
-        }
-        return selectedType.label;
-    };
 
     return (
         <div style={styles.container}>
