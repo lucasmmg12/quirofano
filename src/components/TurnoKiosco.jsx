@@ -398,29 +398,41 @@ export default function TurnoKiosco() {
                                 const itemColor = isGroup ? item.color : item.color;
                                 const num = idx + 1;
 
+                                // Restricción horaria: Facturación y Reintegros no disponible después de las 16hs
+                                const currentHour = new Date().getHours();
+                                const isTimeLocked = !isGroup
+                                    && item.tipo_tramite === 'reintegros_facturacion'
+                                    && currentHour >= 16;
+
                                 return (
                                     <button
                                         key={item.key}
-                                        onClick={() => handleMenuClick(item)}
-                                        disabled={loading}
+                                        onClick={() => !isTimeLocked && handleMenuClick(item)}
+                                        disabled={loading || isTimeLocked}
                                         style={{
                                             ...styles.tramiteBtn,
-                                            borderColor: itemColor + '40',
-                                            opacity: loading ? 0.6 : 1,
+                                            borderColor: isTimeLocked ? '#CBD5E140' : itemColor + '40',
+                                            opacity: isTimeLocked ? 0.5 : loading ? 0.6 : 1,
+                                            filter: isTimeLocked ? 'grayscale(0.8)' : 'none',
+                                            cursor: isTimeLocked ? 'not-allowed' : 'pointer',
                                         }}
                                         onTouchStart={e => {
+                                            if (isTimeLocked) return;
                                             e.currentTarget.style.transform = 'scale(0.97)';
                                             e.currentTarget.style.boxShadow = `0 4px 24px ${itemColor}30`;
                                         }}
                                         onTouchEnd={e => {
+                                            if (isTimeLocked) return;
                                             e.currentTarget.style.transform = 'scale(1)';
                                             e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.06)';
                                         }}
                                         onMouseDown={e => {
+                                            if (isTimeLocked) return;
                                             e.currentTarget.style.transform = 'scale(0.97)';
                                             e.currentTarget.style.boxShadow = `0 4px 24px ${itemColor}30`;
                                         }}
                                         onMouseUp={e => {
+                                            if (isTimeLocked) return;
                                             e.currentTarget.style.transform = 'scale(1)';
                                             e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.06)';
                                         }}
@@ -428,22 +440,39 @@ export default function TurnoKiosco() {
                                         {/* Number badge */}
                                         <div style={{
                                             ...styles.numberBadge,
-                                            background: itemColor,
+                                            background: isTimeLocked ? '#94A3B8' : itemColor,
                                         }}>
                                             {num}
                                         </div>
 
                                         <div style={{
                                             ...styles.tramiteIconWrap,
-                                            background: itemColor + '14',
-                                            border: `2px solid ${itemColor}30`,
+                                            background: isTimeLocked ? '#F1F5F914' : itemColor + '14',
+                                            border: `2px solid ${isTimeLocked ? '#CBD5E130' : itemColor + '30'}`,
                                         }}>
-                                            <Icon size={40} style={{ color: itemColor }} />
+                                            <Icon size={40} style={{ color: isTimeLocked ? '#94A3B8' : itemColor }} />
                                         </div>
 
-                                        <span style={styles.tramiteLabel}>{item.label}</span>
+                                        <span style={{
+                                            ...styles.tramiteLabel,
+                                            color: isTimeLocked ? '#94A3B8' : undefined,
+                                        }}>
+                                            {item.label}
+                                        </span>
 
-                                        {isGroup && (
+                                        {isTimeLocked && (
+                                            <span style={{
+                                                fontSize: '0.95rem', fontWeight: 700,
+                                                color: '#EF4444', background: '#FEF2F2',
+                                                border: '1px solid #FECACA',
+                                                padding: '6px 14px', borderRadius: '10px',
+                                                marginTop: '4px',
+                                            }}>
+                                                🕐 Disponible de 07:00 a 16:00 hs
+                                            </span>
+                                        )}
+
+                                        {isGroup && !isTimeLocked && (
                                             <span style={{
                                                 ...styles.subBadge,
                                                 color: itemColor,
@@ -455,7 +484,7 @@ export default function TurnoKiosco() {
                                             </span>
                                         )}
 
-                                        {waitCount > 0 && (
+                                        {waitCount > 0 && !isTimeLocked && (
                                             <span style={{
                                                 ...styles.waitBadge,
                                                 background: itemColor + '14',
