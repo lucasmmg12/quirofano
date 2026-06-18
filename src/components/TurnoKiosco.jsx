@@ -10,7 +10,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     Receipt, ShieldCheck, Building2, Users, Baby,
-    HelpCircle, ArrowLeft, CheckCircle, Printer, RefreshCw,
+    HelpCircle, ArrowLeft, CheckCircle, RefreshCw,
     ChevronRight,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -190,7 +190,7 @@ export default function TurnoKiosco() {
     // Auto-reset después de 15 segundos en la pantalla de ticket
     useEffect(() => {
         if (step === STEPS.TICKET) {
-            const timer = setTimeout(handleReset, 15000);
+            const timer = setTimeout(handleReset, 8000);
             return () => clearTimeout(timer);
         }
     }, [step, handleReset]);
@@ -552,72 +552,84 @@ export default function TurnoKiosco() {
                     </div>
                 )}
 
-                {/* ═══ PASO 2: TICKET GENERADO ═══ */}
+                {/* ═══ PASO 2: TICKET GENERADO (Kiosco-friendly: sin botones) ═══ */}
                 {step === STEPS.TICKET && turno && (
                     <div style={styles.ticketContainer}>
-                        {/* Ticket visual */}
                         <div style={styles.ticketCard} id="turno-ticket">
-                            <div style={styles.ticketHeader}>
-                                <CheckCircle size={36} style={{ color: '#16A34A' }} />
-                                <h2 style={styles.ticketSuccessText}>¡Tu turno fue generado!</h2>
+                            {/* Animated success icon */}
+                            <div style={{
+                                width: '80px', height: '80px', borderRadius: '50%',
+                                background: 'linear-gradient(135deg, #16A34A, #22C55E)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                margin: '0 auto 16px',
+                                boxShadow: '0 8px 32px rgba(22,163,74,0.3)',
+                                animation: 'fadeInUp 0.4s ease-out',
+                            }}>
+                                <CheckCircle size={44} style={{ color: '#fff' }} />
                             </div>
 
+                            <h2 style={{
+                                margin: '0 0 8px', fontSize: '1.3rem', fontWeight: 800,
+                                color: '#16A34A', animation: 'fadeInUp 0.5s ease-out',
+                            }}>
+                                ¡Turno generado!
+                            </h2>
+
+                            <p style={{
+                                margin: '0 0 20px', fontSize: '0.9rem', color: '#64748B',
+                                animation: 'fadeInUp 0.6s ease-out',
+                            }}>
+                                🖨️ Retirá tu ticket de la impresora
+                            </p>
+
+                            {/* Número grande */}
                             <div style={{
                                 ...styles.ticketNumber,
                                 color: selectedType?.color || '#1565C0',
                                 borderColor: (selectedType?.color || '#1565C0') + '30',
                                 background: (selectedType?.color || '#1565C0') + '08',
+                                animation: 'fadeInUp 0.5s ease-out, pulseNumber 3s ease-in-out infinite',
                             }}>
                                 {turno.numero_turno}
                             </div>
 
-                            <div style={styles.ticketInfo}>
-                                <div style={styles.ticketInfoRow}>
-                                    <span style={styles.ticketInfoLabel}>Trámite</span>
-                                    <span style={{
-                                        ...styles.ticketInfoValue,
-                                        fontSize: selectedType?.grupo_label ? '0.82rem' : '0.95rem',
-                                        textAlign: 'right',
-                                        maxWidth: '220px',
-                                    }}>
-                                        {getTicketTramiteLabel()}
-                                    </span>
+                            {/* Info compacta */}
+                            <div style={{
+                                display: 'flex', justifyContent: 'center', gap: '24px',
+                                marginBottom: '20px', animation: 'fadeInUp 0.7s ease-out',
+                            }}>
+                                <div style={{ textAlign: 'center' }}>
+                                    <span style={{ display: 'block', fontSize: '0.72rem', color: '#94A3B8', fontWeight: 600 }}>Trámite</span>
+                                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0D3B66' }}>{getTicketTramiteLabel()}</span>
                                 </div>
-                                <div style={styles.ticketInfoRow}>
-                                    <span style={styles.ticketInfoLabel}>Box</span>
-                                    <span style={styles.ticketInfoValue}>Box {turno.box_asignado}</span>
-                                </div>
-                                {turno.dni && (
-                                    <div style={styles.ticketInfoRow}>
-                                        <span style={styles.ticketInfoLabel}>DNI</span>
-                                        <span style={styles.ticketInfoValue}>{turno.dni}</span>
-                                    </div>
-                                )}
-                                <div style={styles.ticketInfoRow}>
-                                    <span style={styles.ticketInfoLabel}>Hora</span>
-                                    <span style={styles.ticketInfoValue}>{timeStr}</span>
+                                <div style={{ width: '1px', background: '#E2E8F0' }} />
+                                <div style={{ textAlign: 'center' }}>
+                                    <span style={{ display: 'block', fontSize: '0.72rem', color: '#94A3B8', fontWeight: 600 }}>Diríjase a</span>
+                                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0D3B66' }}>Box {turno.box_asignado}</span>
                                 </div>
                             </div>
 
-                            <p style={styles.ticketWait}>
-                                Por favor, aguardá a ser llamado/a
+                            {/* Mensaje de espera */}
+                            <p style={{
+                                ...styles.ticketWait,
+                                fontSize: '1.1rem', fontWeight: 700,
+                                animation: 'fadeInUp 0.8s ease-out',
+                            }}>
+                                Aguarde a ser llamado/a
                             </p>
-                        </div>
 
-                        {/* Botones */}
-                        <div style={styles.ticketActions} className="no-print">
-                            <button onClick={handlePrint} style={styles.printBtn}>
-                                <Printer size={20} /> Imprimir Ticket
-                            </button>
-                            <button onClick={handleReset} style={styles.newBtn}>
-                                <ArrowLeft size={20} /> Nuevo Turno
-                            </button>
+                            {/* Barra de progreso auto-reset */}
+                            <div style={{
+                                marginTop: '24px', width: '100%', height: '4px',
+                                background: '#E2E8F0', borderRadius: '4px', overflow: 'hidden',
+                            }}>
+                                <div style={{
+                                    height: '100%', background: 'linear-gradient(90deg, #16A34A, #22C55E)',
+                                    borderRadius: '4px',
+                                    animation: 'shrinkBar 8s linear forwards',
+                                }} />
+                            </div>
                         </div>
-
-                        {/* Auto-reset indicator */}
-                        <p style={styles.autoReset} className="no-print">
-                            Esta pantalla vuelve al inicio automáticamente en 15 segundos
-                        </p>
                     </div>
                 )}
             </main>
@@ -661,6 +673,10 @@ export default function TurnoKiosco() {
                 @keyframes pulseNumber {
                     0%, 100% { transform: scale(1); }
                     50% { transform: scale(1.03); }
+                }
+                @keyframes shrinkBar {
+                    from { width: 100%; }
+                    to { width: 0%; }
                 }
                 @media print {
                     .no-print { display: none !important; }
