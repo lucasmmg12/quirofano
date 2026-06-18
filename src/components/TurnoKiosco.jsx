@@ -207,82 +207,48 @@ export default function TurnoKiosco() {
     // ─── RawBT / Thermal Printing ───────────────────────────────────
     const isAndroid = /android/i.test(navigator.userAgent);
 
-    // Genera ticket con comandos ESC/POS para impresora térmica Nictom 58mm
+    // Genera ticket compacto con ESC/POS para Nictom 58mm
     const buildTicketText = useCallback(() => {
         if (!turno || !selectedType) return '';
 
-        // ESC/POS command shortcuts
         const ESC = '\x1B';
         const GS = '\x1D';
-        const INIT = ESC + '\x40';           // Initialize printer
-        const CENTER = ESC + '\x61\x01';      // Center align
-        const LEFT = ESC + '\x61\x00';        // Left align
-        const BOLD_ON = ESC + '\x45\x01';     // Bold on
-        const BOLD_OFF = ESC + '\x45\x00';    // Bold off
-        const DOUBLE = GS + '\x21\x11';       // Double width + double height
-        const NORMAL = GS + '\x21\x00';       // Normal size
-        const WIDE = GS + '\x21\x10';         // Double width only
-        const FEED = ESC + '\x64\x04';        // Feed 4 lines
-        const CUT = GS + '\x56\x01';          // Partial cut
+        const INIT = ESC + '\x40';
+        const CENTER = ESC + '\x61\x01';
+        const LEFT = ESC + '\x61\x00';
+        const BOLD_ON = ESC + '\x45\x01';
+        const BOLD_OFF = ESC + '\x45\x00';
+        const DOUBLE = GS + '\x21\x11';
+        const NORMAL = GS + '\x21\x00';
+        const FEED = ESC + '\x64\x02';       // Feed 2 lines
+        const CUT = GS + '\x56\x01';
 
         const tramiteLabel = getTicketTramiteLabel();
         const hora = new Date(turno.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
-        const fecha = new Date(turno.created_at).toLocaleDateString('es-AR');
 
-        let t = '';
+        let t = INIT + CENTER;
 
-        // ── Initialize ──
-        t += INIT;
-
-        // ── Header (centered + bold) ──
-        t += CENTER;
-        t += BOLD_ON;
-        t += WIDE;
-        t += 'SANATORIO\n';
-        t += 'ARGENTINO\n';
-        t += NORMAL;
-        t += BOLD_OFF;
-        t += 'Adm. y Atencion\n';
-        t += 'al Paciente\n';
-        t += '================================\n';
-        t += '\n';
-
-        // ── Ticket Number (BIG + BOLD) ──
-        t += BOLD_ON;
-        t += 'SU TURNO\n';
-        t += '\n';
-        t += DOUBLE;
-        t += turno.numero_turno + '\n';
-        t += NORMAL;
-        t += BOLD_OFF;
-        t += '\n';
-        t += '================================\n';
-
-        // ── Details (left aligned) ──
-        t += LEFT;
-        t += '\n';
-        t += BOLD_ON + 'Tramite: ' + BOLD_OFF + tramiteLabel + '\n';
-        t += BOLD_ON + 'Box:     ' + BOLD_OFF + turno.box_asignado + '\n';
-        if (turno.dni) {
-            t += BOLD_ON + 'DNI:     ' + BOLD_OFF + turno.dni + '\n';
-        }
-        t += BOLD_ON + 'Hora:    ' + BOLD_OFF + hora + '\n';
-        t += BOLD_ON + 'Fecha:   ' + BOLD_OFF + fecha + '\n';
-        t += '\n';
+        // Header compacto
+        t += BOLD_ON + 'SANATORIO ARGENTINO\n' + BOLD_OFF;
         t += '--------------------------------\n';
 
-        // ── Footer (centered) ──
-        t += CENTER;
-        t += '\n';
-        t += BOLD_ON;
-        t += 'Aguarde a ser\n';
-        t += 'llamado/a\n';
-        t += BOLD_OFF;
+        // Número GRANDE
+        t += DOUBLE + BOLD_ON;
+        t += turno.numero_turno + '\n';
+        t += NORMAL + BOLD_OFF;
+        t += '--------------------------------\n';
 
-        // ── Feed + Cut ──
-        t += FEED;
-        t += CUT;
+        // Detalles en una zona compacta
+        t += LEFT;
+        t += tramiteLabel + '\n';
+        t += 'Box ' + turno.box_asignado + (turno.dni ? '  DNI ' + turno.dni : '') + '\n';
+        t += hora + '\n';
 
+        // Footer
+        t += CENTER + '--------------------------------\n';
+        t += BOLD_ON + 'Aguarde a ser llamado/a\n' + BOLD_OFF;
+
+        t += FEED + CUT;
         return t;
     }, [turno, selectedType, getTicketTramiteLabel]);
 
