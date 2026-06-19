@@ -11,10 +11,10 @@
  * - PDF con firma digital
  * - Historial de devoluciones
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-    Search, RefreshCw, ChevronRight, ChevronDown, Clock, Calendar,
+    Search, RefreshCw, ChevronRight, ChevronLeft, ChevronDown, Clock, Calendar,
     Filter, X, Loader2, FileText, User, Building2,
     Stethoscope, Download, AlertTriangle, CheckCircle2, Receipt,
     ListFilter, ChevronUp, ShoppingCart, Trash2, Printer, PackageCheck, Undo2,
@@ -87,11 +87,40 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     const [responsableDropdownId, setResponsableDropdownId] = useState(null);
     const [dropdownAnchor, setDropdownAnchor] = useState(null);
 
-    // Filtros
-    const today = new Date();
-    const firstDayOfMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
-    const [fromDate, setFromDate] = useState(firstDayOfMonth);
-    const [toDate, setToDate] = useState('');
+    // ── Selector de Mes (reemplaza inputs de fecha manuales) ──
+    const nowRef = useRef(new Date());
+    const [selectedMonth, setSelectedMonth] = useState(() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    });
+    const monthScrollRef = useRef(null);
+
+    // Derivar fromDate/toDate del mes seleccionado
+    const fromDate = useMemo(() => `${selectedMonth}-01`, [selectedMonth]);
+    const toDate = useMemo(() => {
+        const [y, m] = selectedMonth.split('-').map(Number);
+        const lastDay = new Date(y, m, 0).getDate();
+        return `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+    }, [selectedMonth]);
+
+    // Generar lista de meses (desde Abril 2026 hasta mes actual)
+    const monthOptions = useMemo(() => {
+        const months = [];
+        const now = nowRef.current;
+        const start = new Date(2026, 3, 1); // Abril 2026
+        const end = new Date(now.getFullYear(), now.getMonth(), 1);
+        const d = new Date(start);
+        while (d <= end) {
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const label = d.toLocaleDateString('es-AR', { month: 'short' }).replace('.', '');
+            const fullLabel = `${label.charAt(0).toUpperCase() + label.slice(1)} ${d.getFullYear()}`;
+            const isCurrent = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+            months.push({ key, fullLabel, isCurrent });
+            d.setMonth(d.getMonth() + 1);
+        }
+        return months;
+    }, []);
+
     const [searchTerm, setSearchTerm] = useState('');
     const [filterEstado, setFilterEstado] = useState('all');
     const [filterResponsable, setFilterResponsable] = useState('all');
@@ -461,6 +490,15 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         window.addEventListener('click', handler);
         return () => window.removeEventListener('click', handler);
     }, []);
+    // Auto-scroll al mes seleccionado
+    useEffect(() => {
+        if (monthScrollRef.current) {
+            const activeBtn = monthScrollRef.current.querySelector('.month-pill--active');
+            if (activeBtn) {
+                activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+        }
+    }, [selectedMonth]);
 
     return (
         <div className="content no-print animate-fade-in" style={{ padding: '20px 24px' }}>
@@ -767,24 +805,60 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             ) : (
                 /* ══════ TABLA PRINCIPAL ══════ */
                 <>
+                    {/* ── Selector de Mes ── */}
+                    <div className="month-selector" style={{ marginBottom: '16px' }}>
+                        <button
+                            className="month-selector__arrow"
+                            onClick={() => {
+                                const idx = monthOptions.findIndex(m => m.key === selectedMonth);
+                                if (idx > 0) setSelectedMonth(monthOptions[idx - 1].key);
+                            }}
+                            disabled={monthOptions.findIndex(m => m.key === selectedMonth) === 0}
+                            title="Mes anterior"
+                        >
+                            <ChevronLeft size={16} />
+                        </button>
+                        <div className="month-selector__scroll" ref={monthScrollRef}>
+                            {monthOptions.map(m => (
+                                <button
+                                    key={m.key}
+                                    className={`month-pill${m.key === selectedMonth ? ' month-pill--active' : ''}${m.isCurrent ? ' month-pill--current' : ''}`}
+                                    onClick={() => setSelectedMonth(m.key)}
+                                >
+                                    {m.fullLabel}
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            className="month-selector__arrow"
+                            onClick={() => {
+                                const idx = monthOptions.findIndex(m => m.key === selectedMonth);
+                                if (idx < monthOptions.length - 1) setSelectedMonth(monthOptions[idx + 1].key);
+                            }}
+                            disabled={monthOptions.findIndex(m => m.key === selectedMonth) === monthOptions.length - 1}
+                            title="Mes siguiente"
+                        >
+                            <ChevronRight size={16} />
+                        </button>
+                    </div>
+
                     {/* ── Filtros ── */}
                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '8px', background: 'var(--neutral-50)', border: '1px solid var(--neutral-200)' }}>
-                            <Calendar size={14} style={{ color: 'var(--neutral-400)' }} />
-                            <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
-                                style={{ border: 'none', background: 'transparent', fontSize: '0.82rem', color: 'var(--neutral-700)', outline: 'none' }} />
-                            <span style={{ color: 'var(--neutral-400)', fontSize: '0.75rem' }}>a</span>
-                            <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-                                style={{ border: 'none', background: 'transparent', fontSize: '0.82rem', color: 'var(--neutral-700)', outline: 'none' }} />
-                        </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '8px', background: 'var(--neutral-50)', border: '1px solid var(--neutral-200)', flex: '1 1 200px', maxWidth: '320px' }}>
-                            <Search size={14} style={{ color: 'var(--neutral-400)' }} />
-                            <input type="text" placeholder="Buscar paciente, admisión..."
-                                value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                                style={{ border: 'none', background: 'transparent', fontSize: '0.82rem', color: 'var(--neutral-700)', outline: 'none', width: '100%' }} />
+                        <div style={{ flex: 1, position: 'relative', minWidth: '200px' }}>
+                            <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
+                            <input
+                                type="text"
+                                placeholder="Buscar paciente, médico, OS, N° admisión..."
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                                style={{
+                                    width: '100%', padding: '8px 10px 8px 32px',
+                                    borderRadius: '8px', border: '1px solid var(--neutral-200)',
+                                    fontSize: '0.82rem', outline: 'none',
+                                }}
+                            />
                             {searchTerm && (
-                                <X size={14} style={{ cursor: 'pointer', color: 'var(--neutral-400)' }} onClick={() => setSearchTerm('')} />
+                                <X size={14} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', color: 'var(--neutral-400)' }} onClick={() => setSearchTerm('')} />
                             )}
                         </div>
 
