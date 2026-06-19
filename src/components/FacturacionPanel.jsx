@@ -1213,6 +1213,44 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                                     )}
                                                                 </div>
 
+                                                                {/* Procedimientos Quirúrgicos (de Foja Quirúrgica) */}
+                                                                {alta.procedimientos_detalle && alta.procedimientos_detalle.length > 0 && (
+                                                                    <div style={{ marginBottom: '16px' }}>
+                                                                        <div style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                            🔪 Procedimientos Quirúrgicos
+                                                                            <span style={{
+                                                                                padding: '2px 8px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 700,
+                                                                                background: alta.triage_facturacion === 'Difícil' ? '#FEF2F2'
+                                                                                    : alta.triage_facturacion === 'Media' ? '#FFFBEB' : '#ECFDF5',
+                                                                                color: alta.triage_facturacion === 'Difícil' ? '#DC2626'
+                                                                                    : alta.triage_facturacion === 'Media' ? '#D97706' : '#059669',
+                                                                            }}>
+                                                                                {alta.triage_facturacion} ({alta.cantidad_procedimientos})
+                                                                            </span>
+                                                                        </div>
+                                                                        <div style={{
+                                                                            background: '#fff', borderRadius: '8px', border: '1px solid var(--neutral-200)',
+                                                                            padding: '10px 14px', marginTop: '6px',
+                                                                        }}>
+                                                                            {alta.procedimientos_detalle.map((proc, idx) => (
+                                                                                <div key={idx} style={{
+                                                                                    display: 'flex', alignItems: 'center', gap: '8px',
+                                                                                    padding: '4px 0',
+                                                                                    borderBottom: idx < alta.procedimientos_detalle.length - 1 ? '1px solid var(--neutral-100)' : 'none',
+                                                                                }}>
+                                                                                    <span style={{
+                                                                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                                                        width: '20px', height: '20px', borderRadius: '50%',
+                                                                                        background: '#EEF2FF', color: '#6366F1',
+                                                                                        fontSize: '0.65rem', fontWeight: 800, flexShrink: 0,
+                                                                                    }}>{idx + 1}</span>
+                                                                                    <span style={{ fontSize: '0.82rem', color: 'var(--neutral-700)' }}>{proc}</span>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
                                                                 {/* Observaciones */}
                                                                 {alta.observaciones && (
                                                                     <div style={{ marginBottom: '16px' }}>
