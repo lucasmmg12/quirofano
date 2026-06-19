@@ -1019,6 +1019,91 @@ async function syncAltasAdministrativas(db) {
 }
 
 // ═══════════════════════════════════════════════════
+// SYNC FOJA QUIRÚRGICA — SQL Server → Supabase
+// Fuente: TABLEAU_FojaQuirurgica
+// Extrae procedimientos quirúrgicos y calcula triage
+// de facturación (Fácil/Media/Difícil) por admisión
+// ═══════════════════════════════════════════════════
+async function syncFojaQuirurgica(db) {
+    console.log('🔪 [4a/10] Extrayendo foja quirúrgica de SALUS...');
+
+    const result = await db.request().query(`
+        SELECT 
+            [Núm. Admisión],
+            [idadmision],
+            [Procedimiento quirúrgico],
+            [Procedimiento quirúrgico 2],
+            [Procedimiento quirúrgico 3],
+            [Procedimiento quirúrgico 4]
+        FROM [SALUS].[dbo].[TABLEAU_FojaQuirurgica]
+        WHERE [Fecha visita] >= '20260401'
+        ORDER BY [Fecha visita] DESC
+    `);
+    console.log(`   📥 ${result.recordset.length} registros de foja extraídos`);
+
+    if (result.recordset.length === 0) {
+        return { total: 0, actualizadas: 0, skipped: 0 };
+    }
+
+    // Agrupar por numero_admision (una admisión puede tener múltiples fojas)
+    // Tomamos la unión de todos los procedimientos
+    const fojaMap = new Map();
+    for (const r of result.recordset) {
+        const numAdm = r['Núm. Admisión'] ? String(r['Núm. Admisión']).trim() : null;
+        if (!numAdm) continue;
+
+        const procs = [
+            r['Procedimiento quirúrgico'],
+            r['Procedimiento quirúrgico 2'],
+            r['Procedimiento quirúrgico 3'],
+            r['Procedimiento quirúrgico 4'],
+        ].filter(p => p && String(p).trim().length > 0)
+         .map(p => String(p).trim());
+
+        if (!fojaMap.has(numAdm)) {
+            fojaMap.set(numAdm, new Set());
+        }
+        // Agregar procedimientos únicos
+        for (const p of procs) {
+            fojaMap.get(numAdm).add(p);
+        }
+    }
+
+    console.log(`   📦 ${fojaMap.size} admisiones con foja quirúrgica`);
+
+    // Calcular triage y actualizar altas_administrativas
+    let actualizadas = 0, skipped = 0;
+
+    for (const [numAdm, procsSet] of fojaMap.entries()) {
+        const procs = [...procsSet];
+        const cantidad = procs.length;
+        let triage = null;
+        if (cantidad >= 3) triage = 'Difícil';
+        else if (cantidad === 2) triage = 'Media';
+        else if (cantidad === 1) triage = 'Fácil';
+
+        const { error } = await supabase
+            .from('altas_administrativas')
+            .update({
+                cantidad_procedimientos: cantidad,
+                triage_facturacion: triage,
+                procedimientos_detalle: procs,
+            })
+            .eq('numero_admision', numAdm);
+
+        if (error) {
+            skipped++;
+        } else {
+            actualizadas++;
+        }
+    }
+
+    const summary = { total: result.recordset.length, admisiones: fojaMap.size, actualizadas, skipped };
+    console.log(`   ✅ Foja: ${actualizadas} altas enriquecidas con triage, ${skipped} errores`);
+    return summary;
+}
+
+// ═══════════════════════════════════════════════════
 // SYNC FACTURACIÓN INTERNADA — SQL Server → Supabase
 // Fuente: TABLEAU_Detalle de ventas Facturadas con Gastos y Honorarios
 // Filtra PDV 21 y 31 (facturación internada)
@@ -2128,6 +2213,13 @@ app.get('/api/salus/sync-all', async (req, res) => {
         } catch (err) {
             console.error('âŒ Error en altas administrativas:', err.message);
             results.altas = { error: err.message };
+        }
+
+        try {
+            results.fojaQuirurgica = await syncFojaQuirurgica(db);
+        } catch (err) {
+            console.error('❌ Error en foja quirúrgica:', err.message);
+            results.fojaQuirurgica = { error: err.message };
         }
 
         try {

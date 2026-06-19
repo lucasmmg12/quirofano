@@ -860,6 +860,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                         <th style={{ ...thStyle, width: '80px' }}>Ingreso</th>
                                         <th style={{ ...thStyle, width: '80px' }}>Alta</th>
                                         <th style={{ ...thStyle, width: '45px', textAlign: 'center' }}>Días</th>
+                                        <th style={{ ...thStyle, width: '70px', textAlign: 'center' }}>Triage</th>
                                         <th style={{ ...thStyle, width: '80px', textAlign: 'center' }}>Facturada</th>
                                         <th style={{ ...thStyle, width: '160px' }}>Resp. FAC</th>
                                         <th style={{ ...thStyle, width: '120px' }}>Estado FAC</th>
@@ -963,6 +964,25 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                                 {dias}d
                                                             </span>
                                                         ) : '—'}
+                                                    </td>
+                                                    {/* Triage Facturación */}
+                                                    <td style={{ ...tdStyle, textAlign: 'center' }}>
+                                                        {alta.triage_facturacion ? (
+                                                            <span
+                                                                title={alta.procedimientos_detalle?.join(' | ') || ''}
+                                                                style={{
+                                                                    padding: '2px 6px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 700,
+                                                                    cursor: 'help',
+                                                                    background: alta.triage_facturacion === 'Difícil' ? '#FEF2F2'
+                                                                        : alta.triage_facturacion === 'Media' ? '#FFFBEB' : '#ECFDF5',
+                                                                    color: alta.triage_facturacion === 'Difícil' ? '#DC2626'
+                                                                        : alta.triage_facturacion === 'Media' ? '#D97706' : '#059669',
+                                                                }}>
+                                                                {alta.triage_facturacion === 'Difícil' ? '🔴' : alta.triage_facturacion === 'Media' ? '🟡' : '🟢'} {alta.cantidad_procedimientos || 0}
+                                                            </span>
+                                                        ) : (
+                                                            <span style={{ color: 'var(--neutral-300)', fontSize: '0.72rem' }}>—</span>
+                                                        )}
                                                     </td>
                                                     <td style={{ ...tdStyle, textAlign: 'center' }}>
                                                         {alta.facturada ? (
@@ -1075,7 +1095,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                 {/* ── Detalle expandido ── */}
                                                 {isExpanded && (
                                                     <tr key={`${alta.id}-detail`} className="animate-fade-in">
-                                                        <td colSpan={14} style={{ padding: 0, border: 'none' }}>
+                                                        <td colSpan={15} style={{ padding: 0, border: 'none' }}>
                                                             <div style={{
                                                                 background: 'var(--neutral-50)',
                                                                 borderLeft: '3px solid #6366F1',
