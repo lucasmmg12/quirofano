@@ -25,6 +25,7 @@ import {
     marcarParaDevolucion, quitarDeCarritoDevolucion, fetchCarritoDevolucion,
     generarDevolucion, fetchDevoluciones, fetchDevolucionDetalle,
 } from '../services/altasService';
+import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
 import SalusSyncButton from './SalusSyncButton';
 import SignaturePad from './SignaturePad';
 import { SkeletonTablePanel } from './SkeletonLoader';
@@ -78,6 +79,9 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     const [detalleLoading, setDetalleLoading] = useState(false);
     const [processing, setProcessing] = useState(false);
 
+    // ── Criterios de asignación (para columna Resp. ADM) ──
+    const [criterios, setCriterios] = useState([]);
+
     // Dropdowns
     const [estadoDropdownId, setEstadoDropdownId] = useState(null);
     const [responsableDropdownId, setResponsableDropdownId] = useState(null);
@@ -110,6 +114,13 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     const [devolucionesLoading, setDevolucionesLoading] = useState(false);
     const [expandedDevolucion, setExpandedDevolucion] = useState(null);
     const [devolucionDetalle, setDevolucionDetalle] = useState({});
+
+    // ── Carga criterios de asignación (para Resp. ADM) ──
+    useEffect(() => {
+        fetchAsignaciones()
+            .then(data => setCriterios(data))
+            .catch(err => console.warn('[FacturacionPanel] Error cargando criterios:', err));
+    }, []);
 
     // ── Carga de datos ──
     const loadData = useCallback(async () => {
@@ -309,10 +320,44 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         }
     };
 
-    // ── Filtrado ──
-    const filteredAltas = useMemo(() => {
-        let result = altas;
+    // ── Filtrado con chequeo filter + enriquecimiento ──
+    const { filteredAltas, chequeosExcluidos, duplicatePatients } = useMemo(() => {
+        // 1) Excluir chequeos (misma lógica que AltasPanel)
+        let chequeosCount = 0;
+        let result = altas.filter(alta => {
+            const doc = (alta.doctor || '').toLowerCase().trim();
+            if (doc.includes('qsoft') || (doc.includes('profesional') && doc.includes('chequeo'))) {
+                chequeosCount++;
+                return false;
+            }
+            return true;
+        });
 
+        // 2) Detectar duplicados: pacientes con múltiples admisiones en el rango
+        const patientMap = new Map();
+        for (const alta of result) {
+            const key = (alta.paciente || '').trim().toUpperCase();
+            if (!key) continue;
+            if (!patientMap.has(key)) patientMap.set(key, []);
+            patientMap.get(key).push(alta.numero_admision);
+        }
+        const dupPatients = new Map();
+        for (const [name, admissions] of patientMap) {
+            if (admissions.length > 1) dupPatients.set(name, admissions);
+        }
+
+        // 3) Enriquecer con responsable ADM y flags
+        result = result.map(alta => {
+            const asignacion = matchAsignacion(criterios, alta.cliente, alta.especialidad, alta.proceso);
+            const respAdm = alta.responsable_override || asignacion?.responsable || null;
+            const isSuspendida = alta.estado === 'Suspendida' && !alta.traspaso_id;
+            const pacKey = (alta.paciente || '').trim().toUpperCase();
+            const isDuplicate = dupPatients.has(pacKey);
+            const duplicateAdmissions = isDuplicate ? dupPatients.get(pacKey) : null;
+            return { ...alta, _responsableAdm: respAdm, _isSuspendida: isSuspendida, _isDuplicate: isDuplicate, _duplicateAdmissions: duplicateAdmissions };
+        });
+
+        // 4) Filtros de usuario
         if (filterEstado !== 'all') {
             result = result.filter(a => (a.estado_fac || 'Pendiente') === filterEstado);
         }
@@ -320,18 +365,24 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             result = result.filter(a => a.responsable_fac === filterResponsable);
         }
 
-        return result;
-    }, [altas, filterEstado, filterResponsable]);
+        return { filteredAltas: result, chequeosExcluidos: chequeosCount, duplicatePatients: dupPatients };
+    }, [altas, filterEstado, filterResponsable, criterios]);
 
     // ── KPIs ──
     const kpis = useMemo(() => {
-        const total = altas.length;
-        const pendientes = altas.filter(a => !a.estado_fac || a.estado_fac === 'Pendiente').length;
-        const enProceso = altas.filter(a => a.estado_fac === 'En proceso').length;
-        const facturadas = altas.filter(a => a.estado_fac === 'Facturada' || a.facturada).length;
-        const devueltas = altas.filter(a => a.estado_fac === 'Devuelta').length;
-        const autoFacturadas = altas.filter(a => a.facturada).length;
-        return { total, pendientes, enProceso, facturadas, devueltas, autoFacturadas };
+        // Base: altas sin chequeos
+        const base = altas.filter(a => {
+            const doc = (a.doctor || '').toLowerCase().trim();
+            return !(doc.includes('qsoft') || (doc.includes('profesional') && doc.includes('chequeo')));
+        });
+        const total = base.length;
+        const pendientes = base.filter(a => !a.estado_fac || a.estado_fac === 'Pendiente').length;
+        const enProceso = base.filter(a => a.estado_fac === 'En proceso').length;
+        const facturadas = base.filter(a => a.estado_fac === 'Facturada' || a.facturada).length;
+        const devueltas = base.filter(a => a.estado_fac === 'Devuelta').length;
+        const autoFacturadas = base.filter(a => a.facturada).length;
+        const suspendidas = base.filter(a => a.estado === 'Suspendida' && !a.traspaso_id).length;
+        return { total, pendientes, enProceso, facturadas, devueltas, autoFacturadas, suspendidas };
     }, [altas]);
 
     // ── Responsables únicos ──
@@ -441,13 +492,14 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             </div>
 
             {/* ── KPIs ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', marginBottom: '20px' }}>
                 {[
                     { label: 'Total', value: kpis.total, color: '#6366F1', bg: '#EEF2FF' },
                     { label: 'Pendientes', value: kpis.pendientes, color: '#94A3B8', bg: '#F8FAFC' },
                     { label: 'En proceso', value: kpis.enProceso, color: '#F59E0B', bg: '#FFFBEB' },
                     { label: 'Facturadas', value: kpis.facturadas, color: '#10B981', bg: '#ECFDF5' },
-                    { label: 'Devueltas', value: kpis.devueltas, color: '#EF4444', bg: '#FEF2F2' },
+                    { label: 'Suspendidas', value: kpis.suspendidas, color: '#EF4444', bg: '#FEF2F2' },
+                    { label: 'Devueltas', value: kpis.devueltas, color: '#DC2626', bg: '#FEF2F2' },
                     { label: 'Auto (SALUS)', value: kpis.autoFacturadas, color: '#8B5CF6', bg: '#F5F3FF' },
                 ].map(k => (
                     <div key={k.label} style={{
@@ -755,6 +807,18 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                         <span style={{ fontSize: '0.78rem', color: 'var(--neutral-500)', fontWeight: 600 }}>
                             {filteredAltas.length} ficha{filteredAltas.length !== 1 ? 's' : ''}
                         </span>
+                        {chequeosExcluidos > 0 && (
+                            <span style={{ fontSize: '0.72rem', color: '#9CA3AF', fontStyle: 'italic' }}
+                                title="Admisiones de tipo Chequeo (Dr. QSoft/Profesional) excluidas automáticamente">
+                                ({chequeosExcluidos} chequeo{chequeosExcluidos !== 1 ? 's' : ''} excluido{chequeosExcluidos !== 1 ? 's' : ''})
+                            </span>
+                        )}
+                        {duplicatePatients.size > 0 && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: '#D97706', fontWeight: 600, padding: '2px 8px', borderRadius: '10px', background: '#FFFBEB', border: '1px solid #FDE68A' }}
+                                title="Pacientes con múltiples admisiones en el rango — revisar manualmente">
+                                <AlertTriangle size={12} /> {duplicatePatients.size} paciente{duplicatePatients.size !== 1 ? 's' : ''} con múltiples adm.
+                            </span>
+                        )}
                     </div>
 
                     {/* ── Tabla ── */}
@@ -789,13 +853,16 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                         <th style={{ ...thStyle, width: '28px' }}></th>
                                         <th style={{ ...thStyle, width: '90px' }}>Admisión</th>
                                         <th style={thStyle}>Paciente</th>
-                                        <th style={thStyle}>Cliente</th>
-                                        <th style={{ ...thStyle, width: '90px' }}>Ingreso</th>
-                                        <th style={{ ...thStyle, width: '90px' }}>Alta</th>
-                                        <th style={{ ...thStyle, width: '50px', textAlign: 'center' }}>Días</th>
-                                        <th style={{ ...thStyle, width: '90px', textAlign: 'center' }}>Facturada</th>
-                                        <th style={{ ...thStyle, width: '170px' }}>Responsable FAC</th>
-                                        <th style={{ ...thStyle, width: '130px' }}>Estado FAC</th>
+                                        <th style={{ ...thStyle, maxWidth: '140px' }}>Cliente</th>
+                                        <th style={{ ...thStyle, width: '120px' }}>Resp. ADM</th>
+                                        <th style={{ ...thStyle, width: '100px' }}>Proceso</th>
+                                        <th style={{ ...thStyle, width: '120px' }}>Médico</th>
+                                        <th style={{ ...thStyle, width: '80px' }}>Ingreso</th>
+                                        <th style={{ ...thStyle, width: '80px' }}>Alta</th>
+                                        <th style={{ ...thStyle, width: '45px', textAlign: 'center' }}>Días</th>
+                                        <th style={{ ...thStyle, width: '80px', textAlign: 'center' }}>Facturada</th>
+                                        <th style={{ ...thStyle, width: '160px' }}>Resp. FAC</th>
+                                        <th style={{ ...thStyle, width: '120px' }}>Estado FAC</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -805,7 +872,13 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                         const estadoConfig = FACTURACION_ESTADOS[estadoFac] || FACTURACION_ESTADOS['Pendiente'];
                                         const isDevuelta = estadoFac === 'Devuelta';
                                         const dias = daysBetween(alta.fecha_ingreso, alta.fecha_alta);
-                                        const canSelect = !alta.en_carrito_devolucion && !alta.devolucion_id;
+                                        const canSelect = !alta.en_carrito_devolucion && !alta.devolucion_id && !alta._isSuspendida;
+                                        // Read-only: fichas facturadas, devueltas, o suspendidas no se pueden editar
+                                        const isReadOnly = estadoFac === 'Facturada' || estadoFac === 'Devuelta' || alta._isSuspendida;
+                                        const rowBg = alta._isSuspendida ? '#FEF2F2'
+                                            : alta._isDuplicate ? '#FFFBEB'
+                                            : isDevuelta ? '#FEF2F2'
+                                            : isExpanded ? 'var(--neutral-50)' : 'transparent';
 
                                         return (
                                             <>
@@ -814,11 +887,12 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                     style={{
                                                         cursor: 'pointer',
                                                         borderBottom: '1px solid var(--neutral-100)',
-                                                        background: isDevuelta ? '#FEF2F2' : isExpanded ? 'var(--neutral-50)' : 'transparent',
+                                                        background: rowBg,
                                                         transition: 'background 0.15s',
+                                                        opacity: alta._isSuspendida ? 0.85 : 1,
                                                     }}
-                                                    onMouseOver={e => { if (!isDevuelta) e.currentTarget.style.background = 'var(--neutral-50)'; }}
-                                                    onMouseOut={e => { if (!isDevuelta && !isExpanded) e.currentTarget.style.background = 'transparent'; }}
+                                                    onMouseOver={e => { if (!isDevuelta && !alta._isSuspendida) e.currentTarget.style.background = 'var(--neutral-50)'; }}
+                                                    onMouseOut={e => { if (!isDevuelta && !isExpanded && !alta._isSuspendida && !alta._isDuplicate) e.currentTarget.style.background = 'transparent'; }}
                                                 >
                                                     {/* Checkbox */}
                                                     <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
@@ -841,23 +915,48 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                         <span style={{
                                                             fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 600,
                                                             padding: '2px 6px', borderRadius: '4px',
-                                                            background: '#EEF2FF', color: '#4338CA',
+                                                            background: alta._isSuspendida ? '#FEF2F2' : '#EEF2FF',
+                                                            color: alta._isSuspendida ? '#DC2626' : '#4338CA',
                                                         }}>
                                                             {alta.numero_admision || '—'}
                                                         </span>
                                                     </td>
-                                                    <td style={{ ...tdStyle, fontWeight: 600, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                        {alta.paciente}
+                                                    <td style={{ ...tdStyle, fontWeight: 600, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        <span>{alta.paciente}</span>
+                                                        {alta._isSuspendida && (
+                                                            <span style={{ marginLeft: '6px', padding: '1px 6px', borderRadius: '4px', background: '#FEF2F2', color: '#DC2626', fontSize: '0.65rem', fontWeight: 700, verticalAlign: 'middle' }}>⛔ SUSP.</span>
+                                                        )}
+                                                        {alta._isDuplicate && (
+                                                            <span title={`Múltiples admisiones: ${alta._duplicateAdmissions?.join(', ')}`}
+                                                                style={{ marginLeft: '4px', padding: '1px 5px', borderRadius: '4px', background: '#FFFBEB', color: '#D97706', fontSize: '0.65rem', fontWeight: 700, verticalAlign: 'middle', cursor: 'help' }}>
+                                                                ⚠️ {alta._duplicateAdmissions?.length}
+                                                            </span>
+                                                        )}
                                                     </td>
-                                                    <td style={{ ...tdStyle, maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--neutral-500)' }}>
+                                                    <td style={{ ...tdStyle, maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--neutral-500)' }}>
                                                         {alta.cliente || '—'}
                                                     </td>
-                                                    <td style={tdStyle}>{formatDate(alta.fecha_ingreso)}</td>
-                                                    <td style={tdStyle}>{formatDate(alta.fecha_alta)}</td>
+                                                    {/* Resp. ADM */}
+                                                    <td style={{ ...tdStyle, fontSize: '0.75rem', color: alta._responsableAdm ? '#6366F1' : 'var(--neutral-400)' }}
+                                                        title={alta._responsableAdm || 'Sin asignación'}>
+                                                        {alta._responsableAdm ? shortName(alta._responsableAdm) : '—'}
+                                                    </td>
+                                                    {/* Proceso */}
+                                                    <td style={{ ...tdStyle, fontSize: '0.75rem', color: 'var(--neutral-500)', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                                        title={alta.proceso || ''}>
+                                                        {alta.proceso || '—'}
+                                                    </td>
+                                                    {/* Médico */}
+                                                    <td style={{ ...tdStyle, fontSize: '0.75rem', color: 'var(--neutral-500)', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                                        title={alta.doctor || ''}>
+                                                        {alta.doctor ? shortName(alta.doctor) : '—'}
+                                                    </td>
+                                                    <td style={{ ...tdStyle, fontSize: '0.75rem' }}>{formatDate(alta.fecha_ingreso)}</td>
+                                                    <td style={{ ...tdStyle, fontSize: '0.75rem' }}>{formatDate(alta.fecha_alta)}</td>
                                                     <td style={{ ...tdStyle, textAlign: 'center' }}>
                                                         {dias !== null ? (
                                                             <span style={{
-                                                                padding: '2px 6px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 700,
+                                                                padding: '2px 6px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700,
                                                                 background: dias > 15 ? '#FEF2F2' : dias > 7 ? '#FFFBEB' : '#ECFDF5',
                                                                 color: dias > 15 ? '#DC2626' : dias > 7 ? '#D97706' : '#059669',
                                                             }}>
@@ -880,24 +979,26 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                         )}
                                                     </td>
 
-                                                    {/* Responsable FAC — dropdown */}
-                                                    <td style={tdStyle} onClick={e => e.stopPropagation()}>
+                                                    {/* Responsable FAC — dropdown (read-only if locked) */}
+                                                    <td style={{ ...tdStyle, opacity: isReadOnly ? 0.6 : 1 }} onClick={e => e.stopPropagation()}>
                                                         <div style={{ position: 'relative' }}>
-                                                            <button onClick={(e) => openDropdown(e, alta.id, 'responsable')}
+                                                            <button onClick={(e) => !isReadOnly && openDropdown(e, alta.id, 'responsable')}
+                                                                disabled={isReadOnly}
                                                                 style={{
                                                                     display: 'flex', alignItems: 'center', gap: '4px',
                                                                     padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem',
                                                                     border: '1px solid var(--neutral-200)', background: 'var(--neutral-50)',
-                                                                    cursor: 'pointer', color: alta.responsable_fac ? 'var(--neutral-700)' : 'var(--neutral-400)',
+                                                                    cursor: isReadOnly ? 'not-allowed' : 'pointer',
+                                                                    color: alta.responsable_fac ? 'var(--neutral-700)' : 'var(--neutral-400)',
                                                                     fontWeight: alta.responsable_fac ? 600 : 400,
                                                                     width: '100%', justifyContent: 'space-between',
                                                                 }}>
                                                                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                                     {alta.responsable_fac ? shortName(alta.responsable_fac) : 'Asignar'}
                                                                 </span>
-                                                                <ChevronDown size={12} />
+                                                                {!isReadOnly && <ChevronDown size={12} />}
                                                             </button>
-                                                            {responsableDropdownId === alta.id && (
+                                                            {!isReadOnly && responsableDropdownId === alta.id && (
                                                                 <div style={{
                                                                     position: 'absolute', top: '100%', left: 0, zIndex: 50,
                                                                     background: '#fff', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
@@ -922,38 +1023,50 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                         </div>
                                                     </td>
 
-                                                    {/* Estado FAC — dropdown */}
-                                                    <td style={tdStyle} onClick={e => e.stopPropagation()}>
+                                                    {/* Estado FAC — dropdown (read-only if locked) */}
+                                                    <td style={{ ...tdStyle, opacity: isReadOnly ? 0.6 : 1 }} onClick={e => e.stopPropagation()}>
                                                         <div style={{ position: 'relative' }}>
-                                                            <button onClick={(e) => openDropdown(e, alta.id, 'estado')}
-                                                                style={{
+                                                            {alta._isSuspendida ? (
+                                                                <span style={{
                                                                     display: 'inline-flex', alignItems: 'center', gap: '4px',
                                                                     padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem',
-                                                                    border: `1px solid ${estadoConfig.color}44`,
-                                                                    background: estadoConfig.bg, color: estadoConfig.color,
-                                                                    fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-                                                                }}>
-                                                                {estadoConfig.icon} {estadoConfig.label}
-                                                                <ChevronDown size={11} />
-                                                            </button>
-                                                            {estadoDropdownId === alta.id && (
-                                                                <div style={{
-                                                                    position: 'absolute', top: '100%', right: 0, zIndex: 50,
-                                                                    background: '#fff', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                                                                    border: '1px solid var(--neutral-200)', minWidth: '160px', overflow: 'hidden',
-                                                                }}>
-                                                                    {Object.entries(FACTURACION_ESTADOS).map(([k, v]) => (
-                                                                        <div key={k} onClick={() => handleEstadoChange(alta.id, k)}
-                                                                            style={{
-                                                                                ...dropdownItemStyle,
-                                                                                fontWeight: estadoFac === k ? 700 : 400,
-                                                                                background: estadoFac === k ? v.bg : 'transparent',
-                                                                                color: estadoFac === k ? v.color : 'var(--neutral-700)',
-                                                                            }}>
-                                                                            <span>{v.icon}</span> {v.label}
+                                                                    border: '1px solid #EF444444', background: '#FEF2F2', color: '#EF4444',
+                                                                    fontWeight: 700, whiteSpace: 'nowrap',
+                                                                }}>⛔ Suspendida</span>
+                                                            ) : (
+                                                                <>
+                                                                    <button onClick={(e) => !isReadOnly && openDropdown(e, alta.id, 'estado')}
+                                                                        disabled={isReadOnly}
+                                                                        style={{
+                                                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                                            padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem',
+                                                                            border: `1px solid ${estadoConfig.color}44`,
+                                                                            background: estadoConfig.bg, color: estadoConfig.color,
+                                                                            fontWeight: 700, cursor: isReadOnly ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+                                                                        }}>
+                                                                        {estadoConfig.icon} {estadoConfig.label}
+                                                                        {!isReadOnly && <ChevronDown size={11} />}
+                                                                    </button>
+                                                                    {!isReadOnly && estadoDropdownId === alta.id && (
+                                                                        <div style={{
+                                                                            position: 'absolute', top: '100%', right: 0, zIndex: 50,
+                                                                            background: '#fff', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                                                                            border: '1px solid var(--neutral-200)', minWidth: '160px', overflow: 'hidden',
+                                                                        }}>
+                                                                            {Object.entries(FACTURACION_ESTADOS).map(([k, v]) => (
+                                                                                <div key={k} onClick={() => handleEstadoChange(alta.id, k)}
+                                                                                    style={{
+                                                                                        ...dropdownItemStyle,
+                                                                                        fontWeight: estadoFac === k ? 700 : 400,
+                                                                                        background: estadoFac === k ? v.bg : 'transparent',
+                                                                                        color: estadoFac === k ? v.color : 'var(--neutral-700)',
+                                                                                    }}>
+                                                                                    <span>{v.icon}</span> {v.label}
+                                                                                </div>
+                                                                            ))}
                                                                         </div>
-                                                                    ))}
-                                                                </div>
+                                                                    )}
+                                                                </>
                                                             )}
                                                         </div>
                                                     </td>
@@ -962,7 +1075,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                 {/* ── Detalle expandido ── */}
                                                 {isExpanded && (
                                                     <tr key={`${alta.id}-detail`} className="animate-fade-in">
-                                                        <td colSpan={11} style={{ padding: 0, border: 'none' }}>
+                                                        <td colSpan={14} style={{ padding: 0, border: 'none' }}>
                                                             <div style={{
                                                                 background: 'var(--neutral-50)',
                                                                 borderLeft: '3px solid #6366F1',

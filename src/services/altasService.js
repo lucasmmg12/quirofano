@@ -183,7 +183,9 @@ export async function fetchFacturacionDetalle(numeroAdmision) {
 }
 
 /**
- * Obtiene altas con datos de facturación (solo las traspasadas)
+ * Obtiene altas con datos de facturación:
+ *   - Traspasadas (tienen traspaso_id)
+ *   - Suspendidas (estado = 'Suspendida') → viajan directo sin traspaso físico
  */
 export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
     const PAGE_SIZE = 1000;
@@ -195,7 +197,7 @@ export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
         let query = supabase
             .from('altas_administrativas')
             .select('*')
-            .not('traspaso_id', 'is', null)
+            .or('traspaso_id.not.is.null,estado.eq.Suspendida')
             .order('fecha_ingreso', { ascending: false })
             .range(from, from + PAGE_SIZE - 1);
 
