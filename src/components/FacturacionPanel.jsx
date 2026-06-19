@@ -368,11 +368,24 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             const key = (alta.paciente || '').trim().toUpperCase();
             if (!key) continue;
             if (!patientMap.has(key)) patientMap.set(key, []);
-            patientMap.get(key).push(alta.numero_admision);
+            patientMap.get(key).push(alta);
         }
         const dupPatients = new Map();
-        for (const [name, admissions] of patientMap) {
-            if (admissions.length > 1) dupPatients.set(name, admissions);
+        for (const [name, entries] of patientMap) {
+            if (entries.length > 1) {
+                // Ordenar por fecha_ingreso DESC para saber cuál es la última
+                const sorted = [...entries].sort((a, b) => {
+                    const dateA = a.fecha_ingreso ? new Date(a.fecha_ingreso) : new Date(0);
+                    const dateB = b.fecha_ingreso ? new Date(b.fecha_ingreso) : new Date(0);
+                    return dateB - dateA; // más reciente primero
+                });
+                const latestId = sorted[0].id;
+                dupPatients.set(name, {
+                    admissions: sorted.map(e => e.numero_admision),
+                    latestId,
+                    count: entries.length,
+                });
+            }
         }
 
         // 3) Enriquecer con responsable ADM y flags
@@ -381,9 +394,17 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             const respAdm = alta.responsable_override || asignacion?.responsable || null;
             const isSuspendida = alta.estado === 'Suspendida' && !alta.traspaso_id;
             const pacKey = (alta.paciente || '').trim().toUpperCase();
-            const isDuplicate = dupPatients.has(pacKey);
-            const duplicateAdmissions = isDuplicate ? dupPatients.get(pacKey) : null;
-            return { ...alta, _responsableAdm: respAdm, _isSuspendida: isSuspendida, _isDuplicate: isDuplicate, _duplicateAdmissions: duplicateAdmissions };
+            const dupInfo = dupPatients.get(pacKey);
+            const isDuplicate = !!dupInfo;
+            const duplicateAdmissions = isDuplicate ? dupInfo.admissions : null;
+            const isLatestAdmission = isDuplicate ? dupInfo.latestId === alta.id : true;
+            const isObsoleteAdmission = isDuplicate && !isLatestAdmission;
+            return {
+                ...alta, _responsableAdm: respAdm, _isSuspendida: isSuspendida,
+                _isDuplicate: isDuplicate, _duplicateAdmissions: duplicateAdmissions,
+                _isLatestAdmission: isLatestAdmission, _isObsoleteAdmission: isObsoleteAdmission,
+                _duplicateCount: isDuplicate ? dupInfo.count : 0,
+            };
         });
 
         // 4) Filtros de usuario
@@ -951,7 +972,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                         // Read-only: fichas facturadas, devueltas, o suspendidas no se pueden editar
                                         const isReadOnly = estadoFac === 'Facturada' || estadoFac === 'Devuelta' || alta._isSuspendida;
                                         const rowBg = alta._isSuspendida ? '#FEF2F2'
-                                            : alta._isDuplicate ? '#FFFBEB'
+                                            : alta._isObsoleteAdmission ? '#FFFBEB'
                                             : isDevuelta ? '#FEF2F2'
                                             : isExpanded ? 'var(--neutral-50)' : 'transparent';
 
@@ -964,7 +985,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                         borderBottom: '1px solid var(--neutral-100)',
                                                         background: rowBg,
                                                         transition: 'background 0.15s',
-                                                        opacity: alta._isSuspendida ? 0.85 : 1,
+                                                        opacity: alta._isObsoleteAdmission ? 0.55 : alta._isSuspendida ? 0.85 : 1,
                                                     }}
                                                     onMouseOver={e => { if (!isDevuelta && !alta._isSuspendida) e.currentTarget.style.background = 'var(--neutral-50)'; }}
                                                     onMouseOut={e => { if (!isDevuelta && !isExpanded && !alta._isSuspendida && !alta._isDuplicate) e.currentTarget.style.background = 'transparent'; }}
@@ -990,8 +1011,9 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                         <span style={{
                                                             fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 600,
                                                             padding: '2px 6px', borderRadius: '4px',
-                                                            background: alta._isSuspendida ? '#FEF2F2' : '#EEF2FF',
-                                                            color: alta._isSuspendida ? '#DC2626' : '#4338CA',
+                                                            background: alta._isSuspendida ? '#FEF2F2' : alta._isObsoleteAdmission ? '#FFFBEB' : '#EEF2FF',
+                                                            color: alta._isSuspendida ? '#DC2626' : alta._isObsoleteAdmission ? '#D97706' : '#4338CA',
+                                                            textDecoration: alta._isObsoleteAdmission ? 'line-through' : 'none',
                                                         }}>
                                                             {alta.numero_admision || '—'}
                                                         </span>
@@ -1001,10 +1023,16 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                         {alta._isSuspendida && (
                                                             <span style={{ marginLeft: '6px', padding: '1px 6px', borderRadius: '4px', background: '#FEF2F2', color: '#DC2626', fontSize: '0.65rem', fontWeight: 700, verticalAlign: 'middle' }}>⛔ SUSP.</span>
                                                         )}
-                                                        {alta._isDuplicate && (
-                                                            <span title={`Múltiples admisiones: ${alta._duplicateAdmissions?.join(', ')}`}
-                                                                style={{ marginLeft: '4px', padding: '1px 5px', borderRadius: '4px', background: '#FFFBEB', color: '#D97706', fontSize: '0.65rem', fontWeight: 700, verticalAlign: 'middle', cursor: 'help' }}>
-                                                                ⚠️ {alta._duplicateAdmissions?.length}
+                                                        {alta._isDuplicate && alta._isLatestAdmission && (
+                                                            <span title={`Admisión vigente — Otras: ${alta._duplicateAdmissions?.filter(a => a !== alta.numero_admision).join(', ')}`}
+                                                                style={{ marginLeft: '4px', padding: '1px 6px', borderRadius: '4px', background: '#ECFDF5', color: '#059669', fontSize: '0.62rem', fontWeight: 700, verticalAlign: 'middle', cursor: 'help' }}>
+                                                                ✓ VIGENTE
+                                                            </span>
+                                                        )}
+                                                        {alta._isObsoleteAdmission && (
+                                                            <span title={`Admisión anterior — Última: ${alta._duplicateAdmissions?.[0]}`}
+                                                                style={{ marginLeft: '4px', padding: '1px 6px', borderRadius: '4px', background: '#FFFBEB', color: '#D97706', fontSize: '0.62rem', fontWeight: 700, verticalAlign: 'middle', cursor: 'help' }}>
+                                                                ⚡ ANTERIOR ({alta._duplicateCount})
                                                             </span>
                                                         )}
                                                     </td>
