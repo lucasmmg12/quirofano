@@ -125,6 +125,51 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     const [filterEstado, setFilterEstado] = useState('all');
     const [filterResponsable, setFilterResponsable] = useState('all');
 
+    // ── Filtros por columna (tipo Excel) ──
+    const [columnFilters, setColumnFilters] = useState({});
+    const [activeFilterCol, setActiveFilterCol] = useState(null);
+    const [filterSearch, setFilterSearch] = useState('');
+
+    const toggleColumnFilter = (col) => {
+        setActiveFilterCol(prev => prev === col ? null : col);
+        setFilterSearch('');
+    };
+
+    const setFilterValues = (col, values) => {
+        setColumnFilters(prev => {
+            const next = { ...prev };
+            if (!values || values.size === 0) delete next[col];
+            else next[col] = values;
+            return next;
+        });
+    };
+
+    const toggleFilterValue = (col, value) => {
+        setColumnFilters(prev => {
+            const current = prev[col] ? new Set(prev[col]) : new Set();
+            if (current.has(value)) current.delete(value);
+            else current.add(value);
+            const next = { ...prev };
+            if (current.size === 0) delete next[col];
+            else next[col] = current;
+            return next;
+        });
+    };
+
+    const clearColumnFilter = (col) => {
+        setColumnFilters(prev => {
+            const next = { ...prev };
+            delete next[col];
+            return next;
+        });
+        setActiveFilterCol(null);
+    };
+
+    const clearAllColumnFilters = () => {
+        setColumnFilters({});
+        setActiveFilterCol(null);
+    };
+
     // ── Tabs ──
     const [activeTab, setActiveTab] = useState('tabla'); // 'tabla' | 'carrito_devolucion' | 'historial_devoluciones'
 
@@ -350,7 +395,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     };
 
     // ── Filtrado con chequeo filter + enriquecimiento ──
-    const { filteredAltas, chequeosExcluidos, duplicatePatients } = useMemo(() => {
+    const { preFilteredAltas, chequeosExcluidos, duplicatePatients } = useMemo(() => {
         // 1) Excluir chequeos (misma lógica que AltasPanel)
         let chequeosCount = 0;
         let result = altas.filter(alta => {
@@ -415,8 +460,45 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             result = result.filter(a => a.responsable_fac === filterResponsable);
         }
 
-        return { filteredAltas: result, chequeosExcluidos: chequeosCount, duplicatePatients: dupPatients };
+        return { preFilteredAltas: result, chequeosExcluidos: chequeosCount, duplicatePatients: dupPatients };
     }, [altas, filterEstado, filterResponsable, criterios]);
+
+    const uniqueValues = useMemo(() => {
+        const cols = {
+            cliente: new Set(),
+            _responsableAdm: new Set(),
+            proceso: new Set(),
+            doctor: new Set(),
+            responsable_fac: new Set(),
+            estado_fac: new Set(),
+        };
+        preFilteredAltas.forEach(a => {
+            if (a.cliente) cols.cliente.add(a.cliente);
+            if (a._responsableAdm) cols._responsableAdm.add(a._responsableAdm);
+            if (a.proceso) cols.proceso.add(a.proceso);
+            if (a.doctor) cols.doctor.add(a.doctor);
+            if (a.responsable_fac) cols.responsable_fac.add(a.responsable_fac);
+            
+            const est = a.estado_fac || 'Pendiente';
+            cols.estado_fac.add(est);
+        });
+        return Object.fromEntries(Object.entries(cols).map(([k, v]) => [k, [...v].sort()]));
+    }, [preFilteredAltas]);
+
+    const filteredAltas = useMemo(() => {
+        if (Object.keys(columnFilters).length === 0) return preFilteredAltas;
+        return preFilteredAltas.filter(a => {
+            if (columnFilters.cliente && !columnFilters.cliente.has(a.cliente)) return false;
+            if (columnFilters._responsableAdm && !columnFilters._responsableAdm.has(a._responsableAdm)) return false;
+            if (columnFilters.proceso && !columnFilters.proceso.has(a.proceso)) return false;
+            if (columnFilters.doctor && !columnFilters.doctor.has(a.doctor)) return false;
+            if (columnFilters.responsable_fac && !columnFilters.responsable_fac.has(a.responsable_fac)) return false;
+            
+            const est = a.estado_fac || 'Pendiente';
+            if (columnFilters.estado_fac && !columnFilters.estado_fac.has(est)) return false;
+            return true;
+        });
+    }, [preFilteredAltas, columnFilters]);
 
     // ── KPIs ──
     const kpis = useMemo(() => {
@@ -520,6 +602,123 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             }
         }
     }, [selectedMonth]);
+
+    // ── FilterHeader Component ──
+    const FilterHeader = ({ label, col, width }) => {
+        const isActive = !!columnFilters[col];
+        const isOpen = activeFilterCol === col;
+        const values = uniqueValues[col] || [];
+        const filtered = filterSearch
+            ? values.filter(v => v.toLowerCase().includes(filterSearch.toLowerCase()))
+            : values;
+
+        return (
+            <th style={{ padding: '12px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--neutral-600)', borderBottom: '1px solid var(--neutral-200)', width, position: 'relative', userSelect: 'none' }}>
+                <div
+                    style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                    onClick={() => toggleColumnFilter(col)}
+                >
+                    {label}
+                    <ListFilter size={12} style={{
+                        color: isActive ? '#4F46E5' : 'var(--neutral-300)',
+                        transition: 'color 0.15s',
+                        flexShrink: 0,
+                    }} />
+                    {isActive && (
+                        <span style={{
+                            width: '6px', height: '6px', borderRadius: '50%',
+                            background: '#4F46E5', flexShrink: 0,
+                        }} />
+                    )}
+                </div>
+
+                {isOpen && (
+                    <>
+                        <div
+                            onClick={() => setActiveFilterCol(null)}
+                            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 998 }}
+                        />
+                        <div style={{
+                            position: 'absolute', top: '100%', left: 0, zIndex: 999,
+                            marginTop: '2px', minWidth: '200px', maxWidth: '280px',
+                            background: '#fff', borderRadius: '10px',
+                            boxShadow: '0 8px 30px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
+                            padding: '8px', animation: 'fadeIn 0.15s ease-out',
+                        }}>
+                            {/* Search dentro del filtro */}
+                            <div style={{ position: 'relative', marginBottom: '6px' }}>
+                                <Search size={12} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar..."
+                                    value={filterSearch}
+                                    onChange={e => setFilterSearch(e.target.value)}
+                                    onClick={e => e.stopPropagation()}
+                                    style={{
+                                        width: '100%', padding: '5px 8px 5px 26px',
+                                        border: '1px solid var(--neutral-200)', borderRadius: '6px',
+                                        fontSize: '0.72rem', outline: 'none',
+                                    }}
+                                    autoFocus
+                                />
+                            </div>
+                            {/* Botones rápidos */}
+                            <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+                                <button
+                                    onClick={e => { e.stopPropagation(); setFilterValues(col, new Set(filtered)); }}
+                                    style={{
+                                        flex: 1, padding: '3px', borderRadius: '4px',
+                                        border: '1px solid var(--neutral-200)', background: '#F9FAFB',
+                                        fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer',
+                                        color: 'var(--neutral-600)',
+                                    }}
+                                >Todos</button>
+                                <button
+                                    onClick={e => { e.stopPropagation(); clearColumnFilter(col); }}
+                                    style={{
+                                        flex: 1, padding: '3px', borderRadius: '4px',
+                                        border: '1px solid var(--neutral-200)', background: '#F9FAFB',
+                                        fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer',
+                                        color: '#DC2626',
+                                    }}
+                                >Limpiar</button>
+                            </div>
+                            {/* Lista de valores */}
+                            <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                                {filtered.length === 0 ? (
+                                    <div style={{ padding: '10px', textAlign: 'center', fontSize: '0.72rem', color: 'var(--neutral-400)' }}>Sin valores</div>
+                                ) : filtered.map(val => {
+                                    const checked = columnFilters[col] ? columnFilters[col].has(val) : false;
+                                    return (
+                                        <label
+                                            key={val}
+                                            onClick={e => e.stopPropagation()}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '6px',
+                                                padding: '4px 6px', borderRadius: '4px',
+                                                cursor: 'pointer', fontSize: '0.73rem', fontWeight: 500,
+                                                color: 'var(--neutral-700)', transition: 'background 0.1s',
+                                            }}
+                                            onMouseOver={e => e.currentTarget.style.background = '#F3F4F6'}
+                                            onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => toggleFilterValue(col, val)}
+                                                style={{ width: '14px', height: '14px', accentColor: '#4F46E5', cursor: 'pointer' }}
+                                            />
+                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{val}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </>
+                )}
+            </th>
+        );
+    };
 
     return (
         <div className="content no-print animate-fade-in" style={{ padding: '20px 24px' }}>
@@ -948,17 +1147,17 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                         <th style={{ ...thStyle, width: '28px' }}></th>
                                         <th style={{ ...thStyle, width: '90px' }}>Admisión</th>
                                         <th style={thStyle}>Paciente</th>
-                                        <th style={{ ...thStyle, maxWidth: '140px' }}>Cliente</th>
-                                        <th style={{ ...thStyle, width: '120px' }}>Resp. ADM</th>
-                                        <th style={{ ...thStyle, width: '100px' }}>Proceso</th>
-                                        <th style={{ ...thStyle, width: '120px' }}>Médico</th>
+                                        <FilterHeader label="Cliente" col="cliente" />
+                                        <FilterHeader label="Resp. ADM" col="_responsableAdm" width="120px" />
+                                        <FilterHeader label="Proceso" col="proceso" width="100px" />
+                                        <FilterHeader label="Médico" col="doctor" width="120px" />
                                         <th style={{ ...thStyle, width: '80px' }}>Ingreso</th>
                                         <th style={{ ...thStyle, width: '80px' }}>Alta</th>
                                         <th style={{ ...thStyle, width: '45px', textAlign: 'center' }}>Días</th>
                                         <th style={{ ...thStyle, width: '70px', textAlign: 'center' }}>Triage</th>
                                         <th style={{ ...thStyle, width: '80px', textAlign: 'center' }}>Facturada</th>
-                                        <th style={{ ...thStyle, width: '160px' }}>Resp. FAC</th>
-                                        <th style={{ ...thStyle, width: '120px' }}>Estado FAC</th>
+                                        <FilterHeader label="Resp. FAC" col="responsable_fac" width="160px" />
+                                        <FilterHeader label="Estado FAC" col="estado_fac" width="120px" />
                                     </tr>
                                 </thead>
                                 <tbody>
