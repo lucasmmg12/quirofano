@@ -429,6 +429,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                     admissions: sorted.map(e => e.numero_admision),
                     latestId,
                     count: entries.length,
+                    firstAdmission: sorted[sorted.length - 1],
                 });
             }
         }
@@ -444,11 +445,30 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             const duplicateAdmissions = isDuplicate ? dupInfo.admissions : null;
             const isLatestAdmission = isDuplicate ? dupInfo.latestId === alta.id : true;
             const isObsoleteAdmission = isDuplicate && !isLatestAdmission;
+            // FUSIÓN AUTOMÁTICA (Mapeo de admisiones del mismo episodio)
+            let doctor = alta.doctor;
+            let proceso = alta.proceso;
+            let cliente = alta.cliente;
+            let mergedAdmissions = null;
+            
+            if (isDuplicate && isLatestAdmission) {
+                const first = dupInfo.firstAdmission;
+                if (first && first.id !== alta.id) {
+                    // Copiamos datos de la primera (cirugía) si faltan o para priorizarlos
+                    doctor = alta.doctor || first.doctor;
+                    proceso = alta.proceso || first.proceso;
+                    cliente = alta.cliente || first.cliente;
+                }
+                mergedAdmissions = duplicateAdmissions;
+            }
+
             return {
                 ...alta, _responsableAdm: respAdm, _isSuspendida: isSuspendida,
                 _isDuplicate: isDuplicate, _duplicateAdmissions: duplicateAdmissions,
                 _isLatestAdmission: isLatestAdmission, _isObsoleteAdmission: isObsoleteAdmission,
                 _duplicateCount: isDuplicate ? dupInfo.count : 0,
+                _mergedAdmissions: mergedAdmissions,
+                doctor, proceso, cliente // Sobrescribimos con los datos fusionados
             };
         });
 
@@ -459,6 +479,9 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         if (filterResponsable !== 'all') {
             result = result.filter(a => a.responsable_fac === filterResponsable);
         }
+        
+        // 5) Ocultar las admisiones obsoletas (ya están absorbidas por la final)
+        result = result.filter(a => !a._isObsoleteAdmission);
 
         return { preFilteredAltas: result, chequeosExcluidos: chequeosCount, duplicatePatients: dupPatients };
     }, [altas, filterEstado, filterResponsable, criterios]);
@@ -1210,11 +1233,16 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                         <span style={{
                                                             fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 600,
                                                             padding: '2px 6px', borderRadius: '4px',
-                                                            background: alta._isSuspendida ? '#FEF2F2' : alta._isObsoleteAdmission ? '#FFFBEB' : '#EEF2FF',
-                                                            color: alta._isSuspendida ? '#DC2626' : alta._isObsoleteAdmission ? '#D97706' : '#4338CA',
-                                                            textDecoration: alta._isObsoleteAdmission ? 'line-through' : 'none',
+                                                            background: alta._isSuspendida ? '#FEF2F2' : alta._mergedAdmissions ? '#F0FDF4' : '#EEF2FF',
+                                                            color: alta._isSuspendida ? '#DC2626' : alta._mergedAdmissions ? '#166534' : '#4338CA',
                                                         }}>
-                                                            {alta.numero_admision || '—'}
+                                                            {alta._mergedAdmissions ? (
+                                                                <span title="Fusión automática de admisiones" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                                    🔗 {alta._mergedAdmissions.join(' + ')}
+                                                                </span>
+                                                            ) : (
+                                                                alta.numero_admision || '—'
+                                                            )}
                                                         </span>
                                                     </td>
                                                     <td style={{ ...tdStyle, fontWeight: 600, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1223,15 +1251,9 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                             <span style={{ marginLeft: '6px', padding: '1px 6px', borderRadius: '4px', background: '#FEF2F2', color: '#DC2626', fontSize: '0.65rem', fontWeight: 700, verticalAlign: 'middle' }}>⛔ SUSP.</span>
                                                         )}
                                                         {alta._isDuplicate && alta._isLatestAdmission && (
-                                                            <span title={`Admisión vigente — Otras: ${alta._duplicateAdmissions?.filter(a => a !== alta.numero_admision).join(', ')}`}
+                                                            <span title={`Admisión fusionada exitosamente — Otras: ${alta._duplicateAdmissions?.filter(a => a !== alta.numero_admision).join(', ')}`}
                                                                 style={{ marginLeft: '4px', padding: '1px 6px', borderRadius: '4px', background: '#ECFDF5', color: '#059669', fontSize: '0.62rem', fontWeight: 700, verticalAlign: 'middle', cursor: 'help' }}>
-                                                                ✓ VIGENTE
-                                                            </span>
-                                                        )}
-                                                        {alta._isObsoleteAdmission && (
-                                                            <span title={`Admisión anterior — Última: ${alta._duplicateAdmissions?.[0]}`}
-                                                                style={{ marginLeft: '4px', padding: '1px 6px', borderRadius: '4px', background: '#FFFBEB', color: '#D97706', fontSize: '0.62rem', fontWeight: 700, verticalAlign: 'middle', cursor: 'help' }}>
-                                                                ⚡ ANTERIOR ({alta._duplicateCount})
+                                                                🔗 FUSIONADO
                                                             </span>
                                                         )}
                                                     </td>
