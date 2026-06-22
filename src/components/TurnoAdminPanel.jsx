@@ -289,13 +289,13 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                 fontSize: '1.1rem', fontWeight: 800, color: '#fff',
                                 marginBottom: '2px',
                             }}>
-                                🔔 Turno {derivNotif.turnoNum} derivado a tu Box {derivNotif.toBox}
+                                🔔 Turno {derivNotif.turnoNum} derivado a tu {derivNotif.toBox === 99 ? 'Box UCI' : `Box ${derivNotif.toBox}`}
                             </div>
                             <div style={{
                                 fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)',
                                 fontWeight: 600,
                             }}>
-                                Proviene del Box {derivNotif.fromBox} · Está esperando atención
+                                Proviene del {derivNotif.fromBox === 99 ? 'Box UCI' : `Box ${derivNotif.fromBox}`} · Está esperando atención
                             </div>
                         </div>
                         <button
@@ -427,10 +427,10 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                             style={{ ...s.filterBtn, ...(boxFilter === null ? s.filterBtnActive : {}) }}>
                             Todos
                         </button>
-                        {[1, 2, 3, 4].map(b => (
+                        {[1, 2, 3, 4, 99].map(b => (
                             <button key={b} onClick={() => setBoxFilter(b)}
                                 style={{ ...s.filterBtn, ...(boxFilter === b ? s.filterBtnActive : {}) }}>
-                                Box {b}
+                                {b === 99 ? 'UCI' : `Box ${b}`}
                             </button>
                         ))}
                     </div>
@@ -619,7 +619,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                             Derivar a otro Box
                         </h3>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
-                            {[1, 2, 3, 4].map(b => (
+                            {[1, 2, 3, 4, 99].map(b => (
                                 <button
                                     key={b}
                                     onClick={() => handleDerivar(derivarModal, b)}
@@ -630,7 +630,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                         cursor: 'pointer', transition: 'all 0.2s',
                                     }}
                                 >
-                                    Box {b}
+                                    {b === 99 ? 'UCI' : `Box ${b}`}
                                 </button>
                             ))}
                         </div>
@@ -749,7 +749,7 @@ function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, o
                 </div>
                 <div style={s.infoCell}>
                     <span style={s.infoCellLabel}>Box</span>
-                    <span style={s.infoCellValue}>Box {turno.box_asignado}</span>
+                    <span style={s.infoCellValue}>{turno.box_asignado === 99 ? 'UCI' : `Box ${turno.box_asignado}`}</span>
                 </div>
                 {turno.dni && (
                     <div style={s.infoCell}>

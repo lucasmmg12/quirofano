@@ -76,7 +76,8 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers }) {
         setToggling(p => ({ ...p, [box.numero]: true }));
         try {
             await toggleBoxActivo(box.numero, !box.activo);
-            addToast?.(`Box ${box.numero} ${!box.activo ? 'encendido' : 'apagado'}`, 'success');
+            const boxName = box.numero === 99 ? 'UCI' : `Box ${box.numero}`;
+            addToast?.(`${boxName} ${!box.activo ? 'encendido' : 'apagado'}`, 'success');
             await loadData();
         } catch (err) {
             addToast?.('Error: ' + err.message, 'error');
@@ -90,7 +91,8 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers }) {
         setAssigning(p => ({ ...p, [box.numero]: true }));
         try {
             await asignarBox(box.numero, currentUser.id, currentUser.nombre);
-            addToast?.(`Box ${box.numero} asignado a ${currentUser.nombre}`, 'success');
+            const boxName = box.numero === 99 ? 'UCI' : `Box ${box.numero}`;
+            addToast?.(`${boxName} asignado a ${currentUser.nombre}`, 'success');
             await loadData();
         } catch (err) {
             addToast?.('Error: ' + err.message, 'error');
@@ -104,7 +106,8 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers }) {
             // Liberar
             try {
                 await liberarBox(box.numero);
-                addToast?.(`Box ${box.numero} liberado`, 'success');
+                const boxName = box.numero === 99 ? 'UCI' : `Box ${box.numero}`;
+                addToast?.(`${boxName} liberado`, 'success');
                 await loadData();
             } catch (err) {
                 addToast?.('Error: ' + err.message, 'error');
@@ -116,7 +119,8 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers }) {
         setAssigning(p => ({ ...p, [box.numero]: true }));
         try {
             await asignarBox(box.numero, user.id, user.nombre);
-            addToast?.(`Box ${box.numero} asignado a ${user.nombre}`, 'success');
+            const boxName = box.numero === 99 ? 'UCI' : `Box ${box.numero}`;
+            addToast?.(`${boxName} asignado a ${user.nombre}`, 'success');
             await loadData();
         } catch (err) {
             addToast?.('Error: ' + err.message, 'error');
@@ -225,7 +229,7 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers }) {
                                         <span style={{
                                             color: '#fff', fontWeight: 900, fontSize: '1.3rem',
                                         }}>
-                                            {box.numero}
+                                            {box.numero === 99 ? 'UCI' : box.numero}
                                         </span>
                                     </div>
                                 );
@@ -240,7 +244,7 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers }) {
                                     <span style={{
                                         fontWeight: 700, fontSize: '0.95rem', color: '#0D3B66',
                                     }}>
-                                        Box {box.numero}
+                                        {box.numero === 99 ? 'UCI' : `Box ${box.numero}`}
                                     </span>
                                     <span style={{
                                         fontSize: '0.65rem', fontWeight: 700,

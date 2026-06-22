@@ -128,7 +128,7 @@ export async function getBoxesDisponibles() {
     ]);
 
     return boxes.filter(box =>
-        box.activo && !isBoxBloqueado(box.id, horarios)
+        box.activo && !isBoxBloqueado(box.id, horarios) && box.numero !== 99
     );
 }
 
