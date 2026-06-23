@@ -1874,6 +1874,7 @@ async function syncConsultasGuardia(db) {
                 [TiempoPred],
                 [Fecha Visita], 
                 [Visita_Especialidad],
+                [Hora Inicio Visita Formato Texto] AS [Hora_Visita],
                 ROW_NUMBER() OVER(PARTITION BY [idVisita] ORDER BY [Fecha Visita] DESC) AS rn
             FROM [SALUS].[dbo].[VLISE_Visitas con categoria]
             WHERE 
@@ -1910,7 +1911,8 @@ async function syncConsultasGuardia(db) {
             [Tipo Visita],
             [TiempoPred],
             [Fecha Visita],
-            [Visita_Especialidad]
+            [Visita_Especialidad],
+            [Hora_Visita]
         FROM 
             VisitasFiltradas
         WHERE 
@@ -1954,6 +1956,7 @@ async function syncConsultasGuardia(db) {
             tipo_visita: (r['Tipo Visita'] || '').trim(),
             tiempo_pred: r.TiempoPred || null,
             fecha_visita: fecha,
+            hora_visita: (r.Hora_Visita || '').trim() || null,
             visita_especialidad: (r.Visita_Especialidad || '').trim(),
             mes_periodo: mesPeriodo,
         });

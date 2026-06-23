@@ -155,18 +155,22 @@ export async function getBoxBalanceado() {
         }
     });
 
-    // Box con menos espera
-    let minBox = disponibles[0].numero;
-    let minCount = conteo[minBox] ?? Infinity;
+    // Encontrar el valor mínimo de espera
+    let minCount = Infinity;
     for (const box of disponibles) {
         const c = conteo[box.numero] ?? 0;
         if (c < minCount) {
             minCount = c;
-            minBox = box.numero;
         }
     }
 
-    return minBox;
+    // Obtener todos los boxes que tengan ese conteo mínimo (empate)
+    const candidates = disponibles.filter(box => (conteo[box.numero] ?? 0) === minCount);
+
+    // Seleccionar uno de forma aleatoria entre los empatados
+    const randomBox = candidates[Math.floor(Math.random() * candidates.length)];
+
+    return randomBox.numero;
 }
 
 // ─── Suscripción Realtime a cambios de boxes ───
