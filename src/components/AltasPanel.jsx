@@ -448,7 +448,7 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     // Obtener datos procesados con effectiveEstado (sin filtro de pill, para KPIs)
     const allProcessedAltas = useMemo(() => {
-        return altas.filter(alta => {
+        let result = altas.filter(alta => {
             const doc = (alta.doctor || '').toLowerCase().trim();
             if (doc.includes('qsoft') || (doc.includes('profesional') && doc.includes('chequeo'))) return false;
             // Particulares: si paciente = obra social, no nos interesa
@@ -456,7 +456,36 @@ export default function AltasPanel({ addToast, currentUser }) {
             const os = (alta.cliente || '').trim().toUpperCase();
             if (pac && os && pac === os) return false;
             return true;
-        }).map(alta => {
+        });
+
+        // 2) Detectar duplicados: pacientes con múltiples admisiones en el rango
+        const patientMap = new Map();
+        for (const alta of result) {
+            const key = (alta.paciente || '').trim().toUpperCase();
+            if (!key) continue;
+            if (!patientMap.has(key)) patientMap.set(key, []);
+            patientMap.get(key).push(alta);
+        }
+        const dupPatients = new Map();
+        for (const [name, entries] of patientMap) {
+            if (entries.length > 1) {
+                // Ordenar por fecha_ingreso DESC para saber cuál es la última
+                const sorted = [...entries].sort((a, b) => {
+                    const dateA = a.fecha_ingreso ? new Date(a.fecha_ingreso) : new Date(0);
+                    const dateB = b.fecha_ingreso ? new Date(b.fecha_ingreso) : new Date(0);
+                    return dateB - dateA; // más reciente primero
+                });
+                const latestId = sorted[0].id;
+                dupPatients.set(name, {
+                    admissions: sorted.map(e => e.numero_admision),
+                    latestId,
+                    count: entries.length,
+                    firstAdmission: sorted[sorted.length - 1],
+                });
+            }
+        }
+
+        result = result.map(alta => {
             const asignacion = matchAsignacion(criterios, alta.cliente, alta.especialidad, alta.proceso);
             const ctrlAdm = (alta.control_adm_finalizado || '').trim().toLowerCase();
             const isCtrlAdmSi = ctrlAdm === 'sí' || ctrlAdm === 'si' || ctrlAdm === 's' 
@@ -476,8 +505,49 @@ export default function AltasPanel({ addToast, currentUser }) {
             // Responsable: manual override tiene prioridad sobre auto-match
             const autoResp = asignacion?.responsable || '';
             const finalResp = alta.responsable_override || autoResp;
-            return { ...alta, _effectiveEstado: effectiveEstado, _responsable: finalResp, _autoResponsable: autoResp, _isDevueltaFac: isDevueltaFac, _isFacturada: isFacturada };
+
+            const pacKey = (alta.paciente || '').trim().toUpperCase();
+            const dupInfo = dupPatients.get(pacKey);
+            const isDuplicate = !!dupInfo;
+            const duplicateAdmissions = isDuplicate ? dupInfo.admissions : null;
+            const isLatestAdmission = isDuplicate ? dupInfo.latestId === alta.id : true;
+            const isObsoleteAdmission = isDuplicate && !isLatestAdmission;
+
+            // FUSIÓN AUTOMÁTICA
+            let doctor = alta.doctor;
+            let proceso = alta.proceso;
+            let cliente = alta.cliente;
+            let mergedAdmissions = null;
+
+            if (isDuplicate && isLatestAdmission) {
+                const first = dupInfo.firstAdmission;
+                if (first && first.id !== alta.id) {
+                    doctor = alta.doctor || first.doctor;
+                    proceso = alta.proceso || first.proceso;
+                    cliente = alta.cliente || first.cliente;
+                }
+                mergedAdmissions = duplicateAdmissions;
+            }
+
+            return { 
+                ...alta, 
+                _effectiveEstado: effectiveEstado, 
+                _responsable: finalResp, 
+                _autoResponsable: autoResp, 
+                _isDevueltaFac: isDevueltaFac, 
+                _isFacturada: isFacturada,
+                _isDuplicate: isDuplicate, 
+                _duplicateAdmissions: duplicateAdmissions,
+                _isLatestAdmission: isLatestAdmission, 
+                _isObsoleteAdmission: isObsoleteAdmission,
+                _duplicateCount: isDuplicate ? dupInfo.count : 0,
+                _mergedAdmissions: mergedAdmissions,
+                doctor, proceso, cliente // Sobrescribimos con los datos fusionados
+            };
         });
+
+        // Ocultar las admisiones obsoletas (ya están absorbidas por la final)
+        return result.filter(a => !a._isObsoleteAdmission);
     }, [altas, criterios]);
 
     // ── Check if current user is jcorrea (can edit responsable) ──
@@ -1479,15 +1549,18 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             </td>
                                             {/* N° Admisión */}
                                             <td className="cart__td" style={{ whiteSpace: 'nowrap' }}>
-                                                <span style={{
-                                                    background: alta.numero_admision ? '#EFF6FF' : 'transparent',
-                                                    color: alta.numero_admision ? '#1E40AF' : '#94A3B8',
-                                                    padding: alta.numero_admision ? '2px 8px' : '0',
-                                                    borderRadius: '6px',
-                                                    fontSize: '0.73rem',
-                                                    fontWeight: 600,
-                                                    fontFamily: 'monospace',
-                                                    border: alta.numero_admision ? '1px solid #BFDBFE' : 'none',
+                                                <span 
+                                                    title={alta._duplicateAdmissions ? `Admisión fusionada exitosamente — Otras: ${alta._duplicateAdmissions.filter(a => a !== alta.numero_admision).join(', ')}` : undefined}
+                                                    style={{
+                                                        background: alta.numero_admision ? '#EFF6FF' : 'transparent',
+                                                        color: alta.numero_admision ? '#1E40AF' : '#94A3B8',
+                                                        padding: alta.numero_admision ? '2px 8px' : '0',
+                                                        borderRadius: '6px',
+                                                        fontSize: '0.73rem',
+                                                        fontWeight: 600,
+                                                        fontFamily: 'monospace',
+                                                        border: alta.numero_admision ? '1px solid #BFDBFE' : 'none',
+                                                        cursor: alta._duplicateAdmissions ? 'help' : 'default',
                                                 }}>
                                                     {alta.numero_admision || '—'}
                                                 </span>

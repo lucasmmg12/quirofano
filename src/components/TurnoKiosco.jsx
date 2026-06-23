@@ -369,22 +369,7 @@ export default function TurnoKiosco() {
                 {/* ═══ PASO 1: SELECCIONAR TRÁMITE (Menú principal) ═══ */}
                 {step === STEPS.SELECT && (boxesDisponibles === null || boxesDisponibles.length > 0) && (
                     <div style={styles.selectContainer} className="no-print">
-                        {/* DNI input (optional) */}
-                        <div style={styles.dniSection}>
-                            <label style={styles.dniLabel}>
-                                ¿Tenés tu DNI? <span style={styles.dniOptional}>(opcional)</span>
-                            </label>
-                            <input
-                                type="text"
-                                inputMode="numeric"
-                                pattern="[0-9]*"
-                                placeholder="Ingresá tu DNI"
-                                value={dni}
-                                onChange={e => setDni(e.target.value.replace(/\D/g, ''))}
-                                style={styles.dniInput}
-                                maxLength={10}
-                            />
-                        </div>
+
 
                         <h2 style={styles.selectTitle}>¿Qué trámite necesitás realizar?</h2>
 
