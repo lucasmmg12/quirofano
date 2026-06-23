@@ -1835,16 +1835,23 @@ async function syncLaboratorios(db) {
 // SYNC CONSULTAS GUARDIA — SQL Server → Supabase
 // Fuente: VLISE_Visitas con categoria (mes en curso dinámico)
 // ═══════════════════════════════════════════════
-async function syncConsultasGuardia(db) {
+async function syncConsultasGuardia(db, targetMonthStr = null) {
     console.log('\n\ud83c\udfe5 [CONSULTAS] Extrayendo consultas de guardia de SALUS...');
 
-    // Rango dinámico: mes en curso
-    const hoy = new Date();
-    const y = hoy.getFullYear();
-    const m = String(hoy.getMonth() + 1).padStart(2, '0');
+    let y, m;
+    if (targetMonthStr) {
+        [y, m] = targetMonthStr.split('-');
+        y = parseInt(y, 10);
+        m = m.padStart(2, '0');
+    } else {
+        const hoy = new Date();
+        y = hoy.getFullYear();
+        m = String(hoy.getMonth() + 1).padStart(2, '0');
+    }
     const primerDia = `${y}${m}01`;
     // Primer día del próximo mes
-    const nextMonth = hoy.getMonth() + 2 > 12 ? 1 : hoy.getMonth() + 2;
+    const currentMonthNum = parseInt(m, 10);
+    const nextMonth = currentMonthNum + 1 > 12 ? 1 : currentMonthNum + 1;
     const nextYear = nextMonth === 1 ? y + 1 : y;
     const primerDiaSiguiente = `${nextYear}${String(nextMonth).padStart(2, '0')}01`;
     const mesPeriodo = `${y}-${m}`;
@@ -2364,6 +2371,16 @@ app.get('/api/salus/sync/consultas-guardia', async (req, res) => {
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+app.get('/api/salus/sync/consultas', async (req, res) => {
+    try {
+        const db = await getPool();
+        const result = await syncConsultasGuardia(db, req.query.month);
+        res.json({ success: true, data: result });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.get('/api/salus/sync/recepciones', async (req, res) => {
     try { const db = await getPool(); res.json({ success: true, results: await syncRecepcionesVisitas(db) }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
@@ -2496,11 +2513,12 @@ app.listen(PORT, '0.0.0.0', () => {
 â•‘    GET /api/salus/sync/presupuestos                 â•‘
 â•‘    GET /api/salus/sync/deudas                       â•‘
 â•‘    GET /api/salus/sync/asociaciones                     â•‘
-â•‘    GET /api/salus/sync/laboratorios                     â•‘
-â•‘    GET /api/salus/health                            â•‘
-â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+â•‘    GET /api/salus/sync/laboratorios                     
+    GET /api/salus/sync/consultas                        
+    GET /api/salus/health                            â•‘
+â•šâ• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• 
     `);
-    getPool().catch(err => console.warn('âš ï¸ Conexión inicial fallida:', err.message));
+    getPool().catch(err => console.warn('âš ï¸  Conexión inicial fallida:', err.message));
 });
 
 process.on('SIGINT', async () => {
