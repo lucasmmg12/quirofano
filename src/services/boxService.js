@@ -105,10 +105,10 @@ export async function removeHorario(horarioId) {
 function isBoxBloqueado(boxId, horarios) {
     const now = new Date();
     const diaSemana = now.getDay(); // 0=Dom, 1=Lun...6=Sab
-    const horaActual = now.toLocaleTimeString('en-GB', {
-        hour: '2-digit', minute: '2-digit', second: '2-digit',
-        hour12: false,
-    });
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    const horaActual = `${hh}:${mm}:${ss}`;
 
     return horarios
         .filter(h => h.box_id === boxId)
@@ -144,7 +144,7 @@ export async function getBoxBalanceado() {
     const { data: turnosEspera } = await supabase
         .from('turnos_cola')
         .select('box_asignado')
-        .in('estado', ['esperando', 'llamando'])
+        .in('estado', ['esperando', 'llamando', 'en_atencion'])
         .gte('created_at', hoy.toISOString());
 
     const conteo = {};
