@@ -904,8 +904,8 @@ const MOTIVOS_CANCELACION = [
 
 // ─── Componente: Modal de Cambiar Trámite ───
 function CambiarTramiteModal({ turno, configList, onConfirm, onClose }) {
-    // Usamos el listado que NO sea grupo (los tipos de trámites reales)
-    const validOptions = configList.filter(c => !c.grupo);
+    // Todos los trámites reales que vienen de la DB, independientemente de si tienen un grupo asignado o no.
+    const validOptions = configList;
 
     return (
         <div style={s.modalOverlay} onClick={onClose}>
@@ -1149,20 +1149,22 @@ const s = {
     filterGroup: { display: 'flex', alignItems: 'center', gap: '8px' },
     filterLabel: { fontSize: '0.78rem', fontWeight: 700, color: '#64748B' },
     filterBtns: {
-        display: 'flex', gap: '4px',
-        background: 'rgba(241, 245, 249, 0.8)', borderRadius: '10px', padding: '3px',
-        border: '1px solid rgba(226,232,240,0.5)',
+        display: 'flex', gap: '8px', flexWrap: 'wrap',
+        alignItems: 'center'
     },
     filterBtn: {
-        padding: '6px 12px', borderRadius: '8px',
-        border: 'none', background: 'transparent',
+        padding: '6px 14px', borderRadius: '20px',
+        border: '1px solid #E2E8F0', background: '#F8FAFC',
         color: '#64748B', fontSize: '0.76rem', fontWeight: 600,
-        cursor: 'pointer', transition: 'all 0.15s',
+        cursor: 'pointer', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
         whiteSpace: 'nowrap',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
     },
     filterBtnActive: {
-        background: '#fff', color: '#1565C0',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+        background: '#EFF6FF', color: '#1D4ED8',
+        borderColor: '#BFDBFE',
+        boxShadow: '0 4px 12px rgba(37,99,235,0.15)',
+        transform: 'translateY(-1px)'
     },
 
     // Sections
