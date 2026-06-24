@@ -422,13 +422,7 @@ export default function TurnoKiosco() {
                                             e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.06)';
                                         }}
                                     >
-                                        {/* Number badge */}
-                                        <div style={{
-                                            ...styles.numberBadge,
-                                            background: isTimeLocked ? '#94A3B8' : itemColor,
-                                        }}>
-                                            {num}
-                                        </div>
+
 
                                         <div style={{
                                             ...styles.tramiteIconWrap,
@@ -570,15 +564,7 @@ export default function TurnoKiosco() {
                                             e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.06)';
                                         }}
                                     >
-                                        <div style={{
-                                            ...styles.numberBadge,
-                                            background: cfg.color,
-                                            fontSize: '0.7rem',
-                                            width: '30px',
-                                            height: '30px',
-                                        }}>
-                                            {subNum}
-                                        </div>
+
 
                                         <div style={{
                                             ...styles.subIconWrap,
@@ -892,7 +878,7 @@ const styles = {
         flexShrink: 0,
     },
     tramiteLabel: {
-        fontSize: '1.25rem', fontWeight: 700, color: '#0D3B66',
+        fontSize: '1.65rem', fontWeight: 800, color: '#0D3B66',
         lineHeight: 1.3, flex: 1,
     },
     subBadge: {
@@ -975,7 +961,7 @@ const styles = {
         flexShrink: 0,
     },
     subLabel: {
-        fontSize: '1.2rem', fontWeight: 700, color: '#0D3B66',
+        fontSize: '1.5rem', fontWeight: 800, color: '#0D3B66',
         lineHeight: 1.3, flex: 1,
     },
     // ── Ticket step ──
