@@ -122,8 +122,23 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     }, []);
 
     const [searchTerm, setSearchTerm] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const [filterEstado, setFilterEstado] = useState('all');
     const [filterResponsable, setFilterResponsable] = useState('all');
+
+    // ── Paginación ──
+    const PAGE_SIZE = 100;
+    const [currentPage, setCurrentPage] = useState(1);
+
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearch(searchTerm), 500);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
+    // Reset página al cambiar filtros
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [selectedMonth, debouncedSearch, filterEstado, filterResponsable, columnFilters]);
 
     // ── Filtros por columna (tipo Excel) ──
     const [columnFilters, setColumnFilters] = useState({});
@@ -522,6 +537,33 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             return true;
         });
     }, [preFilteredAltas, columnFilters]);
+
+    // ── Paginación: solo renderizar PAGE_SIZE filas ──
+    const totalPages = Math.max(1, Math.ceil(filteredAltas.length / PAGE_SIZE));
+    const paginatedAltas = useMemo(() => {
+        if (debouncedSearch || filterSearch) return filteredAltas;
+        const start = (currentPage - 1) * PAGE_SIZE;
+        return filteredAltas.slice(start, start + PAGE_SIZE);
+    }, [filteredAltas, currentPage, PAGE_SIZE, debouncedSearch, filterSearch]);
+    const paginationStart = (currentPage - 1) * PAGE_SIZE + 1;
+    const paginationEnd = Math.min(currentPage * PAGE_SIZE, filteredAltas.length);
+
+    // Generar números de página para la barra
+    const getPageNumbers = () => {
+        const pages = [];
+        if (totalPages <= 7) {
+            for (let i = 1; i <= totalPages; i++) pages.push(i);
+        } else {
+            pages.push(1);
+            if (currentPage > 3) pages.push('...');
+            const start = Math.max(2, currentPage - 1);
+            const end = Math.min(totalPages - 1, currentPage + 1);
+            for (let i = start; i <= end; i++) pages.push(i);
+            if (currentPage < totalPages - 2) pages.push('...');
+            pages.push(totalPages);
+        }
+        return pages;
+    };
 
     // ── KPIs ──
     const kpis = useMemo(() => {
@@ -1148,7 +1190,8 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                             <p style={{ fontSize: '0.85rem' }}>No hay altas traspasadas en el rango seleccionado.</p>
                         </div>
                     ) : (
-                        <div style={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid var(--neutral-200)', background: 'var(--card-bg, #fff)' }}>
+                        <>
+                            <div style={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid var(--neutral-200)', background: 'var(--card-bg, #fff)' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', tableLayout: 'fixed' }}>
                                 <thead>
                                     <tr style={{ background: 'var(--neutral-50)' }}>
@@ -1184,7 +1227,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredAltas.map(alta => {
+                                    {paginatedAltas.map(alta => {
                                         const isExpanded = expandedId === alta.id;
                                         const estadoFac = alta.estado_fac || 'Pendiente';
                                         const estadoConfig = FACTURACION_ESTADOS[estadoFac] || FACTURACION_ESTADOS['Pendiente'];
@@ -1237,8 +1280,13 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                             color: alta._isSuspendida ? '#DC2626' : alta._mergedAdmissions ? '#166534' : '#4338CA',
                                                         }}>
                                                             {alta._mergedAdmissions ? (
-                                                                <span title="Fusión automática de admisiones" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                                                    🔗 {alta._mergedAdmissions.join(' + ')}
+                                                                <span title={`Fusión automática: ${alta._mergedAdmissions.join(', ')}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                                    🔗 {alta.numero_admision}
+                                                                    {alta._mergedAdmissions.length > 1 && (
+                                                                        <span style={{ fontSize: '0.65rem', padding: '1px 4px', borderRadius: '4px', background: 'rgba(0,0,0,0.1)' }}>
+                                                                            +{alta._mergedAdmissions.length - 1}
+                                                                        </span>
+                                                                    )}
                                                                 </span>
                                                             ) : (
                                                                 alta.numero_admision || '—'
@@ -1576,6 +1624,49 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                 </tbody>
                             </table>
                         </div>
+                        
+                        {/* ── Paginación Inferior ── */}
+                        {totalPages > 1 && !debouncedSearch && !filterSearch && (
+                            <div style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                padding: '16px 20px', background: '#fff', border: '1px solid var(--neutral-200)',
+                                borderTop: 'none', borderRadius: '0 0 12px 12px'
+                            }}>
+                                <div style={{ fontSize: '0.8rem', color: 'var(--neutral-500)' }}>
+                                    Mostrando <span style={{ fontWeight: 600, color: 'var(--neutral-800)' }}>{paginationStart}</span> a <span style={{ fontWeight: 600, color: 'var(--neutral-800)' }}>{paginationEnd}</span> de <span style={{ fontWeight: 600, color: 'var(--neutral-800)' }}>{filteredAltas.length}</span> fichas
+                                </div>
+                                <div style={{ display: 'flex', gap: '4px' }}>
+                                    <button
+                                        className="pagination-btn pagination-btn--nav"
+                                        disabled={currentPage === 1}
+                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    >
+                                        <ChevronLeft size={14} /> Anterior
+                                    </button>
+                                    {getPageNumbers().map((page, idx) =>
+                                        page === '...' ? (
+                                            <span key={`dots-${idx}`} style={{ padding: '0 8px', color: 'var(--neutral-400)', alignSelf: 'center' }}>...</span>
+                                        ) : (
+                                            <button
+                                                key={page}
+                                                className={`pagination-btn${page === currentPage ? ' pagination-btn--active' : ''}`}
+                                                onClick={() => setCurrentPage(page)}
+                                            >
+                                                {page}
+                                            </button>
+                                        )
+                                    )}
+                                    <button
+                                        className="pagination-btn pagination-btn--nav"
+                                        disabled={currentPage === totalPages}
+                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    >
+                                        Siguiente <ChevronRight size={14} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        </>
                     )}
 
                     {/* ── Floating action bar (selección para devolución) ── */}

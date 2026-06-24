@@ -639,9 +639,10 @@ export default function AltasPanel({ addToast, currentUser }) {
     // ── Paginación: solo renderizar PAGE_SIZE filas ──
     const totalPages = Math.max(1, Math.ceil(sortedAltas.length / PAGE_SIZE));
     const paginatedAltas = useMemo(() => {
+        if (debouncedSearch) return sortedAltas;
         const start = (currentPage - 1) * PAGE_SIZE;
         return sortedAltas.slice(start, start + PAGE_SIZE);
-    }, [sortedAltas, currentPage, PAGE_SIZE]);
+    }, [sortedAltas, currentPage, PAGE_SIZE, debouncedSearch]);
     const paginationStart = (currentPage - 1) * PAGE_SIZE + 1;
     const paginationEnd = Math.min(currentPage * PAGE_SIZE, sortedAltas.length);
 
@@ -1809,7 +1810,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                     </div>
 
                     {/* ── Barra de Paginación ── */}
-                    {sortedAltas.length > PAGE_SIZE && (
+                    {sortedAltas.length > PAGE_SIZE && !debouncedSearch && (
                         <div className="pagination-bar">
                             <div className="pagination-bar__info">
                                 Mostrando <strong>{paginationStart}–{paginationEnd}</strong> de <strong>{sortedAltas.length}</strong> registros
