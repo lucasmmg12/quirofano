@@ -135,15 +135,15 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         return () => clearTimeout(timer);
     }, [searchTerm]);
 
+
+    const [columnFilters, setColumnFilters] = useState({});
+    const [activeFilterCol, setActiveFilterCol] = useState(null);
+    const [filterSearch, setFilterSearch] = useState('');
+
     // Reset página al cambiar filtros
     useEffect(() => {
         setCurrentPage(1);
     }, [selectedMonth, debouncedSearch, filterEstado, filterResponsable, columnFilters]);
-
-    // ── Filtros por columna (tipo Excel) ──
-    const [columnFilters, setColumnFilters] = useState({});
-    const [activeFilterCol, setActiveFilterCol] = useState(null);
-    const [filterSearch, setFilterSearch] = useState('');
 
     const toggleColumnFilter = (col) => {
         setActiveFilterCol(prev => prev === col ? null : col);
