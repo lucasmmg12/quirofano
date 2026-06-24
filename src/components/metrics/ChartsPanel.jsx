@@ -79,6 +79,43 @@ export default function ChartsPanel({ metricas, config }) {
         }));
     }, [metricas]);
 
+    // 5. Box Performance
+    const boxData = useMemo(() => {
+        if (!metricas?.atencionesRaw || !metricas?.turnosRaw) return [];
+        const boxes = {};
+        
+        metricas.atencionesRaw.forEach(a => {
+            const boxId = a.box_numero || 'Desconocido';
+            if (!boxes[boxId]) {
+                boxes[boxId] = {
+                    box: boxId === 99 ? 'UCI' : `Box ${boxId}`,
+                    cantidad: 0,
+                    tiempoTotal: 0,
+                    tramites: {}
+                };
+            }
+            boxes[boxId].cantidad++;
+            
+            if (a.hora_inicio && a.hora_fin) {
+                boxes[boxId].tiempoTotal += (new Date(a.hora_fin) - new Date(a.hora_inicio)) / 60000;
+            }
+
+            // Encontrar el turno para el tipo_tramite
+            const turno = metricas.turnosRaw.find(t => t.id === a.turno_id);
+            if (turno) {
+                const tramiteLabel = config.find(c => c.tipo_tramite === turno.tipo_tramite)?.label || turno.tipo_tramite;
+                boxes[boxId].tramites[tramiteLabel] = (boxes[boxId].tramites[tramiteLabel] || 0) + 1;
+            }
+        });
+
+        return Object.values(boxes).map(b => ({
+            box: b.box,
+            cantidad: b.cantidad,
+            demoraPromedio: b.cantidad > 0 ? Math.round((b.tiempoTotal / b.cantidad) * 10) / 10 : 0,
+            tramitePpal: Object.entries(b.tramites).sort((x, y) => y[1] - x[1])[0]?.[0] || 'N/A'
+        })).sort((a,b) => b.cantidad - a.cantidad);
+    }, [metricas, config]);
+
     const s = {
         card: {
             background: 'rgba(255, 255, 255, 0.7)',
@@ -168,6 +205,27 @@ export default function ChartsPanel({ metricas, config }) {
                             <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
                         </PieChart>
                     </ResponsiveContainer>
+                </div>
+            </div>
+
+            {/* 5. Rendimiento por Box */}
+            <div style={{ ...s.card, gridColumn: '1 / -1' }}>
+                <h3 style={s.title}>🏢 Rendimiento por Box</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                    {boxData.length === 0 ? (
+                        <div style={{ color: '#64748b', fontSize: '0.9rem' }}>Sin atenciones registradas</div>
+                    ) : (
+                        boxData.map((b, i) => (
+                            <div key={i} style={{ padding: '16px', background: 'rgba(255,255,255,0.5)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.8)' }}>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1e293b', marginBottom: '8px' }}>{b.box}</div>
+                                <div style={{ fontSize: '0.9rem', color: '#475569', marginBottom: '4px' }}>👥 Atendidos: <b>{b.cantidad}</b></div>
+                                <div style={{ fontSize: '0.9rem', color: '#475569', marginBottom: '4px' }}>⏱️ Demora Prom: <b>{b.demoraPromedio}m</b></div>
+                                <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '8px', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '8px' }}>
+                                    Principal: <i>{b.tramitePpal}</i>
+                                </div>
+                            </div>
+                        ))
+                    )}
                 </div>
             </div>
         </div>
