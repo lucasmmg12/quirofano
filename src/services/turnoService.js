@@ -198,6 +198,15 @@ export async function derivarTurno(turnoId, nuevoBox) {
     if (error) throw error;
 }
 
+// ─── Cambiar Trámite de Turno ───
+export async function cambiarTramiteTurno(turnoId, nuevoTipoTramite) {
+    const { error } = await supabase
+        .from('turnos_cola')
+        .update({ tipo_tramite: nuevoTipoTramite })
+        .eq('id', turnoId);
+    if (error) throw error;
+}
+
 // ─── Suscripción Realtime ───
 export function subscribeToCola(callback) {
     const channel = supabase

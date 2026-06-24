@@ -9,14 +9,13 @@ import {
     Users, PhoneCall, Play, Square, ArrowRightLeft,
     Clock, CheckCircle, XCircle, BarChart3, RefreshCw,
     User, FileText, Receipt, Microscope, HelpCircle,
-    ChevronDown, Timer, TrendingUp, Hash,
-    Building2, Baby, ShieldCheck, Monitor,
+    Building2, Baby, ShieldCheck, Monitor, Edit2,
 } from 'lucide-react';
 import { SkeletonCardGrid } from './SkeletonLoader';
 import {
     fetchColaActiva, fetchAtendidosHoy, fetchMetricasHoy,
     llamarTurno, iniciarAtencion, finalizarAtencion,
-    cancelarTurno, derivarTurno, subscribeToCola, fetchTurnoConfig,
+    cancelarTurno, derivarTurno, cambiarTramiteTurno, subscribeToCola, fetchTurnoConfig,
 } from '../services/turnoService';
 import BoxManagerPanel from './BoxManagerPanel';
 
@@ -67,6 +66,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
     const timerInterval = useRef(null);
     const [derivarModal, setDerivarModal] = useState(null); // turnoId
     const [cancelarModal, setCancelarModal] = useState(null); // turno object
+    const [cambiarTramiteModal, setCambiarTramiteModal] = useState(null); // turno object
     const [allUsers, setAllUsers] = useState([]);
     const [myBoxNum, setMyBoxNum] = useState(null); // box asignado al usuario actual
     const [derivNotif, setDerivNotif] = useState(null); // { turnoNum, fromBox, toBox }
@@ -225,6 +225,17 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
             loadData();
         } catch (err) {
             addToast?.('Error al derivar turno', 'error');
+        }
+    }, [addToast, loadData]);
+
+    const handleCambiarTramite = useCallback(async (turnoId, nuevoTipo) => {
+        try {
+            await cambiarTramiteTurno(turnoId, nuevoTipo);
+            setCambiarTramiteModal(null);
+            addToast?.(`Trámite actualizado correctamente`, 'success');
+            loadData();
+        } catch (err) {
+            addToast?.('Error al cambiar trámite', 'error');
         }
     }, [addToast, loadData]);
 
@@ -520,6 +531,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     onFinalizar={handleFinalizar}
                                     onCancelar={() => setCancelarModal(turno)}
                                     onDerivar={() => setDerivarModal(turno.id)}
+                                    onChangeTramite={() => setCambiarTramiteModal(turno)}
                                     formatTime={formatTime}
                                     getTimeSince={getTimeSince}
                                     formatSeconds={formatSeconds}
@@ -554,6 +566,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     onFinalizar={handleFinalizar}
                                     onCancelar={() => setCancelarModal(turno)}
                                     onDerivar={() => setDerivarModal(turno.id)}
+                                    onChangeTramite={() => setCambiarTramiteModal(turno)}
                                     formatTime={formatTime}
                                     getTimeSince={getTimeSince}
                                     formatSeconds={formatSeconds}
@@ -655,6 +668,16 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                 />
             )}
 
+            {/* Modal de Cambiar Trámite */}
+            {cambiarTramiteModal && (
+                <CambiarTramiteModal
+                    turno={cambiarTramiteModal}
+                    configList={config}
+                    onClose={() => setCambiarTramiteModal(null)}
+                    onConfirm={(nuevoTipo) => handleCambiarTramite(cambiarTramiteModal.id, nuevoTipo)}
+                />
+            )}
+
             <style>{`
                 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
                 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -672,7 +695,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
 }
 
 // ─── Componente Individual: TurnoCard ───
-function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, onCancelar, onDerivar, formatTime, getTimeSince, formatSeconds }) {
+function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, onCancelar, onDerivar, onChangeTramite, formatTime, getTimeSince, formatSeconds }) {
     const estadoCfg = ESTADO_BADGES[turno.estado] || ESTADO_BADGES.esperando;
     const isActive = turno.estado === 'llamando' || turno.estado === 'en_atencion';
 
@@ -746,7 +769,16 @@ function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, o
                 )}
                 <div style={s.infoCell}>
                     <span style={s.infoCellLabel}>Trámite</span>
-                    <span style={{ ...s.infoCellValue, color: config.color }}>{config.label || turno.tipo_tramite}</span>
+                    <span style={{ ...s.infoCellValue, color: config.color, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {config.label || turno.tipo_tramite}
+                        <button
+                            onClick={onChangeTramite}
+                            style={{ background: 'transparent', border: 'none', padding: '2px', cursor: 'pointer', color: '#64748B' }}
+                            title="Cambiar Trámite"
+                        >
+                            <Edit2 size={12} />
+                        </button>
+                    </span>
                 </div>
                 <div style={s.infoCell}>
                     <span style={s.infoCellLabel}>Box</span>
@@ -834,6 +866,72 @@ const MOTIVOS_CANCELACION = [
     { id: 'duplicado', label: 'Turno duplicado', icon: '📋', color: '#6366F1', desc: 'Se generó un turno de más' },
     { id: 'error', label: 'Error de carga', icon: '⚠️', color: '#EF4444', desc: 'Se cargó el turno por error' },
 ];
+
+// ─── Componente: Modal de Cambiar Trámite ───
+function CambiarTramiteModal({ turno, configList, onConfirm, onClose }) {
+    // Usamos el listado que NO sea grupo (los tipos de trámites reales)
+    const validOptions = configList.filter(c => !c.grupo);
+
+    return (
+        <div style={s.modalOverlay} onClick={onClose}>
+            <div style={{ ...s.modal, maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                    <div style={{
+                        width: '36px', height: '36px', borderRadius: '10px',
+                        background: '#DBEAFE', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                        <Edit2 size={18} style={{ color: '#3B82F6' }} />
+                    </div>
+                    <div>
+                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0D3B66' }}>
+                            Cambiar Trámite
+                        </h3>
+                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                            Turno {turno.numero_turno}
+                        </span>
+                    </div>
+                </div>
+
+                <p style={{ fontSize: '0.88rem', color: '#475569', marginBottom: '16px' }}>
+                    Seleccione el nuevo trámite correcto para este turno.
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
+                    {validOptions.map(m => (
+                        <button
+                            key={m.tipo_tramite}
+                            onClick={() => onConfirm(m.tipo_tramite)}
+                            disabled={m.tipo_tramite === turno.tipo_tramite}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '12px',
+                                padding: '12px 16px', borderRadius: '12px',
+                                border: `1.5px solid ${m.tipo_tramite === turno.tipo_tramite ? '#E2E8F0' : m.color + '40'}`,
+                                background: m.tipo_tramite === turno.tipo_tramite ? '#F8FAFC' : m.color + '06',
+                                cursor: m.tipo_tramite === turno.tipo_tramite ? 'not-allowed' : 'pointer',
+                                textAlign: 'left', opacity: m.tipo_tramite === turno.tipo_tramite ? 0.6 : 1,
+                                transition: 'all 0.15s',
+                            }}
+                        >
+                            <div style={{ flex: 1 }}>
+                                <span style={{ display: 'block', fontSize: '0.9rem', fontWeight: 700, color: '#0D3B66' }}>
+                                    {m.label} {m.grupo_label ? `(${m.grupo_label})` : ''}
+                                </span>
+                            </div>
+                        </button>
+                    ))}
+                </div>
+
+                <button onClick={onClose} style={{
+                    width: '100%', marginTop: '16px', padding: '12px', borderRadius: '10px',
+                    border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#64748B',
+                    cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem',
+                }}>
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    );
+}
 
 function CancelarModal({ turno, onConfirm, onClose }) {
     const [motivoCustom, setMotivoCustom] = useState('');
