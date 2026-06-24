@@ -413,6 +413,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                         addToast={addToast}
                         currentUser={currentUser}
                         allUsers={allUsers}
+                        cola={cola}
                     />
                 </div>
             )}
@@ -798,20 +799,28 @@ function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, o
                         <button onClick={() => onLlamar(turno)} style={{ ...s.turnoActionBtn, background: '#DBEAFE', color: '#3B82F6', border: '1px solid #93C5FD' }}>
                             <PhoneCall size={14} /> Re-llamar
                         </button>
+                        <button onClick={onDerivar} style={{ ...s.turnoActionBtn, background: '#F0F4F8', color: '#475569', border: '1px solid #E2E8F0' }}>
+                            <ArrowRightLeft size={14} /> Derivar
+                        </button>
                         <button onClick={() => onCancelar()} style={{ ...s.turnoActionBtn, background: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA' }} title="Cancelar turno">
                             <XCircle size={14} />
                         </button>
                     </>
                 )}
                 {turno.estado === 'en_atencion' && (
-                    <button onClick={() => onFinalizar(turno)} style={{
-                        ...s.turnoActionBtn,
-                        background: 'linear-gradient(135deg, #16A34A, #15803D)',
-                        color: '#fff', flex: 1, justifyContent: 'center',
-                        padding: '10px', fontSize: '0.88rem',
-                    }}>
-                        <Square size={14} /> Finalizar Atención
-                    </button>
+                    <>
+                        <button onClick={() => onFinalizar(turno)} style={{
+                            ...s.turnoActionBtn,
+                            background: 'linear-gradient(135deg, #16A34A, #15803D)',
+                            color: '#fff', flex: 1, justifyContent: 'center',
+                            padding: '10px', fontSize: '0.88rem',
+                        }}>
+                            <Square size={14} /> Finalizar Atención
+                        </button>
+                        <button onClick={onDerivar} style={{ ...s.turnoActionBtn, background: '#F0F4F8', color: '#475569', border: '1px solid #E2E8F0', padding: '10px' }}>
+                            <ArrowRightLeft size={14} /> Derivar
+                        </button>
+                    </>
                 )}
             </div>
         </div>

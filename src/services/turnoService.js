@@ -178,6 +178,19 @@ export async function cancelarTurno(turnoId, motivo = null, canceladoPor = null)
 
 // ─── Derivar a otro Box ───
 export async function derivarTurno(turnoId, nuevoBox) {
+    const ahora = new Date().toISOString();
+
+    // 1. Cerrar cualquier registro de atención abierto para este turno (si estaba en_atencion)
+    await supabase
+        .from('turnos_atencion')
+        .update({
+            hora_fin: ahora,
+            notas: `Derivado a Box ${nuevoBox === 99 ? 'UCI' : nuevoBox}`,
+        })
+        .eq('turno_id', turnoId)
+        .is('hora_fin', null);
+
+    // 2. Actualizar el estado del turno
     const { error } = await supabase
         .from('turnos_cola')
         .update({ box_asignado: nuevoBox, estado: 'esperando', llamado_at: null })

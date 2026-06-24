@@ -32,7 +32,7 @@ function getUsernameForBox(box, allUsers) {
     return user?.usuario || null;
 }
 
-export default function BoxManagerPanel({ addToast, currentUser, allUsers }) {
+export default function BoxManagerPanel({ addToast, currentUser, allUsers, cola }) {
     const [boxes, setBoxes] = useState([]);
     const [horarios, setHorarios] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -280,6 +280,23 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers }) {
                                         </span>
                                     )}
                                 </div>
+                                {/* Turno actual */}
+                                {(() => {
+                                    const currentTurno = cola?.find(t => t.box_asignado === box.numero && (t.estado === 'en_atencion' || t.estado === 'llamando'));
+                                    if (!currentTurno) return null;
+                                    return (
+                                        <div style={{
+                                            marginTop: '6px',
+                                            fontSize: '0.78rem',
+                                            color: '#16A34A',
+                                            fontWeight: 700,
+                                            display: 'flex', alignItems: 'center', gap: '5px'
+                                        }}>
+                                            <Play size={12} fill="currentColor" />
+                                            Atendiendo: {currentTurno.numero_turno} {currentTurno.nombre_paciente ? ` - ${currentTurno.nombre_paciente}` : ''}
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             {/* Actions */}
