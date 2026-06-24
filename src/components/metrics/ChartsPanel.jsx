@@ -15,17 +15,6 @@ function formatTime(iso) {
 
 export default function ChartsPanel({ metricas, config }) {
     
-    // 1. Line Chart: Llegadas por Hora
-    const arrivalsByHour = useMemo(() => {
-        if (!metricas?.turnosRaw) return [];
-        const hours = {};
-        metricas.turnosRaw.forEach(t => {
-            const h = new Date(t.created_at).getHours();
-            const label = `${h}:00`;
-            hours[label] = (hours[label] || 0) + 1;
-        });
-        return Object.entries(hours).map(([hour, count]) => ({ hour, turnos: count })).sort((a, b) => parseInt(a.hour) - parseInt(b.hour));
-    }, [metricas]);
 
     const [historial, setHistorial] = React.useState([]);
 
@@ -148,27 +137,6 @@ export default function ChartsPanel({ metricas, config }) {
 
     return (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '20px', position: 'relative', zIndex: 10 }}>
-            {/* 1. Demand Trend */}
-            <div style={s.card}>
-                <h3 style={s.title}>📈 Demanda por Hora</h3>
-                <div style={{ height: 250, width: '100%' }}>
-                    <ResponsiveContainer>
-                        <LineChart data={arrivalsByHour}>
-                            <defs>
-                                <linearGradient id="colorTurnos" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                                </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
-                            <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                            <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                            <Line type="monotone" dataKey="turnos" stroke="#3b82f6" strokeWidth={4} dot={{ r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
-                        </LineChart>
-                    </ResponsiveContainer>
-                </div>
-            </div>
 
             {/* 2. Heatmap: Demanda Histórica */}
             <div style={{ ...s.card, gridColumn: '1 / -1' }}>
