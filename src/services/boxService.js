@@ -57,78 +57,12 @@ export async function toggleBoxActivo(boxNumero, activo) {
     if (error) throw error;
 }
 
-// ─── Horarios de no-atención ───
-export async function fetchHorarios(boxId) {
-    const { data, error } = await supabase
-        .from('turnos_boxes_horarios')
-        .select('*')
-        .eq('box_id', boxId)
-        .order('hora_inicio');
-    if (error) throw error;
-    return data || [];
-}
-
-export async function fetchAllHorarios() {
-    const { data, error } = await supabase
-        .from('turnos_boxes_horarios')
-        .select('*')
-        .order('hora_inicio');
-    if (error) throw error;
-    return data || [];
-}
-
-export async function addHorario(boxId, diaSeamana, horaInicio, horaFin, motivo) {
-    const { data, error } = await supabase
-        .from('turnos_boxes_horarios')
-        .insert({
-            box_id: boxId,
-            dia_semana: diaSeamana,
-            hora_inicio: horaInicio,
-            hora_fin: horaFin,
-            motivo: motivo || null,
-        })
-        .select()
-        .single();
-    if (error) throw error;
-    return data;
-}
-
-export async function removeHorario(horarioId) {
-    const { error } = await supabase
-        .from('turnos_boxes_horarios')
-        .delete()
-        .eq('id', horarioId);
-    if (error) throw error;
-}
-
-// ─── Verificar si un box está bloqueado por horario AHORA ───
-function isBoxBloqueado(boxId, horarios) {
-    const now = new Date();
-    const diaSemana = now.getDay(); // 0=Dom, 1=Lun...6=Sab
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mm = String(now.getMinutes()).padStart(2, '0');
-    const ss = String(now.getSeconds()).padStart(2, '0');
-    const horaActual = `${hh}:${mm}:${ss}`;
-
-    return horarios
-        .filter(h => h.box_id === boxId)
-        .some(h => {
-            // Verificar día (null = todos los días)
-            if (h.dia_semana !== null && h.dia_semana !== diaSemana) return false;
-            // Verificar rango horario
-            return horaActual >= h.hora_inicio && horaActual < h.hora_fin;
-        });
-}
-
-// ─── Obtener boxes disponibles AHORA (activos + no bloqueados) ───
+// ─── Obtener boxes disponibles AHORA (activos) ───
 export async function getBoxesDisponibles() {
-    const [boxes, horarios] = await Promise.all([
-        fetchBoxes(),
-        fetchAllHorarios(),
-    ]);
+    const boxes = await fetchBoxes();
 
     return boxes.filter(box =>
-        box.activo && !isBoxBloqueado(box.id, horarios) && box.numero !== 99
+        box.activo && box.numero !== 99
     );
 }
 

@@ -5,21 +5,14 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import {
-    Monitor, Power, PowerOff, User, Clock, Plus,
-    Trash2, ChevronDown, ChevronUp, RefreshCw, Shield,
-    AlertTriangle, CheckCircle, Play
+    Monitor, Power, PowerOff, User, ChevronDown, ChevronUp, RefreshCw, Shield,
+    CheckCircle, Play
 } from 'lucide-react';
 import {
-    fetchBoxes, toggleBoxActivo, asignarBox, liberarBox,
-    fetchAllHorarios, addHorario, removeHorario, subscribeToBoxes,
+    fetchBoxes, toggleBoxActivo, asignarBox, liberarBox, subscribeToBoxes,
 } from '../services/boxService';
 import { uploadAvatar } from '../services/authService';
 
-const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-const DIA_OPTIONS = [
-    { value: '', label: 'Todos los días' },
-    ...DIAS.map((d, i) => ({ value: String(i), label: d })),
-];
 
 // Helper: obtener usuario asignado al box
 function getUserForBox(box, allUsers) {
@@ -29,17 +22,10 @@ function getUserForBox(box, allUsers) {
 
 export default function BoxManagerPanel({ addToast, currentUser, allUsers, cola }) {
     const [boxes, setBoxes] = useState([]);
-    const [horarios, setHorarios] = useState([]);
     const [loading, setLoading] = useState(true);
     const [expanded, setExpanded] = useState(null); // box numero expandido
     const [toggling, setToggling] = useState({}); // boxNum → true
     const [assigning, setAssigning] = useState({}); // boxNum → true
-
-    // Form para nuevo horario
-    const [newHorario, setNewHorario] = useState({
-        dia: '', horaInicio: '12:00', horaFin: '14:00', motivo: '',
-    });
-    const [addingHorario, setAddingHorario] = useState(false);
     
     // Estado de subida de avatar
     const [uploadingAvatarBox, setUploadingAvatarBox] = useState(null);
@@ -47,12 +33,8 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers, cola 
     // ─── Load ───
     const loadData = useCallback(async () => {
         try {
-            const [boxData, horData] = await Promise.all([
-                fetchBoxes(),
-                fetchAllHorarios(),
-            ]);
+            const boxData = await fetchBoxes();
             setBoxes(boxData);
-            setHorarios(horData);
         } catch (err) {
             console.error('Error loading boxes:', err);
             addToast?.('Error al cargar boxes', 'error');
@@ -127,30 +109,6 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers, cola 
         }
     };
 
-    const handleAddHorario = async (boxId) => {
-        setAddingHorario(true);
-        try {
-            const dia = newHorario.dia === '' ? null : parseInt(newHorario.dia);
-            await addHorario(boxId, dia, newHorario.horaInicio, newHorario.horaFin, newHorario.motivo);
-            addToast?.('Horario de bloqueo agregado', 'success');
-            setNewHorario({ dia: '', horaInicio: '12:00', horaFin: '14:00', motivo: '' });
-            await loadData();
-        } catch (err) {
-            addToast?.('Error: ' + err.message, 'error');
-        } finally {
-            setAddingHorario(false);
-        }
-    };
-
-    const handleRemoveHorario = async (hId) => {
-        try {
-            await removeHorario(hId);
-            addToast?.('Horario eliminado', 'success');
-            await loadData();
-        } catch (err) {
-            addToast?.('Error: ' + err.message, 'error');
-        }
-    };
 
     const handleUploadAvatar = async (e, boxNumero) => {
         const file = e.target.files?.[0];
@@ -182,7 +140,6 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers, cola 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {boxes.map(box => {
-                const boxHorarios = horarios.filter(h => h.box_id === box.id);
                 const isExpanded = expanded === box.numero;
                 const isMyBox = currentUser?.id && box.usuario_id === currentUser.id;
 
@@ -314,15 +271,6 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers, cola 
                                     display: 'flex', alignItems: 'center', gap: '6px',
                                 }}>
                                     <User size={12} />
-                                    {box.usuario_nombre || 'Sin asignar'}
-                                    {boxHorarios.length > 0 && (
-                                        <span style={{
-                                            display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                            marginLeft: '8px', fontSize: '0.68rem', color: '#F59E0B',
-                                        }}>
-                                            <Clock size={10} /> {boxHorarios.length} bloqueos
-                                        </span>
-                                    )}
                                 </div>
                                 {/* Turno actual */}
                                 {(() => {
@@ -440,151 +388,6 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers, cola 
                                         ))}
                                     </select>
                                 </div>
-
-                                {/* Horarios de bloqueo */}
-                                <div>
-                                    <div style={{
-                                        display: 'flex', alignItems: 'center', gap: '6px',
-                                        marginBottom: '10px',
-                                    }}>
-                                        <Clock size={13} style={{ color: '#F59E0B' }} />
-                                        <span style={{
-                                            fontSize: '0.78rem', fontWeight: 700, color: '#475569',
-                                        }}>
-                                            Horarios de no-atención
-                                        </span>
-                                    </div>
-
-                                    {/* Lista de horarios existentes */}
-                                    {boxHorarios.length > 0 ? (
-                                        <div style={{
-                                            display: 'flex', flexDirection: 'column', gap: '6px',
-                                            marginBottom: '12px',
-                                        }}>
-                                            {boxHorarios.map(h => (
-                                                <div key={h.id} style={{
-                                                    display: 'flex', alignItems: 'center', gap: '10px',
-                                                    padding: '8px 12px',
-                                                    borderRadius: '10px',
-                                                    background: '#FEF3C7',
-                                                    border: '1px solid #FDE68A',
-                                                }}>
-                                                    <AlertTriangle size={12} style={{ color: '#F59E0B', flexShrink: 0 }} />
-                                                    <div style={{ flex: 1 }}>
-                                                        <span style={{
-                                                            fontSize: '0.78rem', fontWeight: 700, color: '#92400E',
-                                                        }}>
-                                                            {h.hora_inicio?.slice(0, 5)} – {h.hora_fin?.slice(0, 5)}
-                                                        </span>
-                                                        <span style={{
-                                                            fontSize: '0.7rem', color: '#B45309',
-                                                            marginLeft: '8px',
-                                                        }}>
-                                                            {h.dia_semana !== null ? DIAS[h.dia_semana] : 'Todos los días'}
-                                                        </span>
-                                                        {h.motivo && (
-                                                            <span style={{
-                                                                fontSize: '0.68rem', color: '#78716C',
-                                                                marginLeft: '8px', fontStyle: 'italic',
-                                                            }}>
-                                                                — {h.motivo}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <button
-                                                        onClick={() => handleRemoveHorario(h.id)}
-                                                        title="Eliminar"
-                                                        style={{
-                                                            display: 'flex', alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            width: '28px', height: '28px', borderRadius: '8px',
-                                                            border: 'none', background: '#FEE2E2',
-                                                            color: '#DC2626', cursor: 'pointer',
-                                                            transition: 'all 0.15s',
-                                                        }}
-                                                    >
-                                                        <Trash2 size={13} />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p style={{
-                                            fontSize: '0.75rem', color: '#94A3B8',
-                                            marginBottom: '12px', fontStyle: 'italic',
-                                        }}>
-                                            Sin horarios de bloqueo configurados
-                                        </p>
-                                    )}
-
-                                    {/* Formulario agregar */}
-                                    <div style={{
-                                        display: 'flex', gap: '8px', alignItems: 'flex-end',
-                                        flexWrap: 'wrap',
-                                        padding: '12px',
-                                        borderRadius: '10px',
-                                        background: '#F1F5F9',
-                                        border: '1px solid #E2E8F0',
-                                    }}>
-                                        <div style={{ flex: '1 1 100px' }}>
-                                            <label style={formLabel}>Día</label>
-                                            <select
-                                                value={newHorario.dia}
-                                                onChange={e => setNewHorario(p => ({ ...p, dia: e.target.value }))}
-                                                style={formInput}
-                                            >
-                                                {DIA_OPTIONS.map(o => (
-                                                    <option key={o.value} value={o.value}>{o.label}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div style={{ flex: '0 0 90px' }}>
-                                            <label style={formLabel}>Desde</label>
-                                            <input
-                                                type="time"
-                                                value={newHorario.horaInicio}
-                                                onChange={e => setNewHorario(p => ({ ...p, horaInicio: e.target.value }))}
-                                                style={formInput}
-                                            />
-                                        </div>
-                                        <div style={{ flex: '0 0 90px' }}>
-                                            <label style={formLabel}>Hasta</label>
-                                            <input
-                                                type="time"
-                                                value={newHorario.horaFin}
-                                                onChange={e => setNewHorario(p => ({ ...p, horaFin: e.target.value }))}
-                                                style={formInput}
-                                            />
-                                        </div>
-                                        <div style={{ flex: '1 1 120px' }}>
-                                            <label style={formLabel}>Motivo</label>
-                                            <input
-                                                type="text"
-                                                placeholder="Ej: Almuerzo"
-                                                value={newHorario.motivo}
-                                                onChange={e => setNewHorario(p => ({ ...p, motivo: e.target.value }))}
-                                                style={formInput}
-                                            />
-                                        </div>
-                                        <button
-                                            onClick={() => handleAddHorario(box.id)}
-                                            disabled={addingHorario || !newHorario.horaInicio || !newHorario.horaFin}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', gap: '4px',
-                                                padding: '8px 16px', borderRadius: '10px',
-                                                border: 'none', cursor: 'pointer',
-                                                background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-                                                color: '#fff', fontSize: '0.78rem', fontWeight: 700,
-                                                boxShadow: '0 2px 8px rgba(245,158,11,0.3)',
-                                                opacity: addingHorario ? 0.6 : 1,
-                                                transition: 'all 0.2s',
-                                            }}
-                                        >
-                                            <Plus size={14} />
-                                            Agregar
-                                        </button>
-                                    </div>
-                                </div>
                             </div>
                         )}
                     </div>
@@ -607,15 +410,3 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers, cola 
         </div>
     );
 }
-
-// Shared form styles
-const formLabel = {
-    display: 'block', fontSize: '0.68rem', fontWeight: 700,
-    color: '#64748B', marginBottom: '3px',
-};
-const formInput = {
-    width: '100%', padding: '7px 10px', borderRadius: '8px',
-    border: '1.5px solid #CBD5E1', fontSize: '0.8rem',
-    fontWeight: 600, color: '#0D3B66', background: '#fff',
-    boxSizing: 'border-box',
-};
