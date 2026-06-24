@@ -463,16 +463,7 @@ export default function TurnoKiosco() {
                                             </span>
                                         )}
 
-                                        {waitCount > 0 && !isTimeLocked && (
-                                            <span style={{
-                                                ...styles.waitBadge,
-                                                background: itemColor + '14',
-                                                color: itemColor,
-                                                border: `1px solid ${itemColor}30`,
-                                            }}>
-                                                {waitCount} en espera
-                                            </span>
-                                        )}
+
                                     </button>
                                 );
                             })}
@@ -576,16 +567,7 @@ export default function TurnoKiosco() {
 
                                         <span style={styles.subLabel}>{cfg.label}</span>
 
-                                        {waitCount > 0 && (
-                                            <span style={{
-                                                ...styles.waitBadge,
-                                                background: cfg.color + '14',
-                                                color: cfg.color,
-                                                border: `1px solid ${cfg.color}30`,
-                                            }}>
-                                                {waitCount} en espera
-                                            </span>
-                                        )}
+
                                     </button>
                                 );
                             })}
@@ -878,7 +860,7 @@ const styles = {
         flexShrink: 0,
     },
     tramiteLabel: {
-        fontSize: '1.65rem', fontWeight: 800, color: '#0D3B66',
+        fontSize: '2rem', fontWeight: 800, color: '#0D3B66',
         lineHeight: 1.3, flex: 1,
     },
     subBadge: {
@@ -961,7 +943,7 @@ const styles = {
         flexShrink: 0,
     },
     subLabel: {
-        fontSize: '1.5rem', fontWeight: 800, color: '#0D3B66',
+        fontSize: '1.85rem', fontWeight: 800, color: '#0D3B66',
         lineHeight: 1.3, flex: 1,
     },
     // ── Ticket step ──
