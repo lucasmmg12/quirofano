@@ -1,10 +1,10 @@
 /**
- * turnoService.js — Servicio de gestión de turnos / cola de atención
- * Maneja toda la lógica de negocio: crear turno, llamar, finalizar, métricas
+ * turnoService.js â€” Servicio de gestiÃ³n de turnos / cola de atenciÃ³n
+ * Maneja toda la lÃ³gica de negocio: crear turno, llamar, finalizar, mÃ©tricas
  */
 import { supabase } from '../lib/supabase';
 
-// ─── Configuración ───
+// â”€â”€â”€ ConfiguraciÃ³n â”€â”€â”€
 export async function fetchTurnoConfig() {
     const { data, error } = await supabase
         .from('turnos_config')
@@ -15,9 +15,9 @@ export async function fetchTurnoConfig() {
     return data || [];
 }
 
-// ─── Crear Turno (desde Kiosco) ───
+// â”€â”€â”€ Crear Turno (desde Kiosco) â”€â”€â”€
 export async function crearTurno(tipoTramite, dni = null) {
-    // 1. Obtener próximo número via función PL/pgSQL
+    // 1. Obtener prÃ³ximo nÃºmero via funciÃ³n PL/pgSQL
     const { data: numData, error: numErr } = await supabase
         .rpc('next_turno_number', { p_tipo: tipoTramite });
     if (numErr) throw numErr;
@@ -26,7 +26,7 @@ export async function crearTurno(tipoTramite, dni = null) {
     // 2. Obtener box disponible con balanceo inteligente
     const { getBoxBalanceado } = await import('./boxService');
     const boxAsignado = await getBoxBalanceado();
-    // Si no hay boxes disponibles, el turno se crea sin box (admin asigna después)
+    // Si no hay boxes disponibles, el turno se crea sin box (admin asigna despuÃ©s)
 
     // 3. Buscar nombre del paciente si tiene DNI
     let nombrePaciente = null;
@@ -39,7 +39,7 @@ export async function crearTurno(tipoTramite, dni = null) {
             .single();
         // No importa si no lo encuentra, el DNI queda guardado
         if (paciente) {
-            nombrePaciente = null; // hospital_pacientes no tiene nombre, podría buscarse en surgeries
+            nombrePaciente = null; // hospital_pacientes no tiene nombre, podrÃ­a buscarse en surgeries
         }
     }
 
@@ -61,7 +61,7 @@ export async function crearTurno(tipoTramite, dni = null) {
     return turno;
 }
 
-// ─── Cola de Espera (para el Admin) ───
+// â”€â”€â”€ Cola de Espera (para el Admin) â”€â”€â”€
 export async function fetchColaActiva(boxFilter = null) {
     let query = supabase
         .from('turnos_cola')
@@ -79,7 +79,7 @@ export async function fetchColaActiva(boxFilter = null) {
     return data || [];
 }
 
-// ─── Turnos atendidos hoy (para historial del día) ───
+// â”€â”€â”€ Turnos atendidos hoy (para historial del dÃ­a) â”€â”€â”€
 export async function fetchAtendidosHoy() {
     const { data, error } = await supabase
         .from('turnos_cola')
@@ -92,7 +92,7 @@ export async function fetchAtendidosHoy() {
     return data || [];
 }
 
-// ─── Llamar Turno ───
+// â”€â”€â”€ Llamar Turno â”€â”€â”€
 export async function llamarTurno(turnoId, empleadoNombre = null) {
     const ahora = new Date().toISOString();
     const updateData = {
@@ -107,18 +107,18 @@ export async function llamarTurno(turnoId, empleadoNombre = null) {
     if (error) throw error;
 }
 
-// ─── Iniciar Atención ───
+// â”€â”€â”€ Iniciar AtenciÃ³n â”€â”€â”€
 export async function iniciarAtencion(turnoId, empleadoNombre, boxNumero) {
     const ahora = new Date().toISOString();
 
-    // Actualizar estado del turno + quién atiende
+    // Actualizar estado del turno + quiÃ©n atiende
     const { error: updateErr } = await supabase
         .from('turnos_cola')
         .update({ estado: 'en_atencion', atendido_por: empleadoNombre })
         .eq('id', turnoId);
     if (updateErr) throw updateErr;
 
-    // Crear registro de atención
+    // Crear registro de atenciÃ³n
     const { data, error: insertErr } = await supabase
         .from('turnos_atencion')
         .insert({
@@ -135,7 +135,7 @@ export async function iniciarAtencion(turnoId, empleadoNombre, boxNumero) {
     return data;
 }
 
-// ─── Finalizar Atención ───
+// â”€â”€â”€ Finalizar AtenciÃ³n â”€â”€â”€
 export async function finalizarAtencion(turnoId, notas = null) {
     const ahora = new Date().toISOString();
 
@@ -149,7 +149,7 @@ export async function finalizarAtencion(turnoId, notas = null) {
         .eq('id', turnoId);
     if (updateErr) throw updateErr;
 
-    // Actualizar registro de atención
+    // Actualizar registro de atenciÃ³n
     const { error: atencionErr } = await supabase
         .from('turnos_atencion')
         .update({
@@ -162,7 +162,7 @@ export async function finalizarAtencion(turnoId, notas = null) {
     if (atencionErr) throw atencionErr;
 }
 
-// ─── Cancelar Turno ───
+// â”€â”€â”€ Cancelar Turno â”€â”€â”€
 export async function cancelarTurno(turnoId, motivo = null, canceladoPor = null) {
     const { error } = await supabase
         .from('turnos_cola')
@@ -176,11 +176,11 @@ export async function cancelarTurno(turnoId, motivo = null, canceladoPor = null)
     if (error) throw error;
 }
 
-// ─── Derivar a otro Box ───
+// â”€â”€â”€ Derivar a otro Box â”€â”€â”€
 export async function derivarTurno(turnoId, nuevoBox) {
     const ahora = new Date().toISOString();
 
-    // 1. Cerrar cualquier registro de atención abierto para este turno (si estaba en_atencion)
+    // 1. Cerrar cualquier registro de atenciÃ³n abierto para este turno (si estaba en_atencion)
     await supabase
         .from('turnos_atencion')
         .update({
@@ -198,7 +198,7 @@ export async function derivarTurno(turnoId, nuevoBox) {
     if (error) throw error;
 }
 
-// ─── Cambiar Trámite de Turno ───
+// â”€â”€â”€ Cambiar TrÃ¡mite de Turno â”€â”€â”€
 export async function cambiarTramiteTurno(turnoId, nuevoTipoTramite) {
     const { error } = await supabase
         .from('turnos_cola')
@@ -207,7 +207,7 @@ export async function cambiarTramiteTurno(turnoId, nuevoTipoTramite) {
     if (error) throw error;
 }
 
-// ─── Suscripción Realtime ───
+// â”€â”€â”€ SuscripciÃ³n Realtime â”€â”€â”€
 export function subscribeToCola(callback) {
     const channel = supabase
         .channel('turnos-realtime')
@@ -229,7 +229,7 @@ export function subscribeToCola(callback) {
     };
 }
 
-// ─── Métricas del día ───
+// â”€â”€â”€ MÃ©tricas del dÃ­a â”€â”€â”€
 export async function fetchMetricasHoy() {
     const hoy = getTodayStart();
 
@@ -250,7 +250,7 @@ export async function fetchMetricasHoy() {
     const esperando = turnos?.filter(t => t.estado === 'esperando').length || 0;
     const enAtencion = turnos?.filter(t => t.estado === 'en_atencion' || t.estado === 'llamando').length || 0;
 
-    // Tiempo promedio de atención (en minutos)
+    // Tiempo promedio de atenciÃ³n (en minutos)
     const tiemposAtencion = (atenciones || [])
         .filter(a => a.hora_inicio && a.hora_fin)
         .map(a => (new Date(a.hora_fin) - new Date(a.hora_inicio)) / 60000);
@@ -258,7 +258,7 @@ export async function fetchMetricasHoy() {
         ? tiemposAtencion.reduce((s, t) => s + t, 0) / tiemposAtencion.length
         : 0;
 
-    // Tiempo promedio de espera (created_at → hora_inicio)
+    // Tiempo promedio de espera (created_at â†’ hora_inicio)
     const tiemposEspera = (turnos || [])
         .filter(t => t.estado === 'atendido' && t.llamado_at)
         .map(t => (new Date(t.llamado_at) - new Date(t.created_at)) / 60000);
@@ -266,7 +266,7 @@ export async function fetchMetricasHoy() {
         ? tiemposEspera.reduce((s, t) => s + t, 0) / tiemposEspera.length
         : 0;
 
-    // Por tipo de trámite
+    // Por tipo de trÃ¡mite
     const porTipo = {};
     (turnos || []).forEach(t => {
         if (!porTipo[t.tipo_tramite]) porTipo[t.tipo_tramite] = { total: 0, atendidos: 0 };
@@ -301,9 +301,17 @@ export async function fetchMetricasHoy() {
     };
 }
 
-// ─── Helper ───
+// â”€â”€â”€ Helper â”€â”€â”€
 function getTodayStart() {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     return d.toISOString();
+}
+
+export async function fetchTurnosHistoricos(dias = 30) {
+    const fecha = new Date();
+    fecha.setDate(fecha.getDate() - dias);
+    fecha.setHours(0,0,0,0);
+    const { data } = await supabase.from('turnos_cola').select('created_at').gte('created_at', fecha.toISOString());
+    return data || [];
 }

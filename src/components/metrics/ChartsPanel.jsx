@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import {
-  LineChart, Line, ScatterChart, Scatter, ZAxis, PieChart, Pie, Cell,
+  LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Bar
 } from 'recharts';
 
@@ -27,24 +27,37 @@ export default function ChartsPanel({ metricas, config }) {
         return Object.entries(hours).map(([hour, count]) => ({ hour, turnos: count })).sort((a, b) => parseInt(a.hour) - parseInt(b.hour));
     }, [metricas]);
 
-    // 2. Scatter Plot: Espera vs Atención
-    const scatterData = useMemo(() => {
-        if (!metricas?.turnosRaw || !metricas?.atencionesRaw) return [];
-        const data = [];
-        metricas.turnosRaw.filter(t => t.estado === 'atendido' && t.llamado_at && t.finalizado_at).forEach(t => {
-            const espera = Math.round((new Date(t.llamado_at) - new Date(t.created_at)) / 60000);
-            const atencion = Math.round((new Date(t.finalizado_at) - new Date(t.llamado_at)) / 60000);
-            if (espera >= 0 && atencion >= 0 && atencion < 120 && espera < 120) {
-                data.push({
-                    nombre: t.numero_turno,
-                    espera,
-                    atencion,
-                    tramite: config.find(c => c.tipo_tramite === t.tipo_tramite)?.label || t.tipo_tramite
-                });
-            }
+    const [historial, setHistorial] = React.useState([]);
+
+    React.useEffect(() => {
+        import('../../services/turnoService').then(({ fetchTurnosHistoricos }) => {
+            fetchTurnosHistoricos(30).then(data => setHistorial(data));
         });
-        return data;
-    }, [metricas, config]);
+    }, []);
+
+    // 2. Heatmap: Demanda Historica (Dias vs Horas)
+    const heatmapData = useMemo(() => {
+        if (!historial || historial.length === 0) return null;
+        
+        const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']; // Date.getDay() format (0=Sun)
+        const hours = Array.from({length: 15}, (_, i) => i + 7); // 7h to 21h
+
+        const matrix = Array(7).fill(0).map(() => Array(24).fill(0));
+        let maxCount = 0;
+
+        historial.forEach(t => {
+            const d = new Date(t.created_at);
+            const day = d.getDay();
+            const hour = d.getHours();
+            matrix[day][hour]++;
+            if (matrix[day][hour] > maxCount) maxCount = matrix[day][hour];
+        });
+
+        // Reordenar para que Lunes sea el primero, Domingo el último
+        const displayDays = [1, 2, 3, 4, 5, 6, 0]; 
+        
+        return { matrix, maxCount, displayDays, daysLabels: days, hours };
+    }, [historial]);
 
     // 3. Pie Chart: Proporción de Trámites
     const pieData = useMemo(() => {
@@ -156,20 +169,51 @@ export default function ChartsPanel({ metricas, config }) {
                 </div>
             </div>
 
-            {/* 2. Wait vs Attention */}
-            <div style={s.card}>
-                <h3 style={s.title}>🎯 Dispersión: Espera vs. Atención (min)</h3>
-                <div style={{ height: 250, width: '100%' }}>
-                    <ResponsiveContainer>
-                        <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" />
-                            <XAxis type="number" dataKey="espera" name="Espera" unit="m" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                            <YAxis type="number" dataKey="atencion" name="Atención" unit="m" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                            <ZAxis type="category" dataKey="tramite" name="Trámite" />
-                            <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                            <Scatter name="Turnos" data={scatterData} fill="#8b5cf6" opacity={0.6} />
-                        </ScatterChart>
-                    </ResponsiveContainer>
+            {/* 2. Heatmap: Demanda Histórica */}
+            <div style={{ ...s.card, gridColumn: '1 / -1' }}>
+                <h3 style={s.title}>🕒 Mapa de Calor: Demanda Histórica (30 días)</h3>
+                <div style={{ width: '100%', overflowX: 'auto', paddingBottom: '10px' }}>
+                    {heatmapData ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '600px' }}>
+                            {/* Header (Horas) */}
+                            <div style={{ display: 'flex', marginLeft: '40px' }}>
+                                {heatmapData.hours.map(h => (
+                                    <div key={h} style={{ flex: 1, textAlign: 'center', fontSize: '11px', color: '#64748b' }}>{h}h</div>
+                                ))}
+                            </div>
+                            
+                            {/* Filas (Días) */}
+                            {heatmapData.displayDays.map(dayIdx => (
+                                <div key={dayIdx} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <div style={{ width: '36px', fontSize: '12px', fontWeight: 600, color: '#475569' }}>
+                                        {heatmapData.daysLabels[dayIdx]}
+                                    </div>
+                                    {heatmapData.hours.map(h => {
+                                        const count = heatmapData.matrix[dayIdx][h];
+                                        const intensity = heatmapData.maxCount > 0 ? count / heatmapData.maxCount : 0;
+                                        // Color calculation: Light blue to Deep blue
+                                        const bg = count === 0 ? 'rgba(0,0,0,0.02)' : `rgba(37, 99, 235, ${0.1 + (intensity * 0.9)})`;
+                                        const color = intensity > 0.5 ? '#fff' : '#1e293b';
+                                        
+                                        return (
+                                            <div key={`${dayIdx}-${h}`} 
+                                                title={`${heatmapData.daysLabels[dayIdx]} ${h}h: ${count} turnos`}
+                                                style={{ 
+                                                    flex: 1, height: '28px', backgroundColor: bg, 
+                                                    borderRadius: '4px', display: 'flex', alignItems: 'center', 
+                                                    justifyContent: 'center', fontSize: '11px', color, fontWeight: 600,
+                                                    transition: 'all 0.2s', cursor: 'pointer'
+                                                }}>
+                                                {count > 0 ? count : ''}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div style={{ color: '#64748b', fontSize: '0.9rem', textAlign: 'center', padding: '20px' }}>Cargando datos históricos...</div>
+                    )}
                 </div>
             </div>
 
