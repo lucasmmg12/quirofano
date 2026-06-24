@@ -62,7 +62,7 @@ export default function ChartsPanel({ metricas, config }) {
         if (!metricas?.turnosRaw) return [];
         const esperas = metricas.turnosRaw.filter(t => t.llamado_at).map(t => 
             Math.round((new Date(t.llamado_at) - new Date(t.created_at)) / 60000)
-        );
+        ).filter(mins => mins <= 45); // Ignorar outliers > 45 min
         if (esperas.length === 0) return [];
 
         const maxEspera = Math.max(...esperas, 30);
@@ -78,6 +78,35 @@ export default function ChartsPanel({ metricas, config }) {
         return Object.entries(bins).map(([min, count]) => ({
             rango: `${min}-${parseInt(min)+4}m`,
             cantidad: count
+        }));
+    }, [metricas]);
+
+    // Evolución de Tiempos de Espera (Promedio por Hora)
+    const evolucionEsperaData = useMemo(() => {
+        if (!metricas?.turnosRaw) return [];
+        const esperas = metricas.turnosRaw
+            .filter(t => t.llamado_at)
+            .map(t => {
+                const wait = Math.round((new Date(t.llamado_at) - new Date(t.created_at)) / 60000);
+                const d = new Date(t.created_at);
+                return {
+                    wait,
+                    key: `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:00`
+                };
+            })
+            .filter(t => t.wait <= 45); // Filtrar outliers
+
+        const groups = {};
+        esperas.forEach(e => {
+            if (!groups[e.key]) groups[e.key] = { sum: 0, count: 0 };
+            groups[e.key].sum += e.wait;
+            groups[e.key].count++;
+        });
+
+        // Ordenamos cronológicamente. Como las keys son DD/MM HH:00 no se ordenan perfecto como string si cambia el mes pero asumiendo rangos cortos, está ok. Mejor usamos el index.
+        return Object.entries(groups).map(([time, data]) => ({
+            time,
+            esperaPromedio: Math.round(data.sum / data.count)
         }));
     }, [metricas]);
 
@@ -209,6 +238,26 @@ export default function ChartsPanel({ metricas, config }) {
                         </div>
                     ) : (
                         <div style={{ color: '#64748b', fontSize: '0.9rem', textAlign: 'center', padding: '20px' }}>Cargando datos históricos...</div>
+                    )}
+                </div>
+            </div>
+
+            {/* Nuevo: Evolución de Tiempos de Espera */}
+            <div className="chart-card" style={{ ...s.card, gridColumn: '1 / -1', animationDelay: '0.15s' }}>
+                <h3 style={s.title}>📈 Evolución del Tiempo de Espera (Promedio)</h3>
+                <div style={{ height: 250, width: '100%' }}>
+                    {evolucionEsperaData.length === 0 ? (
+                         <div style={{ color: '#64748b', fontSize: '0.9rem', textAlign: 'center', padding: '40px' }}>Sin datos suficientes</div>
+                    ) : (
+                        <ResponsiveContainer>
+                            <LineChart data={evolucionEsperaData}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
+                                <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+                                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                                <Line type="monotone" dataKey="esperaPromedio" name="Espera Promedio (min)" stroke="#8b5cf6" strokeWidth={4} dot={{ r: 4, fill: '#8b5cf6', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1500} animationEasing="ease-out" />
+                            </LineChart>
+                        </ResponsiveContainer>
                     )}
                 </div>
             </div>

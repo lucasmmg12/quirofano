@@ -260,15 +260,16 @@ export async function fetchMetricasPorRango(inicioIso, finIso = null) {
         ? tiemposAtencion.reduce((s, t) => s + t, 0) / tiemposAtencion.length
         : 0;
 
-    // Tiempo promedio de espera (created_at â†’ hora_inicio)
+    // Tiempo promedio de espera (created_at -> llamado_at), ignorando outliers > 45 min
     const tiemposEspera = (turnos || [])
         .filter(t => t.estado === 'atendido' && t.llamado_at)
-        .map(t => (new Date(t.llamado_at) - new Date(t.created_at)) / 60000);
+        .map(t => (new Date(t.llamado_at) - new Date(t.created_at)) / 60000)
+        .filter(mins => mins <= 45);
     const esperaPromedio = tiemposEspera.length > 0
         ? tiemposEspera.reduce((s, t) => s + t, 0) / tiemposEspera.length
         : 0;
 
-    // Por tipo de trÃ¡mite
+    // Por tipo de trámite
     const porTipo = {};
     (turnos || []).forEach(t => {
         if (!porTipo[t.tipo_tramite]) porTipo[t.tipo_tramite] = { total: 0, atendidos: 0 };

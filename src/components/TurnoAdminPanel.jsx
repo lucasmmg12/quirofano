@@ -10,8 +10,10 @@ import {
     Clock, CheckCircle, XCircle, BarChart3, RefreshCw,
     User, FileText, Receipt, Microscope, HelpCircle,
     Building2, Baby, ShieldCheck, Monitor, Edit2, Timer,
+    Download, FileSpreadsheet
 } from 'lucide-react';
 import { SkeletonCardGrid } from './SkeletonLoader';
+import { exportMetricasToExcel, generateMetricasPdf } from '../utils/metricsReport';
 import {
     fetchColaActiva, fetchAtendidosHoy, fetchMetricasPorRango,
     llamarTurno, iniciarAtencion, finalizarAtencion,
@@ -187,13 +189,39 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
         return () => clearInterval(timerInterval.current);
     }, [cola]);
 
+    // ─── Grupos de Filtros (Pestañas) ───
+    const filterTabs = useMemo(() => {
+        const tabs = [];
+        const gruposProcessed = new Set();
+        
+        config.forEach(cfg => {
+            if (cfg.grupo) {
+                if (!gruposProcessed.has(cfg.grupo)) {
+                    gruposProcessed.add(cfg.grupo);
+                    tabs.push({ id: cfg.grupo, label: cfg.grupo_label || cfg.grupo, color: cfg.grupo_color || '#8B5CF6', isGroup: true });
+                }
+            } else {
+                tabs.push({ id: cfg.tipo_tramite, label: cfg.label, color: cfg.color, isGroup: false });
+            }
+        });
+        return tabs;
+    }, [config]);
+
     // ─── Filtrado ───
     const colaFiltrada = useMemo(() => {
         let result = cola;
-        if (boxFilter) result = result.filter(t => t.box_asignado === boxFilter);
-        if (tipoFilter) result = result.filter(t => t.tipo_tramite === tipoFilter);
+        if (boxFilter !== null) result = result.filter(t => t.box_asignado === boxFilter);
+        if (tipoFilter) {
+            const tab = filterTabs.find(t => t.id === tipoFilter);
+            if (tab && tab.isGroup) {
+                const tramitesEnGrupo = config.filter(c => c.grupo === tipoFilter).map(c => c.tipo_tramite);
+                result = result.filter(t => tramitesEnGrupo.includes(t.tipo_tramite));
+            } else {
+                result = result.filter(t => t.tipo_tramite === tipoFilter);
+            }
+        }
         return result;
-    }, [cola, boxFilter, tipoFilter]);
+    }, [cola, boxFilter, tipoFilter, config, filterTabs]);
 
     // Agrupar por estado para vista de secciones
     const esperando = colaFiltrada.filter(t => t.estado === 'esperando');
@@ -475,21 +503,21 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                     </div>
                 </div>
 
-                {/* Type filter */}
+                {/* Pestañas de Grupo */}
                 <div style={s.filterGroup}>
-                    <span style={s.filterLabel}>Trámite:</span>
+                    <span style={s.filterLabel}>Grupo:</span>
                     <div style={s.filterBtns}>
                         <button onClick={() => setTipoFilter(null)}
                             style={{ ...s.filterBtn, ...(tipoFilter === null ? s.filterBtnActive : {}) }}>
                             Todos
                         </button>
-                        {config.map(cfg => (
-                            <button key={cfg.tipo_tramite} onClick={() => setTipoFilter(cfg.tipo_tramite)}
+                        {filterTabs.map(tab => (
+                            <button key={tab.id} onClick={() => setTipoFilter(tab.id)}
                                 style={{
                                     ...s.filterBtn,
-                                    ...(tipoFilter === cfg.tipo_tramite ? { ...s.filterBtnActive, background: cfg.color + '18', borderColor: cfg.color + '40', color: cfg.color } : {}),
+                                    ...(tipoFilter === tab.id ? { ...s.filterBtnActive, background: tab.color + '18', borderColor: tab.color + '40', color: tab.color } : {}),
                                 }}>
-                                {cfg.label}
+                                {tab.label}
                             </button>
                         ))}
                     </div>
@@ -529,15 +557,37 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                 Personalizado
                             </button>
                             {metricasRango === 'custom' && (
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginLeft: 'auto' }}>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                     <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
                                     <span style={{ color: '#64748b' }}>-</span>
                                     <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
                                 </div>
                             )}
+
+                            {/* Botones de Exportación */}
+                            <div style={{ display: 'flex', gap: '12px', marginLeft: 'auto' }}>
+                                <button onClick={() => exportMetricasToExcel(metricas, config, metricasRango)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '13px',
+                                        background: '#10b981', color: 'white', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)', transition: 'all 0.2s'
+                                    }}>
+                                    <FileSpreadsheet size={16} /> Excel
+                                </button>
+                                <button onClick={() => generateMetricasPdf(metricas, metricasRango, 'charts-panel-export')}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '13px',
+                                        background: '#ef4444', color: 'white', boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)', transition: 'all 0.2s'
+                                    }}>
+                                    <Download size={16} /> Reporte PDF
+                                </button>
+                            </div>
                         </div>
 
-                        <ChartsPanel metricas={metricas} config={config} />
+                        <div id="charts-panel-export" style={{ background: 'transparent' }}>
+                            <ChartsPanel metricas={metricas} config={config} />
+                        </div>
                     </div>
                 </div>
             )}
@@ -627,7 +677,15 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                 <span style={{ flex: '0 0 75px' }}>Atención</span>
                                 <span style={{ flex: '0 0 60px' }}>Hora</span>
                             </div>
-                            {atendidos.slice(0, 30).map(t => {
+                            {atendidos.filter(t => {
+                                if (!tipoFilter) return true;
+                                const tab = filterTabs.find(ft => ft.id === tipoFilter);
+                                if (tab && tab.isGroup) {
+                                    const tramitesEnGrupo = config.filter(c => c.grupo === tipoFilter).map(c => c.tipo_tramite);
+                                    return tramitesEnGrupo.includes(t.tipo_tramite);
+                                }
+                                return t.tipo_tramite === tipoFilter;
+                            }).slice(0, 30).map(t => {
                                 const cfg = getCfgForType(t.tipo_tramite);
                                 const esperaMins = t.llamado_at && t.created_at
                                     ? Math.floor((new Date(t.llamado_at) - new Date(t.created_at)) / 60000)
