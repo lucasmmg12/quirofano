@@ -135,11 +135,38 @@ export default function ChartsPanel({ metricas, config }) {
         }
     };
 
+    const CustomBoxTooltip = ({ active, payload, label }) => {
+        if (active && payload && payload.length) {
+            const data = payload[0].payload;
+            return (
+                <div style={{ background: 'rgba(255,255,255,0.95)', padding: '12px', borderRadius: '12px', boxShadow: '0 4px 16px rgba(0,0,0,0.1)', border: '1px solid rgba(226,232,240,0.8)' }}>
+                    <p style={{ fontWeight: 800, color: '#1e293b', marginBottom: '8px', borderBottom: '1px solid #e2e8f0', paddingBottom: '4px' }}>{label}</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ color: '#3b82f6', fontWeight: 600, fontSize: '0.9rem' }}>👥 Atendidos: {data.cantidad}</span>
+                        <span style={{ color: '#f59e0b', fontWeight: 600, fontSize: '0.9rem' }}>⏱️ Demora: {data.demoraPromedio} min</span>
+                        <span style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '4px', fontStyle: 'italic' }}>📌 {data.tramitePpal}</span>
+                    </div>
+                </div>
+            );
+        }
+        return null;
+    };
+
     return (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '20px', position: 'relative', zIndex: 10 }}>
+            <style>{`
+                @keyframes floatIn {
+                    0% { opacity: 0; transform: translateY(20px); }
+                    100% { opacity: 1; transform: translateY(0); }
+                }
+                .chart-card {
+                    animation: floatIn 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+                    opacity: 0;
+                }
+            `}</style>
 
             {/* 2. Heatmap: Demanda Histórica */}
-            <div style={{ ...s.card, gridColumn: '1 / -1' }}>
+            <div style={{ ...s.card, gridColumn: '1 / -1' }} className="chart-card" style={{ ...s.card, gridColumn: '1 / -1', animationDelay: '0.1s' }}>
                 <h3 style={s.title}>🕒 Mapa de Calor: Demanda Histórica (30 días)</h3>
                 <div style={{ width: '100%', overflowX: 'auto', paddingBottom: '10px' }}>
                     {heatmapData ? (
@@ -187,7 +214,7 @@ export default function ChartsPanel({ metricas, config }) {
             </div>
 
             {/* 3. Distribution Gauss */}
-            <div style={s.card}>
+            <div className="chart-card" style={{ ...s.card, animationDelay: '0.2s' }}>
                 <h3 style={s.title}>📊 Distribución de Espera (Campana)</h3>
                 <div style={{ height: 250, width: '100%' }}>
                     <ResponsiveContainer>
@@ -196,20 +223,20 @@ export default function ChartsPanel({ metricas, config }) {
                             <XAxis dataKey="rango" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
                             <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
                             <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                            <Bar dataKey="cantidad" barSize={30} fill="#f43f5e" radius={[6, 6, 0, 0]} />
-                            <Line type="monotone" dataKey="cantidad" stroke="#ec4899" strokeWidth={3} dot={false} />
+                            <Bar dataKey="cantidad" barSize={30} fill="#f43f5e" radius={[6, 6, 0, 0]} isAnimationActive={true} animationDuration={1500} animationEasing="ease-out" />
+                            <Line type="monotone" dataKey="cantidad" stroke="#ec4899" strokeWidth={3} dot={false} isAnimationActive={true} animationDuration={1500} animationEasing="ease-out" />
                         </ComposedChart>
                     </ResponsiveContainer>
                 </div>
             </div>
 
             {/* 4. Trámites Pie */}
-            <div style={s.card}>
+            <div className="chart-card" style={{ ...s.card, animationDelay: '0.3s' }}>
                 <h3 style={s.title}>🍩 Demanda por Trámite</h3>
                 <div style={{ height: 250, width: '100%' }}>
                     <ResponsiveContainer>
                         <PieChart>
-                            <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value">
+                            <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value" isAnimationActive={true} animationDuration={1500} animationEasing="ease-out">
                                 {pieData.map((entry, index) => (
                                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                 ))}
@@ -221,23 +248,25 @@ export default function ChartsPanel({ metricas, config }) {
                 </div>
             </div>
 
-            {/* 5. Rendimiento por Box */}
-            <div style={{ ...s.card, gridColumn: '1 / -1' }}>
+            {/* 5. Rendimiento por Box (ComposedChart) */}
+            <div className="chart-card" style={{ ...s.card, gridColumn: '1 / -1', animationDelay: '0.4s' }}>
                 <h3 style={s.title}>🏢 Rendimiento por Box</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                <div style={{ height: 300, width: '100%' }}>
                     {boxData.length === 0 ? (
-                        <div style={{ color: '#64748b', fontSize: '0.9rem' }}>Sin atenciones registradas</div>
+                        <div style={{ color: '#64748b', fontSize: '0.9rem', textAlign: 'center', padding: '40px' }}>Sin atenciones registradas</div>
                     ) : (
-                        boxData.map((b, i) => (
-                            <div key={i} style={{ padding: '16px', background: 'rgba(255,255,255,0.5)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.8)' }}>
-                                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1e293b', marginBottom: '8px' }}>{b.box}</div>
-                                <div style={{ fontSize: '0.9rem', color: '#475569', marginBottom: '4px' }}>👥 Atendidos: <b>{b.cantidad}</b></div>
-                                <div style={{ fontSize: '0.9rem', color: '#475569', marginBottom: '4px' }}>⏱️ Demora Prom: <b>{b.demoraPromedio}m</b></div>
-                                <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '8px', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '8px' }}>
-                                    Principal: <i>{b.tramitePpal}</i>
-                                </div>
-                            </div>
-                        ))
+                        <ResponsiveContainer>
+                            <ComposedChart data={boxData} margin={{ top: 20, right: 20, bottom: 20, left: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
+                                <XAxis dataKey="box" axisLine={false} tickLine={false} tick={{ fontSize: 13, fill: '#64748b', fontWeight: 600 }} />
+                                <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#3b82f6' }} />
+                                <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#f59e0b' }} />
+                                <Tooltip content={<CustomBoxTooltip />} />
+                                <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                                <Bar yAxisId="left" dataKey="cantidad" name="Pacientes Atendidos" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={40} isAnimationActive={true} animationDuration={1500} animationEasing="ease-out" />
+                                <Line yAxisId="right" type="monotone" dataKey="demoraPromedio" name="Demora Promedio (min)" stroke="#f59e0b" strokeWidth={4} dot={{ r: 5, fill: '#f59e0b', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 7 }} isAnimationActive={true} animationDuration={1500} animationEasing="ease-out" />
+                            </ComposedChart>
+                        </ResponsiveContainer>
                     )}
                 </div>
             </div>
