@@ -131,22 +131,23 @@ export default function ChartsPanel({ metricas, config }) {
 
     const s = {
         card: {
-            background: 'rgba(255, 255, 255, 0.7)',
-            backdropFilter: 'blur(16px)',
-            borderRadius: '24px',
-            border: '1px solid rgba(255,255,255,0.4)',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.05)',
-            padding: '24px',
+            background: 'rgba(255, 255, 255, 0.85)',
+            backdropFilter: 'blur(20px)',
+            borderRadius: '20px',
+            border: '1px solid rgba(255,255,255,0.6)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
+            padding: '20px',
             display: 'flex', flexDirection: 'column',
             overflow: 'hidden', position: 'relative'
         },
         title: {
-            fontSize: '1.1rem', fontWeight: 800, color: '#1e293b', marginBottom: '16px', letterSpacing: '-0.02em'
+            fontSize: '1.1rem', fontWeight: 800, color: '#1e293b', marginBottom: '16px', letterSpacing: '-0.02em',
+            display: 'flex', alignItems: 'center', gap: '8px'
         }
     };
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px', position: 'relative', zIndex: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '20px', position: 'relative', zIndex: 10 }}>
             {/* 1. Demand Trend */}
             <div style={s.card}>
                 <h3 style={s.title}>📈 Demanda por Hora</h3>

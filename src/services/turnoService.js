@@ -231,19 +231,21 @@ export function subscribeToCola(callback) {
 
 // â”€â”€â”€ MÃ©tricas del dÃ­a â”€â”€â”€
 export async function fetchMetricasHoy() {
-    const hoy = getTodayStart();
+    return fetchMetricasPorRango(getTodayStart());
+}
 
-    // Todos los turnos de hoy
-    const { data: turnos } = await supabase
-        .from('turnos_cola')
-        .select('*')
-        .gte('created_at', hoy);
+// ─── Métricas por Rango de Fechas ───
+export async function fetchMetricasPorRango(inicioIso, finIso = null) {
+    let qTurnos = supabase.from('turnos_cola').select('*').gte('created_at', inicioIso);
+    let qAtenciones = supabase.from('turnos_atencion').select('*').gte('created_at', inicioIso);
 
-    // Atenciones de hoy
-    const { data: atenciones } = await supabase
-        .from('turnos_atencion')
-        .select('*')
-        .gte('created_at', hoy);
+    if (finIso) {
+        qTurnos = qTurnos.lte('created_at', finIso);
+        qAtenciones = qAtenciones.lte('created_at', finIso);
+    }
+
+    const { data: turnos } = await qTurnos;
+    const { data: atenciones } = await qAtenciones;
 
     const total = turnos?.length || 0;
     const atendidos = turnos?.filter(t => t.estado === 'atendido').length || 0;

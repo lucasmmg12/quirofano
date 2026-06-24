@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { SkeletonCardGrid } from './SkeletonLoader';
 import {
-    fetchColaActiva, fetchAtendidosHoy, fetchMetricasHoy,
+    fetchColaActiva, fetchAtendidosHoy, fetchMetricasPorRango,
     llamarTurno, iniciarAtencion, finalizarAtencion,
     cancelarTurno, derivarTurno, cambiarTramiteTurno, subscribeToCola, fetchTurnoConfig,
 } from '../services/turnoService';
@@ -74,17 +74,42 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
     const [derivNotif, setDerivNotif] = useState(null); // { turnoNum, fromBox, toBox }
     const prevColaRef = useRef([]); // para detectar derivaciones comparando snapshots
 
+    // Rango de fechas para métricas
+    const [metricasRango, setMetricasRango] = useState('hoy'); // hoy, ayer, semana, mes, custom
+    const [customStart, setCustomStart] = useState('');
+    const [customEnd, setCustomEnd] = useState('');
+
     const empleadoNombre = currentUser?.nombre || 'Administrador';
     const empleadoBox = boxFilter || 1;
 
     // ─── Cargar datos ───
     const loadData = useCallback(async () => {
         try {
+            // Calcular fechas del filtro
+            let start = new Date();
+            start.setHours(0,0,0,0);
+            let end = null;
+            
+            if (metricasRango === 'ayer') {
+                start.setDate(start.getDate() - 1);
+                end = new Date(start);
+                end.setHours(23,59,59,999);
+            } else if (metricasRango === 'semana') {
+                start.setDate(start.getDate() - 7);
+            } else if (metricasRango === 'mes') {
+                start.setMonth(start.getMonth() - 1);
+            } else if (metricasRango === 'custom' && customStart) {
+                start = new Date(customStart + 'T00:00:00');
+                if (customEnd) {
+                    end = new Date(customEnd + 'T23:59:59');
+                }
+            }
+
             const [cfgData, colaData, atendidosData, metricasData] = await Promise.all([
                 fetchTurnoConfig(),
                 fetchColaActiva(),
                 fetchAtendidosHoy(),
-                fetchMetricasHoy(),
+                fetchMetricasPorRango(start.toISOString(), end ? end.toISOString() : null),
             ]);
             setConfig(cfgData);
             setCola(colaData);
@@ -96,7 +121,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
         } finally {
             setLoading(false);
         }
-    }, [addToast]);
+    }, [addToast, metricasRango, customStart, customEnd]);
 
     useEffect(() => {
         loadData();
@@ -473,9 +498,45 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
 
             {/* ═══ MÉTRICAS EXPANDIDAS (PRO MAX 3D) ═══ */}
             {showMetricas && metricas && (
-                <div style={{ position: 'relative', width: '100%', borderRadius: '24px', overflow: 'hidden', marginBottom: '24px', minHeight: '500px' }}>
+                <div style={{ position: 'relative', width: '100%', borderRadius: '24px', overflow: 'hidden', marginBottom: '24px' }}>
                     <FluidBackground3D workloadScore={Math.min((metricas.esperando + metricas.enAtencion) / 20, 1)} />
                     <div style={{ position: 'relative', zIndex: 1, padding: '24px' }}>
+                        
+                        {/* Selector de Fechas para Métricas */}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '24px', background: 'rgba(255,255,255,0.6)', backdropFilter: 'blur(10px)', padding: '16px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.4)', alignItems: 'center' }}>
+                            <div style={{ fontWeight: 600, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Clock size={16} /> Filtro de Fechas:
+                            </div>
+                            {['hoy', 'ayer', 'semana', 'mes'].map(r => (
+                                <button key={r} onClick={() => setMetricasRango(r)}
+                                    style={{ 
+                                        padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '13px',
+                                        background: metricasRango === r ? '#3b82f6' : 'rgba(255,255,255,0.8)',
+                                        color: metricasRango === r ? 'white' : '#475569',
+                                        boxShadow: metricasRango === r ? '0 4px 12px rgba(59, 130, 246, 0.3)' : 'none',
+                                        textTransform: 'capitalize'
+                                    }}>
+                                    {r === 'semana' ? 'Últimos 7 días' : r === 'mes' ? 'Últimos 30 días' : r}
+                                </button>
+                            ))}
+                            <button onClick={() => setMetricasRango('custom')}
+                                style={{ 
+                                    padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '13px',
+                                    background: metricasRango === 'custom' ? '#8b5cf6' : 'rgba(255,255,255,0.8)',
+                                    color: metricasRango === 'custom' ? 'white' : '#475569',
+                                    boxShadow: metricasRango === 'custom' ? '0 4px 12px rgba(139, 92, 246, 0.3)' : 'none'
+                                }}>
+                                Personalizado
+                            </button>
+                            {metricasRango === 'custom' && (
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginLeft: 'auto' }}>
+                                    <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                                    <span style={{ color: '#64748b' }}>-</span>
+                                    <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                                </div>
+                            )}
+                        </div>
+
                         <ChartsPanel metricas={metricas} config={config} />
                     </div>
                 </div>
