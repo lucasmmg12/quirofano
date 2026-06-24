@@ -18,6 +18,8 @@ import {
     cancelarTurno, derivarTurno, cambiarTramiteTurno, subscribeToCola, fetchTurnoConfig,
 } from '../services/turnoService';
 import BoxManagerPanel from './BoxManagerPanel';
+import ChartsPanel from './metrics/ChartsPanel';
+import FluidBackground3D from './metrics/FluidBackground3D';
 
 const ICON_MAP = { FileText, Receipt, Microscope, HelpCircle, Building2, Users, Baby, ShieldCheck };
 
@@ -469,42 +471,12 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                 </div>
             </div>
 
-            {/* ═══ MÉTRICAS EXPANDIDAS ═══ */}
+            {/* ═══ MÉTRICAS EXPANDIDAS (PRO MAX 3D) ═══ */}
             {showMetricas && metricas && (
-                <div style={s.metricasPanel}>
-                    <h3 style={s.metricasTitle}><TrendingUp size={16} /> Métricas del Día</h3>
-                    <div style={s.metricasGrid}>
-                        {/* Por tipo */}
-                        <div style={s.metricaCard}>
-                            <h4 style={s.metricaCardTitle}>Por Tipo de Trámite</h4>
-                            {Object.entries(metricas.porTipo).map(([tipo, data]) => {
-                                const cfg = getCfgForType(tipo);
-                                return (
-                                    <div key={tipo} style={s.metricaRow}>
-                                        <span style={{ ...s.metricaDot, background: cfg.color }} />
-                                        <span style={s.metricaLabel}>{cfg.label || tipo}</span>
-                                        <span style={s.metricaValue}>{data.atendidos}/{data.total}</span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                        {/* Por empleado */}
-                        <div style={s.metricaCard}>
-                            <h4 style={s.metricaCardTitle}>Por Empleado</h4>
-                            {Object.entries(metricas.porEmpleado).length === 0 ? (
-                                <span style={s.metricaEmpty}>Sin atenciones registradas</span>
-                            ) : (
-                                Object.entries(metricas.porEmpleado).map(([nombre, data]) => (
-                                    <div key={nombre} style={s.metricaRow}>
-                                        <span style={{ ...s.metricaDot, background: '#6366F1' }} />
-                                        <span style={s.metricaLabel}>{nombre}</span>
-                                        <span style={s.metricaValue}>
-                                            {data.cantidad} · {Math.round(data.tiempoTotal / data.cantidad)}m prom
-                                        </span>
-                                    </div>
-                                ))
-                            )}
-                        </div>
+                <div style={{ position: 'relative', width: '100%', borderRadius: '24px', overflow: 'hidden', marginBottom: '24px', minHeight: '500px' }}>
+                    <FluidBackground3D workloadScore={Math.min((metricas.esperando + metricas.enAtencion) / 20, 1)} />
+                    <div style={{ position: 'relative', zIndex: 1, padding: '24px' }}>
+                        <ChartsPanel metricas={metricas} config={config} />
                     </div>
                 </div>
             )}

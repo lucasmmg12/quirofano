@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
     Monitor, Power, PowerOff, User, Clock, Plus,
     Trash2, ChevronDown, ChevronUp, RefreshCw, Shield,
-    AlertTriangle, CheckCircle,
+    AlertTriangle, CheckCircle, Play
 } from 'lucide-react';
 import {
     fetchBoxes, toggleBoxActivo, asignarBox, liberarBox,

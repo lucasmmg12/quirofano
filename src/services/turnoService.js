@@ -296,6 +296,8 @@ export async function fetchMetricasHoy() {
         esperaPromedio: Math.round(esperaPromedio * 10) / 10,
         porTipo,
         porEmpleado,
+        turnosRaw: turnos || [],
+        atencionesRaw: atenciones || []
     };
 }
 
