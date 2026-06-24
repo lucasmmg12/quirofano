@@ -566,8 +566,8 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     onDerivar={() => setDerivarModal(turno.id)}
                                     onChangeTramite={() => setCambiarTramiteModal(turno)}
                                     formatTime={formatTime}
-                                    getTimeSince={getTimeSince}
                                     formatSeconds={formatSeconds}
+                                    isLockedForMe={turno.box_asignado !== null && myBoxNum !== null && turno.box_asignado !== myBoxNum}
                                 />
                             ))}
                         </div>
@@ -601,8 +601,8 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     onDerivar={() => setDerivarModal(turno.id)}
                                     onChangeTramite={() => setCambiarTramiteModal(turno)}
                                     formatTime={formatTime}
-                                    getTimeSince={getTimeSince}
                                     formatSeconds={formatSeconds}
+                                    isLockedForMe={turno.box_asignado !== null && myBoxNum !== null && turno.box_asignado !== myBoxNum}
                                 />
                             ))}
                         </div>
@@ -728,7 +728,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
 }
 
 // ─── Componente Individual: TurnoCard ───
-function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, onCancelar, onDerivar, onChangeTramite, formatTime, getTimeSince, formatSeconds }) {
+function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, onCancelar, onDerivar, onChangeTramite, formatTime, getTimeSince, formatSeconds, isLockedForMe }) {
     const estadoCfg = ESTADO_BADGES[turno.estado] || ESTADO_BADGES.esperando;
     const isActive = turno.estado === 'llamando' || turno.estado === 'en_atencion';
 
@@ -804,13 +804,15 @@ function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, o
                     <span style={s.infoCellLabel}>Trámite</span>
                     <span style={{ ...s.infoCellValue, color: config.color, display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {config.label || turno.tipo_tramite}
-                        <button
-                            onClick={onChangeTramite}
-                            style={{ background: 'transparent', border: 'none', padding: '2px', cursor: 'pointer', color: '#64748B' }}
-                            title="Cambiar Trámite"
-                        >
-                            <Edit2 size={12} />
-                        </button>
+                        {!isLockedForMe && (
+                            <button
+                                onClick={onChangeTramite}
+                                style={{ background: 'transparent', border: 'none', padding: '2px', cursor: 'pointer', color: '#64748B' }}
+                                title="Cambiar Trámite"
+                            >
+                                <Edit2 size={12} />
+                            </button>
+                        )}
                     </span>
                 </div>
                 <div style={s.infoCell}>
@@ -842,7 +844,7 @@ function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, o
             </div>
 
             {/* Actions */}
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', ...(isLockedForMe ? { opacity: 0.4, pointerEvents: 'none' } : {}) }} title={isLockedForMe ? 'Solo el Box asignado puede gestionar este turno' : ''}>
                 {turno.estado === 'esperando' && (
                     <>
                         <button onClick={() => onLlamar(turno)} style={{ ...s.turnoActionBtn, background: '#3B82F6', color: '#fff' }}>
