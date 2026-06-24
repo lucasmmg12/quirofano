@@ -13,6 +13,7 @@ import {
     fetchBoxes, toggleBoxActivo, asignarBox, liberarBox,
     fetchAllHorarios, addHorario, removeHorario, subscribeToBoxes,
 } from '../services/boxService';
+import { uploadAvatar } from '../services/authService';
 
 const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const DIA_OPTIONS = [
@@ -20,16 +21,10 @@ const DIA_OPTIONS = [
     ...DIAS.map((d, i) => ({ value: String(i), label: d })),
 ];
 
-// Mapa de video-avatar por username → archivo en /public
-const USER_AVATARS = {
-    frojo: '/Man_smiles_and_nods_directly_202606181046.mp4',
-};
-
-// Helper: obtener username a partir del usuario_id del box
-function getUsernameForBox(box, allUsers) {
+// Helper: obtener usuario asignado al box
+function getUserForBox(box, allUsers) {
     if (!box.usuario_id || !allUsers?.length) return null;
-    const user = allUsers.find(u => u.id === box.usuario_id);
-    return user?.usuario || null;
+    return allUsers.find(u => u.id === box.usuario_id) || null;
 }
 
 export default function BoxManagerPanel({ addToast, currentUser, allUsers, cola }) {
@@ -45,6 +40,9 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers, cola 
         dia: '', horaInicio: '12:00', horaFin: '14:00', motivo: '',
     });
     const [addingHorario, setAddingHorario] = useState(false);
+    
+    // Estado de subida de avatar
+    const [uploadingAvatarBox, setUploadingAvatarBox] = useState(null);
 
     // ─── Load ───
     const loadData = useCallback(async () => {
@@ -154,6 +152,27 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers, cola 
         }
     };
 
+    const handleUploadAvatar = async (e, boxNumero) => {
+        const file = e.target.files?.[0];
+        if (!file || !currentUser?.id) return;
+        
+        setUploadingAvatarBox(boxNumero);
+        try {
+            await uploadAvatar(currentUser.id, file);
+            addToast?.('Foto actualizada correctamente', 'success');
+            // Como allUsers viene de arriba, forzamos recarga simulando o esperando que TurnoAdminPanel lo haga.
+            // Para asegurar, disparamos un loadData
+            await loadData();
+            // Además disparamos un custom event para que TurnoAdminPanel recargue usuarios si escucha
+            window.dispatchEvent(new CustomEvent('avatar-updated'));
+        } catch (err) {
+            addToast?.('Error al subir foto: ' + err.message, 'error');
+        } finally {
+            setUploadingAvatarBox(null);
+            e.target.value = ''; // reset input
+        }
+    };
+
     if (loading) return (
         <div style={{ padding: '20px', textAlign: 'center', color: '#94A3B8' }}>
             <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite' }} />
@@ -185,36 +204,31 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers, cola 
                         }}>
                             {/* Box icon + number / video avatar */}
                             {(() => {
-                                const username = getUsernameForBox(box, allUsers);
-                                const avatarSrc = username ? USER_AVATARS[username] : null;
+                                const assignedUser = getUserForBox(box, allUsers);
+                                const avatarSrc = assignedUser?.avatar_url;
                                 const borderColor = box.activo ? '#22C55E' : '#EF4444';
-                                if (avatarSrc) {
-                                    return (
-                                        <div style={{
-                                            width: '52px', height: '52px', borderRadius: '50%',
-                                            border: `3px solid ${borderColor}`,
-                                            overflow: 'hidden', flexShrink: 0,
-                                            boxShadow: box.activo
-                                                ? '0 3px 14px rgba(34,197,94,0.35)'
-                                                : '0 3px 14px rgba(239,68,68,0.25)',
-                                            position: 'relative',
-                                        }}>
-                                            <video
-                                                src={avatarSrc}
-                                                autoPlay
-                                                loop
-                                                muted
-                                                playsInline
-                                                style={{
-                                                    width: '100%', height: '100%',
-                                                    objectFit: 'cover',
-                                                    display: 'block',
-                                                }}
-                                            />
-                                        </div>
-                                    );
-                                }
-                                return (
+                                
+                                const content = avatarSrc ? (
+                                    <div style={{
+                                        width: '48px', height: '48px', borderRadius: '12px',
+                                        border: `2px solid ${borderColor}`,
+                                        overflow: 'hidden', flexShrink: 0,
+                                        boxShadow: box.activo
+                                            ? '0 3px 14px rgba(34,197,94,0.35)'
+                                            : '0 3px 14px rgba(239,68,68,0.25)',
+                                        position: 'relative',
+                                    }}>
+                                        <img
+                                            src={avatarSrc}
+                                            alt="Avatar"
+                                            style={{
+                                                width: '100%', height: '100%',
+                                                objectFit: 'cover',
+                                                display: 'block',
+                                            }}
+                                        />
+                                    </div>
+                                ) : (
                                     <div style={{
                                         width: '48px', height: '48px', borderRadius: '12px',
                                         background: box.activo
@@ -225,6 +239,7 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers, cola 
                                         boxShadow: box.activo
                                             ? '0 3px 12px rgba(34,197,94,0.3)'
                                             : '0 3px 12px rgba(239,68,68,0.2)',
+                                        border: `2px solid ${borderColor}`,
                                     }}>
                                         <span style={{
                                             color: '#fff', fontWeight: 900, fontSize: '1.3rem',
@@ -233,6 +248,35 @@ export default function BoxManagerPanel({ addToast, currentUser, allUsers, cola 
                                         </span>
                                     </div>
                                 );
+
+                                if (isMyBox) {
+                                    return (
+                                        <div style={{ position: 'relative', cursor: 'pointer' }} title="Cambiar mi foto">
+                                            {content}
+                                            <input 
+                                                type="file" 
+                                                accept="image/*" 
+                                                onChange={(e) => handleUploadAvatar(e, box.numero)}
+                                                style={{
+                                                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                                                    opacity: 0, cursor: 'pointer', zIndex: 10
+                                                }}
+                                            />
+                                            {uploadingAvatarBox === box.numero && (
+                                                <div style={{
+                                                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                                                    background: 'rgba(255,255,255,0.7)', zIndex: 5,
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    borderRadius: '12px'
+                                                }}>
+                                                    <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite', color: '#0D3B66' }} />
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                }
+
+                                return content;
                             })()}
 
                             {/* Info */}

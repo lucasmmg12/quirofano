@@ -137,7 +137,7 @@ export async function createUser(usuario, nombre, password, iniciales = null) {
 export async function listUsers() {
     const { data, error } = await supabase
         .from('admqui_usuarios')
-        .select('id, usuario, nombre, iniciales, activo, ultimo_login, created_at')
+        .select('id, usuario, nombre, iniciales, activo, ultimo_login, created_at, avatar_url')
         .order('nombre');
 
     if (error) throw new Error(error.message);
@@ -192,4 +192,42 @@ export async function changePassword(userId, oldPassword, newPassword) {
     } catch (err) {
         return { success: false, error: 'Error: ' + err.message };
     }
+}
+
+/**
+ * Upload an avatar for a user
+ * @param {string} userId - UUID del usuario
+ * @param {File} file - Archivo de imagen a subir
+ */
+export async function uploadAvatar(userId, file) {
+    if (!userId || !file) throw new Error('Usuario y archivo son requeridos');
+    
+    // 1. Upload file to storage (overwrite if exists)
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${userId}-${Date.now()}.${fileExt}`;
+    
+    const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file, { upsert: true });
+        
+    if (uploadError) {
+        throw new Error(`Error al subir imagen: ${uploadError.message}`);
+    }
+    
+    // 2. Get public URL
+    const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+        
+    // 3. Update user profile
+    const { error: updateError } = await supabase
+        .from('admqui_usuarios')
+        .update({ avatar_url: publicUrl })
+        .eq('id', userId);
+        
+    if (updateError) {
+        throw new Error(`Error al guardar avatar_url: ${updateError.message}`);
+    }
+    
+    return publicUrl;
 }
