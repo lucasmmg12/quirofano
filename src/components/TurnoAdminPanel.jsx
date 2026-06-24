@@ -9,7 +9,7 @@ import {
     Users, PhoneCall, Play, Square, ArrowRightLeft,
     Clock, CheckCircle, XCircle, BarChart3, RefreshCw,
     User, FileText, Receipt, Microscope, HelpCircle,
-    Building2, Baby, ShieldCheck, Monitor, Edit2,
+    Building2, Baby, ShieldCheck, Monitor, Edit2, Timer,
 } from 'lucide-react';
 import { SkeletonCardGrid } from './SkeletonLoader';
 import {
