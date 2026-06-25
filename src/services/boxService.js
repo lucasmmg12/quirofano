@@ -71,38 +71,56 @@ export async function getBoxBalanceado() {
     const disponibles = await getBoxesDisponibles();
     if (disponibles.length === 0) return null;
 
-    // Contar turnos en espera por box
+    // Contar turnos en espera y totales por box
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
 
-    const { data: turnosEspera } = await supabase
+    const { data: turnosHoy } = await supabase
         .from('turnos_cola')
-        .select('box_asignado')
-        .in('estado', ['esperando', 'llamando', 'en_atencion'])
+        .select('box_asignado, estado')
         .gte('created_at', hoy.toISOString());
 
-    const conteo = {};
-    disponibles.forEach(b => { conteo[b.numero] = 0; });
-    (turnosEspera || []).forEach(t => {
-        if (conteo[t.box_asignado] !== undefined) {
-            conteo[t.box_asignado]++;
+    const conteoEspera = {};
+    const conteoTotal = {};
+    disponibles.forEach(b => { 
+        conteoEspera[b.numero] = 0; 
+        conteoTotal[b.numero] = 0; 
+    });
+
+    (turnosHoy || []).forEach(t => {
+        if (conteoTotal[t.box_asignado] !== undefined) {
+            conteoTotal[t.box_asignado]++;
+            if (['esperando', 'llamando', 'en_atencion'].includes(t.estado)) {
+                conteoEspera[t.box_asignado]++;
+            }
         }
     });
 
-    // Encontrar el valor mínimo de espera
-    let minCount = Infinity;
+    // 1. Encontrar el valor mínimo de espera
+    let minEspera = Infinity;
     for (const box of disponibles) {
-        const c = conteo[box.numero] ?? 0;
-        if (c < minCount) {
-            minCount = c;
+        const c = conteoEspera[box.numero];
+        if (c < minEspera) {
+            minEspera = c;
         }
     }
 
-    // Obtener todos los boxes que tengan ese conteo mínimo (empate)
-    const candidates = disponibles.filter(box => (conteo[box.numero] ?? 0) === minCount);
+    // 2. Filtrar los empatados en espera
+    const candidatesEspera = disponibles.filter(box => conteoEspera[box.numero] === minEspera);
 
-    // Seleccionar uno de forma aleatoria entre los empatados
-    const randomBox = candidates[Math.floor(Math.random() * candidates.length)];
+    // 3. Desempatar usando el total de turnos atendidos/asignados hoy
+    let minTotal = Infinity;
+    for (const box of candidatesEspera) {
+        const c = conteoTotal[box.numero];
+        if (c < minTotal) {
+            minTotal = c;
+        }
+    }
+
+    const finalCandidates = candidatesEspera.filter(box => conteoTotal[box.numero] === minTotal);
+
+    // Seleccionar uno de forma aleatoria si aún hay empate
+    const randomBox = finalCandidates[Math.floor(Math.random() * finalCandidates.length)];
 
     return randomBox.numero;
 }
