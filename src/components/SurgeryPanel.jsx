@@ -1748,9 +1748,10 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                     </button>
 
                     <button className="btn btn--ghost" onClick={() => setShowExcelZone(!showExcelZone)}
-                        style={{ fontSize: '0.78rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        style={{ fontSize: '0.78rem', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '5px' }}
+                        title="Subir archivo Excel"
+                    >
                         <FileSpreadsheet size={15} />
-                        Excel
                         {showExcelZone ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                     </button>
 

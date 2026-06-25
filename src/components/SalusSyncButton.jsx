@@ -5,7 +5,7 @@
  * - Si está offline: botón que descarga el launcher .bat para que el usuario lo ejecute
  */
 import { useState, useEffect } from 'react';
-import { Database, Check, AlertTriangle, Loader2, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { Database, Check, AlertTriangle, Loader2, Download, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
 import { checkSalusHealth } from '../services/salusSync';
 import { getCurrentUser } from '../services/authService';
 
@@ -267,7 +267,7 @@ export default function SalusSyncButton({ onComplete, addToast }) {
                     }}
                     onMouseOver={e => { if (!syncing) e.currentTarget.style.boxShadow = '0 4px 16px rgba(99, 102, 241, 0.45)'; }}
                     onMouseOut={e => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(99, 102, 241, 0.3)'; }}
-                    title="Sincronización Rápida (30 días)"
+                    title="Sincroniza SOLO la actividad de los últimos 30 días. Demora pocos segundos. Ideal para el uso diario."
                 >
                     {syncing ? (
                         <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
@@ -294,10 +294,14 @@ export default function SalusSyncButton({ onComplete, addToast }) {
                     }}
                     onMouseOver={e => { if (!syncing) e.currentTarget.style.background = '#E5E7EB'; }}
                     onMouseOut={e => { e.currentTarget.style.background = '#F3F4F6'; }}
-                    title="Sincronización Completa (Todo el histórico)"
+                    title="Sincroniza ABSOLUTAMENTE TODO el histórico desde 2025. Demora ~30 minutos."
                 >
                     Full Sync
                 </button>
+
+                <div title="Sync Rápido: Últimos 30 días (Segundos)&#10;Full Sync: Histórico Completo (30 Minutos)" style={{ display: 'flex', alignItems: 'center', color: '#9CA3AF', cursor: 'help', padding: '0 4px' }}>
+                    <HelpCircle size={15} />
+                </div>
 
                 {results && (
                     <button
