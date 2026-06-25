@@ -180,7 +180,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                 cola.forEach(t => {
                     if (t.estado === 'en_atencion' && t.llamado_at) {
                         const elapsed = Math.floor((Date.now() - new Date(t.llamado_at).getTime()) / 1000);
-                        timers[t.id] = elapsed;
+                        timers[t.id] = Math.max(0, elapsed);
                     }
                 });
                 return timers;
@@ -795,7 +795,7 @@ function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, o
         if (!turno.created_at) return null;
         const end = turno.llamado_at ? new Date(turno.llamado_at) : new Date();
         const mins = Math.floor((end - new Date(turno.created_at)) / 60000);
-        return mins;
+        return Math.max(0, mins);
     };
     const waitMins = getWaitTime();
     const waitColor = waitMins > 10 ? '#EF4444' : waitMins > 5 ? '#F59E0B' : '#16A34A';
