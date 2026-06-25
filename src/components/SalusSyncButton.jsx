@@ -36,20 +36,21 @@ export default function SalusSyncButton({ onComplete, addToast }) {
         return () => clearInterval(interval);
     }, []);
 
-    const handleSync = async () => {
+    const handleSync = async (isFast = true) => {
         setSyncing(true);
         setExpanded(true);
         setResults(null);
 
         try {
             const SYNC_URL = import.meta.env.VITE_SALUS_SYNC_URL || 'http://127.0.0.1:3456/api/salus';
-            const res = await fetch(`${SYNC_URL}/sync-all`, { signal: AbortSignal.timeout(300000) });
+            const qs = isFast ? '?fast=true' : '';
+            const res = await fetch(`${SYNC_URL}/sync-all${qs}`, { signal: AbortSignal.timeout(300000) });
             const json = await res.json();
 
             if (json.success) {
                 setResults(json.results);
                 setLastSync(new Date());
-                addToast?.(`✅ Sincronización completada en ${json.elapsed}`, 'success');
+                addToast?.(`✅ Sincronización ${isFast ? 'rápida' : 'completa'} completada`, 'success');
                 onComplete?.();
             } else {
                 setResults({ error: json.error });
@@ -250,7 +251,7 @@ export default function SalusSyncButton({ onComplete, addToast }) {
         <div style={{ position: 'relative' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <button
-                    onClick={handleSync}
+                    onClick={() => handleSync(true)}
                     disabled={syncing}
                     style={{
                         display: 'inline-flex', alignItems: 'center', gap: '7px',
@@ -266,14 +267,36 @@ export default function SalusSyncButton({ onComplete, addToast }) {
                     }}
                     onMouseOver={e => { if (!syncing) e.currentTarget.style.boxShadow = '0 4px 16px rgba(99, 102, 241, 0.45)'; }}
                     onMouseOut={e => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(99, 102, 241, 0.3)'; }}
-                    title="Sincronizar datos desde SALUS (Cirugías + Presupuestos + Deudas)"
+                    title="Sincronización Rápida (30 días)"
                 >
                     {syncing ? (
                         <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
                     ) : (
                         <Database size={15} />
                     )}
-                    {syncing ? 'Sincronizando...' : 'Sync SALUS'}
+                    {syncing ? 'Sincronizando...' : 'Sync Rápido'}
+                </button>
+
+                <button
+                    onClick={() => {
+                        if (window.confirm("La sincronización completa consultará todo el histórico y puede demorar hasta 30 minutos.\n\n¿Deseas continuar?")) {
+                            handleSync(false);
+                        }
+                    }}
+                    disabled={syncing}
+                    style={{
+                        display: 'inline-flex', alignItems: 'center',
+                        padding: '8px 12px', borderRadius: '10px',
+                        background: '#F3F4F6', color: '#4B5563',
+                        border: '1px solid #D1D5DB', fontSize: '0.75rem', fontWeight: 600,
+                        cursor: syncing ? 'wait' : 'pointer',
+                        transition: 'all 0.2s',
+                    }}
+                    onMouseOver={e => { if (!syncing) e.currentTarget.style.background = '#E5E7EB'; }}
+                    onMouseOut={e => { e.currentTarget.style.background = '#F3F4F6'; }}
+                    title="Sincronización Completa (Todo el histórico)"
+                >
+                    Full Sync
                 </button>
 
                 {results && (
