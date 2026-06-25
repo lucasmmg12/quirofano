@@ -392,15 +392,16 @@ async function syncCirugias(db) {
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // SYNC PRESUPUESTOS — SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-async function syncPresupuestos(db) {
-    console.log('💰 [2/7] Extrayendo presupuestos de SALUS...');
+async function syncPresupuestos(db, fastSync = false) {
+    console.log(`💰 [2/7] Extrayendo presupuestos de SALUS... (fastSync: ${fastSync})`);
+    const dateFilter = fastSync ? "fecha >= DATEADD(DAY, -30, CAST(GETDATE() AS DATE))" : "fecha >= '2026-01-01'";
     const result = await db.request().query(`
         SELECT idPresupuesto, idPaciente, Paciente, NHC, fecha, Observaciones,
                idArticulo, descripcion, cantidad, importeUnitario,
                [Importe Total Linea], [Importe Cobrado], Aceptado,
                FechaCaducidad, Presup_descripcion
         FROM VLISE_Presupuestos
-        WHERE fecha >= '2026-01-01'
+        WHERE ${dateFilter}
     `);
     console.log(`   📥 ${result.recordset.length} filas extraídas`);
 
@@ -492,10 +493,11 @@ async function syncPresupuestos(db) {
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // SYNC DEUDAS — SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-async function syncDeudas(db) {
-    console.log('📊 [3/7] Extrayendo deudas de SALUS...');
+async function syncDeudas(db, fastSync = false) {
+    console.log(`📊 [3/7] Extrayendo deudas de SALUS... (fastSync: ${fastSync})`);
     const req = db.request();
     req.timeout = 300000; // 5 minutos — TABLEAU es una vista muy pesada
+    const dateFilter = fastSync ? "T.[Fecha albaran] >= DATEADD(DAY, -30, CAST(GETDATE() AS DATE))" : "T.[Fecha albaran] >= '2025-05-01'";
     const result = await req.query(`
         SELECT
             T.[Fecha albaran], T.Paciente, T.Paciente_NHC, T.Paciente_NIF,
@@ -523,7 +525,7 @@ async function syncDeudas(db) {
           AND T.[Deuda linea] > 0
           AND T.[Numero folio] LIKE 'B 00028%'
           AND T.Paciente IS NOT NULL
-          AND T.[Fecha albaran] >= '2025-05-01'
+          AND ${dateFilter}
         ORDER BY T.[Fecha albaran] DESC
     `);
     console.log(`   📥 ${result.recordset.length} filas extraídas`);
@@ -687,10 +689,11 @@ async function syncDeudas(db) {
 // ═══════════════════════════════════════════════════
 // SYNC COBROS — SQL Server -> Supabase (BATCH)
 // ═══════════════════════════════════════════════════
-async function syncCobros(db) {
-    console.log('💰 [3b/10] Extrayendo cobros de SALUS...');
+async function syncCobros(db, fastSync = false) {
+    console.log(`💰 [3b/10] Extrayendo cobros de SALUS... (fastSync: ${fastSync})`);
     const req = db.request();
     req.timeout = 300000;
+    const dateFilter = fastSync ? "t.[FechaCobro] >= DATEADD(DAY, -30, CAST(GETDATE() AS DATE))" : "t.[FechaCobro] >= '2025-01-01'";
     const result = await req.query(`
         SELECT t.[IdCobro], t.[nombre], t.[nombreFiscal], t.[NIF], t.[descripcion],
                t.[importe2], t.[comentario],
@@ -699,7 +702,7 @@ async function syncCobros(db) {
                t.[Paciente], t.[Paciente_NHC], t.[FormaPago], t.[Caja],
                t.[Clasificacion], t.[UsuarioCobro]
           FROM [SALUS].[dbo].[PR_COBROS_QRY] AS t
-          WHERE t.[FechaCobro] >= '2025-01-01'
+          WHERE ${dateFilter}
           ORDER BY t.[fecha] DESC
     `);
     console.log('   ' + result.recordset.length + ' cobros extraidos');
@@ -777,10 +780,11 @@ async function syncCobros(db) {
 // ═══════════════════════════════════════════════════
 // SYNC NOTAS DE CREDITO — SQL Server -> Supabase (BATCH)
 // ═══════════════════════════════════════════════════
-async function syncNotasCredito(db) {
-    console.log('📝 [3c/10] Extrayendo notas de credito de SALUS...');
+async function syncNotasCredito(db, fastSync = false) {
+    console.log(`📝 [3c/10] Extrayendo notas de credito de SALUS... (fastSync: ${fastSync})`);
     const req = db.request();
     req.timeout = 300000;
+    const dateFilter = fastSync ? "t.[fecha] >= DATEADD(DAY, -30, CAST(GETDATE() AS DATE))" : "t.[fecha] >= '2025-01-01'";
     const result = await req.query(`
         WITH FacturasUnicas AS (
             SELECT t.[id], t.[fecha] AS FechaOriginal,
@@ -790,7 +794,7 @@ async function syncNotasCredito(db) {
                    CAST(ABS(t.[ImporteTotal]) AS FLOAT) AS [ImporteTotal],
                    ROW_NUMBER() OVER(PARTITION BY t.[id] ORDER BY t.[fecha] DESC) AS NumeroDeFila
               FROM [SALUS].[dbo].[PR_FACTURAS_QRY] AS t
-              WHERE t.[fecha] >= '2025-01-01'
+              WHERE ${dateFilter}
                 AND t.[NombreSerie] LIKE '%Nota Cr%dito%'
                 AND t.[Paciente_Nombre] IS NOT NULL
         )
@@ -1522,6 +1526,7 @@ const ESPECIALIDAD_ASOCIACION = {
     'GINECOLOGIA': 'Asociación de Ginecólogos',
     'ORTOPEDIA / TRAUMATOLOGIA': 'Asociación de Traumatólogos',
     'CIRUGIA PEDIATRICA': 'Asociación de Cirujanos Pediatras',
+    'PEDIATRIA': 'Asociación de Cirujanos Pediatras',
     'OTORRINOLARINGOLOGIA': 'ORL (Particular)',
 };
 
@@ -1569,7 +1574,28 @@ async function syncAsociacionesCirugias(db) {
     `);
     console.log(`   📥 ${result.recordset.length} registros extraídos`);
 
-    if (result.recordset.length === 0) {
+    const resultPediatria = await db.request().query(`
+        SELECT 
+            CAST([Fecha Visita] AS DATE) AS [Fecha realización],
+            [Paciente] AS [Nombre Paciente],
+            [Cliente] AS [Cliente],
+            [NIF] AS [DNI],
+            [Visita_Especialidad] AS [Especialidad],
+            [Tipo Visita] AS [Nombre cirugía],
+            [Asistencia] AS [Estado],
+            [Responsable] AS [Cirujano]
+        FROM [SALUS].[dbo].[VLISE_Visitas]
+        WHERE 
+            [Tipo Visita] = '(cx) sutura de herida'
+            AND [Visita_Especialidad] IN ('CIRUGIA PEDIATRICA', 'PEDIATRIA')
+            AND [Asistencia] = 'Presente'
+            AND CAST([Fecha Visita] AS DATE) >= '2026-05-01'
+    `);
+    console.log(`   📥 ${resultPediatria.recordset.length} registros pediátricos (suturas) extraídos`);
+
+    const combinedRecords = [...result.recordset, ...resultPediatria.recordset];
+
+    if (combinedRecords.length === 0) {
         return { total: 0, inserted: 0, updated: 0, skipped: 0 };
     }
 
@@ -1585,7 +1611,7 @@ async function syncAsociacionesCirugias(db) {
     let skippedFecha = 0;
     const skippedEspecialidades = new Map(); // especialidad → count
 
-    for (const r of result.recordset) {
+    for (const r of combinedRecords) {
         const nombre = r['Nombre Paciente']?.trim();
         const especialidad = r.Especialidad?.trim();
         if (!nombre || !especialidad) { skippedSinNombre++; continue; }
@@ -1692,7 +1718,7 @@ async function syncAsociacionesCirugias(db) {
         }
     }
 
-    const summary = { total: result.recordset.length, inserted, updated, skipped };
+    const summary = { total: combinedRecords.length, inserted, updated, skipped };
     console.log(`   ✅ Asociaciones: ${inserted} nuevos, ${updated} actualizados, ${skipped} errores`);
     return summary;
 }
@@ -2175,8 +2201,9 @@ app.get('/api/salus/sync-all', async (req, res) => {
     }
 
     syncInProgress = true;
+    const fastSync = req.query.fast === 'true';
     const startTime = Date.now();
-    console.log('\n🚀 â•â•â• SINCRONIZACIÃ“N COMPLETA INICIADA â•â•â•');
+    console.log(`\n🚀 ▬▬▬ SINCRONIZACIÓN COMPLETA INICIADA (FastSync: ${fastSync}) ▬▬▬ `);
 
     const results = {};
 
@@ -2191,28 +2218,28 @@ app.get('/api/salus/sync-all', async (req, res) => {
         }
 
         try {
-            results.presupuestos = await syncPresupuestos(db);
+            results.presupuestos = await syncPresupuestos(db, fastSync);
         } catch (err) {
             console.error('âŒ Error en presupuestos:', err.message);
             results.presupuestos = { error: err.message };
         }
 
         try {
-            results.deudas = await syncDeudas(db);
+            results.deudas = await syncDeudas(db, fastSync);
         } catch (err) {
             console.error('âŒ Error en deudas:', err.message);
             results.deudas = { error: err.message };
         }
 
         try {
-            results.cobros = await syncCobros(db);
+            results.cobros = await syncCobros(db, fastSync);
         } catch (err) {
             console.error('Error en cobros:', err.message);
             results.cobros = { error: err.message };
         }
 
         try {
-            results.notasCredito = await syncNotasCredito(db);
+            results.notasCredito = await syncNotasCredito(db, fastSync);
         } catch (err) {
             console.error('Error en notas de credito:', err.message);
             results.notasCredito = { error: err.message };
@@ -2327,22 +2354,22 @@ app.get('/api/salus/sync/cirugias', async (req, res) => {
 });
 
 app.get('/api/salus/sync/presupuestos', async (req, res) => {
-    try { const db = await getPool(); res.json({ success: true, results: await syncPresupuestos(db) }); }
+    try { const db = await getPool(); res.json({ success: true, results: await syncPresupuestos(db, req.query.fast === 'true') }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
 app.get('/api/salus/sync/deudas', async (req, res) => {
-    try { const db = await getPool(); res.json({ success: true, results: await syncDeudas(db) }); }
+    try { const db = await getPool(); res.json({ success: true, results: await syncDeudas(db, req.query.fast === 'true') }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
 app.get('/api/salus/sync/cobros', async (req, res) => {
-    try { const db = await getPool(); res.json({ success: true, results: await syncCobros(db) }); }
+    try { const db = await getPool(); res.json({ success: true, results: await syncCobros(db, req.query.fast === 'true') }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
 app.get('/api/salus/sync/notas-credito', async (req, res) => {
-    try { const db = await getPool(); res.json({ success: true, results: await syncNotasCredito(db) }); }
+    try { const db = await getPool(); res.json({ success: true, results: await syncNotasCredito(db, req.query.fast === 'true') }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
