@@ -234,6 +234,26 @@ function App({ currentUser, onLogout }) {
     // Toast notifications
     const [toasts, setToasts] = useState([]);
 
+    // July 1st Meme Modal
+    const [showJulioMeme, setShowJulioMeme] = useState(false);
+
+    useEffect(() => {
+        const today = new Date();
+        // Activo desde "ahora" hasta el 2 de Julio de 2026 inclusive
+        const endLimit = new Date('2026-07-02T23:59:59');
+        
+        if (today <= endLimit) {
+            if (!sessionStorage.getItem('julio_meme_shown')) {
+                setShowJulioMeme(true);
+            }
+        }
+    }, []);
+
+    const closeJulioMeme = () => {
+        sessionStorage.setItem('julio_meme_shown', 'true');
+        setShowJulioMeme(false);
+    };
+
     // === GLOBAL UNREAD MESSAGE COUNT (persists across all views) ===
     const [globalUnreadCount, setGlobalUnreadCount] = useState(0);
 
@@ -1073,6 +1093,40 @@ function App({ currentUser, onLogout }) {
                         if (modules) setSelectedModules(modules);
                     }}
                 />
+            )}
+
+            {/* July 1st Meme Modal */}
+            {showJulioMeme && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.85)', zIndex: 999999,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'
+                }}>
+                    <div style={{
+                        background: 'white', padding: '24px', borderRadius: '16px',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px',
+                        maxWidth: '90%', maxHeight: '90vh', boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
+                    }}>
+                        <h2 style={{ margin: 0, color: '#1e293b', fontSize: '24px' }}>¡Bienvenido Julio!</h2>
+                        <img 
+                            src="/meme-julio-x-14jpg.webp" 
+                            alt="Julio Meme" 
+                            style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: '8px' }} 
+                        />
+                        <button 
+                            onClick={closeJulioMeme}
+                            style={{
+                                padding: '12px 32px', background: '#3b82f6', color: 'white', 
+                                border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold',
+                                fontSize: '16px', transition: 'all 0.2s', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
+                            }}
+                            onMouseOver={e => e.target.style.transform = 'translateY(-2px)'}
+                            onMouseOut={e => e.target.style.transform = 'none'}
+                        >
+                            Empezar a trabajar
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );
