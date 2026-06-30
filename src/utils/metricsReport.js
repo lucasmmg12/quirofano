@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 
 // ─── EXPORTACIÓN A EXCEL ───
@@ -135,7 +135,7 @@ export async function generateMetricasPdf(metricas, rangoNombre, chartsElementId
         ["Tiempo Promedio de Atención", `${metricas.tiempoPromedio} min`],
     ];
 
-    doc.autoTable({
+    autoTable(doc, {
         startY: startY + 15,
         margin: { left: 70, right: 40 },
         body: kpiData,
