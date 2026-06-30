@@ -37,7 +37,11 @@ function daysBetween(from, to) {
     return Math.round((b - a) / (1000 * 60 * 60 * 24));
 }
 
+const FACTURACION_USERS = ['vgimenez', 'idona', 'fparedes', 'pgillanes', 'rcarrizo', 'ppalma', 'fleoz', 'lcastilla'];
+
 export default function AltasPanel({ addToast, currentUser }) {
+    const isReadOnly = currentUser?.usuario && FACTURACION_USERS.includes(currentUser.usuario.toLowerCase());
+
     // ── State ──
     const [altas, setAltas] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -371,6 +375,7 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     // ── Handlers ──
     const handleEstadoChange = async (id, nuevoEstado) => {
+        if (isReadOnly) return addToast?.('Modificación no permitida para tu usuario', 'error');
         try {
             setProcessing(true);
             await updateAltaEstado(id, nuevoEstado, currentUser?.nombre || 'operador');
@@ -386,6 +391,7 @@ export default function AltasPanel({ addToast, currentUser }) {
     };
 
     const handleSaveNotas = async (id) => {
+        if (isReadOnly) return addToast?.('Modificación no permitida para tu usuario', 'error');
         try {
             setProcessing(true);
             await updateAltaNotas(id, notasText);
@@ -1375,15 +1381,17 @@ export default function AltasPanel({ addToast, currentUser }) {
                             <thead>
                                 <tr>
                                     <th className="cart__th" style={{ width: '30px', textAlign: 'center' }} title="Seleccioná fichas para enviar al Carrito de Traspaso">
-                                        <input type="checkbox"
-                                            checked={selectedIds.size > 0 && sortedAltas.filter(a => !a.en_carrito_traspaso).every(a => selectedIds.has(a.id))}
-                                            onChange={e => {
-                                                if (e.target.checked) handleSelectAllSelectable();
-                                                else setSelectedIds(new Set());
-                                            }}
-                                            title="Seleccionar todas las fichas para el carrito"
-                                            style={{ cursor: 'pointer', accentColor: '#6366F1' }}
-                                        />
+                                        {!isReadOnly && (
+                                            <input type="checkbox"
+                                                checked={selectedIds.size > 0 && sortedAltas.filter(a => !a.en_carrito_traspaso).every(a => selectedIds.has(a.id))}
+                                                onChange={e => {
+                                                    if (e.target.checked) handleSelectAllSelectable();
+                                                    else setSelectedIds(new Set());
+                                                }}
+                                                title="Seleccionar todas las fichas para el carrito"
+                                                style={{ cursor: 'pointer', accentColor: '#6366F1' }}
+                                            />
+                                        )}
                                     </th>
                                     <th className="cart__th" style={{ width: '30px' }}></th>
                                     <FilterHeader label="Estado" col="estado" width="120px" />
@@ -1476,11 +1484,13 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             {/* Checkbox */}
                                             <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }} onClick={e => e.stopPropagation()}>
                                                 {!alta.en_carrito_traspaso ? (
-                                                    <input type="checkbox"
-                                                        checked={selectedIds.has(alta.id)}
-                                                        onChange={() => handleToggleSelect(alta.id)}
-                                                        style={{ cursor: 'pointer', accentColor: '#6366F1' }}
-                                                    />
+                                                    !isReadOnly && (
+                                                        <input type="checkbox"
+                                                            checked={selectedIds.has(alta.id)}
+                                                            onChange={() => handleToggleSelect(alta.id)}
+                                                            style={{ cursor: 'pointer', accentColor: '#6366F1' }}
+                                                        />
+                                                    )
                                                 ) : (
                                                     <ShoppingCart size={12} style={{ color: '#6366F1', opacity: 0.5 }} title="En carrito" />
                                                 )}
@@ -1499,6 +1509,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                     <button
                                                         onClick={e => {
                                                             e.stopPropagation();
+                                                            if (isReadOnly) return;
                                                             if (statusDropdownId === alta.id) {
                                                                 setStatusDropdownId(null);
                                                                 setDropdownAnchor(null);
@@ -1518,9 +1529,10 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                             background: !cfg ? 'transparent' : cfg.bg,
                                                             color: !cfg ? 'transparent' : cfg.color,
                                                             border: !cfg ? '1px dashed transparent' : `1px solid ${cfg.color}25`,
-                                                            cursor: 'pointer', transition: 'all 0.15s',
+                                                            cursor: isReadOnly ? 'default' : 'pointer', transition: 'all 0.15s',
                                                             whiteSpace: 'nowrap',
                                                             minWidth: !cfg ? '70px' : 'auto',
+                                                            opacity: isReadOnly ? 0.8 : 1
                                                         }}
                                                         onMouseOver={e => {
                                                             if (!cfg) {
@@ -1780,13 +1792,14 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                                 <div
                                                                     onClick={e => {
                                                                         e.stopPropagation();
+                                                                        if (isReadOnly) return;
                                                                         setEditingNotas(alta.id);
                                                                         setNotasText(alta.notas_internas || '');
                                                                     }}
                                                                     style={{
                                                                         padding: '12px 14px', borderRadius: '10px',
                                                                         background: '#fff', border: '1px dashed var(--neutral-200)',
-                                                                        minHeight: '80px', cursor: 'text',
+                                                                        minHeight: '80px', cursor: isReadOnly ? 'default' : 'text',
                                                                         fontSize: '0.82rem', lineHeight: 1.6,
                                                                         color: alta.notas_internas ? 'var(--neutral-700)' : 'var(--neutral-400)',
                                                                         whiteSpace: 'pre-wrap',
@@ -1851,7 +1864,7 @@ export default function AltasPanel({ addToast, currentUser }) {
             </div>
 
             {/* ── Floating action bar (selección) ── */}
-            {selectedIds.size > 0 && (
+            {selectedIds.size > 0 && !isReadOnly && (
                 <div className="animate-fade-in" style={{
                     position: 'sticky', bottom: '16px',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px',
