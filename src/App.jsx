@@ -17,6 +17,7 @@ import { getCurrentUser, logout as authLogout } from './services/authService';
 import { logAction } from './services/auditService';
 import { subscribeToAllIncoming, fetchUnreadCounts } from './services/chatService';
 import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, ChevronDown, ChevronRight, RotateCcw, Moon, Sun, Menu, X, AlertCircle, Info, Home as HomeIcon } from 'lucide-react';
+import SnowBackground from './components/SnowBackground';
 import SurgeryPanel from './components/SurgeryPanel.jsx';
 import ConfigPanel from './components/ConfigPanel.jsx';
 import HomePanel from './components/HomePanel.jsx';
@@ -1100,16 +1101,20 @@ function App({ currentUser, onLogout }) {
                 <div style={{
                     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                     background: 'rgba(0,0,0,0.85)', zIndex: 999999,
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                    overflow: 'hidden'
                 }}>
+                    <SnowBackground />
                     <div style={{
+                        position: 'relative',
                         background: 'white', padding: '24px', borderRadius: '16px',
                         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px',
-                        maxWidth: '90%', maxHeight: '90vh', boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
+                        maxWidth: '90%', maxHeight: '90vh', boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+                        zIndex: 1
                     }}>
                         <h2 style={{ margin: 0, color: '#1e293b', fontSize: '24px' }}>¡Bienvenido Julio!</h2>
                         <img 
-                            src="/meme-julio-x-14jpg.webp" 
+                            src="/julio.jpg" 
                             alt="Julio Meme" 
                             style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: '8px' }} 
                         />
