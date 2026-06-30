@@ -2196,15 +2196,30 @@ async function syncRecepcionesVisitas(db) {
 async function calcularTriageAvanzado() {
     console.log('\n🚦 [TRIAGE] Recalculando triage de facturación...');
     
-    // Obtenemos todas las altas desde mayo 2026
-    const { data: altas, error } = await supabase
-        .from('altas_administrativas')
-        .select('id, numero_admision, especialidad, doctor, fecha_ingreso, fecha_alta, cantidad_procedimientos, triage_facturacion')
-        .gte('fecha_ingreso', '2026-05-01');
+    // Obtenemos todas las altas desde mayo 2026 (con paginación para evitar el límite de 1000)
+    let altas = [];
+    let from = 0;
+    const step = 1000;
+    let fetchMore = true;
 
-    if (error) {
-        console.error('   ❌ Error obteniendo altas para triage:', error.message);
-        return { error: error.message };
+    while (fetchMore) {
+        const { data, error } = await supabase
+            .from('altas_administrativas')
+            .select('id, numero_admision, especialidad, doctor, fecha_ingreso, fecha_alta, cantidad_procedimientos, triage_facturacion')
+            .gte('fecha_ingreso', '2026-05-01')
+            .range(from, from + step - 1);
+
+        if (error) {
+            console.error('   ❌ Error obteniendo altas para triage:', error.message);
+            return { error: error.message };
+        }
+
+        altas = altas.concat(data);
+        if (data.length < step) {
+            fetchMore = false;
+        } else {
+            from += step;
+        }
     }
 
     let actualizadas = 0;
