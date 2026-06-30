@@ -899,6 +899,7 @@ async function syncAltasAdministrativas(db) {
                         WHERE O.idHospi = TA.idAdmision
                           AND O.activo = 1
                           AND O.ValorM IS NOT NULL
+                          AND O.idPreguntaPr = 6175
                           AND LEN(LTRIM(RTRIM(CAST(O.ValorM AS NVARCHAR(MAX))))) > 0
                         FOR XML PATH(''), TYPE
                     ).value('.', 'NVARCHAR(MAX)'), 1, 7, '')
