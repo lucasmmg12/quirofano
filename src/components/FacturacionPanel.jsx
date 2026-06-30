@@ -1344,12 +1344,12 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                                 style={{
                                                                     padding: '2px 6px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 700,
                                                                     cursor: 'help',
-                                                                    background: alta.triage_facturacion === 'Difícil' ? '#FEF2F2'
-                                                                        : alta.triage_facturacion === 'Media' ? '#FFFBEB' : '#ECFDF5',
-                                                                    color: alta.triage_facturacion === 'Difícil' ? '#DC2626'
-                                                                        : alta.triage_facturacion === 'Media' ? '#D97706' : '#059669',
+                                                                    background: ['Rojo', 'Difícil'].includes(alta.triage_facturacion) ? '#FEF2F2'
+                                                                        : ['Amarillo', 'Media'].includes(alta.triage_facturacion) ? '#FFFBEB' : '#ECFDF5',
+                                                                    color: ['Rojo', 'Difícil'].includes(alta.triage_facturacion) ? '#DC2626'
+                                                                        : ['Amarillo', 'Media'].includes(alta.triage_facturacion) ? '#D97706' : '#059669',
                                                                 }}>
-                                                                {alta.triage_facturacion === 'Difícil' ? '🔴' : alta.triage_facturacion === 'Media' ? '🟡' : '🟢'} {alta.cantidad_procedimientos || 0}
+                                                                {['Rojo', 'Difícil'].includes(alta.triage_facturacion) ? '🔴' : ['Amarillo', 'Media'].includes(alta.triage_facturacion) ? '🟡' : '🟢'} {alta.cantidad_procedimientos || 0}
                                                             </span>
                                                         ) : (
                                                             <span style={{ color: 'var(--neutral-300)', fontSize: '0.72rem' }}>—</span>
@@ -1517,10 +1517,10 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                                             🔪 Procedimientos Quirúrgicos
                                                                             <span style={{
                                                                                 padding: '2px 8px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 700,
-                                                                                background: alta.triage_facturacion === 'Difícil' ? '#FEF2F2'
-                                                                                    : alta.triage_facturacion === 'Media' ? '#FFFBEB' : '#ECFDF5',
-                                                                                color: alta.triage_facturacion === 'Difícil' ? '#DC2626'
-                                                                                    : alta.triage_facturacion === 'Media' ? '#D97706' : '#059669',
+                                                                                background: ['Rojo', 'Difícil'].includes(alta.triage_facturacion) ? '#FEF2F2'
+                                                                                    : ['Amarillo', 'Media'].includes(alta.triage_facturacion) ? '#FFFBEB' : '#ECFDF5',
+                                                                                color: ['Rojo', 'Difícil'].includes(alta.triage_facturacion) ? '#DC2626'
+                                                                                    : ['Amarillo', 'Media'].includes(alta.triage_facturacion) ? '#D97706' : '#059669',
                                                                             }}>
                                                                                 {alta.triage_facturacion} ({alta.cantidad_procedimientos})
                                                                             </span>

@@ -1081,16 +1081,12 @@ async function syncFojaQuirurgica(db) {
     for (const [numAdm, procsSet] of fojaMap.entries()) {
         const procs = [...procsSet];
         const cantidad = procs.length;
-        let triage = null;
-        if (cantidad >= 3) triage = 'Difícil';
-        else if (cantidad === 2) triage = 'Media';
-        else if (cantidad === 1) triage = 'Fácil';
+        // El triage se calculará en el paso de calcularTriageAvanzado
 
         const { error } = await supabase
             .from('altas_administrativas')
             .update({
                 cantidad_procedimientos: cantidad,
-                triage_facturacion: triage,
                 procedimientos_detalle: procs,
             })
             .eq('numero_admision', numAdm);
@@ -2193,6 +2189,97 @@ async function syncRecepcionesVisitas(db) {
 
 // ENDPOINT PRINCIPAL: SYNC TODO
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════
+// CÁLCULO DE TRIAGE AVANZADO
+// Evalúa las reglas de facturación (Rojo > Amarillo > Verde)
+// ═══════════════════════════════════════════════════
+async function calcularTriageAvanzado() {
+    console.log('\n🚦 [TRIAGE] Recalculando triage de facturación...');
+    
+    // Obtenemos todas las altas desde mayo 2026
+    const { data: altas, error } = await supabase
+        .from('altas_administrativas')
+        .select('id, numero_admision, especialidad, doctor, fecha_ingreso, fecha_alta, cantidad_procedimientos, triage_facturacion')
+        .gte('fecha_ingreso', '2026-05-01');
+
+    if (error) {
+        console.error('   ❌ Error obteniendo altas para triage:', error.message);
+        return { error: error.message };
+    }
+
+    let actualizadas = 0;
+    const batchUpdates = [];
+
+    for (const alta of altas) {
+        const esp = (alta.especialidad || '').toUpperCase();
+        const doc = (alta.doctor || '').toUpperCase();
+        const procs = alta.cantidad_procedimientos || 0;
+        
+        let diasInternacion = 0;
+        if (alta.fecha_ingreso && alta.fecha_alta) {
+            const a = new Date(alta.fecha_ingreso + 'T12:00:00');
+            const b = new Date(alta.fecha_alta + 'T12:00:00');
+            diasInternacion = Math.max(0, Math.round((b - a) / (1000 * 60 * 60 * 24)));
+        }
+
+        let nuevoTriage = 'Verde'; // Default
+
+        // 🔴 Reglas ROJO
+        const esTerapia = esp.includes('TERAPIA INTENSIVA');
+        if (esp.includes('NEUROCIRUGIA') || esp.includes('NEUROCIRUGÍA')) {
+            if (doc.includes('PONS')) nuevoTriage = 'Rojo';
+        } else if (esp.includes('CARDIOVASCULAR')) {
+            nuevoTriage = 'Rojo';
+        } else if (esTerapia && diasInternacion > 20) {
+            nuevoTriage = 'Rojo';
+        } else if (esTerapia && procs >= 1) {
+            nuevoTriage = 'Rojo';
+        } else if (procs > 2) {
+            nuevoTriage = 'Rojo';
+        } 
+        // 🟢 Regla Excepción GINECOLOGIA (prioridad sobre amarillo)
+        else if ((esp.includes('GINECOLOGIA') || esp.includes('GINECOLOGÍA')) && procs <= 2) {
+            nuevoTriage = 'Verde';
+        }
+        // 🟡 Reglas AMARILLO
+        else if (esp.includes('HEMODINAMIA') || esp.includes('MAXILOFACIAL') || esp.includes('PLASTICA') || esp.includes('PLÁSTICA')) {
+            nuevoTriage = 'Amarillo';
+        } else if (esTerapia && diasInternacion >= 5 && diasInternacion <= 20) {
+            nuevoTriage = 'Amarillo';
+        } else if (procs === 1 || procs === 2) {
+            nuevoTriage = 'Amarillo';
+        }
+        // 🟢 Reglas VERDE (resto cae por defecto en Verde, pero explicitamos por legibilidad)
+        else if (esp.includes('CLINICA MEDICA') || esp.includes('CLÍNICA MÉDICA') || esp.includes('SHOCK ROOM')) {
+            nuevoTriage = 'Verde';
+        } else if (esTerapia && diasInternacion < 5) {
+            nuevoTriage = 'Verde';
+        }
+
+        if (alta.triage_facturacion !== nuevoTriage) {
+            batchUpdates.push({ id: alta.id, triage_facturacion: nuevoTriage });
+        }
+    }
+
+    if (batchUpdates.length > 0) {
+        console.log(`   🔄 Actualizando triage en ${batchUpdates.length} altas...`);
+        for (const update of batchUpdates) {
+            const { error: updError } = await supabase
+                .from('altas_administrativas')
+                .update({ triage_facturacion: update.triage_facturacion })
+                .eq('id', update.id);
+            if (updError) {
+                console.error(`   ❌ Error update triage para ID ${update.id}:`, updError.message);
+            } else {
+                actualizadas++;
+            }
+        }
+    }
+
+    console.log(`   ✅ Triage avanzado calculado: ${actualizadas} altas actualizadas`);
+    return { actualizadas };
+}
+
 let syncInProgress = false;
 
 app.get('/api/salus/sync-all', async (req, res) => {
@@ -2306,6 +2393,13 @@ app.get('/api/salus/sync-all', async (req, res) => {
         } catch (err) {
             console.error('Error en recepciones:', err.message);
             results.recepciones = { error: err.message };
+        }
+
+        try {
+            results.triage = await calcularTriageAvanzado();
+        } catch (err) {
+            console.error('❌ Error en cálculo de triage:', err.message);
+            results.triage = { error: err.message };
         }
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
