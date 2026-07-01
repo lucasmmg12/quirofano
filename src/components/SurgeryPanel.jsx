@@ -535,7 +535,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
         try {
             setProcessing(true);
             const result = await processScheduledNotifications();
-            addToast?.(`${result.sent || 0} notificaciones enviadas`, 'success');
+            addToast?.(`${result.processed || 0} notificaciones procesadas`, 'success');
             loadData();
         } catch (e) { addToast?.('Error: ' + e.message, 'error'); }
         finally { setProcessing(false); }

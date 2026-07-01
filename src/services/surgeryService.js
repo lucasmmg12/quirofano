@@ -606,10 +606,10 @@ export function shouldNotifyToday(fechaCirugia) {
     const diffMs = surgery.getTime() - today.getTime();
     const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
 
-    // Si la cirugía es lunes (1), notificar el sábado (2 días antes)
-    if (surgery.getDay() === 1 && diffDays === 2) return true;
-    // Default: notificar 3 días antes
-    if (diffDays === 3) return true;
+    // Si la cirugía es lunes (1), notificar el sábado (2 días antes) o si se cargó tarde
+    if (surgery.getDay() === 1 && diffDays <= 2 && diffDays >= 0) return true;
+    // Default: notificar 3 días antes o si se cargó tarde
+    if (diffDays <= 3 && diffDays >= 0) return true;
 
     return false;
 }
