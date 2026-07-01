@@ -208,7 +208,7 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     const handleSelectAllSelectable = () => {
         const selectableIds = sortedAltas
-            .filter(a => !a.en_carrito_traspaso)
+            .filter(a => !a.en_carrito_traspaso && !a._isFacturada)
             .map(a => a.id);
         setSelectedIds(new Set(selectableIds));
     };
@@ -1383,7 +1383,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                     <th className="cart__th" style={{ width: '30px', textAlign: 'center' }} title="Seleccioná fichas para enviar al Carrito de Traspaso">
                                         {!isReadOnly && (
                                             <input type="checkbox"
-                                                checked={selectedIds.size > 0 && sortedAltas.filter(a => !a.en_carrito_traspaso).every(a => selectedIds.has(a.id))}
+                                                checked={selectedIds.size > 0 && sortedAltas.filter(a => !a.en_carrito_traspaso && !a._isFacturada).every(a => selectedIds.has(a.id))}
                                                 onChange={e => {
                                                     if (e.target.checked) handleSelectAllSelectable();
                                                     else setSelectedIds(new Set());
@@ -1483,7 +1483,9 @@ export default function AltasPanel({ addToast, currentUser }) {
                                         >
                                             {/* Checkbox */}
                                             <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }} onClick={e => e.stopPropagation()}>
-                                                {!alta.en_carrito_traspaso ? (
+                                                {alta._isFacturada ? (
+                                                    <Receipt size={14} style={{ color: '#059669', opacity: 0.7 }} title="Ya facturada" />
+                                                ) : !alta.en_carrito_traspaso ? (
                                                     !isReadOnly && (
                                                         <input type="checkbox"
                                                             checked={selectedIds.has(alta.id)}
