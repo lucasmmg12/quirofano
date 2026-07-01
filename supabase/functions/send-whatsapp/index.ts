@@ -183,7 +183,7 @@ Deno.serve(async (req) => {
                         details: data,
                         sentPayload: templateBody,
                     }),
-                    { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );
             }
             
