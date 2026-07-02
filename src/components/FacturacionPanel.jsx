@@ -1192,7 +1192,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                     ) : (
                         <>
                             <div style={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid var(--neutral-200)', background: 'var(--card-bg, #fff)' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', tableLayout: 'fixed' }}>
+                            <table style={{ width: '100%', minWidth: '1500px', borderCollapse: 'collapse', fontSize: '0.82rem', tableLayout: 'fixed' }}>
                                 <thead>
                                     <tr style={{ background: 'var(--neutral-50)' }}>
                                         <th style={{ ...thStyle, width: '30px', textAlign: 'center' }}>
