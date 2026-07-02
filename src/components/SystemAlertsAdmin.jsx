@@ -8,6 +8,8 @@ export default function SystemAlertsAdmin({ addToast, currentUser }) {
     const [loading, setLoading] = useState(true);
     const [isEditing, setIsEditing] = useState(false);
     
+    const isLMarinero = currentUser?.usuario === 'lmarinero@sanatorioargentino.com.ar' || currentUser?.usuario === 'lmarinero';
+    
     const [formData, setFormData] = useState({
         message: '',
         severity: 'warning',
@@ -123,7 +125,7 @@ export default function SystemAlertsAdmin({ addToast, currentUser }) {
                 </form>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isLMarinero ? '1fr 1fr' : '1fr', gap: '20px' }}>
                 {/* Active/History Alerts */}
                 <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '16px' }}>
                     <h4 style={{ margin: '0 0 12px', fontSize: '0.9rem', color: '#475569' }}>Alertas Globales</h4>
@@ -157,8 +159,9 @@ export default function SystemAlertsAdmin({ addToast, currentUser }) {
                     )}
                 </div>
 
-                {/* User Reports */}
-                <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '16px' }}>
+                {/* User Reports - Restricted to lmarinero */}
+                {isLMarinero && (
+                    <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '16px' }}>
                     <h4 style={{ margin: '0 0 12px', fontSize: '0.9rem', color: '#475569' }}>Reportes de Usuarios</h4>
                     {reports.length === 0 ? <p style={{ fontSize: '0.8rem', color: '#94A3B8' }}>No hay reportes de caídas.</p> : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
@@ -184,6 +187,7 @@ export default function SystemAlertsAdmin({ addToast, currentUser }) {
                         </div>
                     )}
                 </div>
+                )}
             </div>
         </div>
     );
