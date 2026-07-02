@@ -46,6 +46,8 @@ import CommandPalette from './components/CommandPalette.jsx';
 import BetoAnalyticsPanel from './components/BetoAnalyticsPanel.jsx';
 import ManualProcedimientos from './components/ManualProcedimientos.jsx';
 import HelpButton from './components/HelpButton.jsx';
+import SystemOutageReporter from './components/SystemOutageReporter.jsx';
+import SystemAlertBanner from './components/SystemAlertBanner.jsx';
 import DocumentosPanel from './components/DocumentosPanel.jsx';
 import PacientesPanel from './components/PacientesPanel.jsx';
 import WelcomeOnboarding from './components/WelcomeOnboarding.jsx';
@@ -600,6 +602,7 @@ function App({ currentUser, onLogout }) {
                         <WhatsAppLineStatus />
                     )}
                     <div className="topbar__right" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <SystemOutageReporter currentUser={currentUser} addToast={addToast} />
                         {/* Dark Mode Toggle */}
                         <button
                             onClick={() => setDarkMode(d => !d)}
@@ -675,6 +678,7 @@ function App({ currentUser, onLogout }) {
                         </div>
                     </div>
                 </header>
+                <SystemAlertBanner />
 
                 {/* Content */}
                 {activeView === 'inicio' && (
@@ -915,7 +919,7 @@ function App({ currentUser, onLogout }) {
                 )}
 
                 {activeView === 'config' && (
-                    <ConfigPanel addToast={addToast} onReconfigModules={() => setShowModuleReconfig(true)} />
+                    <ConfigPanel addToast={addToast} onReconfigModules={() => setShowModuleReconfig(true)} currentUser={currentUser} />
                 )}
 
                 {activeView === 'metricas' && (

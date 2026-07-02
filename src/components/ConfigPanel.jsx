@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { getAllConfig, updateMultipleConfigs, getAllWhatsAppLines, updateWhatsAppLine, testWhatsAppLineConnection } from '../services/configService';
 import { SkeletonCardGrid } from './SkeletonLoader';
+import SystemAlertsAdmin from './SystemAlertsAdmin.jsx';
 
 // Configuración de los campos con metadata para UI
 const FIELD_META = {
@@ -44,7 +45,7 @@ const CATEGORY_LABELS = {
     general: { label: 'General', icon: Building2, color: '#6366F1' },
 };
 
-export default function ConfigPanel({ addToast, onReconfigModules }) {
+export default function ConfigPanel({ addToast, onReconfigModules, currentUser }) {
     const [configs, setConfigs] = useState([]);
     const [editValues, setEditValues] = useState({});
     const [loading, setLoading] = useState(true);
@@ -717,6 +718,9 @@ export default function ConfigPanel({ addToast, onReconfigModules }) {
                         Los cambios en API Key y Project ID requieren <strong>re-deploy</strong> de las Edge Functions para tomar efecto.
                     </span>
                 </div>
+
+                {/* System Alerts & Outages */}
+                <SystemAlertsAdmin addToast={addToast} currentUser={currentUser} />
             </div>
         </div>
     );
