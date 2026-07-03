@@ -248,7 +248,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     const loadCarritoDevolucion = useCallback(async () => {
         setCarritoDevLoading(true);
         try {
-            const data = await fetchCarritoDevolucion();
+            const data = await fetchCarritoDevolucion(currentUser?.usuario);
             setCarritoDevItems(data);
         } catch (err) {
             addToast?.('Error al cargar carrito: ' + err.message, 'error');
@@ -290,7 +290,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             return;
         }
         try {
-            await marcarParaDevolucion([...selectedIds]);
+            await marcarParaDevolucion([...selectedIds], currentUser?.usuario);
             addToast?.(`${selectedIds.size} ficha(s) enviadas al carrito de devolución`, 'success');
             setSelectedIds(new Set());
             loadData();
@@ -1237,10 +1237,10 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                     <tr style={{ background: 'var(--neutral-50)' }}>
                                         <th style={{ ...thStyle, width: '30px', textAlign: 'center' }}>
                                             <input type="checkbox"
-                                                checked={selectedIds.size > 0 && filteredAltas.filter(a => !a.en_carrito_devolucion && !a.devolucion_id).every(a => selectedIds.has(a.id))}
+                                                checked={selectedIds.size > 0 && filteredAltas.filter(a => (!a.en_carrito_devolucion || a.carrito_devolucion_por === currentUser?.usuario) && !a.devolucion_id).every(a => selectedIds.has(a.id))}
                                                 onChange={e => {
                                                     if (e.target.checked) {
-                                                        const ids = filteredAltas.filter(a => !a.en_carrito_devolucion && !a.devolucion_id).map(a => a.id);
+                                                        const ids = filteredAltas.filter(a => (!a.en_carrito_devolucion || a.carrito_devolucion_por === currentUser?.usuario) && !a.devolucion_id).map(a => a.id);
                                                         setSelectedIds(new Set(ids));
                                                     } else {
                                                         setSelectedIds(new Set());
@@ -1273,7 +1273,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                         const estadoConfig = FACTURACION_ESTADOS[estadoFac] || FACTURACION_ESTADOS['Pendiente'];
                                         const isDevuelta = estadoFac === 'Devuelta';
                                         const dias = daysBetween(alta.fecha_ingreso, alta.fecha_alta);
-                                        const canSelect = !alta.en_carrito_devolucion && !alta.devolucion_id && !alta._isSuspendida;
+                                        const canSelect = (!alta.en_carrito_devolucion || alta.carrito_devolucion_por === currentUser?.usuario) && !alta.devolucion_id && !alta._isSuspendida;
                                         // Read-only: fichas facturadas, devueltas, o suspendidas no se pueden editar
                                         const isReadOnly = estadoFac === 'Facturada' || estadoFac === 'Devuelta' || alta._isSuspendida;
                                         const rowBg = alta._isSuspendida ? '#FEF2F2'
@@ -1299,12 +1299,14 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                     <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                                                         {canSelect ? (
                                                             <input type="checkbox"
-                                                                checked={selectedIds.has(alta.id)}
+                                                                checked={selectedIds.has(alta.id) || (alta.en_carrito_devolucion && alta.carrito_devolucion_por === currentUser?.usuario)}
+                                                                disabled={alta.en_carrito_devolucion && alta.carrito_devolucion_por === currentUser?.usuario}
                                                                 onChange={() => handleToggleSelect(alta.id)}
-                                                                style={{ cursor: 'pointer', accentColor: '#EF4444' }}
+                                                                title={alta.en_carrito_devolucion ? 'En tu carrito' : 'Seleccionar'}
+                                                                style={{ cursor: alta.en_carrito_devolucion ? 'not-allowed' : 'pointer', accentColor: '#EF4444' }}
                                                             />
                                                         ) : alta.en_carrito_devolucion ? (
-                                                            <Undo2 size={12} style={{ color: '#EF4444', opacity: 0.5 }} title="En carrito de devolución" />
+                                                            <Undo2 size={14} style={{ color: '#9CA3AF', opacity: 0.8 }} title={`En carrito de ${alta.carrito_devolucion_por}`} />
                                                         ) : null}
                                                     </td>
                                                     <td style={tdStyle}>

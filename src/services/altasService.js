@@ -258,10 +258,13 @@ export async function updateResponsableFac(id, responsable_fac) {
 /**
  * Marcar altas para traspaso (en_carrito_traspaso flag)
  */
-export async function marcarParaTraspaso(ids) {
+export async function marcarParaTraspaso(ids, usuario) {
     const { data, error } = await supabase
         .from('altas_administrativas')
-        .update({ en_carrito_traspaso: true })
+        .update({ 
+            en_carrito_traspaso: true,
+            carrito_traspaso_por: usuario || null
+        })
         .in('id', ids)
         .select();
 
@@ -275,7 +278,10 @@ export async function marcarParaTraspaso(ids) {
 export async function quitarDeCarritoTraspaso(id) {
     const { data, error } = await supabase
         .from('altas_administrativas')
-        .update({ en_carrito_traspaso: false })
+        .update({ 
+            en_carrito_traspaso: false,
+            carrito_traspaso_por: null
+        })
         .eq('id', id)
         .select()
         .single();
@@ -287,11 +293,12 @@ export async function quitarDeCarritoTraspaso(id) {
 /**
  * Obtiene fichas en el carrito de traspaso
  */
-export async function fetchCarritoTraspaso() {
+export async function fetchCarritoTraspaso(usuario) {
     const { data, error } = await supabase
         .from('altas_administrativas')
         .select('*')
         .eq('en_carrito_traspaso', true)
+        .eq('carrito_traspaso_por', usuario)
         .order('fecha_ingreso', { ascending: false });
 
     if (error) throw error;
@@ -321,8 +328,8 @@ export async function generarTraspaso({ responsableEntrega, responsableRecibe, n
     const codigo = `${prefix}${String(nextNum).padStart(4, '0')}`;
 
     // Get all cart items
-    const cartItems = await fetchCarritoTraspaso();
-    if (cartItems.length === 0) throw new Error('No hay fichas en el carrito de traspaso');
+    const cartItems = await fetchCarritoTraspaso(responsableEntrega);
+    if (cartItems.length === 0) throw new Error('No hay fichas en tu carrito de traspaso');
 
     const ahora = new Date().toISOString();
 
@@ -351,6 +358,7 @@ export async function generarTraspaso({ responsableEntrega, responsableRecibe, n
             traspasada_at: ahora,
             traspasada_por: responsableEntrega,
             en_carrito_traspaso: false,
+            carrito_traspaso_por: null,
             estado_fac: 'Pendiente',
         })
         .in('id', ids);
@@ -415,10 +423,13 @@ export async function firmarTraspaso(traspasoId, { firmaEntrega, firmaRecibe }) 
 /**
  * Marcar altas para devolución (en_carrito_devolucion flag)
  */
-export async function marcarParaDevolucion(ids) {
+export async function marcarParaDevolucion(ids, usuario) {
     const { data, error } = await supabase
         .from('altas_administrativas')
-        .update({ en_carrito_devolucion: true })
+        .update({ 
+            en_carrito_devolucion: true,
+            carrito_devolucion_por: usuario || null
+        })
         .in('id', ids)
         .not('traspaso_id', 'is', null)
         .is('devolucion_id', null)
@@ -434,7 +445,10 @@ export async function marcarParaDevolucion(ids) {
 export async function quitarDeCarritoDevolucion(id) {
     const { data, error } = await supabase
         .from('altas_administrativas')
-        .update({ en_carrito_devolucion: false })
+        .update({ 
+            en_carrito_devolucion: false,
+            carrito_devolucion_por: null
+        })
         .eq('id', id)
         .is('devolucion_id', null)
         .select()
@@ -447,11 +461,12 @@ export async function quitarDeCarritoDevolucion(id) {
 /**
  * Obtiene fichas en el carrito de devolución
  */
-export async function fetchCarritoDevolucion() {
+export async function fetchCarritoDevolucion(usuario) {
     const { data, error } = await supabase
         .from('altas_administrativas')
         .select('*')
         .eq('en_carrito_devolucion', true)
+        .eq('carrito_devolucion_por', usuario)
         .is('devolucion_id', null)
         .order('fecha_ingreso', { ascending: false });
 
@@ -482,8 +497,8 @@ export async function generarDevolucion({ responsableDevuelve, responsableRecibe
     const codigo = `${prefix}${String(nextNum).padStart(4, '0')}`;
 
     // Obtener items del carrito
-    const cartItems = await fetchCarritoDevolucion();
-    if (cartItems.length === 0) throw new Error('No hay fichas en el carrito de devolución');
+    const cartItems = await fetchCarritoDevolucion(responsableDevuelve);
+    if (cartItems.length === 0) throw new Error('No hay fichas en tu carrito de devolución');
 
     const ahora = new Date().toISOString();
 
@@ -515,6 +530,7 @@ export async function generarDevolucion({ responsableDevuelve, responsableRecibe
             devuelta_at: ahora,
             devuelta_por: responsableDevuelve,
             en_carrito_devolucion: false,
+            carrito_devolucion_por: null,
             estado_fac: 'Devuelta',
         })
         .in('id', ids);
