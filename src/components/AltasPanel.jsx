@@ -16,6 +16,7 @@ import {
     fetchAltas, updateAltaEstado, updateAltaNotas, updateAltaResponsable, ALTA_ESTADOS,
     fetchCarritoTraspaso, marcarParaTraspaso, quitarDeCarritoTraspaso,
     generarTraspaso, fetchTraspasos, fetchTraspasoDetalle, firmarTraspaso,
+    cerrarPeriodoFacturacion, reabrirPeriodoFacturacion,
 } from '../services/altasService';
 import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
 import SalusSyncButton from './SalusSyncButton';
@@ -38,6 +39,18 @@ function daysBetween(from, to) {
 }
 
 const FACTURACION_USERS = ['vgimenez', 'idona', 'fparedes', 'pgillanes', 'rcarrizo', 'ppalma', 'fleoz', 'lcastilla'];
+
+// Usuarios de Facturación que pueden recibir traspasos (nombre display)
+const FACTURACION_RECIBE = [
+    'Victoria Giménez',
+    'Ines Dona',
+    'Florencia Paredes',
+    'Paola Illanes',
+    'Romina Carrizo',
+    'Patricia Palma',
+    'Federico Leoz',
+    'Lorena Castilla',
+];
 
 export default function AltasPanel({ addToast, currentUser }) {
     const isReadOnly = currentUser?.usuario && FACTURACION_USERS.includes(currentUser.usuario.toLowerCase());
@@ -465,6 +478,9 @@ export default function AltasPanel({ addToast, currentUser }) {
         });
 
         // 2) Detectar duplicados: pacientes con múltiples admisiones en el rango
+        //    Agrupamos por paciente + fecha_ingreso:
+        //    - Mismo paciente, MISMA fecha_ingreso → fusión (absorber datos)
+        //    - Mismo paciente, DIFERENTE fecha_ingreso → filas separadas, resaltadas
         const patientMap = new Map();
         for (const alta of result) {
             const key = (alta.paciente || '').trim().toUpperCase();
@@ -472,22 +488,42 @@ export default function AltasPanel({ addToast, currentUser }) {
             if (!patientMap.has(key)) patientMap.set(key, []);
             patientMap.get(key).push(alta);
         }
-        const dupPatients = new Map();
+
+        // Sub-agrupar por fecha_ingreso para fusión
+        const dupPatients = new Map(); // key: paciente+fecha → fusión
+        const siblingPatients = new Set(); // pacientes con múltiples internaciones (fechas distintas)
+
         for (const [name, entries] of patientMap) {
-            if (entries.length > 1) {
-                // Ordenar por fecha_ingreso DESC para saber cuál es la última
-                const sorted = [...entries].sort((a, b) => {
-                    const dateA = a.fecha_ingreso ? new Date(a.fecha_ingreso) : new Date(0);
-                    const dateB = b.fecha_ingreso ? new Date(b.fecha_ingreso) : new Date(0);
-                    return dateB - dateA; // más reciente primero
-                });
-                const latestId = sorted[0].id;
-                dupPatients.set(name, {
-                    admissions: sorted.map(e => e.numero_admision),
-                    latestId,
-                    count: entries.length,
-                    firstAdmission: sorted[sorted.length - 1],
-                });
+            // Agrupar por fecha_ingreso
+            const byDate = new Map();
+            for (const e of entries) {
+                const dateKey = e.fecha_ingreso || 'sin-fecha';
+                if (!byDate.has(dateKey)) byDate.set(dateKey, []);
+                byDate.get(dateKey).push(e);
+            }
+
+            // Si hay más de un grupo de fecha → internaciones separadas
+            if (byDate.size > 1) {
+                siblingPatients.add(name);
+            }
+
+            // Para cada grupo de misma fecha con >1 entrada → fusión
+            for (const [dateKey, dateEntries] of byDate) {
+                if (dateEntries.length > 1) {
+                    const sorted = [...dateEntries].sort((a, b) => {
+                        const dateA = a.fecha_ingreso ? new Date(a.fecha_ingreso) : new Date(0);
+                        const dateB = b.fecha_ingreso ? new Date(b.fecha_ingreso) : new Date(0);
+                        return dateB - dateA;
+                    });
+                    const latestId = sorted[0].id;
+                    const fusionKey = `${name}||${dateKey}`;
+                    dupPatients.set(fusionKey, {
+                        admissions: sorted.map(e => e.numero_admision),
+                        latestId,
+                        count: dateEntries.length,
+                        firstAdmission: sorted[sorted.length - 1],
+                    });
+                }
             }
         }
 
@@ -513,13 +549,18 @@ export default function AltasPanel({ addToast, currentUser }) {
             const finalResp = alta.responsable_override || autoResp;
 
             const pacKey = (alta.paciente || '').trim().toUpperCase();
-            const dupInfo = dupPatients.get(pacKey);
+            const dateKey = alta.fecha_ingreso || 'sin-fecha';
+            const fusionKey = `${pacKey}||${dateKey}`;
+            const dupInfo = dupPatients.get(fusionKey);
             const isDuplicate = !!dupInfo;
             const duplicateAdmissions = isDuplicate ? dupInfo.admissions : null;
             const isLatestAdmission = isDuplicate ? dupInfo.latestId === alta.id : true;
             const isObsoleteAdmission = isDuplicate && !isLatestAdmission;
 
-            // FUSIÓN AUTOMÁTICA
+            // Flag: paciente tiene otras internaciones con fecha diferente
+            const hasSiblingInternaciones = siblingPatients.has(pacKey);
+
+            // FUSIÓN AUTOMÁTICA (solo entre misma fecha_ingreso)
             let doctor = alta.doctor;
             let proceso = alta.proceso;
             let cliente = alta.cliente;
@@ -535,6 +576,27 @@ export default function AltasPanel({ addToast, currentUser }) {
                 mergedAdmissions = duplicateAdmissions;
             }
 
+            // Obtener las admisiones hermanas (diferente fecha_ingreso)
+            const siblingAdmissions = hasSiblingInternaciones
+                ? (patientMap.get(pacKey) || [])
+                    .filter(a => a.id !== alta.id && a.fecha_ingreso !== alta.fecha_ingreso)
+                    .map(a => a.numero_admision)
+                : null;
+
+            // Detectar "Cruza Mes": internación que trasciende el mes seleccionado
+            // Caso: ingreso antes del fin del mes seleccionado, pero alta es nula o posterior al mes
+            const [selY, selM] = selectedMonth.split('-').map(Number);
+            const lastDayOfMonth = new Date(selY, selM, 0).getDate();
+            const mesEnd = `${selectedMonth}-${String(lastDayOfMonth).padStart(2, '0')}`;
+            const mesStart = `${selectedMonth}-01`;
+            const cruzaMes = alta.fecha_ingreso && alta.fecha_ingreso < mesStart && (!alta.fecha_alta || alta.fecha_alta >= mesStart);
+            const cruzaMesFechaCierre = cruzaMes ? alta.fecha_ingreso.substring(0, 7) : null; // mes del ingreso
+            // Fecha sugerida de cierre: último día del mes anterior al seleccionado
+            const prevMonth = selM === 1 ? 12 : selM - 1;
+            const prevYear = selM === 1 ? selY - 1 : selY;
+            const lastDayPrevMonth = new Date(prevYear, prevMonth, 0).getDate();
+            const fechaCierreSugerida = cruzaMes ? `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(lastDayPrevMonth).padStart(2, '0')}` : null;
+
             return { 
                 ...alta, 
                 _effectiveEstado: effectiveEstado, 
@@ -548,13 +610,18 @@ export default function AltasPanel({ addToast, currentUser }) {
                 _isObsoleteAdmission: isObsoleteAdmission,
                 _duplicateCount: isDuplicate ? dupInfo.count : 0,
                 _mergedAdmissions: mergedAdmissions,
+                _hasSiblingInternaciones: hasSiblingInternaciones,
+                _siblingAdmissions: siblingAdmissions,
+                _cruzaMes: cruzaMes,
+                _fechaCierreSugerida: fechaCierreSugerida,
                 doctor, proceso, cliente // Sobrescribimos con los datos fusionados
             };
         });
 
-        // Ocultar las admisiones obsoletas (ya están absorbidas por la final)
+        // Ocultar solo admisiones obsoletas de MISMA fecha (fusionadas)
+        // Las de fecha diferente se muestran como filas independientes
         return result.filter(a => !a._isObsoleteAdmission);
-    }, [altas, criterios]);
+    }, [altas, criterios, selectedMonth]);
 
     // ── Check if current user is jcorrea (can edit responsable) ──
     const isJcorrea = useMemo(() => {
@@ -1104,22 +1171,22 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             {currentUser?.nombre || currentUser?.usuario || 'Usuario actual'}
                                         </div>
                                     </div>
-                                    {/* Recibe: dropdown de responsables + opción de escribir */}
+                                    {/* Recibe: solo usuarios de Facturación */}
                                     <div>
-                                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>Recibe *</label>
+                                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>Recibe (Facturación) *</label>
                                         <div style={{ position: 'relative', marginTop: '4px' }}>
                                             <input
                                                 list="recibe-options"
                                                 value={traspasoForm.recibe}
                                                 onChange={e => setTraspasoForm(p => ({ ...p, recibe: e.target.value }))}
-                                                placeholder="Seleccionar o escribir nombre..."
+                                                placeholder="Seleccionar usuario de Facturación..."
                                                 style={{
                                                     width: '100%', padding: '8px 12px', borderRadius: '8px',
                                                     border: '1px solid var(--neutral-200)', fontSize: '0.85rem',
                                                 }}
                                             />
                                             <datalist id="recibe-options">
-                                                {allResponsables.map(r => (
+                                                {FACTURACION_RECIBE.map(r => (
                                                     <option key={r} value={r} />
                                                 ))}
                                             </datalist>
@@ -1563,21 +1630,37 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             {/* Paciente */}
                                             <td className="cart__td" style={{ fontWeight: 600, fontSize: '0.82rem' }}>
                                                 {alta.paciente || '—'}
+                                                {alta._hasSiblingInternaciones && (
+                                                    <span title={`Internaciones separadas — Otras admisiones: ${(alta._siblingAdmissions || []).join(', ')}`}
+                                                        style={{ marginLeft: '6px', padding: '1px 6px', borderRadius: '4px', background: '#FFFBEB', color: '#B45309', fontSize: '0.62rem', fontWeight: 700, verticalAlign: 'middle', cursor: 'help', border: '1px solid #FDE68A' }}>
+                                                        🔀 Múltiple
+                                                    </span>
+                                                )}
+                                                {alta._mergedAdmissions && (
+                                                    <span title={`Fusionada (misma fecha) — Admisiones: ${alta._mergedAdmissions.join(', ')}`}
+                                                        style={{ marginLeft: '4px', padding: '1px 6px', borderRadius: '4px', background: '#ECFDF5', color: '#059669', fontSize: '0.62rem', fontWeight: 700, verticalAlign: 'middle', cursor: 'help' }}>
+                                                        🔗 Fusionada
+                                                    </span>
+                                                )}
                                             </td>
                                             {/* N° Admisión */}
                                             <td className="cart__td" style={{ whiteSpace: 'nowrap' }}>
                                                 <span 
-                                                    title={alta._duplicateAdmissions ? `Admisión fusionada exitosamente — Otras: ${alta._duplicateAdmissions.filter(a => a !== alta.numero_admision).join(', ')}` : undefined}
+                                                    title={alta._hasSiblingInternaciones 
+                                                        ? `Internación separada — Otras admisiones del mismo paciente: ${(alta._siblingAdmissions || []).join(', ')}` 
+                                                        : alta._duplicateAdmissions 
+                                                            ? `Fusión automática (misma fecha) — Admisiones: ${alta._duplicateAdmissions.join(', ')}` 
+                                                            : undefined}
                                                     style={{
-                                                        background: alta.numero_admision ? '#EFF6FF' : 'transparent',
-                                                        color: alta.numero_admision ? '#1E40AF' : '#94A3B8',
+                                                        background: alta._hasSiblingInternaciones ? '#FFFBEB' : alta.numero_admision ? '#EFF6FF' : 'transparent',
+                                                        color: alta._hasSiblingInternaciones ? '#B45309' : alta.numero_admision ? '#1E40AF' : '#94A3B8',
                                                         padding: alta.numero_admision ? '2px 8px' : '0',
                                                         borderRadius: '6px',
                                                         fontSize: '0.73rem',
                                                         fontWeight: 600,
                                                         fontFamily: 'monospace',
-                                                        border: alta.numero_admision ? '1px solid #BFDBFE' : 'none',
-                                                        cursor: alta._duplicateAdmissions ? 'help' : 'default',
+                                                        border: alta._hasSiblingInternaciones ? '1px solid #FDE68A' : alta.numero_admision ? '1px solid #BFDBFE' : 'none',
+                                                        cursor: (alta._hasSiblingInternaciones || alta._duplicateAdmissions) ? 'help' : 'default',
                                                 }}>
                                                     {alta.numero_admision || '—'}
                                                 </span>
@@ -1597,6 +1680,18 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             {/* Fecha Ingreso */}
                                             <td className="cart__td" style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: 'var(--neutral-500)' }}>
                                                 {formatDate(alta.fecha_ingreso)}
+                                                {alta._cruzaMes && (
+                                                    <span title={`Internación cruza mes — Ingreso: ${formatDate(alta.fecha_ingreso)}${alta.facturacion_cerrada_hasta ? ` | Cerrado hasta: ${formatDate(alta.facturacion_cerrada_hasta)}` : ' | Sin cierre previo'}`}
+                                                        style={{ 
+                                                            marginLeft: '4px', padding: '1px 5px', borderRadius: '4px', 
+                                                            background: alta.facturacion_cerrada_hasta ? '#ECFDF5' : '#FEF2F2', 
+                                                            color: alta.facturacion_cerrada_hasta ? '#059669' : '#DC2626', 
+                                                            fontSize: '0.58rem', fontWeight: 700, fontFamily: 'system-ui', verticalAlign: 'middle', cursor: 'help',
+                                                            border: alta.facturacion_cerrada_hasta ? '1px solid #A7F3D0' : '1px solid #FECACA',
+                                                        }}>
+                                                        {alta.facturacion_cerrada_hasta ? '✅ Cerrado' : '⚠️ Cruza Mes'}
+                                                    </span>
+                                                )}
                                             </td>
                                             {/* Fecha Alta */}
                                             <td className="cart__td" style={{ fontSize: '0.75rem', fontFamily: 'monospace', fontWeight: 600 }}>
@@ -1719,6 +1814,57 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                                     </div>
                                                                 ))}
                                                             </div>
+                                                            {/* Botón Cerrar Período (para internaciones que cruzan mes) */}
+                                                            {alta._cruzaMes && (
+                                                                <div style={{ marginTop: '12px', padding: '10px', borderRadius: '8px', background: alta.facturacion_cerrada_hasta ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${alta.facturacion_cerrada_hasta ? '#A7F3D0' : '#FECACA'}` }}>
+                                                                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: alta.facturacion_cerrada_hasta ? '#059669' : '#DC2626', marginBottom: '6px', textTransform: 'uppercase' }}>
+                                                                        {alta.facturacion_cerrada_hasta ? '✅ Período Cerrado' : '⚠️ Internación Cruza Mes'}
+                                                                    </div>
+                                                                    {alta.facturacion_cerrada_hasta ? (
+                                                                        <>
+                                                                            <div style={{ fontSize: '0.78rem', color: '#065F46', marginBottom: '8px' }}>
+                                                                                Facturación cerrada hasta: <strong>{formatDate(alta.facturacion_cerrada_hasta)}</strong>
+                                                                            </div>
+                                                                            <button 
+                                                                                onClick={async (e) => {
+                                                                                    e.stopPropagation();
+                                                                                    try {
+                                                                                        await reabrirPeriodoFacturacion(alta.id);
+                                                                                        addToast?.('Período reabierto correctamente', 'success');
+                                                                                        loadData();
+                                                                                    } catch (err) {
+                                                                                        addToast?.('Error: ' + err.message, 'error');
+                                                                                    }
+                                                                                }}
+                                                                                style={{ padding: '4px 12px', borderRadius: '6px', border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#DC2626', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}
+                                                                            >
+                                                                                🔓 Reabrir Período
+                                                                            </button>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <div style={{ fontSize: '0.78rem', color: '#7F1D1D', marginBottom: '8px' }}>
+                                                                                Facturar hasta: <strong>{formatDate(alta._fechaCierreSugerida)}</strong> y cerrar período
+                                                                            </div>
+                                                                            <button 
+                                                                                onClick={async (e) => {
+                                                                                    e.stopPropagation();
+                                                                                    try {
+                                                                                        await cerrarPeriodoFacturacion(alta.id, alta._fechaCierreSugerida);
+                                                                                        addToast?.(`✅ Período cerrado hasta ${formatDate(alta._fechaCierreSugerida)}`, 'success');
+                                                                                        loadData();
+                                                                                    } catch (err) {
+                                                                                        addToast?.('Error: ' + err.message, 'error');
+                                                                                    }
+                                                                                }}
+                                                                                style={{ padding: '4px 12px', borderRadius: '6px', border: 'none', background: '#DC2626', color: '#fff', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}
+                                                                            >
+                                                                                🔒 Cerrar Período hasta {formatDate(alta._fechaCierreSugerida)}
+                                                                            </button>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                         </div>
 
                                                         {/* COL 2: Observaciones (campo extenso) */}

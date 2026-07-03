@@ -37,7 +37,12 @@
     z-index: 100;
     transition: width var(--transition-normal);
     box-shadow: var(--shadow-sm);
-    overflow: hidden;
+    overflow-x: hidden;
+}
+
+/* Allow sidebar__footer to not shrink so nav gets the scroll */
+.sidebar__footer {
+    flex-shrink: 0;
 }
 
 /* Video background layer */
@@ -115,6 +120,7 @@
     padding: var(--space-5);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     min-height: var(--header-height);
+    flex-shrink: 0;
 }
 
 .sidebar__logo {
@@ -169,6 +175,24 @@
     flex-direction: column;
     gap: var(--space-1);
     padding: var(--space-4) var(--space-3);
+    overflow-y: auto;
+}
+
+.sidebar__nav::-webkit-scrollbar {
+    width: 4px;
+}
+
+.sidebar__nav::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.sidebar__nav::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+}
+
+.sidebar__nav::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
 }
 
 .sidebar__item {

@@ -571,3 +571,35 @@ export async function firmarDevolucion(devolucionId, { firmaDevuelve, firmaRecib
     if (error) throw error;
     return data;
 }
+
+// ─── Corte Mensual de Facturación ───
+
+/**
+ * Cerrar período de facturación hasta una fecha determinada.
+ * Se usa cuando una internación trasciende el mes y se necesita
+ * facturar hasta el último día del mes y cerrar ese período.
+ */
+export async function cerrarPeriodoFacturacion(id, fechaCierre) {
+    const { data, error } = await supabase
+        .from('altas_administrativas')
+        .update({ facturacion_cerrada_hasta: fechaCierre })
+        .eq('id', id)
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+}
+
+/**
+ * Reabrir el período de facturación (limpiar la marca de cierre)
+ */
+export async function reabrirPeriodoFacturacion(id) {
+    const { data, error } = await supabase
+        .from('altas_administrativas')
+        .update({ facturacion_cerrada_hasta: null })
+        .eq('id', id)
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+}
