@@ -46,10 +46,11 @@ export async function fetchAltas({ fromDate, toDate, search } = {}) {
             // no se rompa con comas, paréntesis, puntos, etc.
             const sanitized = search
                 .replace(/\\/g, '\\\\')
-                .replace(/,/g, '\\,')
+                .replace(/,/g, ' ')
                 .replace(/\(/g, '\\(')
                 .replace(/\)/g, '\\)')
-                .replace(/%/g, '\\%');
+                .replace(/%/g, '\\%')
+                .trim();
             query = query.or(`paciente.ilike.%${sanitized}%,doctor.ilike.%${sanitized}%,cliente.ilike.%${sanitized}%,numero_admision.ilike.%${sanitized}%`);
         }
 
@@ -226,10 +227,11 @@ export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
         if (search) {
             const sanitized = search
                 .replace(/\\/g, '\\\\')
-                .replace(/,/g, '\\,')
+                .replace(/,/g, ' ')
                 .replace(/\(/g, '\\(')
                 .replace(/\)/g, '\\)')
-                .replace(/%/g, '\\%');
+                .replace(/%/g, '\\%')
+                .trim();
             query = query.or(`paciente.ilike.%${sanitized}%,doctor.ilike.%${sanitized}%,cliente.ilike.%${sanitized}%,numero_admision.ilike.%${sanitized}%`);
         }
 

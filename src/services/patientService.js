@@ -21,7 +21,7 @@ const PATIENTS_TABLE = 'hospital_pacientes';
 export async function searchPatients(query) {
     if (!query || query.trim().length < 2) return [];
 
-    const trimmed = query.trim();
+    const trimmed = query.replace(/,/g, ' ').trim();
     const isNumeric = /^\d+$/.test(trimmed);
 
     let dbQuery;

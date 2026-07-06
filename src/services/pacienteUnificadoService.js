@@ -11,7 +11,7 @@ const TABLE = 'hospital_pacientes';
 export async function searchPacientes(query, { page = 0, pageSize = 50 } = {}) {
     if (!query || query.trim().length < 2) return { data: [], count: 0 };
 
-    const trimmed = query.trim();
+    const trimmed = query.replace(/,/g, ' ').trim();
     const isNumeric = /^\d+$/.test(trimmed);
     const from = page * pageSize;
 
