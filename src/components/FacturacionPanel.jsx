@@ -501,8 +501,8 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             const siblingAdmissions = hasSiblingInternaciones
                 ? (patientMap.get(pacKey) || [])
                     .filter(a => a.id !== alta.id && a.fecha_ingreso !== alta.fecha_ingreso)
-                    .map(a => a.numero_admision)
                 : null;
+            const siblingAdmissionNumbers = siblingAdmissions ? siblingAdmissions.map(a => a.numero_admision) : null;
 
             // Detectar "Cruza Mes": internación que trasciende el mes seleccionado
             const [selY, selM] = selectedMonth.split('-').map(Number);
@@ -521,6 +521,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                 _mergedAdmissions: mergedAdmissions,
                 _hasSiblingInternaciones: hasSiblingInternaciones,
                 _siblingAdmissions: siblingAdmissions,
+                _siblingAdmissionNumbers: siblingAdmissionNumbers,
                 _cruzaMes: cruzaMes,
                 _fechaCierreSugerida: fechaCierreSugerida,
                 doctor, proceso, cliente
@@ -1323,7 +1324,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                             border: alta._hasSiblingInternaciones ? '1px solid #FDE68A' : 'none',
                                                         }}
                                                             title={alta._hasSiblingInternaciones 
-                                                                ? `Internación separada — Otras admisiones: ${(alta._siblingAdmissions || []).join(', ')}` 
+                                                                ? `Internación separada — Otras admisiones: ${(alta._siblingAdmissionNumbers || []).join(', ')}` 
                                                                 : alta._mergedAdmissions 
                                                                     ? `Fusión automática (misma fecha): ${alta._mergedAdmissions.join(', ')}` 
                                                                     : undefined}
@@ -1348,7 +1349,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                             <span style={{ marginLeft: '6px', padding: '1px 6px', borderRadius: '4px', background: '#FEF2F2', color: '#DC2626', fontSize: '0.65rem', fontWeight: 700, verticalAlign: 'middle' }}>⛔ SUSP.</span>
                                                         )}
                                                         {alta._hasSiblingInternaciones && (
-                                                            <span title={`Internaciones separadas — Otras admisiones: ${(alta._siblingAdmissions || []).join(', ')}`}
+                                                            <span title={`Internaciones separadas — Otras admisiones: ${(alta._siblingAdmissionNumbers || []).join(', ')}`}
                                                                 style={{ marginLeft: '4px', padding: '1px 6px', borderRadius: '4px', background: '#FFFBEB', color: '#B45309', fontSize: '0.62rem', fontWeight: 700, verticalAlign: 'middle', cursor: 'help', border: '1px solid #FDE68A' }}>
                                                                 🔀 Múltiple
                                                             </span>
@@ -1578,6 +1579,51 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                                         </div>
                                                                     )}
                                                                 </div>
+
+                                                                {/* Otras Internaciones del mismo paciente */}
+                                                                {alta._hasSiblingInternaciones && alta._siblingAdmissions && alta._siblingAdmissions.length > 0 && (
+                                                                    <div style={{ marginBottom: '16px', padding: '10px 14px', borderRadius: '8px', background: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                                                                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#B45309', marginBottom: '8px', textTransform: 'uppercase' }}>
+                                                                            🔀 Otras Internaciones ({alta._siblingAdmissions.length})
+                                                                        </div>
+                                                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                                                                            <thead>
+                                                                                <tr style={{ background: '#FEF3C7' }}>
+                                                                                    {['Admisión', 'Ingreso', 'Alta', 'Estado', 'OS', 'Doctor'].map(h => (
+                                                                                        <th key={h} style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 700, color: '#92400E', fontSize: '0.68rem', textTransform: 'uppercase', borderBottom: '1px solid #FDE68A' }}>{h}</th>
+                                                                                    ))}
+                                                                                </tr>
+                                                                            </thead>
+                                                                            <tbody>
+                                                                                {alta._siblingAdmissions.map(sib => {
+                                                                                    const sibEstados = {
+                                                                                        'Pendiente': { label: 'Pendiente', color: '#F59E0B', bg: '#FFFBEB', icon: '⏳' },
+                                                                                        'En Proceso': { label: 'En Proceso', color: '#3B82F6', bg: '#EFF6FF', icon: '🔄' },
+                                                                                        'Facturada': { label: 'Facturada', color: '#10B981', bg: '#ECFDF5', icon: '✅' },
+                                                                                        'Devuelta': { label: 'Devuelta', color: '#EF4444', bg: '#FEF2F2', icon: '🔙' },
+                                                                                    };
+                                                                                    const sibCfg = sib.estado_fac ? (sibEstados[sib.estado_fac] || sibEstados['Pendiente']) : (sib.estado ? { label: sib.estado, color: '#6B7280', bg: '#F3F4F6', icon: '📋' } : null);
+                                                                                    return (
+                                                                                        <tr key={sib.id} style={{ borderBottom: '1px solid #FDE68A' }}>
+                                                                                            <td style={{ padding: '5px 8px', fontFamily: 'monospace', fontWeight: 600, color: '#B45309' }}>{sib.numero_admision || '—'}</td>
+                                                                                            <td style={{ padding: '5px 8px', color: '#78350F' }}>{formatDate(sib.fecha_ingreso)}</td>
+                                                                                            <td style={{ padding: '5px 8px', color: '#78350F' }}>{formatDate(sib.fecha_alta)}</td>
+                                                                                            <td style={{ padding: '5px 8px' }}>
+                                                                                                {sibCfg ? (
+                                                                                                    <span style={{ padding: '1px 8px', borderRadius: '4px', background: sibCfg.bg, color: sibCfg.color, fontSize: '0.68rem', fontWeight: 600 }}>
+                                                                                                        {sibCfg.icon} {sibCfg.label}
+                                                                                                    </span>
+                                                                                                ) : <span style={{ color: '#94A3B8' }}>—</span>}
+                                                                                            </td>
+                                                                                            <td style={{ padding: '5px 8px', color: '#78350F', fontSize: '0.72rem' }}>{sib.cliente || '—'}</td>
+                                                                                            <td style={{ padding: '5px 8px', color: '#78350F', fontSize: '0.72rem' }}>{sib.doctor || '—'}</td>
+                                                                                        </tr>
+                                                                                    );
+                                                                                })}
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </div>
+                                                                )}
 
                                                                 {/* Cerrar Período (para internaciones que cruzan mes) */}
                                                                 {alta._cruzaMes && (

@@ -576,12 +576,12 @@ export default function AltasPanel({ addToast, currentUser }) {
                 mergedAdmissions = duplicateAdmissions;
             }
 
-            // Obtener las admisiones hermanas (diferente fecha_ingreso)
+            // Obtener las admisiones hermanas (diferente fecha_ingreso) — objetos completos
             const siblingAdmissions = hasSiblingInternaciones
                 ? (patientMap.get(pacKey) || [])
                     .filter(a => a.id !== alta.id && a.fecha_ingreso !== alta.fecha_ingreso)
-                    .map(a => a.numero_admision)
                 : null;
+            const siblingAdmissionNumbers = siblingAdmissions ? siblingAdmissions.map(a => a.numero_admision) : null;
 
             // Detectar "Cruza Mes": internación que trasciende el mes seleccionado
             // Caso: ingreso antes del fin del mes seleccionado, pero alta es nula o posterior al mes
@@ -612,6 +612,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                 _mergedAdmissions: mergedAdmissions,
                 _hasSiblingInternaciones: hasSiblingInternaciones,
                 _siblingAdmissions: siblingAdmissions,
+                _siblingAdmissionNumbers: siblingAdmissionNumbers,
                 _cruzaMes: cruzaMes,
                 _fechaCierreSugerida: fechaCierreSugerida,
                 doctor, proceso, cliente // Sobrescribimos con los datos fusionados
@@ -1633,7 +1634,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             <td className="cart__td" style={{ fontWeight: 600, fontSize: '0.82rem' }}>
                                                 {alta.paciente || '—'}
                                                 {alta._hasSiblingInternaciones && (
-                                                    <span title={`Internaciones separadas — Otras admisiones: ${(alta._siblingAdmissions || []).join(', ')}`}
+                                                    <span title={`Internaciones separadas — Otras admisiones: ${(alta._siblingAdmissionNumbers || []).join(', ')}`}
                                                         style={{ marginLeft: '6px', padding: '1px 6px', borderRadius: '4px', background: '#FFFBEB', color: '#B45309', fontSize: '0.62rem', fontWeight: 700, verticalAlign: 'middle', cursor: 'help', border: '1px solid #FDE68A' }}>
                                                         🔀 Múltiple
                                                     </span>
@@ -1649,7 +1650,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             <td className="cart__td" style={{ whiteSpace: 'nowrap' }}>
                                                 <span 
                                                     title={alta._hasSiblingInternaciones 
-                                                        ? `Internación separada — Otras admisiones del mismo paciente: ${(alta._siblingAdmissions || []).join(', ')}` 
+                                                        ? `Internación separada — Otras admisiones del mismo paciente: ${(alta._siblingAdmissionNumbers || []).join(', ')}` 
                                                         : alta._duplicateAdmissions 
                                                             ? `Fusión automática (misma fecha) — Admisiones: ${alta._duplicateAdmissions.join(', ')}` 
                                                             : undefined}
@@ -1865,6 +1866,44 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                                             </button>
                                                                         </>
                                                                     )}
+                                                                </div>
+                                                            )}
+                                                            {/* Otras Internaciones del mismo paciente */}
+                                                            {alta._hasSiblingInternaciones && alta._siblingAdmissions && alta._siblingAdmissions.length > 0 && (
+                                                                <div style={{ marginTop: '12px', padding: '10px', borderRadius: '8px', background: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                                                                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#B45309', marginBottom: '8px', textTransform: 'uppercase' }}>
+                                                                        🔀 Otras Internaciones ({alta._siblingAdmissions.length})
+                                                                    </div>
+                                                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                                                                        <thead>
+                                                                            <tr style={{ background: '#FEF3C7' }}>
+                                                                                {['Admisión', 'Ingreso', 'Alta', 'Estado', 'OS', 'Doctor'].map(h => (
+                                                                                    <th key={h} style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 700, color: '#92400E', fontSize: '0.68rem', textTransform: 'uppercase', borderBottom: '1px solid #FDE68A' }}>{h}</th>
+                                                                                ))}
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            {alta._siblingAdmissions.map(sib => {
+                                                                                const sibCfg = sib.estado ? (ALTA_ESTADOS[sib.estado] || ALTA_ESTADOS['Procesada']) : null;
+                                                                                return (
+                                                                                    <tr key={sib.id} style={{ borderBottom: '1px solid #FDE68A' }}>
+                                                                                        <td style={{ padding: '5px 8px', fontFamily: 'monospace', fontWeight: 600, color: '#B45309' }}>{sib.numero_admision || '—'}</td>
+                                                                                        <td style={{ padding: '5px 8px', color: '#78350F' }}>{formatDate(sib.fecha_ingreso)}</td>
+                                                                                        <td style={{ padding: '5px 8px', color: '#78350F' }}>{formatDate(sib.fecha_alta)}</td>
+                                                                                        <td style={{ padding: '5px 8px' }}>
+                                                                                            {sibCfg ? (
+                                                                                                <span style={{ padding: '1px 8px', borderRadius: '4px', background: sibCfg.bg, color: sibCfg.color, fontSize: '0.68rem', fontWeight: 600 }}>
+                                                                                                    {sibCfg.icon} {sibCfg.label}
+                                                                                                </span>
+                                                                                            ) : <span style={{ color: '#94A3B8' }}>—</span>}
+                                                                                        </td>
+                                                                                        <td style={{ padding: '5px 8px', color: '#78350F', fontSize: '0.72rem' }}>{sib.cliente || '—'}</td>
+                                                                                        <td style={{ padding: '5px 8px', color: '#78350F', fontSize: '0.72rem' }}>{sib.doctor || '—'}</td>
+                                                                                    </tr>
+                                                                                );
+                                                                            })}
+                                                                        </tbody>
+                                                                    </table>
                                                                 </div>
                                                             )}
                                                         </div>
