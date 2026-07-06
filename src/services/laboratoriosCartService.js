@@ -183,15 +183,32 @@ export async function generarConstanciaLab({
 // ═══════════════════════════════════════════
 // Historial
 // ═══════════════════════════════════════════
-export async function fetchConstanciasLab({ laboratorio } = {}) {
+export async function fetchConstanciasLab({ laboratorio, search } = {}) {
     let query = supabase
         .from('laboratorios_constancias')
         .select('*')
-        .order('fecha_entrega', { ascending: false })
-        .limit(1000);
+        .order('fecha_entrega', { ascending: false });
 
     if (laboratorio) {
         query = query.eq('laboratorio', laboratorio);
+    }
+
+    if (search) {
+        const safeSearch = search.replace(/,/g, ' ').trim();
+        const { data: matchedDetalle } = await supabase
+            .from('laboratorios_anatomia_patologica')
+            .select('constancia_id')
+            .not('constancia_id', 'is', null)
+            .or(`paciente.ilike.%${safeSearch}%,dni.ilike.%${safeSearch}%,cirujano.ilike.%${safeSearch}%`);
+        
+        const matchedIds = [...new Set((matchedDetalle || []).map(a => a.constancia_id))];
+        if (matchedIds.length > 0) {
+            query = query.in('id', matchedIds);
+        } else {
+            return [];
+        }
+    } else {
+        query = query.limit(1000);
     }
 
     const { data, error } = await query;

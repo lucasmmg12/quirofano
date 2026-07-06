@@ -395,13 +395,31 @@ export async function generarTraspaso({ responsableEntrega, responsableRecibe, n
 /**
  * Historial de traspasos
  */
-export async function fetchTraspasos({ limit = 100 } = {}) {
-    const { data, error } = await supabase
+export async function fetchTraspasos({ search, limit = 100 } = {}) {
+    let query = supabase
         .from('altas_traspasos')
         .select('*')
-        .order('fecha_traspaso', { ascending: false })
-        .limit(limit);
+        .order('fecha_traspaso', { ascending: false });
 
+    if (search) {
+        const safeSearch = search.replace(/,/g, ' ').trim();
+        const { data: matchedDetalle } = await supabase
+            .from('altas_administrativas')
+            .select('traspaso_id')
+            .not('traspaso_id', 'is', null)
+            .or(`nombre_paciente.ilike.%${safeSearch}%,dni.ilike.%${safeSearch}%,cirujano.ilike.%${safeSearch}%`);
+        
+        const matchedIds = [...new Set((matchedDetalle || []).map(a => a.traspaso_id))];
+        if (matchedIds.length > 0) {
+            query = query.in('id', matchedIds);
+        } else {
+            return [];
+        }
+    } else {
+        query = query.limit(limit);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     return data || [];
 }
@@ -567,13 +585,31 @@ export async function generarDevolucion({ responsableDevuelve, responsableRecibe
 /**
  * Historial de devoluciones
  */
-export async function fetchDevoluciones({ limit = 100 } = {}) {
-    const { data, error } = await supabase
+export async function fetchDevoluciones({ search, limit = 100 } = {}) {
+    let query = supabase
         .from('facturacion_devoluciones')
         .select('*')
-        .order('fecha_devolucion', { ascending: false })
-        .limit(limit);
+        .order('fecha_devolucion', { ascending: false });
 
+    if (search) {
+        const safeSearch = search.replace(/,/g, ' ').trim();
+        const { data: matchedDetalle } = await supabase
+            .from('altas_administrativas')
+            .select('devolucion_id')
+            .not('devolucion_id', 'is', null)
+            .or(`nombre_paciente.ilike.%${safeSearch}%,dni.ilike.%${safeSearch}%,cirujano.ilike.%${safeSearch}%`);
+        
+        const matchedIds = [...new Set((matchedDetalle || []).map(a => a.devolucion_id))];
+        if (matchedIds.length > 0) {
+            query = query.in('id', matchedIds);
+        } else {
+            return [];
+        }
+    } else {
+        query = query.limit(limit);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     return data || [];
 }

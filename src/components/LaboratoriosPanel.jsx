@@ -287,6 +287,14 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
     const [revertirLoading, setRevertirLoading] = useState(null);
     const [carritoSearch, setCarritoSearch] = useState('');
     const [historialSearch, setHistorialSearch] = useState('');
+    const [debouncedHistorialSearch, setDebouncedHistorialSearch] = useState('');
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedHistorialSearch(historialSearch);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [historialSearch]);
 
     // Entrega modal
     const [showEntregaModal, setShowEntregaModal] = useState(false);
@@ -353,12 +361,12 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
 
     const loadHistorial = useCallback(async () => {
         try {
-            const data = await fetchConstanciasLab();
+            const data = await fetchConstanciasLab({ search: debouncedHistorialSearch || undefined });
             setConstancias(data);
         } catch (err) {
             addToast?.('Error al cargar historial', 'error');
         }
-    }, [addToast]);
+    }, [debouncedHistorialSearch, addToast]);
 
     useEffect(() => {
         loadPendientes();
@@ -450,14 +458,14 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
 
     const constanciaDetalleFiltrado = useMemo(() => {
         const items = constanciaDetalle[expandedConstancia] || [];
-        if (!historialSearch) return items;
-        const lower = historialSearch.toLowerCase();
+        if (!debouncedHistorialSearch) return items;
+        const lower = debouncedHistorialSearch.toLowerCase();
         return items.filter(i => 
             (i.paciente || '').toLowerCase().includes(lower) ||
             (i.medico || '').toLowerCase().includes(lower) ||
             (i.cliente || '').toLowerCase().includes(lower)
         );
-    }, [constanciaDetalle, expandedConstancia, historialSearch]);
+    }, [constanciaDetalle, expandedConstancia, debouncedHistorialSearch]);
 
     // ═══════════════════════════════════════
     // Handlers — Módulos (existing)
@@ -1750,11 +1758,42 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                 {/* ═══════════════════════════════════════════════════════ */}
                 {activeTab === 'historial' && (
                     <div style={{ padding: '20px' }}>
+                        {/* Búsqueda Global en Historial */}
+                        <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center' }}>
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                padding: '8px 14px', borderRadius: '8px',
+                                border: '1px solid #E5E7EB', background: '#fff', flex: 1,
+                                maxWidth: '400px'
+                            }}>
+                                <Search size={15} color="#9CA3AF" />
+                                <input 
+                                    type="text"
+                                    placeholder="🔍 Búsqueda global de pacientes, médicos u OS..."
+                                    value={historialSearch}
+                                    onChange={e => setHistorialSearch(e.target.value)}
+                                    style={{
+                                        border: 'none', outline: 'none', flex: 1,
+                                        fontSize: '0.82rem', color: '#374151',
+                                        background: 'transparent',
+                                    }}
+                                />
+                                {historialSearch && (
+                                    <button onClick={() => setHistorialSearch('')} style={{
+                                        background: 'none', border: 'none', cursor: 'pointer',
+                                        color: '#9CA3AF', padding: '2px',
+                                    }}>
+                                        <X size={14} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
                         {constancias.length === 0 ? (
                             <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94A3B8' }}>
                                 <History size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
-                                <p style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '4px' }}>Sin entregas registradas</p>
-                                <p style={{ fontSize: '0.85rem' }}>Las constancias generadas aparecerán aquí</p>
+                                <p style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '4px' }}>Sin resultados</p>
+                                <p style={{ fontSize: '0.85rem' }}>No se encontraron constancias que coincidan con la búsqueda.</p>
                             </div>
                         ) : (
                             <div>
@@ -1904,15 +1943,6 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                                     background: '#F9FAFB', borderLeft: `3px solid ${color}`,
                                                                     margin: '0 8px 8px 24px', borderRadius: '0 8px 8px 0', padding: '8px 16px',
                                                                 }}>
-                                                                    <div style={{ marginBottom: '12px' }}>
-                                                                        <input 
-                                                                            type="text"
-                                                                            placeholder="🔍 Buscar paciente, doctor u OS en esta constancia..."
-                                                                            value={historialSearch}
-                                                                            onChange={e => setHistorialSearch(e.target.value)}
-                                                                            style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #D1D5DB', fontSize: '0.75rem', width: '300px' }}
-                                                                        />
-                                                                    </div>
                                                                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                                                                         <thead>
                                                                             <tr>

@@ -132,9 +132,12 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     const [currentPage, setCurrentPage] = useState(1);
 
     useEffect(() => {
-        const timer = setTimeout(() => setDebouncedSearch(searchTerm), 500);
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchTerm);
+            setDebouncedHistorialSearch(historialSearch);
+        }, 500);
         return () => clearTimeout(timer);
-    }, [searchTerm]);
+    }, [searchTerm, historialSearch]);
 
 
     const [columnFilters, setColumnFilters] = useState({});
@@ -206,6 +209,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     const [devolucionDetalle, setDevolucionDetalle] = useState({});
     const [carritoSearch, setCarritoSearch] = useState('');
     const [historialSearch, setHistorialSearch] = useState('');
+    const [debouncedHistorialSearch, setDebouncedHistorialSearch] = useState('');
 
     const filteredCarritoDev = useMemo(() => {
         if (!carritoSearch) return carritoDevItems;
@@ -219,14 +223,14 @@ export default function FacturacionPanel({ addToast, currentUser }) {
 
     const filteredDevolucionDetalle = useMemo(() => {
         const items = devolucionDetalle[expandedDevolucion] || [];
-        if (!historialSearch) return items;
-        const lower = historialSearch.toLowerCase();
+        if (!debouncedHistorialSearch) return items;
+        const lower = debouncedHistorialSearch.toLowerCase();
         return items.filter(i => 
             (i.paciente || '').toLowerCase().includes(lower) ||
             (i.doctor || '').toLowerCase().includes(lower) ||
             (i.cliente || '').toLowerCase().includes(lower)
         );
-    }, [devolucionDetalle, expandedDevolucion, historialSearch]);
+    }, [devolucionDetalle, expandedDevolucion, debouncedHistorialSearch]);
 
     // ── Carga criterios de asignación (para Resp. ADM) ──
     useEffect(() => {
@@ -283,14 +287,14 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     const loadDevoluciones = useCallback(async () => {
         setDevolucionesLoading(true);
         try {
-            const data = await fetchDevoluciones();
+            const data = await fetchDevoluciones({ search: debouncedHistorialSearch || undefined });
             setDevoluciones(data);
         } catch (err) {
             addToast?.('Error al cargar historial: ' + err.message, 'error');
         } finally {
             setDevolucionesLoading(false);
         }
-    }, [addToast]);
+    }, [debouncedHistorialSearch, addToast]);
 
     useEffect(() => {
         if (activeTab === 'carrito_devolucion') loadCarritoDevolucion();
@@ -1091,6 +1095,37 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             ) : activeTab === 'historial_devoluciones' ? (
                 /* ══════ HISTORIAL DEVOLUCIONES TAB ══════ */
                 <div className="animate-fade-in">
+                    {/* Búsqueda Global en Historial */}
+                    <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center' }}>
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '8px',
+                            padding: '8px 14px', borderRadius: '8px',
+                            border: '1px solid #E5E7EB', background: '#fff', flex: 1,
+                            maxWidth: '400px'
+                        }}>
+                            <Search size={15} color="#9CA3AF" />
+                            <input 
+                                type="text"
+                                placeholder="🔍 Búsqueda global de pacientes, médicos u OS..."
+                                value={historialSearch}
+                                onChange={e => setHistorialSearch(e.target.value)}
+                                style={{
+                                    border: 'none', outline: 'none', flex: 1,
+                                    fontSize: '0.82rem', color: '#374151',
+                                    background: 'transparent',
+                                }}
+                            />
+                            {historialSearch && (
+                                <button onClick={() => setHistorialSearch('')} style={{
+                                    background: 'none', border: 'none', cursor: 'pointer',
+                                    color: '#9CA3AF', padding: '2px',
+                                }}>
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
                     {devolucionesLoading ? (
                         <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
                             <Loader2 size={28} className="spin" style={{ color: '#EF4444' }} />
@@ -1098,8 +1133,8 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                     ) : devoluciones.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--neutral-400)' }}>
                             <PackageCheck size={48} strokeWidth={1.2} />
-                            <h3 style={{ margin: '12px 0 4px' }}>Sin devoluciones</h3>
-                            <p style={{ fontSize: '0.85rem' }}>Aún no se generaron constancias de devolución.</p>
+                            <h3 style={{ margin: '12px 0 4px' }}>Sin resultados</h3>
+                            <p style={{ fontSize: '0.85rem' }}>No se encontraron devoluciones que coincidan con la búsqueda.</p>
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1142,15 +1177,6 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                     <strong>Motivo:</strong> {d.motivo}
                                                 </div>
                                             )}
-                                            <div style={{ marginBottom: '12px' }}>
-                                                <input 
-                                                    type="text"
-                                                    placeholder="🔍 Buscar paciente, doctor u OS en esta devolución..."
-                                                    value={historialSearch}
-                                                    onChange={e => setHistorialSearch(e.target.value)}
-                                                    style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--neutral-300)', fontSize: '0.75rem', width: '300px' }}
-                                                />
-                                            </div>
                                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                                                 <thead>
                                                     <tr style={{ background: '#FEF2F2' }}>

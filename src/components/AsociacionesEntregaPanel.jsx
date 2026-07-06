@@ -145,6 +145,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     const [constanciaDetalle, setConstanciaDetalle] = useState({});
     const [carritoSearch, setCarritoSearch] = useState('');
     const [historialSearch, setHistorialSearch] = useState('');
+    const [debouncedHistorialSearch, setDebouncedHistorialSearch] = useState('');
     const [confirmRevertir, setConfirmRevertir] = useState(null);   // constancia.id pendiente de confirmar
     const [revertirLoading, setRevertirLoading] = useState(null);   // constancia.id en proceso
 
@@ -161,6 +162,13 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
         const timer = setTimeout(() => document.addEventListener('click', handleClick), 0);
         return () => { clearTimeout(timer); document.removeEventListener('click', handleClick); };
     }, [openFilterCol]);
+
+    useEffect(() => {
+        const t1 = setTimeout(() => {
+            setDebouncedHistorialSearch(historialSearch);
+        }, 500);
+        return () => clearTimeout(t1);
+    }, [historialSearch]);
 
     // Modal for generating constancia
     const [showConstanciaModal, setShowConstanciaModal] = useState(null); // asociacion name
@@ -201,12 +209,12 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
 
     const loadHistorial = useCallback(async () => {
         try {
-            const data = await fetchConstancias();
+            const data = await fetchConstancias({ search: debouncedHistorialSearch || undefined });
             setConstancias(data);
         } catch (err) {
             addToast?.('Error al cargar historial: ' + err.message, 'error');
         }
-    }, [addToast]);
+    }, [debouncedHistorialSearch, addToast]);
 
     useEffect(() => {
         if (activeTab === 'pendientes') {
@@ -603,6 +611,18 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
         if (estadoEntregaFilter === 'entregados') filtered = filtered.filter(c => c.constancia_id);
         return filtered;
     }, [cirugias, estadoEntregaFilter]);
+
+    const filteredDetalle = useMemo(() => {
+        const items = constanciaDetalle[expandedConstancia] || [];
+        if (!debouncedHistorialSearch) return items;
+        const lower = debouncedHistorialSearch.toLowerCase();
+        return items.filter(i => 
+            (i.nombre_paciente?.toLowerCase().includes(lower)) ||
+            (i.dni?.toLowerCase().includes(lower)) ||
+            (i.nombre_cirugia?.toLowerCase().includes(lower))
+        );
+    }, [constanciaDetalle, expandedConstancia, debouncedHistorialSearch]);
+
     const enCarritoCount = Object.values(carrito).flat().length; // from carrito state
 
     // ─── Column-filtered data (multi-select) ───
@@ -1476,16 +1496,47 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
             {/* TAB 3: Historial de Entregas            */}
             {/* ════════════════════════════════════════ */}
             {activeTab === 'historial' && (
-                <div>
+                <div className="animate-fade-in">
+                    {/* Búsqueda Global en Historial */}
+                    <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center' }}>
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '8px',
+                            padding: '8px 14px', borderRadius: '8px',
+                            border: '1px solid #E5E7EB', background: '#fff', flex: 1,
+                            maxWidth: '400px'
+                        }}>
+                            <Search size={15} color="#9CA3AF" />
+                            <input 
+                                type="text"
+                                placeholder="🔍 Búsqueda global de pacientes, médicos u OS..."
+                                value={historialSearch}
+                                onChange={e => setHistorialSearch(e.target.value)}
+                                style={{
+                                    border: 'none', outline: 'none', flex: 1,
+                                    fontSize: '0.82rem', color: '#374151',
+                                    background: 'transparent',
+                                }}
+                            />
+                            {historialSearch && (
+                                <button onClick={() => setHistorialSearch('')} style={{
+                                    background: 'none', border: 'none', cursor: 'pointer',
+                                    color: '#9CA3AF', padding: '2px',
+                                }}>
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
                     {constancias.length === 0 ? (
                         <div style={{
                             textAlign: 'center', padding: '60px 20px', color: '#9CA3AF',
                         }}>
                             <History size={48} strokeWidth={1.2} style={{ margin: '0 auto 12px', display: 'block' }} />
                             <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#6B7280', margin: '0 0 4px' }}>
-                                Sin entregas registradas
+                                Sin resultados
                             </h3>
-                            <p style={{ fontSize: '0.82rem' }}>Las constancias de entrega aparecerán aquí.</p>
+                            <p style={{ fontSize: '0.82rem' }}>No se encontraron constancias que coincidan con la búsqueda.</p>
                         </div>
                     ) : (
                         <div style={{
@@ -1635,23 +1686,14 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                 {isExpanded && detalle && (
                                                     <tr key={`${cons.id}-detail`} className="animate-fade-in">
                                                         <td colSpan={8} style={{ padding: 0, border: 'none' }}>
-                                                            <div style={{
-                                                                background: '#F9FAFB',
-                                                                borderLeft: `3px solid ${color}`,
-                                                                margin: '0 8px 8px 24px',
-                                                                borderRadius: '0 8px 8px 0',
-                                                                padding: '8px 16px',
-                                                            }}>
-                                                                <div style={{ marginBottom: '12px' }}>
-                                                                    <input 
-                                                                        type="text"
-                                                                        placeholder="🔍 Buscar paciente, doctor u OS en esta constancia..."
-                                                                        value={historialSearch}
-                                                                        onChange={e => setHistorialSearch(e.target.value)}
-                                                                        style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #D1D5DB', fontSize: '0.75rem', width: '300px' }}
-                                                                    />
-                                                                </div>
-                                                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                                                                <div style={{
+                                                                    background: '#F9FAFB',
+                                                                    borderLeft: `3px solid ${color}`,
+                                                                    margin: '0 8px 8px 24px',
+                                                                    borderRadius: '0 8px 8px 0',
+                                                                    padding: '8px 16px',
+                                                                }}>
+                                                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                                                                     <thead>
                                                                         <tr>
                                                                             <th style={thSmall}>#</th>
