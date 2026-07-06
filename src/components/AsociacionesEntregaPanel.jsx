@@ -131,6 +131,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     const [cirugias, setCirugias] = useState([]);
     const [filtroAsociacion, setFiltroAsociacion] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [estadoEntregaFilter, setEstadoEntregaFilter] = useState('pendientes'); // 'all', 'entregados', 'pendientes'
     const [resumen, setResumen] = useState({});
 
     // Carrito state
@@ -595,8 +596,13 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     };
 
     // ─── Filter display data ───
-    // Server-side query already excludes en_carrito items, so cirugias = only pendientes
-    const pendientesCirugias = cirugias; // all items returned are already pending (not in cart)
+    // ─── Filter display data ───
+    const pendientesCirugias = useMemo(() => {
+        let filtered = cirugias.filter(c => !c.en_carrito); // exclude en_carrito since they are in the Cart tab
+        if (estadoEntregaFilter === 'pendientes') filtered = filtered.filter(c => !c.constancia_id);
+        if (estadoEntregaFilter === 'entregados') filtered = filtered.filter(c => c.constancia_id);
+        return filtered;
+    }, [cirugias, estadoEntregaFilter]);
     const enCarritoCount = Object.values(carrito).flat().length; // from carrito state
 
     // ─── Column-filtered data (multi-select) ───
@@ -970,6 +976,21 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                 </button>
                             )}
                         </div>
+
+                        {/* Filter by Entregados / Pendientes */}
+                        <select
+                            value={estadoEntregaFilter}
+                            onChange={e => setEstadoEntregaFilter(e.target.value)}
+                            style={{
+                                padding: '8px 12px', borderRadius: '8px', border: '1px solid #E5E7EB',
+                                background: '#fff', fontSize: '0.82rem', color: '#374151',
+                                cursor: 'pointer', outline: 'none'
+                            }}
+                        >
+                            <option value="all">Todas las cirugías</option>
+                            <option value="pendientes">Pendientes (No Entregados)</option>
+                            <option value="entregados">Entregados (En Constancia)</option>
+                        </select>
 
                         <button
                             onClick={handleEnviarAlCarrito}
