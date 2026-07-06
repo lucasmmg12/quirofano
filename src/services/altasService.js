@@ -65,6 +65,25 @@ export async function fetchAltas({ fromDate, toDate, search } = {}) {
 }
 
 /**
+ * Obtener historial de internaciones de un paciente por DNI
+ */
+export async function fetchHistorialInternaciones(numeroDocumento) {
+    if (!numeroDocumento) return [];
+    try {
+        const { data, error } = await supabase
+            .from('altas_administrativas')
+            .select('*')
+            .eq('numero_documento', numeroDocumento)
+            .order('fecha_ingreso', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    } catch (err) {
+        console.error('fetchHistorialInternaciones error:', err);
+        return [];
+    }
+}
+
+/**
  * Actualiza el estado de un alta
  */
 export async function updateAltaEstado(id, estado, operador = 'operador') {

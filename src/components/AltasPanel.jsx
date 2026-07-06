@@ -13,7 +13,7 @@ import {
     ListFilter, Download, FileDown, ShoppingCart, Printer, Trash2, PackageCheck, Receipt,
 } from 'lucide-react';
 import {
-    fetchAltas, updateAltaEstado, updateAltaNotas, updateAltaResponsable, ALTA_ESTADOS,
+    fetchAltas, fetchHistorialInternaciones, updateAltaEstado, updateAltaNotas, updateAltaResponsable, ALTA_ESTADOS,
     fetchCarritoTraspaso, marcarParaTraspaso, quitarDeCarritoTraspaso,
     generarTraspaso, fetchTraspasos, fetchTraspasoDetalle, firmarTraspaso,
     cerrarPeriodoFacturacion, reabrirPeriodoFacturacion,
@@ -69,6 +69,8 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [altas, setAltas] = useState([]);
     const [loading, setLoading] = useState(true);
     const [expandedId, setExpandedId] = useState(null);
+    const [historialInternaciones, setHistorialInternaciones] = useState([]);
+    const [loadingHistorial, setLoadingHistorial] = useState(false);
     const [statusDropdownId, setStatusDropdownId] = useState(null);
     const [responsableDropdownId, setResponsableDropdownId] = useState(null);
     const [dropdownAnchor, setDropdownAnchor] = useState(null); // { id, type, rect }
@@ -1604,10 +1606,15 @@ export default function AltasPanel({ addToast, currentUser }) {
                                         <tr
                                             key={alta.id}
                                             className="cart__row"
-                                            onClick={() => {
+                                            onClick={async () => {
                                                 setExpandedId(isExpanded ? null : alta.id);
                                                 if (!isExpanded) {
                                                     setEditingNotas(null);
+                                                    setLoadingHistorial(true);
+                                                    setHistorialInternaciones([]);
+                                                    const hist = await fetchHistorialInternaciones(alta.numero_documento);
+                                                    setHistorialInternaciones(hist);
+                                                    setLoadingHistorial(false);
                                                 }
                                             }}
                                             style={{
@@ -1937,42 +1944,49 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                                     )}
                                                                 </div>
                                                             )}
-                                                            {/* Otras Internaciones del mismo paciente */}
-                                                            {alta._hasSiblingInternaciones && alta._siblingAdmissions && alta._siblingAdmissions.length > 0 && (
+                                                            {/* Otras Internaciones del mismo paciente (Historial DB) */}
+                                                            {(loadingHistorial || historialInternaciones.length > 1) && (
                                                                 <div style={{ marginTop: '12px', padding: '10px', borderRadius: '8px', background: '#FFFBEB', border: '1px solid #FDE68A' }}>
                                                                     <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#B45309', marginBottom: '8px', textTransform: 'uppercase' }}>
-                                                                        🔀 Otras Internaciones ({alta._siblingAdmissions.length})
+                                                                        🔀 Otras Internaciones Históricas ({historialInternaciones.length > 1 ? historialInternaciones.length - 1 : '...'})
                                                                     </div>
-                                                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
-                                                                        <thead>
-                                                                            <tr style={{ background: '#FEF3C7' }}>
-                                                                                {['Admisión', 'Ingreso', 'Alta', 'Estado', 'OS', 'Doctor'].map(h => (
-                                                                                    <th key={h} style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 700, color: '#92400E', fontSize: '0.68rem', textTransform: 'uppercase', borderBottom: '1px solid #FDE68A' }}>{h}</th>
-                                                                                ))}
-                                                                            </tr>
-                                                                        </thead>
-                                                                        <tbody>
-                                                                            {alta._siblingAdmissions.map(sib => {
-                                                                                const sibCfg = sib.estado ? (ALTA_ESTADOS[sib.estado] || ALTA_ESTADOS['Procesada']) : null;
-                                                                                return (
-                                                                                    <tr key={sib.id} style={{ borderBottom: '1px solid #FDE68A' }}>
-                                                                                        <td style={{ padding: '5px 8px', fontFamily: 'monospace', fontWeight: 600, color: '#B45309' }}>{sib.numero_admision || '—'}</td>
-                                                                                        <td style={{ padding: '5px 8px', color: '#78350F' }}>{formatDate(sib.fecha_ingreso)}</td>
-                                                                                        <td style={{ padding: '5px 8px', color: '#78350F' }}>{formatDate(sib.fecha_alta)}</td>
-                                                                                        <td style={{ padding: '5px 8px' }}>
-                                                                                            {sibCfg ? (
-                                                                                                <span style={{ padding: '1px 8px', borderRadius: '4px', background: sibCfg.bg, color: sibCfg.color, fontSize: '0.68rem', fontWeight: 600 }}>
-                                                                                                    {sibCfg.icon} {sibCfg.label}
-                                                                                                </span>
-                                                                                            ) : <span style={{ color: '#94A3B8' }}>—</span>}
-                                                                                        </td>
-                                                                                        <td style={{ padding: '5px 8px', color: '#78350F', fontSize: '0.72rem' }}>{sib.cliente || '—'}</td>
-                                                                                        <td style={{ padding: '5px 8px', color: '#78350F', fontSize: '0.72rem' }}>{sib.doctor || '—'}</td>
-                                                                                    </tr>
-                                                                                );
-                                                                            })}
-                                                                        </tbody>
-                                                                    </table>
+                                                                    {loadingHistorial ? (
+                                                                        <div style={{ padding: '20px', textAlign: 'center', color: '#B45309', fontSize: '0.8rem' }}>
+                                                                            <Loader2 size={16} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
+                                                                            Cargando historial de internaciones...
+                                                                        </div>
+                                                                    ) : (
+                                                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                                                                            <thead>
+                                                                                <tr style={{ background: '#FEF3C7' }}>
+                                                                                    {['Admisión', 'Ingreso', 'Egreso', 'Estado', 'OS', 'Doctor'].map(h => (
+                                                                                        <th key={h} style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 700, color: '#92400E', fontSize: '0.68rem', textTransform: 'uppercase', borderBottom: '1px solid #FDE68A' }}>{h}</th>
+                                                                                    ))}
+                                                                                </tr>
+                                                                            </thead>
+                                                                            <tbody>
+                                                                                {historialInternaciones.filter(sib => sib.id !== alta.id).map(sib => {
+                                                                                    const sibCfg = sib.estado ? (ALTA_ESTADOS[sib.estado] || ALTA_ESTADOS['Procesada']) : null;
+                                                                                    return (
+                                                                                        <tr key={sib.id} style={{ borderBottom: '1px solid #FDE68A', background: sib.facturacion_cerrada_hasta ? '#F0FDF4' : 'transparent' }}>
+                                                                                            <td style={{ padding: '5px 8px', fontFamily: 'monospace', fontWeight: 600, color: '#B45309' }}>{sib.numero_admision || '—'}</td>
+                                                                                            <td style={{ padding: '5px 8px', color: '#78350F' }}>{formatDate(sib.fecha_ingreso)}</td>
+                                                                                            <td style={{ padding: '5px 8px', color: '#78350F' }}>{formatDate(sib.fecha_alta || sib.fecha_egreso)}</td>
+                                                                                            <td style={{ padding: '5px 8px' }}>
+                                                                                                {sibCfg ? (
+                                                                                                    <span style={{ padding: '1px 8px', borderRadius: '4px', background: sibCfg.bg, color: sibCfg.color, fontSize: '0.68rem', fontWeight: 600 }}>
+                                                                                                        {sibCfg.icon} {sibCfg.label}
+                                                                                                    </span>
+                                                                                                ) : <span style={{ color: '#94A3B8' }}>—</span>}
+                                                                                            </td>
+                                                                                            <td style={{ padding: '5px 8px', color: '#78350F', fontSize: '0.72rem' }}>{sib.cliente || '—'}</td>
+                                                                                            <td style={{ padding: '5px 8px', color: '#78350F', fontSize: '0.72rem' }}>{sib.doctor || '—'}</td>
+                                                                                        </tr>
+                                                                                    );
+                                                                                })}
+                                                                            </tbody>
+                                                                        </table>
+                                                                    )}
                                                                 </div>
                                                             )}
                                                         </div>
