@@ -72,7 +72,11 @@ export async function fetchLabRecords({ soloSinCarrito = false, soloCarrito = fa
 export async function enviarAlCarritoLab(idVisita, { usuario = 'sistema', paciente = null, laboratorio = null } = {}) {
     const { error } = await supabase
         .from('laboratorios_anatomia_patologica')
-        .update({ en_carrito: true })
+        .update({ 
+            en_carrito: true,
+            carrito_por: usuario,
+            carrito_at: new Date().toISOString()
+        })
         .eq('id_visita', idVisita);
     if (error) throw error;
 
@@ -90,7 +94,11 @@ export async function enviarAlCarritoLab(idVisita, { usuario = 'sistema', pacien
 export async function quitarDelCarritoLab(idVisita, { usuario = 'sistema', paciente = null, laboratorio = null } = {}) {
     const { error } = await supabase
         .from('laboratorios_anatomia_patologica')
-        .update({ en_carrito: false })
+        .update({ 
+            en_carrito: false,
+            carrito_por: null,
+            carrito_at: null
+        })
         .eq('id_visita', idVisita);
     if (error) throw error;
 
@@ -211,6 +219,8 @@ export async function revertirConstanciaLab(constanciaId, { usuario = 'sistema',
             constancia_id: null,
             entregado_at: null,
             en_carrito: true,
+            carrito_por: null,
+            carrito_at: null,
         })
         .eq('constancia_id', constanciaId);
     if (unlinkErr) throw unlinkErr;

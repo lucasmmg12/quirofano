@@ -42,6 +42,16 @@ const fmtFecha = (isoDate) => {
     return parts[2] + '/' + parts[1] + '/' + parts[0];
 };
 
+const fmtDateTime = (isoString) => {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return isoString;
+    return new Intl.DateTimeFormat('es-AR', {
+        day: '2-digit', month: '2-digit', year: '2-digit',
+        hour: '2-digit', minute: '2-digit'
+    }).format(date);
+};
+
 function AsociacionBadges({ resumen, filtroAsociacion, onFilterChange }) {
     return (
         <div style={{
@@ -132,6 +142,8 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     const [constancias, setConstancias] = useState([]);
     const [expandedConstancia, setExpandedConstancia] = useState(null);
     const [constanciaDetalle, setConstanciaDetalle] = useState({});
+    const [carritoSearch, setCarritoSearch] = useState('');
+    const [historialSearch, setHistorialSearch] = useState('');
     const [confirmRevertir, setConfirmRevertir] = useState(null);   // constancia.id pendiente de confirmar
     const [revertirLoading, setRevertirLoading] = useState(null);   // constancia.id en proceso
 
@@ -1191,9 +1203,18 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                         // Unique days when items were added (use fecha_realizacion as proxy, or checked_at if available)
                         const uniqueDias = new Set(allItems.map(i => i.checked_at?.substring(0, 10) || i.fecha_realizacion?.substring(0, 10))).size;
                         // Filter carrito entries by selected association
-                        const carritoEntries = Object.entries(carrito).filter(([asoc]) =>
-                            filtroCarrito === null || asoc === filtroCarrito
-                        );
+                        const carritoEntries = Object.entries(carrito).map(([asoc, items]) => {
+                            let filtered = items;
+                            if (carritoSearch) {
+                                const lower = carritoSearch.toLowerCase();
+                                filtered = items.filter(i => 
+                                    (i.nombre_paciente || '').toLowerCase().includes(lower) ||
+                                    (i.cirujano || '').toLowerCase().includes(lower) ||
+                                    (i.cliente || '').toLowerCase().includes(lower)
+                                );
+                            }
+                            return [asoc, filtered];
+                        }).filter(([asoc, items]) => items.length > 0 && (filtroCarrito === null || asoc === filtroCarrito));
 
                         return (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -1221,9 +1242,15 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                             </span>
                                         </>
                                     )}
-                                    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: '#60A5FA' }}>
-                                        Podés seguir agregando expedientes y generar la constancia cuando quieras
-                                    </span>
+                                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                                        <input 
+                                            type="text"
+                                            placeholder="🔍 Buscar paciente, doctor u OS..."
+                                            value={carritoSearch}
+                                            onChange={e => setCarritoSearch(e.target.value)}
+                                            style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #BFDBFE', fontSize: '0.75rem', width: '220px', background: '#fff' }}
+                                        />
+                                    </div>
                                 </div>
 
                                 {/* ─── Association filter badges ─── */}
@@ -1372,6 +1399,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                             <th style={thStyle}>OS</th>
                                                             <th style={thStyle}>Cirugía</th>
                                                             <th style={thStyle}>Cirujano</th>
+                                                            <th style={thStyle}>Enviado por</th>
                                                             <th style={{ ...thStyle, width: '60px', textAlign: 'center' }}></th>
                                                         </tr>
                                                     </thead>
@@ -1386,6 +1414,14 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                                 <td style={tdStyle}>{c.cliente || '—'}</td>
                                                                 <td style={tdStyle}>{c.nombre_cirugia || '—'}</td>
                                                                 <td style={tdStyle}>{c.cirujano || '—'}</td>
+                                                                <td style={tdStyle}>
+                                                                    {c.carrito_por ? (
+                                                                        <div style={{ fontSize: '0.65rem', color: '#6B7280', whiteSpace: 'nowrap' }}>
+                                                                            🛒 {c.carrito_por}
+                                                                            {c.carrito_at && <><br/>{fmtDateTime(c.carrito_at)}</>}
+                                                                        </div>
+                                                                    ) : <span style={{ color: '#D1D5DB' }}>—</span>}
+                                                                </td>
                                                                 <td style={{ ...tdStyle, textAlign: 'center' }}>
                                                                     <button
                                                                         onClick={() => handleQuitarDelCarrito(c.id)}
@@ -1583,8 +1619,17 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                                 borderLeft: `3px solid ${color}`,
                                                                 margin: '0 8px 8px 24px',
                                                                 borderRadius: '0 8px 8px 0',
-                                                                padding: '8px 0',
+                                                                padding: '8px 16px',
                                                             }}>
+                                                                <div style={{ marginBottom: '12px' }}>
+                                                                    <input 
+                                                                        type="text"
+                                                                        placeholder="🔍 Buscar paciente, doctor u OS en esta constancia..."
+                                                                        value={historialSearch}
+                                                                        onChange={e => setHistorialSearch(e.target.value)}
+                                                                        style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #D1D5DB', fontSize: '0.75rem', width: '300px' }}
+                                                                    />
+                                                                </div>
                                                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                                                                     <thead>
                                                                         <tr>
@@ -1595,10 +1640,15 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                                             <th style={thSmall}>OS</th>
                                                                             <th style={thSmall}>Cirugía</th>
                                                                             <th style={thSmall}>Cirujano</th>
+                                                                            <th style={thSmall}>Enviado por</th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody>
-                                                                        {detalle.map((item, idx) => (
+                                                                        {(historialSearch ? detalle.filter(item => 
+                                                                            (item.nombre_paciente || '').toLowerCase().includes(historialSearch.toLowerCase()) ||
+                                                                            (item.cirujano || '').toLowerCase().includes(historialSearch.toLowerCase()) ||
+                                                                            (item.cliente || '').toLowerCase().includes(historialSearch.toLowerCase())
+                                                                        ) : detalle).map((item, idx) => (
                                                                             <tr key={item.id} style={{ borderTop: '1px solid #F1F5F9' }}>
                                                                                 <td style={{ ...tdSmall, textAlign: 'center', fontWeight: 700, color: '#9CA3AF' }}>{idx + 1}</td>
                                                                                 <td style={tdSmall}>
@@ -1609,6 +1659,14 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                                                 <td style={tdSmall}>{item.cliente || '—'}</td>
                                                                                 <td style={tdSmall}>{item.nombre_cirugia || '—'}</td>
                                                                                 <td style={tdSmall}>{item.cirujano || '—'}</td>
+                                                                                <td style={tdSmall}>
+                                                                                    {item.carrito_por ? (
+                                                                                        <div style={{ fontSize: '0.65rem', color: '#6B7280', whiteSpace: 'nowrap' }}>
+                                                                                            🛒 {item.carrito_por}
+                                                                                            {item.carrito_at && <><br/>{fmtDateTime(item.carrito_at)}</>}
+                                                                                        </div>
+                                                                                    ) : <span style={{ color: '#D1D5DB' }}>—</span>}
+                                                                                </td>
                                                                             </tr>
                                                                         ))}
                                                                     </tbody>

@@ -258,12 +258,13 @@ export async function updateResponsableFac(id, responsable_fac) {
 /**
  * Marcar altas para traspaso (en_carrito_traspaso flag)
  */
-export async function marcarParaTraspaso(ids) {
+export async function marcarParaTraspaso(ids, usuario = 'sistema') {
     const { data, error } = await supabase
         .from('altas_administrativas')
         .update({ 
             en_carrito_traspaso: true,
-            carrito_traspaso_por: null
+            carrito_traspaso_por: usuario,
+            carrito_traspaso_at: new Date().toISOString()
         })
         .in('id', ids)
         .select();
@@ -280,7 +281,8 @@ export async function quitarDeCarritoTraspaso(id) {
         .from('altas_administrativas')
         .update({ 
             en_carrito_traspaso: false,
-            carrito_traspaso_por: null
+            carrito_traspaso_por: null,
+            carrito_traspaso_at: null
         })
         .eq('id', id)
         .select()
@@ -357,7 +359,6 @@ export async function generarTraspaso({ responsableEntrega, responsableRecibe, n
             traspasada_at: ahora,
             traspasada_por: responsableEntrega,
             en_carrito_traspaso: false,
-            carrito_traspaso_por: null,
             estado_fac: 'Pendiente',
         })
         .in('id', ids);
@@ -422,12 +423,13 @@ export async function firmarTraspaso(traspasoId, { firmaEntrega, firmaRecibe }) 
 /**
  * Marcar altas para devolución (en_carrito_devolucion flag)
  */
-export async function marcarParaDevolucion(ids) {
+export async function marcarParaDevolucion(ids, usuario = 'sistema') {
     const { data, error } = await supabase
         .from('altas_administrativas')
         .update({ 
             en_carrito_devolucion: true,
-            carrito_devolucion_por: null
+            carrito_devolucion_por: usuario,
+            carrito_devolucion_at: new Date().toISOString()
         })
         .in('id', ids)
         .not('traspaso_id', 'is', null)
@@ -446,7 +448,8 @@ export async function quitarDeCarritoDevolucion(id) {
         .from('altas_administrativas')
         .update({ 
             en_carrito_devolucion: false,
-            carrito_devolucion_por: null
+            carrito_devolucion_por: null,
+            carrito_devolucion_at: null
         })
         .eq('id', id)
         .is('devolucion_id', null)
@@ -528,7 +531,6 @@ export async function generarDevolucion({ responsableDevuelve, responsableRecibe
             devuelta_at: ahora,
             devuelta_por: responsableDevuelve,
             en_carrito_devolucion: false,
-            carrito_devolucion_por: null,
             estado_fac: 'Devuelta',
         })
         .in('id', ids);

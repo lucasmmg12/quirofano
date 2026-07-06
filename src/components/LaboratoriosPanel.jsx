@@ -58,6 +58,13 @@ const fmtFecha = (d) => {
     return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
+const formatDateTime = (d) => {
+    if (!d) return '—';
+    const dateStr = typeof d === 'string' && d.length === 10 ? d + 'T12:00:00' : d;
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
 // ═══════════════════════════════════════════
 // Excel-like Column Filter Header
 // ═══════════════════════════════════════════
@@ -278,6 +285,8 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
     const [constanciaDetalle, setConstanciaDetalle] = useState({});
     const [confirmRevertir, setConfirmRevertir] = useState(null);
     const [revertirLoading, setRevertirLoading] = useState(null);
+    const [carritoSearch, setCarritoSearch] = useState('');
+    const [historialSearch, setHistorialSearch] = useState('');
 
     // Entrega modal
     const [showEntregaModal, setShowEntregaModal] = useState(false);
@@ -410,23 +419,45 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
         });
     }, [records, searchTerm, filterModulo, filterLaboratorio, filterObraSocial, columnFilters]);
 
+    const carritoFiltrado = useMemo(() => {
+        let items = carrito;
+        if (filtroCarritoLab) {
+            items = items.filter(i => i.laboratorio === filtroCarritoLab);
+        }
+        if (carritoSearch) {
+            const lower = carritoSearch.toLowerCase();
+            items = items.filter(i => 
+                (i.paciente || '').toLowerCase().includes(lower) ||
+                (i.medico || '').toLowerCase().includes(lower) ||
+                (i.cliente || '').toLowerCase().includes(lower)
+            );
+        }
+        return items;
+    }, [carrito, filtroCarritoLab, carritoSearch]);
+
     // Carrito stats
     const carritoStats = useMemo(() => {
         const byLab = {};
         const fechas = new Set();
-        carrito.forEach(item => {
+        carritoFiltrado.forEach(item => {
             const lab = item.laboratorio || 'Sin lab';
             if (!byLab[lab]) byLab[lab] = [];
             byLab[lab].push(item);
             if (item.fecha_visita) fechas.add(item.fecha_visita.substring(0, 10));
         });
-        return { total: carrito.length, byLab, labs: Object.keys(byLab), diasDistintos: fechas.size };
-    }, [carrito]);
+        return { total: carritoFiltrado.length, byLab, labs: Object.keys(byLab), diasDistintos: fechas.size };
+    }, [carritoFiltrado]);
 
-    const carritoFiltrado = useMemo(() => {
-        if (!filtroCarritoLab) return carrito;
-        return carrito.filter(i => i.laboratorio === filtroCarritoLab);
-    }, [carrito, filtroCarritoLab]);
+    const constanciaDetalleFiltrado = useMemo(() => {
+        const items = constanciaDetalle[expandedConstancia] || [];
+        if (!historialSearch) return items;
+        const lower = historialSearch.toLowerCase();
+        return items.filter(i => 
+            (i.paciente || '').toLowerCase().includes(lower) ||
+            (i.medico || '').toLowerCase().includes(lower) ||
+            (i.cliente || '').toLowerCase().includes(lower)
+        );
+    }, [constanciaDetalle, expandedConstancia, historialSearch]);
 
     // ═══════════════════════════════════════
     // Handlers — Módulos (existing)
@@ -1514,7 +1545,14 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                         </div>
                                     </>
                                 )}
-                                <div style={{ marginLeft: 'auto' }}>
+                                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <input 
+                                        type="text"
+                                        placeholder="🔍 Buscar paciente, doctor u OS..."
+                                        value={carritoSearch}
+                                        onChange={e => setCarritoSearch(e.target.value)}
+                                        style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #C4B5FD', fontSize: '0.75rem', width: '220px', background: '#fff' }}
+                                    />
                                     <button onClick={exportCarritoExcel} style={{
                                         display: 'inline-flex', alignItems: 'center', gap: '4px',
                                         padding: '5px 12px', borderRadius: '6px', border: '1px solid #C4B5FD',
@@ -1627,6 +1665,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                         <th style={thSmall}>OS</th>
                                                         <th style={thSmall}>Biopsias</th>
                                                         <th style={thSmall}>Módulo</th>
+                                                        <th style={thSmall}>Enviado por</th>
                                                         <th style={{ ...thSmall, textAlign: 'center', width: '60px' }}></th>
                                                     </tr>
                                                 </thead>
@@ -1672,6 +1711,14 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                             </td>
                                                             <td style={tdSmall}>
                                                                 <ModulosQuantity record={item} displayMode="badge" />
+                                                            </td>
+                                                            <td style={tdSmall}>
+                                                                {item.carrito_por ? (
+                                                                    <div style={{ fontSize: '0.65rem', color: '#6B7280', whiteSpace: 'nowrap' }}>
+                                                                        🛒 {item.carrito_por}
+                                                                        {item.carrito_at && <><br/>{formatDateTime(item.carrito_at)}</>}
+                                                                    </div>
+                                                                ) : <span style={{ color: '#D1D5DB' }}>—</span>}
                                                             </td>
                                                             <td style={{ ...tdSmall, textAlign: 'center' }}>
                                                                 <button onClick={() => handleQuitarDelCarrito(item)}
@@ -1855,8 +1902,17 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                             <td colSpan={8} style={{ padding: 0, border: 'none' }}>
                                                                 <div style={{
                                                                     background: '#F9FAFB', borderLeft: `3px solid ${color}`,
-                                                                    margin: '0 8px 8px 24px', borderRadius: '0 8px 8px 0', padding: '8px 0',
+                                                                    margin: '0 8px 8px 24px', borderRadius: '0 8px 8px 0', padding: '8px 16px',
                                                                 }}>
+                                                                    <div style={{ marginBottom: '12px' }}>
+                                                                        <input 
+                                                                            type="text"
+                                                                            placeholder="🔍 Buscar paciente, doctor u OS en esta constancia..."
+                                                                            value={historialSearch}
+                                                                            onChange={e => setHistorialSearch(e.target.value)}
+                                                                            style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #D1D5DB', fontSize: '0.75rem', width: '300px' }}
+                                                                        />
+                                                                    </div>
                                                                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                                                                         <thead>
                                                                             <tr>
@@ -1867,10 +1923,11 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                                                 <th style={thSmall}>OS</th>
                                                                                 <th style={thSmall}>Biopsias</th>
                                                                                 <th style={thSmall}>Módulo</th>
+                                                                                <th style={thSmall}>Enviado por</th>
                                                                             </tr>
                                                                         </thead>
                                                                         <tbody>
-                                                                            {detalle.map((item, idx) => (
+                                                                            {constanciaDetalleFiltrado.map((item, idx) => (
                                                                                 <tr key={item.id || idx} style={{ borderTop: '1px solid #F1F5F9' }}>
                                                                                     <td style={{ ...tdSmall, textAlign: 'center', fontWeight: 700, color: '#9CA3AF' }}>{idx + 1}</td>
                                                                                     <td style={tdSmall}>{fmtFecha(item.fecha_visita)}</td>
@@ -1886,6 +1943,14 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                                                                     </td>
                                                                                     <td style={tdSmall}>
                                                                                         <ModulosQuantity record={item} displayMode="badge" />
+                                                                                    </td>
+                                                                                    <td style={tdSmall}>
+                                                                                        {item.carrito_por ? (
+                                                                                            <div style={{ fontSize: '0.65rem', color: '#6B7280', whiteSpace: 'nowrap' }}>
+                                                                                                🛒 {item.carrito_por}
+                                                                                                {item.carrito_at && <><br/>{formatDateTime(item.carrito_at)}</>}
+                                                                                            </div>
+                                                                                        ) : <span style={{ color: '#D1D5DB' }}>—</span>}
                                                                                     </td>
                                                                                 </tr>
                                                                             ))}

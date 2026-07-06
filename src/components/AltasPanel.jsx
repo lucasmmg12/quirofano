@@ -31,6 +31,16 @@ function formatDate(d) {
     return dt.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+function formatDateTime(isoString) {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return isoString;
+    return new Intl.DateTimeFormat('es-AR', {
+        day: '2-digit', month: '2-digit', year: '2-digit',
+        hour: '2-digit', minute: '2-digit'
+    }).format(date);
+}
+
 function daysBetween(from, to) {
     if (!from || !to) return null;
     const a = new Date(from + 'T12:00:00');
@@ -140,6 +150,8 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [traspasoDetalle, setTraspasoDetalle] = useState({});
     const [showTraspasoModal, setShowTraspasoModal] = useState(false);
     const [traspasoForm, setTraspasoForm] = useState({ entrega: '', recibe: '', notas: '' });
+    const [carritoSearch, setCarritoSearch] = useState('');
+    const [historialSearch, setHistorialSearch] = useState('');
     const [generando, setGenerando] = useState(false);
     const [firmaEntrega, setFirmaEntrega] = useState(null);
     const [firmaRecibe, setFirmaRecibe] = useState(null);
@@ -203,6 +215,27 @@ export default function AltasPanel({ addToast, currentUser }) {
             setTraspasosLoading(false);
         }
     }, [addToast]);
+
+    const filteredCarrito = useMemo(() => {
+        if (!carritoSearch) return carritoItems;
+        const lower = carritoSearch.toLowerCase();
+        return carritoItems.filter(i => 
+            (i.paciente || '').toLowerCase().includes(lower) ||
+            (i.doctor || '').toLowerCase().includes(lower) ||
+            (i.cliente || '').toLowerCase().includes(lower)
+        );
+    }, [carritoItems, carritoSearch]);
+
+    const filteredTraspasoDetalle = useMemo(() => {
+        const items = traspasoDetalle[expandedTraspaso] || [];
+        if (!historialSearch) return items;
+        const lower = historialSearch.toLowerCase();
+        return items.filter(i => 
+            (i.paciente || '').toLowerCase().includes(lower) ||
+            (i.doctor || '').toLowerCase().includes(lower) ||
+            (i.cliente || '').toLowerCase().includes(lower)
+        );
+    }, [traspasoDetalle, expandedTraspaso, historialSearch]);
 
     useEffect(() => {
         if (activeTab === 'carrito') loadCarrito();
@@ -1089,9 +1122,18 @@ export default function AltasPanel({ addToast, currentUser }) {
                     ) : (
                         <>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--neutral-600)' }}>
-                                    <ShoppingCart size={16} style={{ verticalAlign: 'middle', marginRight: '6px' }} />
-                                    {carritoItems.length} ficha{carritoItems.length !== 1 ? 's' : ''} en el carrito
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--neutral-600)' }}>
+                                        <ShoppingCart size={16} style={{ verticalAlign: 'middle', marginRight: '6px' }} />
+                                        {carritoItems.length} ficha{carritoItems.length !== 1 ? 's' : ''} en el carrito
+                                    </div>
+                                    <input 
+                                        type="text"
+                                        placeholder="🔍 Buscar paciente, doctor u OS..."
+                                        value={carritoSearch}
+                                        onChange={e => setCarritoSearch(e.target.value)}
+                                        style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--neutral-300)', fontSize: '0.8rem', width: '250px' }}
+                                    />
                                 </div>
                                 <button onClick={() => setShowTraspasoModal(true)}
                                     style={{
@@ -1113,13 +1155,14 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             <th className="cart__th">Paciente</th>
                                             <th className="cart__th">Obra Social</th>
                                             <th className="cart__th">Médico</th>
+                                            <th className="cart__th">Enviado por</th>
                                             <th className="cart__th">Ingreso</th>
                                             <th className="cart__th">Alta</th>
                                             <th className="cart__th" style={{ width: '40px' }}></th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {carritoItems.map(a => (
+                                        {filteredCarrito.map(a => (
                                             <tr key={a.id} style={{ borderBottom: '1px solid var(--neutral-100)' }}>
                                                 <td style={{ padding: '8px 10px' }}>
                                                     <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: '#EEF2FF', color: '#4338CA' }}>{a.numero_admision}</span>
@@ -1127,6 +1170,14 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                 <td style={{ padding: '8px 10px', fontWeight: 600 }}>{a.paciente}</td>
                                                 <td style={{ padding: '8px 10px', color: 'var(--neutral-500)' }}>{a.cliente || '—'}</td>
                                                 <td style={{ padding: '8px 10px', color: 'var(--neutral-500)' }}>{a.doctor || '—'}</td>
+                                                <td style={{ padding: '8px 10px' }}>
+                                                    {a.carrito_traspaso_por ? (
+                                                        <div style={{ fontSize: '0.7rem', color: '#6B7280', whiteSpace: 'nowrap' }}>
+                                                            🛒 {a.carrito_traspaso_por}
+                                                            {a.carrito_traspaso_at && <><br/>{formatDateTime(a.carrito_traspaso_at)}</>}
+                                                        </div>
+                                                    ) : <span style={{ color: '#D1D5DB' }}>—</span>}
+                                                </td>
                                                 <td style={{ padding: '8px 10px' }}>{formatDate(a.fecha_ingreso)}</td>
                                                 <td style={{ padding: '8px 10px' }}>{formatDate(a.fecha_alta)}</td>
                                                 <td style={{ padding: '8px 10px', textAlign: 'center' }}>
@@ -1264,6 +1315,15 @@ export default function AltasPanel({ addToast, currentUser }) {
                                     </div>
                                     {expandedTraspaso === t.id && traspasoDetalle[t.id] && (
                                         <div style={{ borderTop: '1px solid var(--neutral-100)', padding: '12px 16px 12px 40px' }}>
+                                            <div style={{ marginBottom: '12px' }}>
+                                                <input 
+                                                    type="text"
+                                                    placeholder="🔍 Buscar paciente, doctor u OS en este traspaso..."
+                                                    value={historialSearch}
+                                                    onChange={e => setHistorialSearch(e.target.value)}
+                                                    style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--neutral-300)', fontSize: '0.75rem', width: '300px' }}
+                                                />
+                                            </div>
                                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                                                 <thead>
                                                     <tr style={{ background: '#F8FAFC' }}>
@@ -1271,15 +1331,24 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                         <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 600, fontSize: '0.68rem', color: 'var(--neutral-500)' }}>PACIENTE</th>
                                                         <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 600, fontSize: '0.68rem', color: 'var(--neutral-500)' }}>O.S.</th>
                                                         <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 600, fontSize: '0.68rem', color: 'var(--neutral-500)' }}>MÉDICO</th>
+                                                        <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 600, fontSize: '0.68rem', color: 'var(--neutral-500)' }}>ENVIADO POR</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {traspasoDetalle[t.id].map(a => (
+                                                    {filteredTraspasoDetalle.map(a => (
                                                         <tr key={a.id} style={{ borderTop: '1px solid var(--neutral-100)' }}>
                                                             <td style={{ padding: '4px 8px', fontFamily: 'monospace', fontWeight: 600 }}>{a.numero_admision}</td>
                                                             <td style={{ padding: '4px 8px', fontWeight: 600 }}>{a.paciente}</td>
                                                             <td style={{ padding: '4px 8px', color: 'var(--neutral-500)' }}>{a.cliente || '—'}</td>
                                                             <td style={{ padding: '4px 8px', color: 'var(--neutral-500)' }}>{a.doctor || '—'}</td>
+                                                            <td style={{ padding: '4px 8px' }}>
+                                                                {a.carrito_traspaso_por ? (
+                                                                    <div style={{ fontSize: '0.65rem', color: '#6B7280', whiteSpace: 'nowrap' }}>
+                                                                        🛒 {a.carrito_traspaso_por}
+                                                                        {a.carrito_traspaso_at && <><br/>{formatDateTime(a.carrito_traspaso_at)}</>}
+                                                                    </div>
+                                                                ) : <span style={{ color: '#D1D5DB' }}>—</span>}
+                                                            </td>
                                                         </tr>
                                                     ))}
                                                 </tbody>

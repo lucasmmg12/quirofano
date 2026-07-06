@@ -111,10 +111,14 @@ export async function toggleDocsCompletos(id, operador) {
 /**
  * Move checked surgeries to the delivery cart.
  */
-export async function enviarAlCarrito(ids) {
+export async function enviarAlCarrito(ids, usuario = 'sistema') {
     const { data, error } = await supabase
         .from('asociaciones_cirugias')
-        .update({ en_carrito: true })
+        .update({ 
+            en_carrito: true,
+            carrito_por: usuario,
+            carrito_at: new Date().toISOString()
+        })
         .in('id', ids)
         .eq('docs_completos', true) // Safety: only checked items
         .is('constancia_id', null)  // Safety: not already delivered
@@ -130,7 +134,11 @@ export async function enviarAlCarrito(ids) {
 export async function quitarDelCarrito(id) {
     const { data, error } = await supabase
         .from('asociaciones_cirugias')
-        .update({ en_carrito: false })
+        .update({ 
+            en_carrito: false,
+            carrito_por: null,
+            carrito_at: null
+        })
         .eq('id', id)
         .is('constancia_id', null)
         .select()
@@ -355,6 +363,8 @@ export async function revertirConstancia(constanciaId) {
             constancia_id: null,
             entregado_at: null,
             en_carrito: true,
+            carrito_por: null,
+            carrito_at: null,
         })
         .eq('constancia_id', constanciaId);
 

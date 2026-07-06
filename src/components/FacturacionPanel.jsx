@@ -204,6 +204,29 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     const [devolucionesLoading, setDevolucionesLoading] = useState(false);
     const [expandedDevolucion, setExpandedDevolucion] = useState(null);
     const [devolucionDetalle, setDevolucionDetalle] = useState({});
+    const [carritoSearch, setCarritoSearch] = useState('');
+    const [historialSearch, setHistorialSearch] = useState('');
+
+    const filteredCarritoDev = useMemo(() => {
+        if (!carritoSearch) return carritoDevItems;
+        const lower = carritoSearch.toLowerCase();
+        return carritoDevItems.filter(i => 
+            (i.paciente || '').toLowerCase().includes(lower) ||
+            (i.doctor || '').toLowerCase().includes(lower) ||
+            (i.cliente || '').toLowerCase().includes(lower)
+        );
+    }, [carritoDevItems, carritoSearch]);
+
+    const filteredDevolucionDetalle = useMemo(() => {
+        const items = devolucionDetalle[expandedDevolucion] || [];
+        if (!historialSearch) return items;
+        const lower = historialSearch.toLowerCase();
+        return items.filter(i => 
+            (i.paciente || '').toLowerCase().includes(lower) ||
+            (i.doctor || '').toLowerCase().includes(lower) ||
+            (i.cliente || '').toLowerCase().includes(lower)
+        );
+    }, [devolucionDetalle, expandedDevolucion, historialSearch]);
 
     // ── Carga criterios de asignación (para Resp. ADM) ──
     useEffect(() => {
@@ -927,9 +950,18 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                     ) : (
                         <>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--neutral-600)' }}>
-                                    <Undo2 size={16} style={{ verticalAlign: 'middle', marginRight: '6px' }} />
-                                    {carritoDevItems.length} ficha{carritoDevItems.length !== 1 ? 's' : ''} para devolver
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--neutral-600)' }}>
+                                        <Undo2 size={16} style={{ verticalAlign: 'middle', marginRight: '6px' }} />
+                                        {carritoDevItems.length} ficha{carritoDevItems.length !== 1 ? 's' : ''} para devolver
+                                    </div>
+                                    <input 
+                                        type="text"
+                                        placeholder="🔍 Buscar paciente, doctor u OS..."
+                                        value={carritoSearch}
+                                        onChange={e => setCarritoSearch(e.target.value)}
+                                        style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--neutral-300)', fontSize: '0.8rem', width: '250px' }}
+                                    />
                                 </div>
                                 <button onClick={() => { setDevolucionForm({ devuelve: currentUser?.nombre || '', recibe: '', motivo: '' }); setShowDevolucionModal(true); }}
                                     style={{
@@ -951,13 +983,14 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                             <th style={{ ...thStyle, color: '#DC2626' }}>Paciente</th>
                                             <th style={{ ...thStyle, color: '#DC2626' }}>Obra Social</th>
                                             <th style={{ ...thStyle, color: '#DC2626' }}>Médico</th>
+                                            <th style={{ ...thStyle, color: '#DC2626' }}>Enviado por</th>
                                             <th style={{ ...thStyle, color: '#DC2626' }}>Ingreso</th>
                                             <th style={{ ...thStyle, color: '#DC2626' }}>Alta</th>
                                             <th style={{ ...thStyle, width: '40px' }}></th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {carritoDevItems.map(a => (
+                                        {filteredCarritoDev.map(a => (
                                             <tr key={a.id} style={{ borderBottom: '1px solid var(--neutral-100)' }}>
                                                 <td style={{ padding: '8px 10px' }}>
                                                     <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: '#FEF2F2', color: '#DC2626' }}>{a.numero_admision}</span>
@@ -965,6 +998,14 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                 <td style={{ padding: '8px 10px', fontWeight: 600 }}>{a.paciente}</td>
                                                 <td style={{ padding: '8px 10px', color: 'var(--neutral-500)' }}>{a.cliente || '—'}</td>
                                                 <td style={{ padding: '8px 10px', color: 'var(--neutral-500)' }}>{a.doctor || '—'}</td>
+                                                <td style={{ padding: '8px 10px' }}>
+                                                    {a.carrito_devolucion_por ? (
+                                                        <div style={{ fontSize: '0.7rem', color: '#6B7280', whiteSpace: 'nowrap' }}>
+                                                            🛒 {a.carrito_devolucion_por}
+                                                            {a.carrito_devolucion_at && <><br/>{formatDateTime(a.carrito_devolucion_at)}</>}
+                                                        </div>
+                                                    ) : <span style={{ color: '#D1D5DB' }}>—</span>}
+                                                </td>
                                                 <td style={{ padding: '8px 10px' }}>{formatDate(a.fecha_ingreso)}</td>
                                                 <td style={{ padding: '8px 10px' }}>{formatDate(a.fecha_alta)}</td>
                                                 <td style={{ padding: '8px 10px', textAlign: 'center' }}>
@@ -1101,6 +1142,15 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                     <strong>Motivo:</strong> {d.motivo}
                                                 </div>
                                             )}
+                                            <div style={{ marginBottom: '12px' }}>
+                                                <input 
+                                                    type="text"
+                                                    placeholder="🔍 Buscar paciente, doctor u OS en esta devolución..."
+                                                    value={historialSearch}
+                                                    onChange={e => setHistorialSearch(e.target.value)}
+                                                    style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--neutral-300)', fontSize: '0.75rem', width: '300px' }}
+                                                />
+                                            </div>
                                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                                                 <thead>
                                                     <tr style={{ background: '#FEF2F2' }}>
@@ -1108,15 +1158,24 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                         <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 600, fontSize: '0.68rem', color: '#DC2626' }}>PACIENTE</th>
                                                         <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 600, fontSize: '0.68rem', color: '#DC2626' }}>O.S.</th>
                                                         <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 600, fontSize: '0.68rem', color: '#DC2626' }}>MÉDICO</th>
+                                                        <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 600, fontSize: '0.68rem', color: '#DC2626' }}>ENVIADO POR</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {devolucionDetalle[d.id].map(a => (
+                                                    {filteredDevolucionDetalle.map(a => (
                                                         <tr key={a.id} style={{ borderTop: '1px solid var(--neutral-100)' }}>
                                                             <td style={{ padding: '4px 8px', fontFamily: 'monospace', fontWeight: 600 }}>{a.numero_admision}</td>
                                                             <td style={{ padding: '4px 8px', fontWeight: 600 }}>{a.paciente}</td>
                                                             <td style={{ padding: '4px 8px', color: 'var(--neutral-500)' }}>{a.cliente || '—'}</td>
                                                             <td style={{ padding: '4px 8px', color: 'var(--neutral-500)' }}>{a.doctor || '—'}</td>
+                                                            <td style={{ padding: '4px 8px' }}>
+                                                                {a.carrito_devolucion_por ? (
+                                                                    <div style={{ fontSize: '0.65rem', color: '#6B7280', whiteSpace: 'nowrap' }}>
+                                                                        🛒 {a.carrito_devolucion_por}
+                                                                        {a.carrito_devolucion_at && <><br/>{formatDateTime(a.carrito_devolucion_at)}</>}
+                                                                    </div>
+                                                                ) : <span style={{ color: '#D1D5DB' }}>—</span>}
+                                                            </td>
                                                         </tr>
                                                     ))}
                                                 </tbody>
