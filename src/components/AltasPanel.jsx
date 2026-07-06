@@ -10,13 +10,13 @@ import {
     Search, RefreshCw, ChevronRight, ChevronLeft, Clock, Calendar,
     Filter, X, Loader2, FileText, User, Building2,
     Stethoscope, ChevronDown, ChevronUp, StickyNote, Save,
-    ListFilter, Download, FileDown, ShoppingCart, Printer, Trash2, PackageCheck, Receipt,
+    ListFilter, Download, FileDown, ShoppingCart, Printer, Trash2, PackageCheck, Receipt, Scissors
 } from 'lucide-react';
 import {
     fetchAltas, fetchHistorialInternaciones, updateAltaEstado, updateAltaNotas, updateAltaResponsable, ALTA_ESTADOS,
     fetchCarritoTraspaso, marcarParaTraspaso, quitarDeCarritoTraspaso,
     generarTraspaso, fetchTraspasos, fetchTraspasoDetalle, firmarTraspaso,
-    cerrarPeriodoFacturacion, reabrirPeriodoFacturacion,
+    cerrarPeriodoFacturacion, reabrirPeriodoFacturacion, ejecutarCorteDeMesProlongadas,
 } from '../services/altasService';
 import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
 import SalusSyncButton from './SalusSyncButton';
@@ -141,6 +141,11 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [editingNotas, setEditingNotas] = useState(null);
     const [notasText, setNotasText] = useState('');
     const [criterios, setCriterios] = useState([]);
+
+    // ── Corte de Mes (Prolongadas) ──
+    const [showCorteModal, setShowCorteModal] = useState(false);
+    const [corteLoading, setCorteLoading] = useState(false);
+    const [prolongadasCount, setProlongadasCount] = useState(0);
 
     // ── Carrito & Traspaso ──
     const [selectedIds, setSelectedIds] = useState(new Set());
@@ -421,6 +426,27 @@ export default function AltasPanel({ addToast, currentUser }) {
             setTimeout(() => printWin.print(), 500);
         } catch (err) {
             addToast?.('Error al imprimir: ' + err.message, 'error');
+        }
+    };
+
+    // ── Corte de Mes (Prolongadas) ──
+    const handleCheckCorte = () => {
+        const prolongadas = sortedAltas.filter(r => !r.fecha_alta && r.estado !== 'Suspendida' && r.estado !== 'Alta Adm. Parcial');
+        setProlongadasCount(prolongadas.length);
+        setShowCorteModal(true);
+    };
+
+    const handleEjecutarCorte = async () => {
+        setCorteLoading(true);
+        try {
+            const res = await ejecutarCorteDeMesProlongadas(fromDate, toDate);
+            addToast?.(`✅ ${res.message}`, 'success');
+            setShowCorteModal(false);
+            loadData();
+        } catch (err) {
+            addToast?.('Error al ejecutar corte de mes: ' + err.message, 'error');
+        } finally {
+            setCorteLoading(false);
         }
     };
 
@@ -1013,6 +1039,17 @@ export default function AltasPanel({ addToast, currentUser }) {
                     </p>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button onClick={handleCheckCorte}
+                        title="Corte de Mes (Internaciones Prolongadas Neo/UCI)"
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            padding: '8px 14px', borderRadius: '8px',
+                            background: '#F0FDFA', color: '#0F766E',
+                            border: '1px solid #14B8A6', cursor: 'pointer',
+                            fontSize: '0.8rem', fontWeight: 600,
+                        }}>
+                        <Scissors size={14} /> Corte de Mes (Neo/UCI)
+                    </button>
                     <SalusSyncButton onComplete={loadData} addToast={addToast} />
                     {/* Export buttons */}
                     <button
@@ -2343,6 +2380,43 @@ export default function AltasPanel({ addToast, currentUser }) {
                     document.body
                 )
             )}
-</div>
+            {/* Modal de Confirmación de Corte de Mes */}
+            {showCorteModal && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', width: '400px', maxWidth: '90vw', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }}>
+                        <h3 style={{ margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px', color: '#0F766E' }}>
+                            <Scissors size={20} /> Ejecutar Corte de Mes
+                        </h3>
+                        <p style={{ margin: '0 0 16px 0', fontSize: '0.9rem', color: '#4B5563', lineHeight: '1.5' }}>
+                            Se encontraron <strong>{prolongadasCount}</strong> paciente{prolongadasCount !== 1 ? 's' : ''} sin fecha de alta en el mes de <strong>{selectedMonth}</strong>.
+                        </p>
+                        <p style={{ margin: '0 0 24px 0', fontSize: '0.85rem', color: '#6B7280', lineHeight: '1.5', background: '#F3F4F6', padding: '10px', borderRadius: '8px' }}>
+                            Al ejecutar, se marcarán las fichas actuales como <strong>"Alta Adm. Parcial"</strong> para poder cerrar el mes, y se crearán automáticamente <strong>prórrogas idénticas</strong> en el día 1 del mes siguiente para mantener la continuidad.
+                        </p>
+                        
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                            <button 
+                                onClick={() => setShowCorteModal(false)}
+                                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #D1D5DB', background: '#fff', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
+                                Cancelar
+                            </button>
+                            <button 
+                                onClick={handleEjecutarCorte}
+                                disabled={corteLoading || prolongadasCount === 0}
+                                style={{ 
+                                    padding: '8px 16px', borderRadius: '8px', border: 'none', 
+                                    background: '#0D9488', color: '#fff', cursor: (corteLoading || prolongadasCount === 0) ? 'not-allowed' : 'pointer', 
+                                    fontSize: '0.85rem', fontWeight: 600,
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                    opacity: (corteLoading || prolongadasCount === 0) ? 0.5 : 1
+                                }}>
+                                {corteLoading && <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />}
+                                {corteLoading ? 'Ejecutando...' : 'Confirmar y Ejecutar'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }

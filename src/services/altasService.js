@@ -14,6 +14,7 @@ export const ALTA_ESTADOS = {
     'Prórroga':         { label: 'Prórroga',         color: '#F97316', bg: '#FFF7ED', icon: '⏳' },
     'Con presupuesto':  { label: 'Con presupuesto',  color: '#EC4899', bg: '#FDF2F8', icon: '💰' },
     'Alta Adm':         { label: 'Alta Adm',         color: '#10B981', bg: '#ECFDF5', icon: '✅' },
+    'Alta Adm. Parcial':{ label: 'Alta Adm. Parcial',color: '#0D9488', bg: '#CCFBF1', icon: '✂️' },
     'Suspendida':       { label: 'Suspendida',       color: '#EF4444', bg: '#FEF2F2', icon: '⛔' },
     'Particular':       { label: 'Particular',       color: '#6B7280', bg: '#F3F4F6', icon: '👤' },
     'Interconsulta':    { label: 'Interconsulta',    color: '#3B82F6', bg: '#EFF6FF', icon: '🔄' },
@@ -641,4 +642,72 @@ export async function reabrirPeriodoFacturacion(id) {
         .single();
     if (error) throw error;
     return data;
+}
+
+/**
+ * Ejecuta el corte de mes para internaciones prolongadas
+ * Busca pacientes sin alta en el rango dado (mes), los pasa a "Alta Adm. Parcial",
+ * y crea una prórroga para el día 1 del mes siguiente.
+ */
+export async function ejecutarCorteDeMesProlongadas(fromDate, toDate) {
+    if (!fromDate || !toDate) throw new Error('Se requiere rango de fechas (mes)');
+
+    // 1. Buscar las fichas del mes que no tienen fecha de alta
+    const { data: prolongadas, error: fetchErr } = await supabase
+        .from('altas_administrativas')
+        .select('*')
+        .gte('fecha_ingreso', fromDate)
+        .lte('fecha_ingreso', toDate)
+        .is('fecha_alta', null)
+        .not('estado', 'eq', 'Suspendida')
+        .not('estado', 'eq', 'Alta Adm. Parcial');
+
+    if (fetchErr) throw fetchErr;
+    if (!prolongadas || prolongadas.length === 0) {
+        return { count: 0, message: 'No hay internaciones prolongadas sin alta en este mes.' };
+    }
+
+    // Calcular el día 1 del mes siguiente
+    const [y, m] = fromDate.split('-').map(Number);
+    const nextY = m === 12 ? y + 1 : y;
+    const nextM = m === 12 ? 1 : m + 1;
+    // Creamos la fecha a las 00:00:00
+    const nextMonthStart = `${nextY}-${String(nextM).padStart(2, '0')}-01T00:00:00.000Z`;
+
+    // Preparar nuevos registros para el mes siguiente
+    const nuevosRegistros = prolongadas.map(p => {
+        const { id, created_at, ...rest } = p;
+        return {
+            ...rest,
+            fecha_ingreso: nextMonthStart,
+            estado: 'Prórroga',
+            estado_fac: 'Pendiente',
+            notas: (p.notas ? p.notas + '\n\n' : '') + `[Corte Automático] Prórroga arrastrada desde ${new Date(p.fecha_ingreso).toLocaleDateString('es-AR')}`,
+            en_carrito_traspaso: false,
+            carrito_traspaso_por: null,
+            carrito_traspaso_at: null,
+            traspaso_id: null,
+            traspasada_at: null,
+            traspasada_por: null
+        };
+    });
+
+    // Ejecutar transacciones
+    // a. Actualizar viejos a "Alta Adm. Parcial"
+    const idsOld = prolongadas.map(p => p.id);
+    const { error: updErr } = await supabase
+        .from('altas_administrativas')
+        .update({ estado: 'Alta Adm. Parcial' })
+        .in('id', idsOld);
+
+    if (updErr) throw updErr;
+
+    // b. Insertar nuevos
+    const { error: insErr } = await supabase
+        .from('altas_administrativas')
+        .insert(nuevosRegistros);
+
+    if (insErr) throw insErr;
+
+    return { count: prolongadas.length, message: `Se procesaron ${prolongadas.length} internaciones prolongadas.` };
 }
