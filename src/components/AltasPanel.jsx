@@ -142,9 +142,10 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [notasText, setNotasText] = useState('');
     const [criterios, setCriterios] = useState([]);
 
-    // ── Carrito de traspaso ──
+    // ── Carrito & Traspaso ──
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [carritoItems, setCarritoItems] = useState([]);
+    const [selectedCartIds, setSelectedCartIds] = useState([]);
     const [carritoLoading, setCarritoLoading] = useState(false);
     const [traspasos, setTraspasos] = useState([]);
     const [traspasosLoading, setTraspasosLoading] = useState(false);
@@ -300,10 +301,12 @@ export default function AltasPanel({ addToast, currentUser }) {
                 responsableEntrega: entregaNombre,
                 responsableRecibe: traspasoForm.recibe.trim(),
                 notas: traspasoForm.notas || null,
+                selectedIds: selectedCartIds.length > 0 ? selectedCartIds : null,
             });
             addToast?.(`✅ Traspaso ${traspaso.codigo} generado — ${traspaso.cantidad_fichas} fichas`, 'success');
             setShowTraspasoModal(false);
             setTraspasoForm({ entrega: '', recibe: '', notas: '' });
+            setSelectedCartIds([]);
             loadCarrito();
             loadData();
             // Auto-print
@@ -1137,22 +1140,40 @@ export default function AltasPanel({ addToast, currentUser }) {
                                         style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--neutral-300)', fontSize: '0.8rem', width: '250px' }}
                                     />
                                 </div>
-                                <button onClick={() => setShowTraspasoModal(true)}
+                                <button onClick={() => {
+                                    if (selectedCartIds.length === 0) {
+                                        addToast?.('Seleccioná al menos una ficha para traspasar', 'warning');
+                                        return;
+                                    }
+                                    setShowTraspasoModal(true);
+                                }}
                                     style={{
                                         display: 'flex', alignItems: 'center', gap: '6px',
                                         padding: '10px 20px', borderRadius: '10px',
                                         background: 'linear-gradient(135deg, #6366F1, #4F46E5)',
-                                        color: '#fff', border: 'none', cursor: 'pointer',
+                                        color: '#fff', border: 'none', cursor: selectedCartIds.length === 0 ? 'not-allowed' : 'pointer',
                                         fontSize: '0.82rem', fontWeight: 700,
                                         boxShadow: '0 2px 8px rgba(99,102,241,0.3)',
+                                        opacity: selectedCartIds.length === 0 ? 0.6 : 1,
                                     }}>
-                                    <Printer size={16} /> Generar Constancia de Traspaso
+                                    <Printer size={16} /> Generar Constancia ({selectedCartIds.length})
                                 </button>
                             </div>
                             <div style={{ borderRadius: '12px', border: '1px solid var(--neutral-200)', overflow: 'hidden' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                                     <thead>
                                         <tr style={{ background: 'var(--neutral-50)' }}>
+                                            <th className="cart__th" style={{ width: '40px', textAlign: 'center' }}>
+                                                <input 
+                                                    type="checkbox"
+                                                    checked={filteredCarrito.length > 0 && selectedCartIds.length === filteredCarrito.length}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) setSelectedCartIds(filteredCarrito.map(a => a.id));
+                                                        else setSelectedCartIds([]);
+                                                    }}
+                                                    style={{ cursor: 'pointer' }}
+                                                />
+                                            </th>
                                             <th className="cart__th">N° Adm</th>
                                             <th className="cart__th">Paciente</th>
                                             <th className="cart__th">Obra Social</th>
@@ -1165,7 +1186,18 @@ export default function AltasPanel({ addToast, currentUser }) {
                                     </thead>
                                     <tbody>
                                         {filteredCarrito.map(a => (
-                                            <tr key={a.id} style={{ borderBottom: '1px solid var(--neutral-100)' }}>
+                                            <tr key={a.id} style={{ borderBottom: '1px solid var(--neutral-100)', background: selectedCartIds.includes(a.id) ? '#EEF2FF' : 'transparent' }}>
+                                                <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                                                    <input 
+                                                        type="checkbox"
+                                                        checked={selectedCartIds.includes(a.id)}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) setSelectedCartIds(prev => [...prev, a.id]);
+                                                            else setSelectedCartIds(prev => prev.filter(id => id !== a.id));
+                                                        }}
+                                                        style={{ cursor: 'pointer' }}
+                                                    />
+                                                </td>
                                                 <td style={{ padding: '8px 10px' }}>
                                                     <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: '#EEF2FF', color: '#4338CA' }}>{a.numero_admision}</span>
                                                 </td>
@@ -1183,7 +1215,13 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                 <td style={{ padding: '8px 10px' }}>{formatDate(a.fecha_ingreso)}</td>
                                                 <td style={{ padding: '8px 10px' }}>{formatDate(a.fecha_alta)}</td>
                                                 <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                                                    <button onClick={() => handleQuitarDelCarrito(a.id)}
+                                                    <button onClick={() => {
+                                                            // Si la ficha está seleccionada, la sacamos de la selección primero
+                                                            if (selectedCartIds.includes(a.id)) {
+                                                                setSelectedCartIds(prev => prev.filter(id => id !== a.id));
+                                                            }
+                                                            handleQuitarDelCarrito(a.id);
+                                                        }}
                                                         title="Quitar del carrito"
                                                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444', padding: '4px' }}>
                                                         <Trash2 size={14} />
@@ -1209,7 +1247,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                     📦 Generar Constancia de Traspaso
                                 </h3>
                                 <div style={{ fontSize: '0.82rem', color: 'var(--neutral-500)', marginBottom: '16px' }}>
-                                    {carritoItems.length} ficha{carritoItems.length !== 1 ? 's' : ''} serán traspasadas a Facturación.
+                                    {selectedCartIds.length} ficha{selectedCartIds.length !== 1 ? 's' : ''} seleccionada{selectedCartIds.length !== 1 ? 's' : ''} de {carritoItems.length} en el carrito, serán traspasadas a Facturación.
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     {/* Entrega: usuario logueado (solo lectura) */}

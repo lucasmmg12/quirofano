@@ -328,7 +328,15 @@ export async function fetchCarritoTraspaso() {
 /**
  * Genera un traspaso (constancia/remito)
  */
-export async function generarTraspaso({ responsableEntrega, responsableRecibe, notas }) {
+export async function generarTraspaso({ responsableEntrega, responsableRecibe, notas, selectedIds = null }) {
+    // Get all cart items
+    let cartItems = await fetchCarritoTraspaso();
+    if (selectedIds && selectedIds.length > 0) {
+        cartItems = cartItems.filter(item => selectedIds.includes(item.id));
+    }
+    
+    if (cartItems.length === 0) throw new Error('No hay fichas seleccionadas en el carrito de traspaso');
+
     // Get next code
     const year = new Date().getFullYear();
     const prefix = `TRSP-${year}-`;
@@ -346,10 +354,6 @@ export async function generarTraspaso({ responsableEntrega, responsableRecibe, n
         if (!isNaN(num)) nextNum = num + 1;
     }
     const codigo = `${prefix}${String(nextNum).padStart(4, '0')}`;
-
-    // Get all cart items
-    const cartItems = await fetchCarritoTraspaso();
-    if (cartItems.length === 0) throw new Error('No hay fichas en el carrito de traspaso');
 
     const ahora = new Date().toISOString();
 
