@@ -195,7 +195,7 @@ export default function ChartsPanel({ metricas, config }) {
             `}</style>
 
             {/* 2. Heatmap: Demanda Histórica */}
-            <div style={{ ...s.card, gridColumn: '1 / -1' }} className="chart-card" style={{ ...s.card, gridColumn: '1 / -1', animationDelay: '0.1s' }}>
+            <div className="chart-card" style={{ ...s.card, gridColumn: '1 / -1', animationDelay: '0.1s' }}>
                 <h3 style={s.title}>🕒 Mapa de Calor: Demanda Histórica (30 días)</h3>
                 <div style={{ width: '100%', overflowX: 'auto', paddingBottom: '10px' }}>
                     {heatmapData ? (

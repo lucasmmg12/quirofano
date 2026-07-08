@@ -19,6 +19,7 @@ export const ALTA_ESTADOS = {
     'Particular':       { label: 'Particular',       color: '#6B7280', bg: '#F3F4F6', icon: '👤' },
     'Interconsulta':    { label: 'Interconsulta',    color: '#3B82F6', bg: '#EFF6FF', icon: '🔄' },
     'Vacío':            { label: 'Vacío',            color: '#94A3B8', bg: '#F8FAFC', icon: '◽' },
+    'Pasa al mes que viene': { label: 'Pasa al mes que viene', color: '#6366F1', bg: '#E0E7FF', icon: '⏭️' },
 
 };
 
@@ -88,18 +89,56 @@ export async function fetchHistorialInternaciones(numeroDocumento) {
 /**
  * Actualiza el estado de un alta
  */
-export async function updateAltaEstado(id, estado, operador = 'operador') {
+export async function updateAltaEstado(id, estado, operador = 'operador', selectedMonth = null) {
     // Si el registro tiene devolución activa, limpiar los campos de devolución
     const { data: current } = await supabase
         .from('altas_administrativas')
-        .select('devolucion_id, estado_fac')
+        .select('*')
         .eq('id', id)
         .single();
 
-    const updatePayload = { estado, operador };
+    let updatePayload = { estado, operador };
     if (current?.devolucion_id && current?.estado_fac === 'Devuelta') {
         updatePayload.devolucion_id = null;
         updatePayload.estado_fac = 'Pendiente';
+    }
+
+    // Lógica de "Prórroga" y "Alta Adm. Parcial" para crear continuación el mes que viene
+    let duplicateRecord = null;
+    if (estado === 'Prórroga' || estado === 'Alta Adm. Parcial') {
+        // La ficha original siempre queda como "Alta Adm. Parcial"
+        updatePayload.estado = 'Alta Adm. Parcial';
+
+        // Determinar inicio del mes siguiente basado en el mes visualizado, o si no, el mes de ingreso
+        let nextMonthStart;
+        if (selectedMonth) {
+            const [y, m] = selectedMonth.split('-').map(Number);
+            const nextY = m === 12 ? y + 1 : y;
+            const nextM = m === 12 ? 1 : m + 1;
+            nextMonthStart = `${nextY}-${String(nextM).padStart(2, '0')}-01T00:00:00.000Z`;
+        } else {
+            const d = new Date(current.fecha_ingreso || new Date());
+            const m = d.getMonth() + 1;
+            const y = d.getFullYear();
+            const nextY = m === 12 ? y + 1 : y;
+            const nextM = m === 12 ? 1 : m + 1;
+            nextMonthStart = `${nextY}-${String(nextM).padStart(2, '0')}-01T00:00:00.000Z`;
+        }
+
+        const { id: oldId, created_at, ...rest } = current;
+        duplicateRecord = {
+            ...rest,
+            fecha_ingreso: nextMonthStart,
+            estado: estado === 'Prórroga' ? 'Prórroga' : null, // Prórroga -> Prórroga, Alta Parcial -> Vacío
+            estado_fac: 'Pendiente',
+            notas: (current.notas ? current.notas + '\n\n' : '') + `[Corte Manual] ${estado} arrastrada desde ${new Date(current.fecha_ingreso).toLocaleDateString('es-AR')}`,
+            en_carrito_traspaso: false,
+            carrito_traspaso_por: null,
+            carrito_traspaso_at: null,
+            traspaso_id: null,
+            traspasada_at: null,
+            traspasada_por: null
+        };
     }
 
     const { data, error } = await supabase
@@ -109,6 +148,14 @@ export async function updateAltaEstado(id, estado, operador = 'operador') {
         .select()
         .single();
     if (error) throw error;
+
+    if (duplicateRecord) {
+        const { error: insertErr } = await supabase
+            .from('altas_administrativas')
+            .insert(duplicateRecord);
+        if (insertErr) throw insertErr;
+    }
+
     return data;
 }
 

@@ -470,7 +470,7 @@ export default function AltasPanel({ addToast, currentUser }) {
         if (isReadOnly) return addToast?.('Modificación no permitida para tu usuario', 'error');
         try {
             setProcessing(true);
-            await updateAltaEstado(id, nuevoEstado, currentUser?.nombre || 'operador');
+            await updateAltaEstado(id, nuevoEstado, currentUser?.nombre || 'operador', selectedMonth);
             addToast?.(`Estado → ${ALTA_ESTADOS[nuevoEstado]?.label || nuevoEstado}`, 'success');
             setStatusDropdownId(null);
             setDropdownAnchor(null);
