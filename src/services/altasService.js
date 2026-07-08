@@ -125,7 +125,7 @@ export async function updateAltaEstado(id, estado, operador = 'operador', select
             fecha_ingreso: nextMonthStart,
             estado: estado === 'Prórroga' ? 'Prórroga' : null, // Prórroga -> Prórroga, Alta Parcial -> Vacío
             estado_fac: 'Pendiente',
-            notas: (current.notas ? current.notas + '\n\n' : '') + `[Corte Manual] ${estado} arrastrada desde ${new Date(current.fecha_ingreso).toLocaleDateString('es-AR')}`,
+            notas_internas: (current.notas_internas ? current.notas_internas + '\n\n' : '') + `[Corte Manual] ${estado} arrastrada desde ${new Date(current.fecha_ingreso).toLocaleDateString('es-AR')}`,
             en_carrito_traspaso: false,
             carrito_traspaso_por: null,
             carrito_traspaso_at: null,
@@ -765,7 +765,7 @@ export async function ejecutarCorteDeMesProlongadas(fromDate, toDate) {
             fecha_ingreso: nextMonthStart,
             estado: 'Prórroga',
             estado_fac: 'Pendiente',
-            notas: (p.notas ? p.notas + '\n\n' : '') + `[Corte Automático] Prórroga arrastrada desde ${new Date(p.fecha_ingreso).toLocaleDateString('es-AR')}`,
+            notas_internas: (p.notas_internas ? p.notas_internas + '\n\n' : '') + `[Corte Automático] Prórroga arrastrada desde ${new Date(p.fecha_ingreso).toLocaleDateString('es-AR')}`,
             en_carrito_traspaso: false,
             carrito_traspaso_por: null,
             carrito_traspaso_at: null,
