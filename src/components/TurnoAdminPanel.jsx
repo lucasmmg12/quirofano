@@ -10,7 +10,7 @@ import {
     Clock, CheckCircle, XCircle, BarChart3, RefreshCw,
     User, FileText, Receipt, Microscope, HelpCircle,
     Building2, Baby, ShieldCheck, Monitor, Edit2, Timer, AlertTriangle,
-    Download, FileSpreadsheet
+    Download, FileSpreadsheet, RotateCcw
 } from 'lucide-react';
 import { SkeletonCardGrid } from './SkeletonLoader';
 import { exportMetricasToExcel, generateMetricasPdf } from '../utils/metricsReport';
@@ -18,6 +18,7 @@ import {
     fetchColaActiva, fetchAtendidosHoy, fetchMetricasPorRango,
     llamarTurno, iniciarAtencion, finalizarAtencion,
     cancelarTurno, derivarTurno, cambiarTramiteTurno, subscribeToCola, fetchTurnoConfig,
+    devolverAEspera
 } from '../services/turnoService';
 import BoxManagerPanel from './BoxManagerPanel';
 import ChartsPanel from './metrics/ChartsPanel';
@@ -264,6 +265,16 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
             addToast?.('Error al finalizar atención', 'error');
         }
     }, [activeTimers, addToast, loadData]);
+
+    const handleDevolver = useCallback(async (turnoId) => {
+        try {
+            await devolverAEspera(turnoId);
+            addToast?.('Turno devuelto a espera', 'info');
+            loadData();
+        } catch (err) {
+            addToast?.('Error al devolver turno a espera', 'error');
+        }
+    }, [addToast, loadData]);
 
     const handleCancelar = useCallback(async (turnoId, motivo) => {
         try {
@@ -632,6 +643,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     onFinalizar={handleFinalizar}
                                     onCancelar={() => setCancelarModal(turno)}
                                     onDerivar={() => setDerivarModal(turno.id)}
+                                    onDevolver={() => handleDevolver(turno.id)}
                                     onChangeTramite={() => setCambiarTramiteModal(turno)}
                                     formatTime={formatTime}
                                     formatSeconds={formatSeconds}
@@ -668,6 +680,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     onFinalizar={handleFinalizar}
                                     onCancelar={() => setCancelarModal(turno)}
                                     onDerivar={() => setDerivarModal(turno.id)}
+                                    onDevolver={() => handleDevolver(turno.id)}
                                     onChangeTramite={() => setCambiarTramiteModal(turno)}
                                     formatTime={formatTime}
                                     formatSeconds={formatSeconds}
@@ -806,7 +819,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
 }
 
 // ─── Componente Individual: TurnoCard ───
-function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, onCancelar, onDerivar, onChangeTramite, formatTime, getTimeSince, formatSeconds, isLockedForMe, myBoxNum }) {
+function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, onCancelar, onDerivar, onDevolver, onChangeTramite, formatTime, getTimeSince, formatSeconds, isLockedForMe, myBoxNum }) {
     const estadoCfg = ESTADO_BADGES[turno.estado] || ESTADO_BADGES.esperando;
     const isActive = turno.estado === 'llamando' || turno.estado === 'en_atencion';
 
@@ -959,6 +972,9 @@ function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, o
                                     <button onClick={onDerivar} style={{ ...s.turnoActionBtn, background: '#F0F4F8', color: '#475569', border: '1px solid #E2E8F0' }}>
                                         <ArrowRightLeft size={14} /> Derivar
                                     </button>
+                                    <button onClick={() => onDevolver()} style={{ ...s.turnoActionBtn, background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A', ...lockedStyle }} title={lockedTitle || "Devolver a espera"}>
+                                        <RotateCcw size={14} /> Devolver
+                                    </button>
                                     <button onClick={() => onCancelar()} style={{ ...s.turnoActionBtn, background: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA', ...lockedStyle }} title={lockedTitle || "Cancelar turno"}>
                                         <XCircle size={14} />
                                     </button>
@@ -976,6 +992,9 @@ function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, o
                                     </button>
                                     <button onClick={onDerivar} style={{ ...s.turnoActionBtn, background: '#F0F4F8', color: '#475569', border: '1px solid #E2E8F0', padding: '10px' }}>
                                         <ArrowRightLeft size={14} /> Derivar
+                                    </button>
+                                    <button onClick={() => onDevolver()} style={{ ...s.turnoActionBtn, background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A', padding: '10px', ...lockedStyle }} title={lockedTitle || "Devolver a espera"}>
+                                        <RotateCcw size={14} /> Devolver
                                     </button>
                                 </>
                             )}

@@ -135,7 +135,30 @@ export async function iniciarAtencion(turnoId, empleadoNombre, boxNumero) {
     return data;
 }
 
-// â”€â”€â”€ Finalizar AtenciÃ³n â”€â”€â”€
+// ——— Devolver a Espera ———
+export async function devolverAEspera(turnoId) {
+    const ahora = new Date().toISOString();
+
+    // Eliminar el registro de atención si existía (o cerrarlo con nota de error)
+    await supabase
+        .from('turnos_atencion')
+        .update({
+            hora_fin: ahora,
+            notas: 'Devuelto a espera por error de llamado'
+        })
+        .eq('turno_id', turnoId)
+        .is('hora_fin', null);
+
+    // Actualizar estado del turno a esperando
+    const { error } = await supabase
+        .from('turnos_cola')
+        .update({ estado: 'esperando', llamado_at: null })
+        .eq('id', turnoId);
+
+    if (error) throw error;
+}
+
+// ——— Finalizar AtenciÃ³n ———
 export async function finalizarAtencion(turnoId, notas = null) {
     const ahora = new Date().toISOString();
 
