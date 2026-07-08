@@ -242,7 +242,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
         } catch (err) {
             addToast?.('Error al llamar turno', 'error');
         }
-    }, [empleadoNombre, addToast, loadData]);
+    }, [empleadoNombre, addToast, loadData, myBoxNum]);
 
     const handleIniciar = useCallback(async (turno) => {
         try {
