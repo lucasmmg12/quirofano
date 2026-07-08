@@ -236,7 +236,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
             return;
         }
         try {
-            await llamarTurno(turno.id, empleadoNombre);
+            await llamarTurno(turno.id, empleadoNombre, myBoxNum);
             addToast?.(`Llamando turno ${turno.numero_turno}`, 'info');
             loadData();
         } catch (err) {

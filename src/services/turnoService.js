@@ -26,7 +26,7 @@ export async function crearTurno(tipoTramite, dni = null) {
     // 2. Obtener box disponible con balanceo inteligente
     const { getBoxBalanceado } = await import('./boxService');
     const boxAsignado = await getBoxBalanceado();
-    // Si no hay boxes disponibles, el turno se crea sin box (admin asigna despuÃ©s)
+    // Si no hay boxes disponibles, el turno se crea sin box (admin asigna después)
 
     // 3. Buscar nombre del paciente si tiene DNI
     let nombrePaciente = null;
@@ -93,13 +93,14 @@ export async function fetchAtendidosHoy() {
 }
 
 // â”€â”€â”€ Llamar Turno â”€â”€â”€
-export async function llamarTurno(turnoId, empleadoNombre = null) {
+export async function llamarTurno(turnoId, empleadoNombre = null, boxNumero = null) {
     const ahora = new Date().toISOString();
     const updateData = {
         estado: 'llamando',
         llamado_at: ahora,
     };
     if (empleadoNombre) updateData.atendido_por = empleadoNombre;
+    if (boxNumero) updateData.box_asignado = boxNumero;
     const { error } = await supabase
         .from('turnos_cola')
         .update(updateData)

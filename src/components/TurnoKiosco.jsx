@@ -153,7 +153,7 @@ export default function TurnoKiosco() {
                     tipo_tramite: tipo,
                     dni: dni.trim() || null,
                     nombre_paciente: nombrePaciente,
-                    box_asignado: boxAsignado || 1,
+                    box_asignado: null,
                     estado: 'esperando',
                 })
                 .select()

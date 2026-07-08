@@ -31,6 +31,7 @@ import TurnoAdminPanel from './components/TurnoAdminPanel.jsx';
 import DeudasPanel from './components/DeudasPanel.jsx';
 import AltasPanel from './components/AltasPanel.jsx';
 import FacturacionPanel from './components/FacturacionPanel.jsx';
+import TxtProvinciaPanel from './components/TxtProvinciaPanel.jsx';
 import AsignacionPanel from './components/AsignacionPanel.jsx';
 import ConsultasPanel from './components/ConsultasPanel.jsx';
 import AuditoriaHistoriasPanel from './components/AuditoriaHistoriasPanel.jsx';
