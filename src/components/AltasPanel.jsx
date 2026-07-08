@@ -10,13 +10,14 @@ import {
     Search, RefreshCw, ChevronRight, ChevronLeft, Clock, Calendar,
     Filter, X, Loader2, FileText, User, Building2,
     Stethoscope, ChevronDown, ChevronUp, StickyNote, Save,
-    ListFilter, Download, FileDown, ShoppingCart, Printer, Trash2, PackageCheck, Receipt, Scissors
+    ListFilter, Download, FileDown, ShoppingCart, Printer, Trash2, PackageCheck, Receipt, Scissors, Undo2
 } from 'lucide-react';
 import {
     fetchAltas, fetchHistorialInternaciones, updateAltaEstado, updateAltaNotas, updateAltaResponsable, ALTA_ESTADOS,
     fetchCarritoTraspaso, marcarParaTraspaso, quitarDeCarritoTraspaso,
     generarTraspaso, fetchTraspasos, fetchTraspasoDetalle, firmarTraspaso,
     cerrarPeriodoFacturacion, reabrirPeriodoFacturacion, ejecutarCorteDeMesProlongadas,
+    setReingresoReal
 } from '../services/altasService';
 import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
 import SalusSyncButton from './SalusSyncButton';
@@ -203,6 +204,16 @@ export default function AltasPanel({ addToast, currentUser }) {
     }, [fromDate, toDate, debouncedSearch, addToast]);
 
     useEffect(() => { loadData(); }, [loadData]);
+
+    const handleSepararReingreso = useCallback(async (altaId) => {
+        try {
+            await setReingresoReal(altaId, true);
+            addToast?.('Marcado como Reingreso Real y des-fusionado', 'info');
+            loadData();
+        } catch (err) {
+            addToast?.('Error al des-fusionar: ' + err.message, 'error');
+        }
+    }, [addToast, loadData]);
 
     // ── Carga carrito ──
     const loadCarrito = useCallback(async () => {
@@ -566,7 +577,7 @@ export default function AltasPanel({ addToast, currentUser }) {
             // Agrupar por fecha_ingreso
             const byDate = new Map();
             for (const e of entries) {
-                const dateKey = e.fecha_ingreso || 'sin-fecha';
+                const dateKey = e.is_reingreso_real ? `${e.fecha_ingreso || 'sin-fecha'}-reingreso-${e.id}` : (e.fecha_ingreso || 'sin-fecha');
                 if (!byDate.has(dateKey)) byDate.set(dateKey, []);
                 byDate.get(dateKey).push(e);
             }
@@ -1818,9 +1829,24 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                     </span>
                                                 )}
                                                 {alta._mergedAdmissions && (
-                                                    <span title={`Fusionada (misma fecha) — Admisiones: ${alta._mergedAdmissions.join(', ')}`}
-                                                        style={{ marginLeft: '4px', padding: '1px 6px', borderRadius: '4px', background: '#ECFDF5', color: '#059669', fontSize: '0.62rem', fontWeight: 700, verticalAlign: 'middle', cursor: 'help' }}>
-                                                        🔗 Fusionada
+                                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '4px' }}>
+                                                        <span title={`Fusionada (misma fecha) — Admisiones: ${alta._mergedAdmissions.join(', ')}`}
+                                                            style={{ padding: '1px 6px', borderRadius: '4px', background: '#ECFDF5', color: '#059669', fontSize: '0.62rem', fontWeight: 700, verticalAlign: 'middle', cursor: 'help' }}>
+                                                            🔗 Fusionada
+                                                        </span>
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleSepararReingreso(alta.id); }}
+                                                            title="Des-fusionar y marcar como Reingreso Real"
+                                                            style={{ fontSize: '0.62rem', padding: '1px 6px', background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A', borderRadius: '4px', cursor: 'pointer', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '2px', verticalAlign: 'middle' }}
+                                                        >
+                                                            <Undo2 size={10} /> Separar
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {alta.is_reingreso_real && (
+                                                    <span title="Marcado como Reingreso Real (Mismo día)"
+                                                        style={{ marginLeft: '4px', padding: '1px 6px', borderRadius: '4px', background: '#ECFDF5', color: '#047857', fontSize: '0.62rem', fontWeight: 700, verticalAlign: 'middle', border: '1px solid #A7F3D0' }}>
+                                                        🔁 Reingreso
                                                     </span>
                                                 )}
                                             </td>

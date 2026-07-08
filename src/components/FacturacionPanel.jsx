@@ -25,6 +25,7 @@ import {
     marcarParaDevolucion, quitarDeCarritoDevolucion, fetchCarritoDevolucion,
     generarDevolucion, fetchDevoluciones, fetchDevolucionDetalle,
     cerrarPeriodoFacturacion, reabrirPeriodoFacturacion,
+    setReingresoReal
 } from '../services/altasService';
 import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
 import SalusSyncButton from './SalusSyncButton';
@@ -282,7 +283,17 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         } finally {
             setCarritoDevLoading(false);
         }
-    }, [addToast]);
+    }, [addToast, currentUser]);
+
+    const handleSepararReingreso = useCallback(async (altaId) => {
+        try {
+            await setReingresoReal(altaId, true);
+            addToast?.('Marcado como Reingreso Real y des-fusionado', 'info');
+            loadData();
+        } catch (err) {
+            addToast?.('Error al des-fusionar: ' + err.message, 'error');
+        }
+    }, [addToast, loadData]);
 
     const loadDevoluciones = useCallback(async () => {
         setDevolucionesLoading(true);
@@ -468,7 +479,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         for (const [name, entries] of patientMap) {
             const byDate = new Map();
             for (const e of entries) {
-                const dateKey = e.fecha_ingreso || 'sin-fecha';
+                const dateKey = e.is_reingreso_real ? `${e.fecha_ingreso || 'sin-fecha'}-reingreso-${e.id}` : (e.fecha_ingreso || 'sin-fecha');
                 if (!byDate.has(dateKey)) byDate.set(dateKey, []);
                 byDate.get(dateKey).push(e);
             }
@@ -1415,14 +1426,23 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                                     : undefined}
                                                         >
                                                             {alta._mergedAdmissions ? (
-                                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                                                    🔗 {alta.numero_admision}
-                                                                    {alta._mergedAdmissions.length > 1 && (
-                                                                        <span style={{ fontSize: '0.65rem', padding: '1px 4px', borderRadius: '4px', background: 'rgba(0,0,0,0.1)' }}>
-                                                                            +{alta._mergedAdmissions.length - 1}
-                                                                        </span>
-                                                                    )}
-                                                                </span>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                                        🔗 {alta.numero_admision}
+                                                                        {alta._mergedAdmissions.length > 1 && (
+                                                                            <span style={{ fontSize: '0.65rem', padding: '1px 4px', borderRadius: '4px', background: 'rgba(0,0,0,0.1)' }}>
+                                                                                +{alta._mergedAdmissions.length - 1}
+                                                                            </span>
+                                                                        )}
+                                                                    </span>
+                                                                    <button 
+                                                                        onClick={(e) => { e.stopPropagation(); handleSepararReingreso(alta.id); }}
+                                                                        title="Des-fusionar y marcar como Reingreso Real"
+                                                                        style={{ fontSize: '0.65rem', padding: '2px 6px', background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A', borderRadius: '4px', cursor: 'pointer', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '2px' }}
+                                                                    >
+                                                                        <Undo2 size={10} /> Separar
+                                                                    </button>
+                                                                </div>
                                                             ) : (
                                                                 alta.numero_admision || '—'
                                                             )}
@@ -1437,6 +1457,12 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                             <span title={`Internaciones separadas — Otras admisiones: ${(alta._siblingAdmissionNumbers || []).join(', ')}`}
                                                                 style={{ marginLeft: '4px', padding: '1px 6px', borderRadius: '4px', background: '#FFFBEB', color: '#B45309', fontSize: '0.62rem', fontWeight: 700, verticalAlign: 'middle', cursor: 'help', border: '1px solid #FDE68A' }}>
                                                                 🔀 Múltiple
+                                                            </span>
+                                                        )}
+                                                        {alta.is_reingreso_real && (
+                                                            <span title="Marcado como Reingreso Real (Mismo día)"
+                                                                style={{ marginLeft: '4px', padding: '1px 6px', borderRadius: '4px', background: '#ECFDF5', color: '#047857', fontSize: '0.62rem', fontWeight: 700, verticalAlign: 'middle', border: '1px solid #A7F3D0' }}>
+                                                                🔁 Reingreso
                                                             </span>
                                                         )}
                                                         {alta._mergedAdmissions && !alta._hasSiblingInternaciones && (

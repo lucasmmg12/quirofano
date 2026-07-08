@@ -749,3 +749,14 @@ export async function ejecutarCorteDeMesProlongadas(fromDate, toDate) {
 
     return { count: prolongadas.length, message: `Se procesaron ${prolongadas.length} internaciones prolongadas.` };
 }
+
+// ─── Reingreso Real ───
+export async function setReingresoReal(id, isReingresoReal) {
+    const { data, error } = await supabase
+        .from('altas_administrativas')
+        .update({ is_reingreso_real: isReingresoReal })
+        .eq('id', id)
+        .select();
+    if (error) throw error;
+    return data;
+}
