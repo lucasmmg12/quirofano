@@ -165,7 +165,6 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [showTraspasoModal, setShowTraspasoModal] = useState(false);
     const [traspasoForm, setTraspasoForm] = useState({ entrega: '', recibe: '', notas: '' });
     const [carritoSearch, setCarritoSearch] = useState('');
-    const [historialSearch, setHistorialSearch] = useState('');
     const [generando, setGenerando] = useState(false);
     const [firmaEntrega, setFirmaEntrega] = useState(null);
     const [firmaRecibe, setFirmaRecibe] = useState(null);
