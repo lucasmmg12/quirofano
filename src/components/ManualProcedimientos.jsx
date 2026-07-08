@@ -2,7 +2,7 @@
  * ManualProcedimientos.jsx
  * Manual de Procedimientos — Sistema ADM-QUI
  * Conforme estándares ITAES para acreditación hospitalaria
- * Versión: 1.0 | Fecha: 01/06/2026
+ * Versión: 1.1 | Fecha: 08/07/2026
  * Desarrollado por Grow Labs para Sanatorio Argentino
  */
 
@@ -15,8 +15,8 @@ import autoTable from 'jspdf-autotable';
 
 const DOC_META = {
     codigo:    'ADM-QUI-MP-001',
-    version:   '1.0',
-    fecha:     '01/06/2026',
+    version:   '1.1',
+    fecha:     '08/07/2026',
     estado:    'Vigente — Para aprobación',
     titulo:    'Manual de Procedimientos\nSistema de Admisión Quirúrgica',
     sistema:   'ADM-QUI',
@@ -751,6 +751,9 @@ export async function generateManualPDF() {
                 'Devuelta FAC — La ficha fue devuelta desde el módulo de Facturación',
             ], yn4);
 
+            yn4 = checkPage(doc, yn4, counters, 25);
+            yn4 = noteBox(doc, 'CRUCE DE MES: El sistema limpia automáticamente el panel de Altas Parciales a principios de mes si las altas pertenecen a meses anteriores, enviando las fichas pendientes al historial para no mezclar la facturación de periodos distintos.', yn4, 'info');
+
             yn4 = checkPage(doc, yn4, counters, 40);
             yn4 = para(doc, 'Flujo de Traspaso a Facturación:', yn4 + 2);
             yn4 = bulletList(doc, [
@@ -828,6 +831,7 @@ export async function generateManualPDF() {
                 'Vista kiosco: pantalla de visualización para pacientes en sala de espera',
                 'Numeración automática de turnos con categorías (preferencial, general)',
                 'Sonido de llamado audible al llamar un turno',
+                'Llamado dinámico: Cualquier box libre puede atender un turno en espera',
                 'Registro de tiempos de espera para métricas de calidad de atención',
             ], yn4);
 
@@ -874,6 +878,7 @@ export async function generateManualPDF() {
                 'Indicadores de comunicación WhatsApp (mensajes enviados/recibidos)',
                 'Métricas de deudas: montos pendientes por obra social',
                 'Indicadores de altas administrativas: altas del día, semana, mes',
+                'Filtros dinámicos de rango de fechas (Hoy, Ayer, 7 días, 30 días, Custom) en métricas de atención',
                 'Gráficos interactivos exportables (Recharts)',
             ], yn4);
 
@@ -1121,6 +1126,7 @@ export async function generateManualPDF() {
                 body: [
                     ['v1.0', '01/06/2026', 'Versión inicial en producción. Módulos: Inicio, Pedidos, Cirugías, Mensajería, Deudas, Altas, Auditoría HC, Turnos, Consultas, Laboratorios, Métricas, Simón IA, Configuración.', 'Grow Labs / TyS'],
                     ['v1.0', '01/06/2026', 'Primera emisión del Manual de Procedimientos. Código: ADM-QUI-MP-001.', 'Grow Labs / TyS'],
+                    ['v1.1', '08/07/2026', 'Mejoras en turnos, filtros dinámicos de métricas, y lógica de cruce de mes en Altas Parciales.', 'Grow Labs / TyS'],
                 ],
                 headStyles: { fillColor: COLORS.tableHead, textColor: COLORS.white, fontStyle: 'bold', fontSize: 8 },
                 bodyStyles: { fontSize: 7.5 },
