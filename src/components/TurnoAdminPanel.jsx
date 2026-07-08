@@ -415,31 +415,67 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                     </div>
                 </div>
                 <div style={s.headerRight}>
-                    {/* Quick stats */}
-                    {metricas && (
-                        <div style={s.quickStats}>
-                            <div style={s.quickStat}>
-                                <span style={s.quickStatLabel}>Esperando</span>
-                                <span style={{ ...s.quickStatValue, color: '#F59E0B' }}>{metricas.esperando}</span>
-                            </div>
-                            <div style={s.quickStatDivider} />
-                            <div style={s.quickStat}>
-                                <span style={s.quickStatLabel}>Atendidos</span>
-                                <span style={{ ...s.quickStatValue, color: '#16A34A' }}>{metricas.atendidos}</span>
-                            </div>
-                            <div style={s.quickStatDivider} />
-                            <div style={s.quickStat}>
-                                <span style={s.quickStatLabel}>T. Prom.</span>
-                                <span style={{ ...s.quickStatValue, color: '#3B82F6' }}>{metricas.tiempoPromedio}m</span>
-                            </div>
-                            <div style={s.quickStatDivider} />
-                            <div style={s.quickStat}>
-                                <span style={s.quickStatLabel}>Espera Prom.</span>
-                                <span style={{ ...s.quickStatValue, color: '#8B5CF6' }}>{metricas.esperaPromedio}m</span>
-                            </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                        <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+                            {[{id:'hoy', label:'Hoy'}, {id:'ayer', label:'Ayer'}, {id:'semana', label:'7 días'}, {id:'mes', label:'30 días'}, {id:'custom', label:'Custom'}].map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setMetricasRango(tab.id)}
+                                    style={{
+                                        padding: '2px 8px', borderRadius: '12px', fontSize: '0.7rem', border: 'none', cursor: 'pointer',
+                                        background: metricasRango === tab.id ? '#DBEAFE' : 'transparent',
+                                        color: metricasRango === tab.id ? '#2563EB' : '#94A3B8',
+                                        fontWeight: metricasRango === tab.id ? '600' : '500',
+                                        transition: 'all 0.2s',
+                                    }}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
                         </div>
-                    )}
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                        {metricasRango === 'custom' && (
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', alignItems: 'center' }}>
+                                <input 
+                                    type="date" 
+                                    value={customStart} 
+                                    onChange={e => setCustomStart(e.target.value)} 
+                                    style={{ padding: '2px 6px', fontSize: '0.75rem', borderRadius: '6px', border: '1px solid #CBD5E1', outline: 'none' }}
+                                />
+                                <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>-</span>
+                                <input 
+                                    type="date" 
+                                    value={customEnd} 
+                                    onChange={e => setCustomEnd(e.target.value)} 
+                                    style={{ padding: '2px 6px', fontSize: '0.75rem', borderRadius: '6px', border: '1px solid #CBD5E1', outline: 'none' }}
+                                />
+                            </div>
+                        )}
+                        {/* Quick stats */}
+                        {metricas && (
+                            <div style={s.quickStats}>
+                                <div style={s.quickStat}>
+                                    <span style={s.quickStatLabel}>Esperando</span>
+                                    <span style={{ ...s.quickStatValue, color: '#F59E0B' }}>{metricas.esperando}</span>
+                                </div>
+                                <div style={s.quickStatDivider} />
+                                <div style={s.quickStat}>
+                                    <span style={s.quickStatLabel}>Atendidos</span>
+                                    <span style={{ ...s.quickStatValue, color: '#16A34A' }}>{metricas.atendidos}</span>
+                                </div>
+                                <div style={s.quickStatDivider} />
+                                <div style={s.quickStat}>
+                                    <span style={s.quickStatLabel}>T. Prom.</span>
+                                    <span style={{ ...s.quickStatValue, color: '#3B82F6' }}>{metricas.tiempoPromedio}m</span>
+                                </div>
+                                <div style={s.quickStatDivider} />
+                                <div style={s.quickStat}>
+                                    <span style={s.quickStatLabel}>Espera Prom.</span>
+                                    <span style={{ ...s.quickStatValue, color: '#8B5CF6' }}>{metricas.esperaPromedio}m</span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '10px', alignSelf: 'flex-end' }}>
                         <button onClick={() => setShowBoxManager(p => !p)}
                             style={{
                                 ...s.actionBtnSmall,
