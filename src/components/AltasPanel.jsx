@@ -277,7 +277,7 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     const handleSelectAllSelectable = () => {
         const selectableIds = sortedAltas
-            .filter(a => (!a.en_carrito_traspaso || a.carrito_traspaso_por === currentUser?.usuario) && !a._isFacturada && !a.traspaso_id)
+            .filter(a => (!a.en_carrito_traspaso || a.carrito_traspaso_por === currentUser?.usuario) && (!(a._isFacturada && !a._cruzaMes)) && (!(a.traspaso_id && !a._cruzaMes)))
             .map(a => a.id);
         setSelectedIds(new Set(selectableIds));
     };
@@ -1634,7 +1634,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                     <th className="cart__th" style={{ width: '30px', textAlign: 'center' }} title="Seleccioná fichas para enviar al Carrito de Traspaso">
                                         {!isReadOnly && (
                                             <input type="checkbox"
-                                                checked={selectedIds.size > 0 && sortedAltas.filter(a => !a.en_carrito_traspaso && !a._isFacturada && !a.traspaso_id).every(a => selectedIds.has(a.id))}
+                                                checked={selectedIds.size > 0 && sortedAltas.filter(a => (!a.en_carrito_traspaso || a.carrito_traspaso_por === currentUser?.usuario) && (!(a._isFacturada && !a._cruzaMes)) && (!(a.traspaso_id && !a._cruzaMes))).every(a => selectedIds.has(a.id))}
                                                 onChange={e => {
                                                     if (e.target.checked) handleSelectAllSelectable();
                                                     else setSelectedIds(new Set());
@@ -1729,21 +1729,21 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                     setLoadingHistorial(false);
                                                 }
                                             }}
-                                            style={{
-                                                cursor: 'pointer', transition: 'background 0.15s',
-                                                background: alta._isDevueltaFac ? '#FEF2F2' : undefined,
-                                                borderLeft: alta._isDevueltaFac ? '3px solid #DC2626' : undefined,
-                                            }}
-                                            onMouseOver={e => { if (!isExpanded && !alta._isDevueltaFac) e.currentTarget.style.background = 'var(--neutral-50)'; }}
-                                            onMouseOut={e => { if (!isExpanded && !alta._isDevueltaFac) e.currentTarget.style.background = alta._isDevueltaFac ? '#FEF2F2' : ''; }}
+                                                style={{
+                                                    cursor: 'pointer', transition: 'background 0.15s',
+                                                    background: alta._cruzaMes ? '#F0FDF4' : (alta._isDevueltaFac ? '#FEF2F2' : undefined),
+                                                    borderLeft: alta._cruzaMes ? '3px solid #10B981' : (alta._isDevueltaFac ? '3px solid #DC2626' : undefined),
+                                                }}
+                                            onMouseOver={e => { if (!isExpanded && !alta._isDevueltaFac && !alta._cruzaMes) e.currentTarget.style.background = 'var(--neutral-50)'; }}
+                                            onMouseOut={e => { if (!isExpanded && !alta._isDevueltaFac && !alta._cruzaMes) e.currentTarget.style.background = ''; }}
                                         >
                                             {/* Checkbox */}
                                             <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }} onClick={e => e.stopPropagation()}>
-                                                {alta._isFacturada ? (
+                                                {(alta._isFacturada && !alta._cruzaMes) ? (
                                                     <Receipt size={14} style={{ color: '#059669', opacity: 0.7 }} title="Ya facturada" />
-                                                ) : alta.traspaso_id ? (
+                                                ) : (alta.traspaso_id && !alta._cruzaMes) ? (
                                                     <PackageCheck size={14} style={{ color: '#059669', opacity: 0.7 }} title="Ya traspasada" />
-                                                ) : !alta.en_carrito_traspaso || alta.carrito_traspaso_por === currentUser?.usuario ? (
+                                                ) : (!alta.en_carrito_traspaso || alta.carrito_traspaso_por === currentUser?.usuario) ? (
                                                     !isReadOnly && (
                                                         <input type="checkbox"
                                                             checked={selectedIds.has(alta.id) || (alta.en_carrito_traspaso && alta.carrito_traspaso_por === currentUser?.usuario)}
@@ -1889,13 +1889,14 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                 {alta._cruzaMes && (
                                                     <span title={`Internación cruza mes — Ingreso: ${formatDate(alta.fecha_ingreso)}${alta.facturacion_cerrada_hasta ? ` | Cerrado hasta: ${formatDate(alta.facturacion_cerrada_hasta)}` : ' | Sin cierre previo'}`}
                                                         style={{ 
-                                                            marginLeft: '4px', padding: '1px 5px', borderRadius: '4px', 
-                                                            background: alta.facturacion_cerrada_hasta ? '#ECFDF5' : '#FEF2F2', 
-                                                            color: alta.facturacion_cerrada_hasta ? '#059669' : '#DC2626', 
-                                                            fontSize: '0.58rem', fontWeight: 700, fontFamily: 'system-ui', verticalAlign: 'middle', cursor: 'help',
-                                                            border: alta.facturacion_cerrada_hasta ? '1px solid #A7F3D0' : '1px solid #FECACA',
+                                                            display: 'block', marginTop: '4px', width: 'fit-content',
+                                                            padding: '2px 6px', borderRadius: '4px', 
+                                                            background: alta.facturacion_cerrada_hasta ? '#ECFDF5' : '#E0E7FF', 
+                                                            color: alta.facturacion_cerrada_hasta ? '#059669' : '#4F46E5', 
+                                                            border: alta.facturacion_cerrada_hasta ? '1px solid #A7F3D0' : '1px solid #C7D2FE',
+                                                            fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.01em', textTransform: 'uppercase'
                                                         }}>
-                                                        {alta.facturacion_cerrada_hasta ? '✅ Cerrado' : '⚠️ Cruza Mes'}
+                                                        {alta.facturacion_cerrada_hasta ? '✓ Cerrado' : '⏭ Cruza Mes'}
                                                     </span>
                                                 )}
                                             </td>
@@ -2022,9 +2023,9 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                             </div>
                                                             {/* Botón Cerrar Período (para internaciones que cruzan mes) */}
                                                             {alta._cruzaMes && (
-                                                                <div style={{ marginTop: '12px', padding: '10px', borderRadius: '8px', background: alta.facturacion_cerrada_hasta ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${alta.facturacion_cerrada_hasta ? '#A7F3D0' : '#FECACA'}` }}>
-                                                                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: alta.facturacion_cerrada_hasta ? '#059669' : '#DC2626', marginBottom: '6px', textTransform: 'uppercase' }}>
-                                                                        {alta.facturacion_cerrada_hasta ? '✅ Período Cerrado' : '⚠️ Internación Cruza Mes'}
+                                                                <div style={{ marginTop: '12px', padding: '10px', borderRadius: '8px', background: alta.facturacion_cerrada_hasta ? '#F0FDF4' : '#EEF2FF', border: `1px solid ${alta.facturacion_cerrada_hasta ? '#A7F3D0' : '#C7D2FE'}` }}>
+                                                                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: alta.facturacion_cerrada_hasta ? '#059669' : '#4F46E5', marginBottom: '6px', textTransform: 'uppercase' }}>
+                                                                        {alta.facturacion_cerrada_hasta ? '✓ Período Cerrado' : '⏭ Internación Cruza Mes'}
                                                                     </div>
                                                                     {alta.facturacion_cerrada_hasta ? (
                                                                         <>
