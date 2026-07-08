@@ -40,8 +40,10 @@ export async function fetchAltas({ fromDate, toDate, search } = {}) {
             .order('fecha_ingreso', { ascending: false })
             .range(from, from + PAGE_SIZE - 1);
 
-        if (fromDate) query = query.gte('fecha_ingreso', fromDate);
         if (toDate) query = query.lte('fecha_ingreso', toDate);
+        if (fromDate) {
+            query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},fecha_alta.is.null`);
+        }
         if (search) {
             // Sanitizar: escapar caracteres especiales de PostgREST para que la búsqueda
             // no se rompa con comas, paréntesis, puntos, etc.
@@ -202,8 +204,10 @@ export async function getAltasStats(fromDate, toDate) {
             .select('estado')
             .range(from, from + PAGE_SIZE - 1);
 
-        if (fromDate) query = query.gte('fecha_ingreso', fromDate);
         if (toDate) query = query.lte('fecha_ingreso', toDate);
+        if (fromDate) {
+            query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},fecha_alta.is.null`);
+        }
 
         const { data, error } = await query;
         if (error) throw error;
@@ -269,8 +273,10 @@ export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
             .order('fecha_ingreso', { ascending: false })
             .range(from, from + PAGE_SIZE - 1);
 
-        if (fromDate) query = query.gte('fecha_ingreso', fromDate);
         if (toDate) query = query.lte('fecha_ingreso', toDate);
+        if (fromDate) {
+            query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},fecha_alta.is.null`);
+        }
         if (search) {
             const sanitized = search
                 .replace(/\\/g, '\\\\')
