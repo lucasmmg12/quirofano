@@ -1615,6 +1615,42 @@ export default function AltasPanel({ addToast, currentUser }) {
                 ) : (
                     <>
                     <div className="cart__table-wrapper" style={{ overflowX: 'auto', width: '100%' }}>
+                        {/* Banner: Corte de Mes Automático */}
+                        {(() => {
+                            const prolongadas = sortedAltas.filter(r => !r.fecha_alta && r.estado !== 'Suspendida' && r.estado !== 'Alta Adm. Parcial');
+                            if (prolongadas.length === 0) return null;
+                            return (
+                                <div className="animate-fade-in" style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+                                    padding: '10px 14px', marginBottom: '12px', borderRadius: '8px',
+                                    background: 'linear-gradient(135deg, #F0FDF4, #ECFDF5)',
+                                    border: '1px solid #6EE7B7',
+                                    boxShadow: '0 2px 4px rgba(16, 185, 129, 0.05)'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <div style={{ background: '#10B981', color: 'white', padding: '6px', borderRadius: '50%', display: 'flex' }}>
+                                            <Scissors size={14} />
+                                        </div>
+                                        <span style={{ fontSize: '0.8rem', color: '#064E3B' }}>
+                                            <strong>¡Atención!</strong> Detectamos <strong>{prolongadas.length} internaciones prolongadas</strong> en este mes que aún no tienen alta. Podés partirlas automáticamente para facturarlas.
+                                        </span>
+                                    </div>
+                                    <button 
+                                        onClick={handleCheckCorte}
+                                        style={{
+                                            background: '#10B981', color: 'white', border: 'none', 
+                                            padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
+                                            fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px',
+                                            boxShadow: '0 1px 2px rgba(0,0,0,0.1)', flexShrink: 0
+                                        }}
+                                        onMouseOver={e => e.currentTarget.style.background = '#059669'}
+                                        onMouseOut={e => e.currentTarget.style.background = '#10B981'}
+                                    >
+                                        Ejecutar Corte Masivo
+                                    </button>
+                                </div>
+                            );
+                        })()}
                         {/* Hint: carrito de traspaso */}
                         {selectedIds.size === 0 && (
                             <div style={{
