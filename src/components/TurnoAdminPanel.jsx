@@ -647,7 +647,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     onChangeTramite={() => setCambiarTramiteModal(turno)}
                                     formatTime={formatTime}
                                     formatSeconds={formatSeconds}
-                                    isLockedForMe={turno.box_asignado !== null && myBoxNum !== null && turno.box_asignado !== myBoxNum}
+                                    isLockedForMe={turno.estado !== 'esperando' && turno.box_asignado !== null && myBoxNum !== null && turno.box_asignado !== myBoxNum}
                                     myBoxNum={myBoxNum}
                                 />
                             ))}
@@ -684,7 +684,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     onChangeTramite={() => setCambiarTramiteModal(turno)}
                                     formatTime={formatTime}
                                     formatSeconds={formatSeconds}
-                                    isLockedForMe={turno.box_asignado !== null && myBoxNum !== null && turno.box_asignado !== myBoxNum}
+                                    isLockedForMe={turno.estado !== 'esperando' && turno.box_asignado !== null && myBoxNum !== null && turno.box_asignado !== myBoxNum}
                                     myBoxNum={myBoxNum}
                                 />
                             ))}
