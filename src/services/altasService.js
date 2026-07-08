@@ -111,21 +111,13 @@ export async function updateAltaEstado(id, estado, operador = 'operador', select
         // La ficha original siempre queda como "Alta Adm. Parcial"
         updatePayload.estado = 'Alta Adm. Parcial';
 
-        // Determinar inicio del mes siguiente basado en el mes visualizado, o si no, el mes de ingreso
-        let nextMonthStart;
-        if (selectedMonth) {
-            const [y, m] = selectedMonth.split('-').map(Number);
-            const nextY = m === 12 ? y + 1 : y;
-            const nextM = m === 12 ? 1 : m + 1;
-            nextMonthStart = `${nextY}-${String(nextM).padStart(2, '0')}-01T00:00:00.000Z`;
-        } else {
-            const d = new Date(current.fecha_ingreso || new Date());
-            const m = d.getMonth() + 1;
-            const y = d.getFullYear();
-            const nextY = m === 12 ? y + 1 : y;
-            const nextM = m === 12 ? 1 : m + 1;
-            nextMonthStart = `${nextY}-${String(nextM).padStart(2, '0')}-01T00:00:00.000Z`;
-        }
+        // Determinar inicio del mes siguiente basado en el mes de ingreso de la ficha actual
+        const d = new Date(current.fecha_ingreso || new Date());
+        const m = d.getMonth() + 1;
+        const y = d.getFullYear();
+        const nextY = m === 12 ? y + 1 : y;
+        const nextM = m === 12 ? 1 : m + 1;
+        const nextMonthStart = `${nextY}-${String(nextM).padStart(2, '0')}-01T00:00:00.000Z`;
 
         const { id: oldId, created_at, ...rest } = current;
         duplicateRecord = {
