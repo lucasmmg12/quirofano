@@ -9,7 +9,7 @@ import {
     Users, PhoneCall, Play, Square, ArrowRightLeft,
     Clock, CheckCircle, XCircle, BarChart3, RefreshCw,
     User, FileText, Receipt, Microscope, HelpCircle,
-    Building2, Baby, ShieldCheck, Monitor, Edit2, Timer,
+    Building2, Baby, ShieldCheck, Monitor, Edit2, Timer, AlertTriangle,
     Download, FileSpreadsheet
 } from 'lucide-react';
 import { SkeletonCardGrid } from './SkeletonLoader';
@@ -230,6 +230,10 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
 
     // ─── Acciones ───
     const handleLlamar = useCallback(async (turno) => {
+        if (myBoxNum === null) {
+            addToast?.('Debes asignarte un box para llamar a algún turno.', 'warning');
+            return;
+        }
         try {
             await llamarTurno(turno.id, empleadoNombre);
             addToast?.(`Llamando turno ${turno.numero_turno}`, 'info');
@@ -594,6 +598,20 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
 
             {/* ═══ COLA PRINCIPAL ═══ */}
             <div style={s.queueContainer}>
+                {myBoxNum === null && (
+                    <div style={{
+                        background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#DC2626',
+                        padding: '14px 18px', borderRadius: '8px', marginBottom: '16px',
+                        display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 500, fontSize: '0.95rem',
+                        boxShadow: '0 2px 8px rgba(220, 38, 38, 0.1)'
+                    }}>
+                        <AlertTriangle size={20} />
+                        <div>
+                            <strong>No tienes asignado ningún box.</strong> Para poder llamar a algún turno debes asignarte un box y asegurarte de que el mismo esté encendido.
+                        </div>
+                    </div>
+                )}
+
                 {/* En atención (destacado arriba) */}
                 {(llamando.length > 0 || enAtencion.length > 0) && (
                     <div style={s.section}>
@@ -618,6 +636,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     formatTime={formatTime}
                                     formatSeconds={formatSeconds}
                                     isLockedForMe={turno.box_asignado !== null && myBoxNum !== null && turno.box_asignado !== myBoxNum}
+                                    myBoxNum={myBoxNum}
                                 />
                             ))}
                         </div>
@@ -653,6 +672,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     formatTime={formatTime}
                                     formatSeconds={formatSeconds}
                                     isLockedForMe={turno.box_asignado !== null && myBoxNum !== null && turno.box_asignado !== myBoxNum}
+                                    myBoxNum={myBoxNum}
                                 />
                             ))}
                         </div>
@@ -786,7 +806,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
 }
 
 // ─── Componente Individual: TurnoCard ───
-function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, onCancelar, onDerivar, onChangeTramite, formatTime, getTimeSince, formatSeconds, isLockedForMe }) {
+function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, onCancelar, onDerivar, onChangeTramite, formatTime, getTimeSince, formatSeconds, isLockedForMe, myBoxNum }) {
     const estadoCfg = ESTADO_BADGES[turno.estado] || ESTADO_BADGES.esperando;
     const isActive = turno.estado === 'llamando' || turno.estado === 'en_atencion';
 
@@ -904,8 +924,15 @@ function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, o
             {/* Actions */}
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 {(() => {
-                    const lockedStyle = isLockedForMe ? { opacity: 0.4, pointerEvents: 'none' } : {};
-                    const lockedTitle = isLockedForMe ? "Solo el Box asignado puede gestionar este turno" : undefined;
+                    const noBox = myBoxNum === null;
+                    const isLocked = isLockedForMe || noBox;
+                    const lockedStyle = isLocked ? { opacity: 0.4, pointerEvents: 'none' } : {};
+                    let lockedTitle = undefined;
+                    if (noBox) {
+                        lockedTitle = "No tienes asignado ningún box. Asígnate un box para llamar turnos.";
+                    } else if (isLockedForMe) {
+                        lockedTitle = "Solo el Box asignado puede gestionar este turno";
+                    }
                     return (
                         <>
                             {turno.estado === 'esperando' && (
