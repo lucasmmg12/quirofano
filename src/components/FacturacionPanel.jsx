@@ -125,6 +125,8 @@ export default function FacturacionPanel({ addToast, currentUser }) {
 
     const [searchTerm, setSearchTerm] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [historialSearch, setHistorialSearch] = useState('');
+    const [debouncedHistorialSearch, setDebouncedHistorialSearch] = useState('');
     const [filterEstado, setFilterEstado] = useState('all');
     const [filterResponsable, setFilterResponsable] = useState('all');
 
@@ -209,8 +211,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     const [expandedDevolucion, setExpandedDevolucion] = useState(null);
     const [devolucionDetalle, setDevolucionDetalle] = useState({});
     const [carritoSearch, setCarritoSearch] = useState('');
-    const [historialSearch, setHistorialSearch] = useState('');
-    const [debouncedHistorialSearch, setDebouncedHistorialSearch] = useState('');
+
 
     const filteredCarritoDev = useMemo(() => {
         if (!carritoSearch) return carritoDevItems;
