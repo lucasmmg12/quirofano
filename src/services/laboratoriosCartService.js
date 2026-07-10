@@ -195,11 +195,15 @@ export async function fetchConstanciasLab({ laboratorio, search } = {}) {
 
     if (search) {
         const safeSearch = search.replace(/,/g, ' ').trim();
-        const { data: matchedDetalle } = await supabase
+        const { data: matchedDetalle, error: searchError } = await supabase
             .from('laboratorios_anatomia_patologica')
             .select('constancia_id')
             .not('constancia_id', 'is', null)
-            .or(`paciente.ilike.%${safeSearch}%,dni.ilike.%${safeSearch}%,cirujano.ilike.%${safeSearch}%`);
+            .or(`paciente.ilike.%${safeSearch}%,dni.ilike.%${safeSearch}%,n_admision.ilike.%${safeSearch}%`);
+        
+        if (searchError) {
+            console.error("Error buscando en historial de laboratorios:", searchError);
+        }
         
         const matchedIds = [...new Set((matchedDetalle || []).map(a => a.constancia_id))];
         if (matchedIds.length > 0) {
