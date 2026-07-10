@@ -12,6 +12,7 @@ const MESES = [
     { value: '2026-04', label: 'Abril 2026' },
     { value: '2026-05', label: 'Mayo 2026' },
     { value: '2026-06', label: 'Junio 2026' },
+    { value: '2026-07', label: 'Julio 2026' },
 ];
 
 const ESP_COLORS = {
@@ -34,7 +35,7 @@ const OS_CATEGORIES = {
 export default function ConsultasPanel() {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [mes, setMes] = useState('2026-04');
+    const [mes, setMes] = useState('2026-07');
     const [filtroEsp, setFiltroEsp] = useState('todas');
     const [vista, setVista] = useState('matriz'); // matriz | dia | semana | resumen
     const [importing, setImporting] = useState(false);
