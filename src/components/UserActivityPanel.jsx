@@ -404,7 +404,7 @@ export default function UserActivityPanel() {
                                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                     fontSize: '0.6rem', fontWeight: 800, color: '#fff', flexShrink: 0,
                                                 }}>
-                                                    {user.iniciales || user.usuario?.substring(0, 2).toUpperCase()}
+                                                    {user.iniciales || (user.usuario ? user.usuario.substring(0, 2).toUpperCase() : '??')}
                                                 </div>
 
                                                 {/* Name + Stats */}

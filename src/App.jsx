@@ -171,10 +171,14 @@ function App({ currentUser, onLogout }) {
     // Start activity tracking + fetch module preferences on mount
     useEffect(() => {
         if (currentUser) {
-            startSession(currentUser);
-            // Track initial module
-            const initialView = localStorage.getItem('active_view') || 'inicio';
-            trackModuleChange(initialView, VIEW_LABELS[initialView] || initialView);
+            const initActivity = async () => {
+                await startSession(currentUser);
+                // Track initial module
+                const initialView = localStorage.getItem('active_view') || 'inicio';
+                trackModuleChange(initialView, VIEW_LABELS[initialView] || initialView);
+            };
+            initActivity();
+            
             // Fetch module preferences
             supabase.from('user_module_preferences')
                 .select('selected_modules, completed_onboarding')
