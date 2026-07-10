@@ -22,6 +22,7 @@ const ESP_COLORS = {
     CARDIOLOGIA: '#EF4444',
     PREPARTO: '#F59E0B',
     NEONATOLOGIA: '#8B5CF6',
+    RESIDENCIA: '#7C3AED',
 };
 
 const OS_CATEGORIES = {
@@ -284,9 +285,18 @@ export default function ConsultasPanel() {
         searchTimer.current = setTimeout(() => fetchRegistros(), 400);
     };
 
-    // Helper: normalizar especialidad agrupando (NEO) como NEONATOLOGIA
+    // Helper: detectar si es consulta de residencia ginecología (7:00 - 14:00)
+    const isResidencia = (r) => {
+        if (r.visita_especialidad?.trim() !== 'GINECOLOGIA') return false;
+        if (!r.hora_visita) return false;
+        const h = parseInt(r.hora_visita.split(':')[0], 10);
+        return h >= 7 && h < 14;
+    };
+
+    // Helper: normalizar especialidad agrupando (NEO) como NEONATOLOGIA y RESIDENCIA
     const normalizeEsp = (r) => {
         if (r.agenda?.trim().startsWith('(NEO)')) return 'NEONATOLOGIA';
+        if (isResidencia(r)) return 'RESIDENCIA';
         return r.visita_especialidad?.trim() || 'OTRO';
     };
 
@@ -299,18 +309,10 @@ export default function ConsultasPanel() {
         return 'Particulares';
     };
 
-    // Helper: detectar si es consulta de residencia ginecología (7:00 - 14:00)
-    const isResidencia = (r) => {
-        if (r.visita_especialidad?.trim() !== 'GINECOLOGIA') return false;
-        if (!r.hora_visita) return false;
-        const h = parseInt(r.hora_visita.split(':')[0], 10);
-        return h >= 7 && h < 14;
-    };
-
     // Filtered data
     const filtered = useMemo(() => {
         if (filtroEsp === 'todas') return data;
-        return data.filter(r => r.visita_especialidad?.trim() === filtroEsp);
+        return data.filter(r => normalizeEsp(r) === filtroEsp);
     }, [data, filtroEsp]);
 
     // KPIs
