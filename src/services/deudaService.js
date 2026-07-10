@@ -427,6 +427,46 @@ export async function importarDeudas(registros, usuario, onProgress) {
         }
     }
 
+    // ─── CONCILIACIÓN: Pacientes que ya no tienen deuda en Salus ───
+    const { data: activosDb } = await supabase
+        .from('deudas_pacientes')
+        .select('id, nhc')
+        .gt('deuda_total', 0)
+        .not('categoria', 'in', '("deuda_cancelada", "sin_deuda_salus")');
+    
+    let pacientesConciliados = 0;
+    
+    if (activosDb) {
+        const nhcsEnExcel = new Set(Object.keys(porNhc));
+        
+        for (const pDb of activosDb) {
+            if (!nhcsEnExcel.has(pDb.nhc)) {
+                await supabase
+                    .from('deudas_pacientes')
+                    .update({
+                        deuda_total: 0,
+                        categoria: 'sin_deuda_salus',
+                        deuda_cancelada_at: new Date().toISOString(),
+                        deuda_cancelada_por: 'Sistema (Conciliación)',
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', pDb.id);
+                
+                await supabase
+                    .from('deudas_seguimiento')
+                    .insert({
+                        paciente_id: pDb.id,
+                        usuario: 'Sistema',
+                        descripcion: '✅ Deuda cancelada automáticamente al no registrarse saldo pendiente en la última importación de Salus.',
+                        tipo: 'nota',
+                        importante: true
+                    });
+                
+                pacientesConciliados++;
+            }
+        }
+    }
+
     // Registrar importación
     const { data: importacion } = await supabase
         .from('deudas_importaciones')
@@ -448,6 +488,7 @@ export async function importarDeudas(registros, usuario, onProgress) {
         pacientesActualizados,
         filasImportadas,
         filasIgnoradas,
+        pacientesConciliados,
     };
 }
 

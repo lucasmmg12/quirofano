@@ -322,7 +322,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                 filasConDeuda,
                 filasDescartadasParser: filasDescartadas,
             });
-            addToast?.(`Importación exitosa: ${result.pacientesNuevos} nuevos, ${result.pacientesActualizados} actualizados`, 'success');
+            addToast?.(`Importación exitosa: ${result.pacientesNuevos} nuevos, ${result.pacientesActualizados} actualizados, ${result.pacientesConciliados || 0} conciliados a "Sin deuda"`, 'success');
             loadDeudores();
         } catch (err) {
             console.error('Import error:', err);
