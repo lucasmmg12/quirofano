@@ -869,7 +869,11 @@ export default function SurgeryPanel({ addToast, currentUser }) {
         const actions = [];
         if (surgery.ausente !== '0') actions.push({ label: 'Realizada', icon: CheckCircle, action: () => handleAusenteChange(surgery.id, '0'), color: '#16A34A' });
         if (surgery.ausente !== '1') actions.push({ label: 'Suspendida', icon: XCircle, action: () => handleAusenteChange(surgery.id, '1'), color: '#DC2626' });
-        if (surgery.ausente === '0' || surgery.ausente === '1') actions.push({ label: 'Pendiente', icon: ArrowRight, action: () => handleAusenteChange(surgery.id, null), color: '#6B7280' });
+        if (surgery.ausente === '1') {
+            actions.push({ label: 'Reactivar Turno', icon: RefreshCw, action: () => handleAusenteChange(surgery.id, null), color: '#3B82F6' });
+        } else if (surgery.ausente === '0') {
+            actions.push({ label: 'Desmarcar Realizada', icon: RefreshCw, action: () => handleAusenteChange(surgery.id, null), color: '#6B7280' });
+        }
         return actions;
     };
 

@@ -857,6 +857,7 @@ export async function manualOverride(surgeryId, newStatus, reason, operador) {
     await transitionStatus(surgeryId, newStatus, {
         details: `Intervención manual: ${reason}`,
         performedBy: operador,
+        extraFields: { ausente: null },
     });
     return { status: newStatus };
 }
