@@ -1802,26 +1802,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
 
                     {/* TARJETAS KPI DE IMPACTO FINANCIERO OSP */}
                     <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', width: '100%', marginTop: '16px' }}>
-                        {/* 1. Débito Latente Total */}
-                        <div 
-                            className="kpi-card"
-                            style={{ borderLeft: '4px solid #EF4444', flex: 1.2 }}
-                        >
-                            <div>
-                                <span className="kpi-card__title" style={{ color: '#EF4444' }}>Débito Latente OSP (Est.)</span>
-                                <div className="kpi-card__main">
-                                    <span className="kpi-card__value" style={{ color: '#B91C1C' }}>
-                                        $ {kpis.riesgoFinancieroTotal.toLocaleString('es-AR')}
-                                    </span>
-                                    <div className="kpi-card__icon-wrap" style={{ background: '#FEF2F2', color: '#B91C1C' }}>
-                                        <DollarSign size={20} />
-                                    </div>
-                                </div>
-                            </div>
-                            <span className="kpi-card__desc">Pérdida potencial por glosas/débitos</span>
-                        </div>
-
-                        {/* 2. Gaps */}
+                        {/* 1. Gaps */}
                         <div 
                             className="kpi-card"
                             style={{ borderLeft: '4px solid #F59E0B' }}
@@ -1835,10 +1816,10 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                     </div>
                                 </div>
                             </div>
-                            <span className="kpi-card__desc">Cama no facturable ($150.000 c/u)</span>
+                            <span className="kpi-card__desc">Días sin evolución cargada</span>
                         </div>
 
-                        {/* 3. Duplicados */}
+                        {/* 2. Duplicados */}
                         <div 
                             className="kpi-card"
                             style={{ borderLeft: '4px solid #3B82F6' }}
@@ -1852,10 +1833,10 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                     </div>
                                 </div>
                             </div>
-                            <span className="kpi-card__desc">Débito parcial del 50% por copy-paste</span>
+                            <span className="kpi-card__desc">Observaciones repetidas (copy-paste)</span>
                         </div>
 
-                        {/* 4. Quirófano sin Foja */}
+                        {/* 3. Quirófano sin Foja */}
                         <div 
                             className="kpi-card"
                             style={{ borderLeft: '4px solid #8B5CF6' }}
@@ -1869,7 +1850,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                     </div>
                                 </div>
                             </div>
-                            <span className="kpi-card__desc">Módulo no cobrable ($650.000 c/u)</span>
+                            <span className="kpi-card__desc">Omisión de registro quirúrgico</span>
                         </div>
                     </div>
 
