@@ -2310,7 +2310,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                             </div>
 
                             {/* CONTENEDOR DE TABLA ESTILO EXCEL */}
-                            <div className="cart" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 }}>
+                            <div className="cart" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: '400px' }}>
                                 <div className="cart__table-wrapper" style={{ overflow: 'auto', flex: 1 }}>
                                     <table className="cart__table" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
                                         <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
@@ -2519,7 +2519,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                             </div>
 
                             {/* LISTA DE CICLOS DE PACIENTES */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', flex: 1, minHeight: 0, paddingRight: '4px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', flex: 1, minHeight: '400px', paddingRight: '4px' }}>
                                 {paginatedPatients.length === 0 ? (
                                     <div style={{ textAlign: 'center', padding: '40px', background: '#fff', borderRadius: '12px', border: '1px solid var(--neutral-200)' }}>
                                         <AlertTriangle size={36} strokeWidth={1.2} style={{ color: 'var(--neutral-300)', marginBottom: '8px' }} />
