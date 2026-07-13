@@ -84,11 +84,6 @@ const COLUMN_KEYWORDS = {
     fechaIngreso: ['fecha ingreso', 'fecha_ingreso', 'ingreso', 'fec_ingreso', 'ingreso_fecha', 'fec_ing', 'fecha_ing']
 };
 
-const OSP_COSTS = {
-    cama: 150000,          // ARS por día de cama
-    moduloQuirurgico: 650000 // ARS por módulo de quirófano
-};
-
 const parseDateDMY = (str) => {
     if (!str) return null;
     const match = String(str).match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
@@ -281,13 +276,6 @@ const processAuditData = (processedRows, mapping) => {
             });
         }
 
-        let riesgoDebito = 0;
-        riesgoDebito += gaps.length * OSP_COSTS.cama;
-        riesgoDebito += duplicadosCount * OSP_COSTS.cama * 0.5;
-        if (faltaFoja) {
-            riesgoDebito += OSP_COSTS.moduloQuirurgico;
-        }
-
         return {
             ...pat,
             gaps,
@@ -295,7 +283,7 @@ const processAuditData = (processedRows, mapping) => {
             tieneFoja,
             faltaFoja,
             alertas,
-            riesgoDebito,
+
             hasCriticalIssues: gaps.length > 0 || faltaFoja || duplicadosCount > 0
         };
     });
@@ -568,7 +556,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
         let totalGaps = 0;
         let totalDuplicados = 0;
         let totalFaltaFoja = 0;
-        let riesgoFinancieroTotal = 0;
+
 
         const altaCol = columnMapping.fechaAlta;
 
@@ -597,7 +585,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
             totalGaps += pat.gaps.length;
             totalDuplicados += pat.evoluciones.filter(ev => ev.isDuplicated).length;
             if (pat.faltaFoja) totalFaltaFoja++;
-            riesgoFinancieroTotal += pat.riesgoDebito;
+
         });
 
         return {
@@ -609,8 +597,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
             sinAlta,
             totalGaps,
             totalDuplicados,
-            totalFaltaFoja,
-            riesgoFinancieroTotal
+            totalFaltaFoja
         };
     }, [originalRows, columnMapping, groupedPatients]);
 
@@ -2590,13 +2577,6 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                                         </div>
                                                     </div>
                                                     
-                                                    {/* Impacto Financiero */}
-                                                    <div style={{ textAlign: 'right' }}>
-                                                        <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--neutral-400)', letterSpacing: '0.05em' }}>Débito Estimado</div>
-                                                        <div style={{ fontSize: '1.2rem', fontWeight: 800, color: pat.riesgoDebito > 0 ? '#B91C1C' : '#0CA678', marginTop: '2px' }}>
-                                                            $ {pat.riesgoDebito.toLocaleString('es-AR')}
-                                                        </div>
-                                                    </div>
                                                 </div>
 
                                                 {/* Fechas de Ingreso y Alta */}
@@ -2671,11 +2651,11 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                                         </div>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                             <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#F59E0B', display: 'inline-block' }} />
-                                                            <span>Evolución Repetida (Riesgo Débito 50%)</span>
+                                                            <span>Evolución Repetida</span>
                                                         </div>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                             <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#EF4444', display: 'inline-block' }} />
-                                                            <span>Día sin Evolución (Débito Cama 100%)</span>
+                                                            <span>Día sin Evolución</span>
                                                         </div>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                             <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#3B82F6', display: 'inline-block' }} />
