@@ -4,7 +4,7 @@
  * Funciones: Ver cola, Llamar, Iniciar atención, Finalizar, Derivar, Métricas rápidas
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { fetchBoxes } from '../services/boxService';
+import { fetchBoxes, subscribeToBoxes } from '../services/boxService';
 import {
     Users, PhoneCall, Play, Square, ArrowRightLeft,
     Clock, CheckCircle, XCircle, BarChart3, RefreshCw,
@@ -134,14 +134,23 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                 .eq('activo', true).order('nombre')
                 .then(({ data }) => setAllUsers(data || []));
         });
-        // Detectar mi box asignado
-        if (currentUser?.id) {
-            fetchBoxes().then(boxes => {
-                const mine = boxes.find(b => b.usuario_id === currentUser.id);
-                if (mine) setMyBoxNum(mine.numero);
-            });
-        }
-    }, [loadData, currentUser]);
+    }, [loadData]);
+
+    useEffect(() => {
+        const updateMyBox = () => {
+            if (currentUser?.id) {
+                fetchBoxes().then(boxes => {
+                    const mine = boxes.find(b => b.usuario_id === currentUser.id);
+                    setMyBoxNum(mine ? mine.numero : null);
+                });
+            } else {
+                setMyBoxNum(null);
+            }
+        };
+        updateMyBox();
+        const unsub = subscribeToBoxes(updateMyBox);
+        return () => unsub();
+    }, [currentUser]);
 
     // ─── Realtime subscription con detección de derivaciones ───
     useEffect(() => {
