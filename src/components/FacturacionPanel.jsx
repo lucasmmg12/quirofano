@@ -17,7 +17,7 @@ import {
     Search, RefreshCw, ChevronRight, ChevronLeft, ChevronDown, Clock, Calendar,
     Filter, X, Loader2, FileText, User, Building2,
     Stethoscope, Download, AlertTriangle, CheckCircle2, Receipt,
-    ListFilter, ChevronUp, ShoppingCart, Trash2, Printer, PackageCheck, Undo2,
+    ListFilter, ChevronUp, ShoppingCart, Trash2, Printer, PackageCheck, Undo2, Activity
 } from 'lucide-react';
 import {
     fetchAltasFacturacion, updateEstadoFac, updateResponsableFac,
@@ -31,6 +31,7 @@ import { fetchAsignaciones, matchAsignacion } from '../services/asignacionServic
 import SalusSyncButton from './SalusSyncButton';
 import SignaturePad from './SignaturePad';
 import { SkeletonTablePanel } from './SkeletonLoader';
+import KPICard from './metrics/KPICard';
 
 // ── Analistas de Facturación (extraídos de SALUS) ──
 const ANALISTAS_FAC = [
@@ -1263,6 +1264,14 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                         >
                             <ChevronRight size={16} />
                         </button>
+                    </div>
+
+                    {/* ── KPIs ── */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                        <KPICard icon={Activity} title="Total Traspasadas" value={kpis.total} color="#2563EB" />
+                        <KPICard icon={Clock} title="Pendientes" value={kpis.pendientes} color="#F59E0B" />
+                        <KPICard icon={CheckCircle2} title="Facturadas" value={kpis.facturadas} color="#10B981" />
+                        <KPICard icon={Undo2} title="Devueltas" value={kpis.devueltas} color="#EF4444" />
                     </div>
 
                     {/* ── Filtros ── */}

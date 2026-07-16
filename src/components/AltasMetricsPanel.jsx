@@ -16,9 +16,10 @@ import {
     Filter, X, Calendar, ChevronDown, Search, Timer, Hourglass,
 } from 'lucide-react';
 import { ALTA_ESTADOS } from '../services/altasService';
+import KPICard from './metrics/KPICard';
 
-// ── Paleta Premium ──
-const COLORS = ['#6366F1', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#3B82F6', '#EF4444', '#F97316', '#14B8A6', '#A855F7'];
+// ── Paleta Institucional (QOAG) ──
+const COLORS = ['#2563EB', '#3B82F6', '#60A5FA', '#93C5FD', '#1E40AF', '#1D4ED8', '#1E3A8A', '#DBEAFE', '#BFDBFE', '#0F172A'];
 const ESTADO_COLORS = {
     'Procesada': '#8B5CF6',
     'En auditoria': '#F59E0B',
@@ -201,40 +202,6 @@ function FilterDropdown({ label, icon, options, selected, onChange, color = '#63
                         )}
                     </div>
                 </div>
-            )}
-        </div>
-    );
-}
-
-// ── KPI Card ──
-function KpiCard({ icon, label, value, subtitle, color = '#6366F1' }) {
-    return (
-        <div style={{
-            background: '#fff', borderRadius: '14px', padding: '18px 20px',
-            border: '1px solid var(--neutral-100)',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-            display: 'flex', flexDirection: 'column', gap: '6px',
-            minWidth: '160px', flex: 1,
-            transition: 'transform 0.2s, box-shadow 0.2s',
-        }}
-            onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.08)'; }}
-            onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'; }}
-        >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{
-                    width: '34px', height: '34px', borderRadius: '9px',
-                    background: color + '12', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: color,
-                }}>{icon}</div>
-            </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#1F2937', letterSpacing: '-0.5px' }}>
-                {value}
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--neutral-400)', fontWeight: 600 }}>
-                {label}
-            </div>
-            {subtitle && (
-                <div style={{ fontSize: '0.68rem', color: 'var(--neutral-400)' }}>{subtitle}</div>
             )}
         </div>
     );
@@ -631,15 +598,15 @@ export default function AltasMetricsPanel({ altas = [] }) {
             </div>
 
             {/* ══════ KPI CARDS ══════ */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
-                <KpiCard icon={<Activity size={18} />} label="Total Admisiones" value={kpis.total} color="#6366F1" />
-                <KpiCard icon={<AlertCircle size={18} />} label="Pacientes Internados" value={kpis.internados}
-                    subtitle={`${kpis.total > 0 ? Math.round((kpis.internados / kpis.total) * 100) : 0}% del total`} color="#F59E0B" />
-                <KpiCard icon={<CheckCircle size={18} />} label="Con Alta" value={kpis.conAlta} color="#10B981" />
-                <KpiCard icon={<Clock size={18} />} label="Prom. Días Internación" value={kpis.avgDias}
-                    subtitle="Sobre pacientes dados de alta" color="#8B5CF6" />
-                <KpiCard icon={<Users size={18} />} label="Responsables Activos" value={kpis.responsables} color="#3B82F6" />
-                <KpiCard icon={<Building2 size={18} />} label="Obras Sociales" value={kpis.obrasSociales} color="#EC4899" />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+                <KPICard icon={Activity} title="Total Admisiones" value={kpis.total} color="#2563EB" />
+                <KPICard icon={AlertCircle} title="Internados" value={kpis.internados}
+                    trendText={`${kpis.total > 0 ? Math.round((kpis.internados / kpis.total) * 100) : 0}% del total`} color="#F59E0B" />
+                <KPICard icon={CheckCircle} title="Con Alta" value={kpis.conAlta} color="#10B981" />
+                <KPICard icon={Clock} title="Días Promedio" value={kpis.avgDias}
+                    trendText="Internación" color="#8B5CF6" />
+                <KPICard icon={Users} title="Responsables" value={kpis.responsables} color="#3B82F6" />
+                <KPICard icon={Building2} title="Obras Sociales" value={kpis.obrasSociales} color="#EC4899" />
             </div>
 
             {/* ══════ TENDENCIA + ESTADO ══════ */}
