@@ -245,11 +245,11 @@ export default function PacientesPanel({ addToast, currentUser }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
                     <div style={{
                         display: 'flex', alignItems: 'center', gap: '8px',
-                        padding: '8px 14px', borderRadius: '10px',
+                        padding: '12px 18px', borderRadius: '12px',
                         border: '1px solid var(--neutral-200)', background: 'var(--neutral-0)',
                         flex: '1 1 300px', minWidth: '200px',
                     }}>
-                        <Search size={16} style={{ color: 'var(--neutral-400)', flexShrink: 0 }} />
+                        <Search size={18} style={{ color: 'var(--neutral-400)', flexShrink: 0 }} />
                         <input
                             type="text"
                             placeholder="Buscar por nombre, DNI o NHC..."
@@ -257,7 +257,7 @@ export default function PacientesPanel({ addToast, currentUser }) {
                             onChange={e => handleSearch(e.target.value)}
                             style={{
                                 border: 'none', outline: 'none', background: 'transparent',
-                                fontSize: '0.82rem', color: 'var(--neutral-700)', width: '100%', fontFamily: 'inherit',
+                                fontSize: '1.05rem', color: 'var(--neutral-700)', width: '100%', fontFamily: 'inherit',
                             }}
                         />
                         {search && (
@@ -613,11 +613,11 @@ export default function PacientesPanel({ addToast, currentUser }) {
                             <textarea
                                 value={editData.notas || ''}
                                 onChange={e => setEditData(prev => ({ ...prev, notas: e.target.value }))}
-                                rows={2}
+                                rows={5}
                                 style={{
                                     width: '100%', padding: '7px 10px', borderRadius: '8px',
                                     border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.15)',
-                                    color: '#fff', fontSize: '0.78rem', fontFamily: 'inherit',
+                                    color: '#fff', fontSize: '0.85rem', fontFamily: 'inherit',
                                     outline: 'none', resize: 'vertical',
                                 }}
                             />
@@ -1083,7 +1083,7 @@ function CreatePacienteModal({ onClose, onCreated, addToast }) {
                     </div>
                     <div style={{ gridColumn: 'span 2' }}>
                         <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-600)', marginBottom: '4px' }}>Notas</label>
-                        <textarea value={form.notas} onChange={e => setForm(p => ({ ...p, notas: e.target.value }))} rows={2} placeholder="Observaciones..." style={{ ...inputStyle, resize: 'vertical' }} />
+                        <textarea value={form.notas} onChange={e => setForm(p => ({ ...p, notas: e.target.value }))} rows={5} placeholder="Observaciones..." style={{ ...inputStyle, resize: 'vertical', fontSize: '0.85rem' }} />
                     </div>
                 </div>
 
