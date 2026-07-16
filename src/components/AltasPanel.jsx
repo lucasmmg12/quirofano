@@ -49,7 +49,7 @@ function daysBetween(from, to) {
     return Math.round((b - a) / (1000 * 60 * 60 * 24));
 }
 
-const FACTURACION_USERS = ['vgimenez', 'idona', 'fparedes', 'pgillanes', 'rcarrizo', 'ppalma', 'fleoz', 'lcastilla'];
+const FACTURACION_USERS = ['idona', 'fparedes', 'pgillanes', 'rcarrizo', 'ppalma', 'fleoz', 'lcastilla'];
 
 // Usuarios de Facturación que pueden recibir traspasos (nombre display)
 const FACTURACION_RECIBE = [
