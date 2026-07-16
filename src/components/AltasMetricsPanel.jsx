@@ -785,13 +785,13 @@ export default function AltasMetricsPanel({ altas = [] }) {
 
             {/* ── Demora KPIs ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
-                <KpiCard icon={<Timer size={18} />} label="Prom. Demora (todos)" value={`${demoraKpis.avgDemora}d`}
-                    subtitle="Abiertas + cerradas" color="#F59E0B" />
-                <KpiCard icon={<CheckCircle size={18} />} label="Prom. Demora (completadas)" value={`${demoraKpis.avgDemoraCompletadas}d`}
-                    subtitle={`${demoraKpis.cerradas} altas ADM cerradas`} color="#10B981" />
-                <KpiCard icon={<Hourglass size={18} />} label="Pendientes" value={demoraKpis.abiertas}
-                    subtitle="Con alta médica, sin alta ADM" color="#EF4444" />
-                <KpiCard icon={<AlertCircle size={18} />} label="Demora Máxima" value={`${demoraKpis.maxDemora}d`}
+                <KPICard icon={Timer} title="Prom. Demora (todos)" value={`${demoraKpis.avgDemora}d`}
+                    trendText="Abiertas + cerradas" color="#F59E0B" />
+                <KPICard icon={CheckCircle} title="Prom. Demora (completadas)" value={`${demoraKpis.avgDemoraCompletadas}d`}
+                    trendText={`${demoraKpis.cerradas} altas ADM cerradas`} color="#10B981" />
+                <KPICard icon={Hourglass} title="Pendientes" value={demoraKpis.abiertas}
+                    trendText="Con alta médica, sin alta ADM" color="#EF4444" />
+                <KPICard icon={AlertCircle} title="Demora Máxima" value={`${demoraKpis.maxDemora}d`}
                     color="#DC2626" />
             </div>
 
