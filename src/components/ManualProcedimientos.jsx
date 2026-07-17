@@ -14,15 +14,18 @@ import autoTable from 'jspdf-autotable';
 // ─── Constantes institucionales ──────────────────────────────────────────────
 
 const DOC_META = {
-    codigo:    'ADM-QUI-MP-001',
+    codigo:    'ITYS 23',
+    revision:  '01',
     version:   '1.1',
-    fecha:     '08/07/2026',
+    fecha:     new Date().toLocaleDateString('es-AR'),
     estado:    'Vigente — Para aprobación',
-    titulo:    'Manual de Procedimientos\nSistema de Admisión Quirúrgica',
-    sistema:   'ADM-QUI',
-    elaboro:   'Área de Innovación y Transformación Digital',
-    reviso:    'Departamento de Calidad',
-    aprobo:    'Dirección Médica',
+    titulo:    'SISTEMA ADMINISTRACIÓN',
+    sistema:   'SISTEMA ADMINISTRACIÓN',
+    autor:     'lucas marinero',
+    departamento: 'Innovación y transformación digital',
+    elaboro:   'lucas marinero',
+    reviso:    'Gabriela Iragorre',
+    aprobo:    'Dr. Carlos Buteler',
 };
 
 // Paleta institucional (RGB)
@@ -55,61 +58,92 @@ const COLORS = {
  */
 function drawHeader(doc, pageNum, totalPages) {
     const W = doc.internal.pageSize.getWidth();
+    const CW = W - 28;
+    const ML = 14;
 
-    // Banda superior azul
-    doc.setFillColor(...COLORS.primary);
-    doc.rect(0, 0, W, 18, 'F');
-
-    // Nombre institución (izquierda)
-    doc.setTextColor(...COLORS.white);
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.text('SANATORIO ARGENTINO', 14, 7.5);
-
-    // Nombre documento (centro)
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.text('Manual de Procedimientos — Sistema ADM-QUI', W / 2, 7.5, { align: 'center' });
-
-    // Código + Versión + Página (derecha)
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.text(`${DOC_META.codigo}  |  v${DOC_META.version}`, W - 14, 5.5, { align: 'right' });
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Página ${pageNum}${totalPages ? ' de ' + totalPages : ''}`, W - 14, 11, { align: 'right' });
-
-    // Separador delgado
-    doc.setFillColor(...COLORS.primaryMid);
-    doc.rect(0, 18, W, 1.5, 'F');
-}
-
-/**
- * Dibuja el pie de página institucional.
- * @param {jsPDF} doc
- * @param {number} pageNum
- */
-function drawFooter(doc, pageNum) {
-    const W = doc.internal.pageSize.getWidth();
-    const H = doc.internal.pageSize.getHeight();
-
-    doc.setFillColor(...COLORS.grayLight);
-    doc.rect(0, H - 10, W, 10, 'F');
-
-    doc.setDrawColor(...COLORS.grayMid);
+    doc.setDrawColor(0, 0, 0); // black borders
     doc.setLineWidth(0.3);
-    doc.line(0, H - 10, W, H - 10);
+    doc.setTextColor(0, 0, 0);
 
-    doc.setTextColor(...COLORS.textSub);
-    doc.setFontSize(6.5);
-    doc.setFont('helvetica', 'italic');
-    doc.text(
-        'DOCUMENTO CONTROLADO — Prohibida su reproducción sin autorización institucional',
-        W / 2, H - 5.5, { align: 'center' }
-    );
+    // Fila 1 y 2 (Grid principal)
+    // Col 1: Logo + texto
+    doc.rect(ML, 10, 45, 20, 'S'); // Logo box
+    doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Grow Labs para Sanatorio Argentino © 2026`, 14, H - 5.5);
-    doc.text(`Fecha: ${DOC_META.fecha}`, W - 14, H - 5.5, { align: 'right' });
+    doc.text('SANATORIO', ML + 28, 14, { align: 'center' });
+    doc.text('ARGENTINO SRL', ML + 28, 17, { align: 'center' });
+    doc.line(ML + 16, 18, ML + 45, 18);
+    doc.text('INNOVACIÓN Y', ML + 28, 22, { align: 'center' });
+    doc.text('TRANSFORMACIÓN DIGITAL', ML + 28, 25, { align: 'center' });
+
+    // Col 2: INSTRUCTIVO + Título
+    doc.rect(ML + 45, 10, CW - 90, 20, 'S');
+    doc.setFontSize(8);
+    doc.text('INSTRUCTIVO:', ML + 47, 14);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text(DOC_META.sistema.toUpperCase(), ML + 45 + ((CW - 90)/2), 22, { align: 'center' });
+
+    // Col 3: Código + Revisión + Pág
+    doc.rect(ML + CW - 45, 10, 45, 20, 'S');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(12);
+    doc.text(DOC_META.codigo, ML + CW - 22.5, 15, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text('Revisión Nº ' + DOC_META.revision, ML + CW - 22.5, 22, { align: 'center' });
+    doc.setFontSize(8);
+    doc.text(`Pág. ${pageNum} de ${totalPages}`, ML + CW - 22.5, 28, { align: 'center' });
+
+    // Fila Inferior
+    doc.rect(ML, 30, CW, 5, 'S');
+    doc.setFontSize(7.5);
+    doc.text('VALIDO SOLO EN FORMATO ELECTRÓNICO – LAS COPIAS EN PAPEL CARECEN DE VALOR', ML + (CW/2), 33.5, { align: 'center' });
 }
+
+function drawFooter(doc, pageNum) {
+    // Blank footer in ITAES
+}
+
+function drawSignatures(doc, y) {
+    const W = doc.internal.pageSize.getWidth();
+    const CW = W - 28;
+    const ML = 14;
+
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.3);
+    doc.setTextColor(0, 0, 0);
+
+    const colW = CW / 3;
+    
+    // Row 1: Headers
+    doc.rect(ML, y, colW, 5, 'S');
+    doc.rect(ML + colW, y, colW, 5, 'S');
+    doc.rect(ML + colW * 2, y, colW, 5, 'S');
+    
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.text('ELABORADO:', ML + 2, y + 3.5);
+    doc.text('REVISADO:', ML + colW + 2, y + 3.5);
+    doc.text('APROBADO:', ML + colW * 2 + 2, y + 3.5);
+
+    // Row 2: Signatures block
+    doc.rect(ML, y + 5, colW, 20, 'S');
+    doc.rect(ML + colW, y + 5, colW, 20, 'S');
+    doc.rect(ML + colW * 2, y + 5, colW, 20, 'S');
+
+    doc.setFontSize(8);
+    doc.text(DOC_META.elaboro, ML + colW / 2, y + 19, { align: 'center' });
+    doc.text(DOC_META.departamento, ML + colW / 2, y + 23, { align: 'center' });
+
+    doc.text(DOC_META.reviso, ML + colW + colW / 2, y + 19, { align: 'center' });
+    doc.text('Responsable Documentos SGC', ML + colW + colW / 2, y + 23, { align: 'center' });
+
+    doc.text(DOC_META.aprobo, ML + colW * 2 + colW / 2, y + 19, { align: 'center' });
+    doc.text('Director Médico', ML + colW * 2 + colW / 2, y + 23, { align: 'center' });
+
+    return y + 25;
+}
+
 
 /**
  * Agrega una nueva página con encabezado y footer.
@@ -118,9 +152,9 @@ function drawFooter(doc, pageNum) {
 function addPage(doc, counters) {
     doc.addPage();
     counters.page += 1;
-    drawHeader(doc, counters.page, null);
+    drawHeader(doc, counters.page, totalPages);
     drawFooter(doc, counters.page);
-    return 26; // Y inicial
+    return 40;
 }
 
 /**
@@ -128,36 +162,21 @@ function addPage(doc, counters) {
  */
 function sectionTitle(doc, text, y) {
     const W = doc.internal.pageSize.getWidth();
-    doc.setFillColor(...COLORS.primary);
-    doc.rect(14, y, W - 28, 8, 'F');
-    doc.setTextColor(...COLORS.white);
-    doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text(text, 18, y + 5.5);
-    doc.setTextColor(...COLORS.textMain);
-    return y + 13;
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
+    doc.text(text.toUpperCase(), 14, y + 5.5);
+    return y + 10;
 }
 
-/**
- * Dibuja un título de subsección (ej: "1.1 Propósito").
- */
 function subTitle(doc, text, y) {
-    doc.setFillColor(...COLORS.primaryLight);
-    doc.rect(14, y, doc.internal.pageSize.getWidth() - 28, 6.5, 'F');
-    doc.setDrawColor(...COLORS.primaryMid);
-    doc.setLineWidth(0.5);
-    doc.rect(14, y, 2.5, 6.5, 'F');
-    doc.setTextColor(...COLORS.accent);
-    doc.setFontSize(9.5);
     doc.setFont('helvetica', 'bold');
-    doc.text(text, 19, y + 4.5);
-    doc.setTextColor(...COLORS.textMain);
-    return y + 11;
+    doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
+    doc.text(text, 14 + 3, y + 4.5);
+    return y + 8;
 }
 
-/**
- * Escribe párrafo de texto normal.
- */
 function para(doc, text, y, indent = 14) {
     const W = doc.internal.pageSize.getWidth();
     doc.setFontSize(8.5);
@@ -173,39 +192,29 @@ function para(doc, text, y, indent = 14) {
  */
 function noteBox(doc, text, y, type = 'info') {
     const W = doc.internal.pageSize.getWidth();
-    const colorMap = {
-        info:    COLORS.primaryLight,
-        warning: [254, 243, 199],
-        danger:  [254, 226, 226],
-        success: [220, 252, 231],
-    };
-    // Manejar saltos de línea manuales (\n) antes de splitTextToSize
-    const maxW = W - 52;
+    const CW = W - 28;
+    const ML = 14;
+    const maxW = CW - 4;
     let lines = [];
     text.split('\n').forEach(part => {
-        const wrapped = doc.splitTextToSize(part.trim(), maxW);
-        lines = lines.concat(wrapped);
+        lines = lines.concat(doc.splitTextToSize(part.trim(), maxW - 10));
     });
-    const h = lines.length * 4.8 + 8;
+    const boxH = lines.length * 4.8 + 10;
 
-    doc.setFillColor(...colorMap[type]);
-    doc.roundedRect(14, y, W - 28, h, 2, 2, 'F');
+    doc.setFillColor(250, 250, 250);
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(ML, y, CW, boxH, 2, 2, 'S');
 
-    doc.setDrawColor(...COLORS.primaryMid);
-    doc.setLineWidth(1);
-    doc.line(14, y, 14, y + h);
-
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
-    doc.setFont('helvetica', 'italic');
-    doc.setTextColor(...COLORS.grayDark);
-    doc.text(lines, 20, y + 5.5);
-    doc.setTextColor(...COLORS.textMain);
-    return y + h + 4;
+    doc.setTextColor(0, 0, 0);
+    doc.text(`[NOTA]`, ML + 4, y + 6);
+    doc.setFont('helvetica', 'normal');
+    doc.text(lines, ML + 4, y + 11);
+    return y + boxH + 4;
 }
 
-/**
- * Escribe una lista de ítems con viñeta.
- */
 function bulletList(doc, items, y, indent = 20) {
     const W = doc.internal.pageSize.getWidth();
     doc.setFontSize(8.5);
@@ -257,7 +266,7 @@ export async function generateManualPDF() {
     }
 
     // Contador de páginas mutable
-    const counters = { page: 1 };
+    const counters = { page: 1 }; drawHeader(doc, 1, 999);
 
     // Registro de índice: { titulo, page }
     const tocEntries = [];
@@ -273,13 +282,7 @@ export async function generateManualPDF() {
         doc.rect(0, H * 0.52, W, H * 0.48, 'F');
 
         // Logo institucional (imagen real con fallback a monograma)
-        if (logoDataUrl) {
-            // Marco blanco con bordes redondeados
-            doc.setFillColor(...COLORS.white);
-            doc.roundedRect(W / 2 - 22, 22, 44, 44, 6, 6, 'F');
-            // Imagen del logo centrada dentro del marco
-            doc.addImage(logoDataUrl, 'PNG', W / 2 - 18, 25, 36, 36);
-        } else {
+        // Logo is handled in header now else {
             // Fallback: monograma de texto
             doc.setFillColor(...COLORS.white);
             doc.roundedRect(W / 2 - 20, 28, 40, 40, 5, 5, 'F');
@@ -290,7 +293,6 @@ export async function generateManualPDF() {
             doc.setFontSize(7);
             doc.setFont('helvetica', 'normal');
             doc.text('SANATORIO ARGENTINO', W / 2, 60.5, { align: 'center' });
-        }
 
         // Título del documento
         doc.setTextColor(...COLORS.white);
@@ -428,7 +430,7 @@ export async function generateManualPDF() {
         {
             doc.addPage();
             counters.page += 1;
-            drawHeader(doc, counters.page, null);
+            drawHeader(doc, counters.page, totalPages);
             drawFooter(doc, counters.page);
             let y2 = 26;
 
@@ -486,7 +488,7 @@ export async function generateManualPDF() {
                 styles: { cellPadding: 2.5, lineColor: COLORS.grayMid, lineWidth: 0.2 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, null);
+            drawHeader(doc, counters.page, totalPages);
             drawFooter(doc, counters.page);
         }
 
@@ -525,7 +527,7 @@ export async function generateManualPDF() {
                 styles: { cellPadding: 2.5, lineColor: COLORS.grayMid, lineWidth: 0.2 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, null);
+            drawHeader(doc, counters.page, totalPages);
             drawFooter(doc, counters.page);
 
             let yn = doc.lastAutoTable.finalY + 8;
@@ -554,7 +556,7 @@ export async function generateManualPDF() {
                 styles: { cellPadding: 2.5, lineColor: COLORS.grayMid, lineWidth: 0.2 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, null);
+            drawHeader(doc, counters.page, totalPages);
             drawFooter(doc, counters.page);
         }
 
@@ -670,7 +672,7 @@ export async function generateManualPDF() {
                 styles: { cellPadding: 2.5, lineColor: COLORS.grayMid, lineWidth: 0.2 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, null);
+            drawHeader(doc, counters.page, totalPages);
             drawFooter(doc, counters.page);
 
             let yn4 = doc.lastAutoTable.finalY + 5;
@@ -952,7 +954,7 @@ export async function generateManualPDF() {
                 styles: { cellPadding: 2.5, lineColor: COLORS.grayMid, lineWidth: 0.2 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, null);
+            drawHeader(doc, counters.page, totalPages);
             drawFooter(doc, counters.page);
 
             let y5 = doc.lastAutoTable.finalY + 8;
@@ -997,7 +999,7 @@ export async function generateManualPDF() {
                 styles: { cellPadding: 2.5, lineColor: COLORS.grayMid, lineWidth: 0.2 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, null);
+            drawHeader(doc, counters.page, totalPages);
             drawFooter(doc, counters.page);
 
             let y6 = doc.lastAutoTable.finalY + 8;
@@ -1056,7 +1058,7 @@ export async function generateManualPDF() {
                 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, null);
+            drawHeader(doc, counters.page, totalPages);
             drawFooter(doc, counters.page);
         }
 
@@ -1095,7 +1097,7 @@ export async function generateManualPDF() {
                 styles: { cellPadding: 2.5, lineColor: COLORS.grayMid, lineWidth: 0.2 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, null);
+            drawHeader(doc, counters.page, totalPages);
             drawFooter(doc, counters.page);
 
             let y7 = doc.lastAutoTable.finalY + 8;
@@ -1135,7 +1137,7 @@ export async function generateManualPDF() {
                 styles: { cellPadding: 2.5, lineColor: COLORS.grayMid, lineWidth: 0.2 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, null);
+            drawHeader(doc, counters.page, totalPages);
             drawFooter(doc, counters.page);
         }
 
@@ -1225,7 +1227,9 @@ export async function generateManualPDF() {
         // ── COMPLETAR ÍNDICE EN PÁGINA 2 ─────────────────────────────────────
         {
             const totalPages = counters.page;
-            doc.setPage(2);
+            currentY = checkPage(doc, currentY, 30, counters);
+    currentY = drawSignatures(doc, currentY + 10);
+    doc.setPage(2);
             // Completar TOC
             let ty = tocY;
             tocEntries.forEach((entry, i) => {
