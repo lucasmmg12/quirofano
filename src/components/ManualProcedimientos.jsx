@@ -92,7 +92,7 @@ function drawHeader(doc, pageNum, totalPages) {
     doc.setFontSize(10);
     doc.text('Revisión Nº ' + DOC_META.revision, ML + CW - 22.5, 22, { align: 'center' });
     doc.setFontSize(8);
-    doc.text(`Pág. ${pageNum} de ${totalPages}`, ML + CW - 22.5, 28, { align: 'center' });
+    doc.text(`Pág. ${pageNum} de ${totalPages || '{total_pages_count_string}'}`, ML + CW - 22.5, 28, { align: 'center' });
 
     // Fila Inferior
     doc.rect(ML, 30, CW, 5, 'S');
@@ -152,7 +152,7 @@ function drawSignatures(doc, y) {
 function addPage(doc, counters) {
     doc.addPage();
     counters.page += 1;
-    drawHeader(doc, counters.page, totalPages);
+    drawHeader(doc, counters.page, '{total_pages_count_string}');
     drawFooter(doc, counters.page);
     return 40;
 }
@@ -266,7 +266,7 @@ export async function generateManualPDF() {
     }
 
     // Contador de páginas mutable
-    const counters = { page: 1 }; drawHeader(doc, 1, 999);
+    const counters = { page: 1 }; drawHeader(doc, 1, '{total_pages_count_string}');
 
     // Registro de índice: { titulo, page }
     const tocEntries = [];
@@ -430,7 +430,7 @@ export async function generateManualPDF() {
         {
             doc.addPage();
             counters.page += 1;
-            drawHeader(doc, counters.page, totalPages);
+            drawHeader(doc, counters.page, '{total_pages_count_string}');
             drawFooter(doc, counters.page);
             let y2 = 26;
 
@@ -455,7 +455,7 @@ export async function generateManualPDF() {
                 'Indicadores y métricas operativas',
             ], y2);
 
-            y2 = checkPage(doc, y2, counters, 40);
+            y2 = (y2 + 40 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : y2;
 
             y2 = subTitle(doc, '1.3  Acrónimos y Definiciones', y2);
             autoTable(doc, {
@@ -488,7 +488,7 @@ export async function generateManualPDF() {
                 styles: { cellPadding: 2.5, lineColor: COLORS.grayMid, lineWidth: 0.2 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, totalPages);
+            drawHeader(doc, counters.page, '{total_pages_count_string}');
             drawFooter(doc, counters.page);
         }
 
@@ -527,11 +527,11 @@ export async function generateManualPDF() {
                 styles: { cellPadding: 2.5, lineColor: COLORS.grayMid, lineWidth: 0.2 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, totalPages);
+            drawHeader(doc, counters.page, '{total_pages_count_string}');
             drawFooter(doc, counters.page);
 
             let yn = doc.lastAutoTable.finalY + 8;
-            yn = checkPage(doc, yn, counters, 50);
+            yn = (yn + 50 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn;
             yn = subTitle(doc, '2.3  Arquitectura del Sistema', yn);
             yn = para(doc, 'La arquitectura del sistema sigue el patrón de aplicación web moderna con backend como servicio (BaaS). El frontend (React) se comunica directamente con Supabase para la persistencia de datos, y con BuilderBot para la mensajería WhatsApp. Un proceso Node.js autónomo (sync-server) se conecta periódicamente al SQL Server de SALUS para sincronizar cirugías, pacientes e internaciones.', yn + 1);
 
@@ -556,7 +556,7 @@ export async function generateManualPDF() {
                 styles: { cellPadding: 2.5, lineColor: COLORS.grayMid, lineWidth: 0.2 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, totalPages);
+            drawHeader(doc, counters.page, '{total_pages_count_string}');
             drawFooter(doc, counters.page);
         }
 
@@ -583,7 +583,7 @@ export async function generateManualPDF() {
                 'En caso de error, verificar mayúsculas/minúsculas y espacios en la contraseña',
             ], y2);
 
-            y2 = checkPage(doc, y2, counters, 50);
+            y2 = (y2 + 50 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : y2;
             y2 = subTitle(doc, '3.3  Cambio de Contrasena', y2);
             y2 = para(doc, 'Para cambiar la contrasena, el usuario debe hacer clic en el icono de llave (candado) ubicado en la barra superior derecha del sistema. Se abrira un modal que permitira ingresar la contrasena actual y establecer una nueva. Se recomienda usar contrasenas de al menos 8 caracteres con combinacion de letras y numeros.', y2 + 1);
 
@@ -606,7 +606,7 @@ export async function generateManualPDF() {
 
             // ─── 4.1 Inicio ──────────────────────────────────────────────────
             y2 += 3;
-            y2 = checkPage(doc, y2, counters, 40);
+            y2 = (y2 + 40 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : y2;
             tocEntries.push({ titulo: '   4.1  Panel de Inicio', page: counters.page });
             y2 = subTitle(doc, '4.1  Panel de Inicio', y2);
             y2 = para(doc, 'El Panel de Inicio (HomePanel) es la pantalla principal del sistema. Presenta una bienvenida personalizada con el nombre del usuario y ofrece accesos rápidos a los módulos más utilizados. Incluye indicadores de estado del sistema y del servicio WhatsApp.', y2 + 1);
@@ -618,7 +618,7 @@ export async function generateManualPDF() {
             ], y2);
 
             // ─── 4.2 Mensajería ──────────────────────────────────────────────
-            y2 = checkPage(doc, y2, counters, 50);
+            y2 = (y2 + 50 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : y2;
             tocEntries.push({ titulo: '   4.2  Mensajería y Chat WhatsApp', page: counters.page });
             y2 = subTitle(doc, '4.2  Mensajería y Chat WhatsApp', y2);
             y2 = para(doc, 'El módulo de Mensajería (MessagingPanel) permite la comunicación bidireccional con pacientes, médicos y obras sociales a través de WhatsApp Business. Los mensajes recibidos generan notificaciones en tiempo real con sonido y toasts.', y2 + 1);
@@ -631,11 +631,11 @@ export async function generateManualPDF() {
                 'Acceso directo desde el módulo de Control de Cirugías para cada paciente',
             ], y2);
 
-            y2 = checkPage(doc, y2, counters, 30);
+            y2 = (y2 + 30 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : y2;
             y2 = noteBox(doc, 'AVISO INSTITUCIONAL: Los mensajes enviados a través del sistema utilizan la identidad institucional del Sanatorio Argentino (cuenta WhatsApp Business). Los usuarios con roles no administrativos verán un aviso recordatorio antes de enviar.', y2, 'warning');
 
             // ─── 4.3 Plantillas WhatsApp ─────────────────────────────────────
-            y2 = checkPage(doc, y2, counters, 50);
+            y2 = (y2 + 50 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : y2;
             tocEntries.push({ titulo: '   4.3  Plantillas WhatsApp', page: counters.page });
             y2 = subTitle(doc, '4.3  Plantillas WhatsApp (Template Manager)', y2);
             y2 = para(doc, 'El Template Manager permite crear y gestionar plantillas de mensajes reutilizables con variables dinámicas. Las plantillas agilizan la comunicación pre-quirúrgica y post-quirúrgica con los pacientes.', y2 + 1);
@@ -647,7 +647,7 @@ export async function generateManualPDF() {
             ], y2);
 
             // ─── 4.4 Emisión de Pedidos ──────────────────────────────────────
-            y2 = checkPage(doc, y2, counters, 50);
+            y2 = (y2 + 50 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : y2;
             tocEntries.push({ titulo: '   4.4  Módulo de Pedidos', page: counters.page });
             y2 = subTitle(doc, '4.4  Módulo de Pedidos (Emisión)', y2);
             y2 = para(doc, 'El módulo de Pedidos permite generar solicitudes de prácticas médicas e internaciones para pacientes quirúrgicos. Es el módulo central de la tarea cotidiana del personal de admisión.', y2 + 1);
@@ -672,11 +672,11 @@ export async function generateManualPDF() {
                 styles: { cellPadding: 2.5, lineColor: COLORS.grayMid, lineWidth: 0.2 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, totalPages);
+            drawHeader(doc, counters.page, '{total_pages_count_string}');
             drawFooter(doc, counters.page);
 
             let yn4 = doc.lastAutoTable.finalY + 5;
-            yn4 = checkPage(doc, yn4, counters, 40);
+            yn4 = (yn4 + 40 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             yn4 = para(doc, 'Procedimiento de emisión de pedido:', yn4 + 2);
             yn4 = bulletList(doc, [
                 '1. Completar los datos del paciente en el encabezado (PatientHeader)',
@@ -687,7 +687,7 @@ export async function generateManualPDF() {
             ], yn4);
 
             // ─── 4.5 Historial ───────────────────────────────────────────────
-            yn4 = checkPage(doc, yn4, counters, 40);
+            yn4 = (yn4 + 40 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             tocEntries.push({ titulo: '   4.5  Historial de Pedidos', page: counters.page });
             yn4 = subTitle(doc, '4.5  Historial de Pedidos', yn4);
             yn4 = para(doc, 'El módulo de Historial almacena todos los pedidos generados en el sistema. Permite consultar, expandir el detalle y reimprimir cualquier pedido anterior. Los pedidos se pueden filtrar por estado: Creado, Impreso o Enviado.', yn4 + 1);
@@ -699,13 +699,13 @@ export async function generateManualPDF() {
             ], yn4);
 
             // ─── 4.6 Nomenclador ─────────────────────────────────────────────
-            yn4 = checkPage(doc, yn4, counters, 40);
+            yn4 = (yn4 + 40 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             tocEntries.push({ titulo: '   4.6  Nomenclador de Prácticas', page: counters.page });
             yn4 = subTitle(doc, '4.6  Nomenclador de Prácticas', yn4);
             yn4 = para(doc, 'El módulo Nomenclador (NomencladorView) permite consultar el listado completo de prácticas médicas disponibles, con sus códigos, descripciones y categorías. Desde este módulo también se puede agregar prácticas directamente al carrito activo.', yn4 + 1);
 
             // ─── 4.7 Control de Cirugías ─────────────────────────────────────
-            yn4 = checkPage(doc, yn4, counters, 60);
+            yn4 = (yn4 + 60 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             tocEntries.push({ titulo: '   4.7  Control de Cirugías (Panel Principal)', page: counters.page });
             yn4 = subTitle(doc, '4.7  Control de Cirugías — Panel Principal (SurgeryPanel)', yn4);
             yn4 = para(doc, 'El SurgeryPanel es el módulo más completo del sistema. Centraliza toda la operación del quirófano: visualización de la programación quirúrgica sincronizada desde SALUS, gestión preoperatoria de cada paciente, comunicación WhatsApp y control de estado de cada intervención.', yn4 + 1);
@@ -722,7 +722,7 @@ export async function generateManualPDF() {
             ], yn4);
 
             // ─── 4.8 Deudas ──────────────────────────────────────────────────
-            yn4 = checkPage(doc, yn4, counters, 50);
+            yn4 = (yn4 + 50 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             tocEntries.push({ titulo: '   4.8  Gestión de Deudas', page: counters.page });
             yn4 = subTitle(doc, '4.8  Gestión de Deudas (DeudasPanel)', yn4);
             yn4 = para(doc, 'El módulo de Deudas permite el control de deudas pendientes de pacientes y obras sociales. Facilita la comunicación de deuda y el seguimiento del cobro.', yn4 + 1);
@@ -735,12 +735,12 @@ export async function generateManualPDF() {
             ], yn4);
 
             // ─── 4.9 Altas Administrativas ───────────────────────────────────
-            yn4 = checkPage(doc, yn4, counters, 50);
+            yn4 = (yn4 + 50 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             tocEntries.push({ titulo: '   4.9  Altas Administrativas', page: counters.page });
             yn4 = subTitle(doc, '4.9  Altas Administrativas (AltasPanel)', yn4);
             yn4 = para(doc, 'El módulo de Altas gestiona el proceso completo de alta administrativa de pacientes internados, incluyendo el flujo de traspaso de fichas a Facturación, la detección automática de facturas en SALUS, y el circuito de devoluciones.', yn4 + 1);
 
-            yn4 = checkPage(doc, yn4, counters, 30);
+            yn4 = (yn4 + 30 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             yn4 = para(doc, 'Estados disponibles en Control de Altas:', yn4 + 1);
             yn4 = bulletList(doc, [
                 'Procesada — Ficha recién creada, sin gestión',
@@ -753,10 +753,10 @@ export async function generateManualPDF() {
                 'Devuelta FAC — La ficha fue devuelta desde el módulo de Facturación',
             ], yn4);
 
-            yn4 = checkPage(doc, yn4, counters, 25);
+            yn4 = (yn4 + 25 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             yn4 = noteBox(doc, 'CRUCE DE MES: El sistema limpia automáticamente el panel de Altas Parciales a principios de mes si las altas pertenecen a meses anteriores, enviando las fichas pendientes al historial para no mezclar la facturación de periodos distintos.', yn4, 'info');
 
-            yn4 = checkPage(doc, yn4, counters, 40);
+            yn4 = (yn4 + 40 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             yn4 = para(doc, 'Flujo de Traspaso a Facturación:', yn4 + 2);
             yn4 = bulletList(doc, [
                 '1. Seleccionar fichas con los checkboxes de la columna izquierda',
@@ -769,16 +769,16 @@ export async function generateManualPDF() {
                 '8. Las fichas traspasadas aparecen automáticamente en el módulo de Facturación',
             ], yn4);
 
-            yn4 = checkPage(doc, yn4, counters, 20);
+            yn4 = (yn4 + 20 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             yn4 = noteBox(doc, 'FACTURACIÓN AUTOMÁTICA: Cuando el sync-server detecta que el número de admisión existe en las facturas de SALUS (Punto de Venta 21 y 31), el sistema marca automáticamente la ficha como "Facturada" y asigna el usuario que facturó como responsable.', yn4, 'info');
 
             // ─── 4.10 Facturación Internada ──────────────────────────────────
-            yn4 = checkPage(doc, yn4, counters, 50);
+            yn4 = (yn4 + 50 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             tocEntries.push({ titulo: '   4.10  Facturación Internada', page: counters.page });
             yn4 = subTitle(doc, '4.10  Facturación Internada (FacturacionPanel)', yn4);
             yn4 = para(doc, 'El módulo de Facturación Internada muestra las fichas que fueron traspasadas desde Control de Altas. Permite asignar analistas, gestionar estados, ver el detalle de facturación de SALUS y gestionar devoluciones.', yn4 + 1);
 
-            yn4 = checkPage(doc, yn4, counters, 30);
+            yn4 = (yn4 + 30 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             yn4 = para(doc, 'KPIs superiores:', yn4 + 1);
             yn4 = bulletList(doc, [
                 'Total — Cantidad total de fichas traspasadas en el período',
@@ -789,7 +789,7 @@ export async function generateManualPDF() {
                 'Auto (SALUS) — Fichas marcadas automáticamente por el cruce con facturación de SALUS',
             ], yn4);
 
-            yn4 = checkPage(doc, yn4, counters, 40);
+            yn4 = (yn4 + 40 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             yn4 = para(doc, 'Flujo de Devolución a Control de Altas:', yn4 + 2);
             yn4 = bulletList(doc, [
                 '1. Seleccionar fichas con problemas usando los checkboxes',
@@ -800,17 +800,17 @@ export async function generateManualPDF() {
                 '6. El operador de Altas puede cambiar el estado para re-gestionarlas',
             ], yn4);
 
-            yn4 = checkPage(doc, yn4, counters, 20);
+            yn4 = (yn4 + 20 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             yn4 = noteBox(doc, 'DETALLE DE FACTURA: Al expandir una fila se muestran las líneas de concepto traídas desde SALUS (tabla TABLEAU_Detalle de ventas). Incluye número de factura, concepto, usuario que facturó y punto de venta (21 o 31).', yn4, 'info');
 
             // ─── 4.11 Asignaciones ───────────────────────────────────────────
-            yn4 = checkPage(doc, yn4, counters, 40);
+            yn4 = (yn4 + 40 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             tocEntries.push({ titulo: '   4.11  Asignaciones', page: counters.page });
             yn4 = subTitle(doc, '4.11  Asignaciones (AsignacionPanel)', yn4);
             yn4 = para(doc, 'El módulo de Asignaciones gestiona la asignación de recursos, camas y personal a los pacientes. Permite el control de la disponibilidad operativa del área quirúrgica.', yn4 + 1);
 
             // ─── 4.12 Auditoría de Historias Clínicas ────────────────────────
-            yn4 = checkPage(doc, yn4, counters, 60);
+            yn4 = (yn4 + 60 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             tocEntries.push({ titulo: '   4.12  Auditoría de Historias Clínicas', page: counters.page });
             yn4 = subTitle(doc, '4.12  Auditoría de Historias Clínicas (AuditoriaHistoriasPanel)', yn4);
             yn4 = para(doc, 'Este módulo permite la revisión sistemática y el control de calidad de las historias clínicas de pacientes. Está orientado al personal del área de Auditoría Médica y Calidad.', yn4 + 1);
@@ -824,7 +824,7 @@ export async function generateManualPDF() {
             ], yn4);
 
             // ─── 4.13 Cola de Turnos ─────────────────────────────────────────
-            yn4 = checkPage(doc, yn4, counters, 50);
+            yn4 = (yn4 + 50 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             tocEntries.push({ titulo: '   4.13  Cola de Turnos (Kiosco)', page: counters.page });
             yn4 = subTitle(doc, '4.13  Cola de Turnos — Sistema Kiosco (TurnoAdminPanel / TurnoKiosco)', yn4);
             yn4 = para(doc, 'El módulo de Turnos implementa un sistema tipo kiosco para la gestión de la cola de espera en el área de admisión. Incluye un panel de administración (para el personal) y una vista pública de kiosco para pacientes.', yn4 + 1);
@@ -838,13 +838,13 @@ export async function generateManualPDF() {
             ], yn4);
 
             // ─── 4.14 Consultas de Guardia ───────────────────────────────────
-            yn4 = checkPage(doc, yn4, counters, 40);
+            yn4 = (yn4 + 40 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             tocEntries.push({ titulo: '   4.14  Consultas de Guardia', page: counters.page });
             yn4 = subTitle(doc, '4.14  Consultas de Guardia (ConsultasPanel)', yn4);
             yn4 = para(doc, 'Módulo de registro y seguimiento de consultas realizadas en el servicio de guardia. Permite el control estadístico de la demanda de guardia y la facturación de consultas.', yn4 + 1);
 
             // ─── 4.15 Entrega Asociaciones ───────────────────────────────────
-            yn4 = checkPage(doc, yn4, counters, 50);
+            yn4 = (yn4 + 50 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             tocEntries.push({ titulo: '   4.15  Entrega a Asociaciones', page: counters.page });
             yn4 = subTitle(doc, '4.15  Entrega a Asociaciones (AsociacionesEntregaPanel)', yn4);
             yn4 = para(doc, 'Módulo para el control de entrega de documentación y muestras a laboratorios de anatomía patológica externos y asociaciones médicas. Gestiona la trazabilidad de cada envío.', yn4 + 1);
@@ -856,7 +856,7 @@ export async function generateManualPDF() {
             ], yn4);
 
             // ─── 4.16 Laboratorios / Anatomía Patológica ─────────────────────
-            yn4 = checkPage(doc, yn4, counters, 50);
+            yn4 = (yn4 + 50 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             tocEntries.push({ titulo: '   4.16  Laboratorios y Anatomía Patológica', page: counters.page });
             yn4 = subTitle(doc, '4.16  Laboratorios y Anatomía Patológica (LaboratoriosPanel)', yn4);
             yn4 = para(doc, 'Módulo integrado para la gestión de solicitudes de laboratorio y anatomía patológica. Se conecta con los laboratorios externos (LDA - Dra. Aguero/Rios, LAB. CEDAP, LAB. INST. PATOLOG. CUYO) a través de una vista pública autenticada (LabPortal).', yn4 + 1);
@@ -869,7 +869,7 @@ export async function generateManualPDF() {
             ], yn4);
 
             // ─── 4.17 Métricas e Indicadores ─────────────────────────────────
-            yn4 = checkPage(doc, yn4, counters, 60);
+            yn4 = (yn4 + 60 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             tocEntries.push({ titulo: '   4.17  Métricas e Indicadores', page: counters.page });
             yn4 = subTitle(doc, '4.17  Métricas e Indicadores (MetricsPanel / AltasMetricsPanel)', yn4);
             yn4 = para(doc, 'El módulo de Métricas ofrece un dashboard de indicadores de rendimiento del área de admisión quirúrgica. Los datos se actualizan en tiempo real desde la base de datos.', yn4 + 1);
@@ -885,7 +885,7 @@ export async function generateManualPDF() {
             ], yn4);
 
             // ─── 4.17 Simón IA ───────────────────────────────────────────────
-            yn4 = checkPage(doc, yn4, counters, 60);
+            yn4 = (yn4 + 60 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             tocEntries.push({ titulo: '   4.17  Asistente IA — Simón', page: counters.page });
             yn4 = subTitle(doc, '4.17  Asistente IA — Simón (BetoPanel / BetoWidget)', yn4);
             yn4 = para(doc, 'Simón es el asistente de inteligencia artificial integrado en el sistema ADM-QUI. Puede accederse desde el módulo dedicado (BetoPanel) o mediante el widget flotante disponible en toda la interfaz (BetoWidget).', yn4 + 1);
@@ -899,7 +899,7 @@ export async function generateManualPDF() {
             ], yn4);
 
             // ─── 4.18 Configuración ──────────────────────────────────────────
-            yn4 = checkPage(doc, yn4, counters, 40);
+            yn4 = (yn4 + 40 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
             tocEntries.push({ titulo: '   4.18  Configuración del Sistema', page: counters.page });
             yn4 = subTitle(doc, '4.18  Configuración del Sistema (ConfigPanel)', yn4);
             yn4 = para(doc, 'El panel de Configuración permite a los usuarios autorizados ajustar los parámetros del sistema. Incluye configuraciones de integración, gestión de accesos y descarga del presente Manual de Procedimientos.', yn4 + 1);
@@ -931,7 +931,7 @@ export async function generateManualPDF() {
                 'Script de actualización: "Actualizar SALUS.bat"',
             ], y2);
 
-            y2 = checkPage(doc, y2, counters, 35);
+            y2 = (y2 + 35 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : y2;
             y2 = noteBox(doc, 'DEPENDENCIA CRÍTICA: Si el sync-server se detiene, los datos de cirugías y pacientes en el sistema dejarán de actualizarse. En caso de detectar datos desactualizados, verificar que el proceso "sync-server" esté activo en el servidor local.', y2, 'danger');
 
             y2 = subTitle(doc, '5.2  Integración con WhatsApp Business (BuilderBot Cloud)', y2);
@@ -954,11 +954,11 @@ export async function generateManualPDF() {
                 styles: { cellPadding: 2.5, lineColor: COLORS.grayMid, lineWidth: 0.2 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, totalPages);
+            drawHeader(doc, counters.page, '{total_pages_count_string}');
             drawFooter(doc, counters.page);
 
             let y5 = doc.lastAutoTable.finalY + 8;
-            y5 = checkPage(doc, y5, counters, 40);
+            y5 = (y5 + 40 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : y5;
             y5 = subTitle(doc, '5.3  Base de Datos — Supabase (PostgreSQL)', y5);
             y5 = para(doc, 'Supabase es la plataforma de backend del sistema ADM-QUI. Provee base de datos PostgreSQL, autenticación, almacenamiento de archivos y funciones serverless (Edge Functions). Los datos del sistema residen exclusivamente en Supabase.', y5 + 1);
             y5 = bulletList(doc, [
@@ -999,11 +999,11 @@ export async function generateManualPDF() {
                 styles: { cellPadding: 2.5, lineColor: COLORS.grayMid, lineWidth: 0.2 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, totalPages);
+            drawHeader(doc, counters.page, '{total_pages_count_string}');
             drawFooter(doc, counters.page);
 
             let y6 = doc.lastAutoTable.finalY + 8;
-            y6 = checkPage(doc, y6, counters, 80);
+            y6 = (y6 + 80 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : y6;
             y6 = subTitle(doc, '6.2  Matriz de Acceso por Módulo', y6);
             y6 += 2;
 
@@ -1058,7 +1058,7 @@ export async function generateManualPDF() {
                 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, totalPages);
+            drawHeader(doc, counters.page, '{total_pages_count_string}');
             drawFooter(doc, counters.page);
         }
 
@@ -1097,11 +1097,11 @@ export async function generateManualPDF() {
                 styles: { cellPadding: 2.5, lineColor: COLORS.grayMid, lineWidth: 0.2 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, totalPages);
+            drawHeader(doc, counters.page, '{total_pages_count_string}');
             drawFooter(doc, counters.page);
 
             let y7 = doc.lastAutoTable.finalY + 8;
-            y7 = checkPage(doc, y7, counters, 40);
+            y7 = (y7 + 40 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : y7;
             y7 = subTitle(doc, '7.2  Contacto de Soporte Técnico', y7);
             y7 = bulletList(doc, [
                 'Área responsable: Innovación y Transformación Digital (TyS) — Sanatorio Argentino',
@@ -1110,7 +1110,7 @@ export async function generateManualPDF() {
                 'Ante cualquier falla crítica que afecte la operación, comunicar de inmediato a TyS',
             ], y7 + 2);
 
-            y7 = checkPage(doc, y7, counters, 30);
+            y7 = (y7 + 30 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : y7;
             y7 = noteBox(doc, 'CONTINGENCIA: En caso de falla total del sistema, los procesos de admisión quirúrgica deben continuar en modo manual (formularios en papel) hasta restablecer el servicio. TyS debe ser notificado dentro de los primeros 15 minutos de detectada la falla.', y7, 'danger');
         }
 
@@ -1137,7 +1137,7 @@ export async function generateManualPDF() {
                 styles: { cellPadding: 2.5, lineColor: COLORS.grayMid, lineWidth: 0.2 },
             });
             counters.page = Math.ceil(doc.internal.getCurrentPageInfo().pageNumber);
-            drawHeader(doc, counters.page, totalPages);
+            drawHeader(doc, counters.page, '{total_pages_count_string}');
             drawFooter(doc, counters.page);
         }
 
@@ -1181,7 +1181,7 @@ export async function generateManualPDF() {
             ];
 
             firmaBlockData.forEach((blk) => {
-                y2 = checkPage(doc, y2, counters, 45);
+                y2 = (y2 + 45 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : y2;
                 doc.setFillColor(...blk.color);
                 doc.roundedRect(14, y2, W - 28, 38, 3, 3, 'F');
                 doc.setDrawColor(...COLORS.grayMid);
@@ -1219,7 +1219,7 @@ export async function generateManualPDF() {
                 y2 += 44;
             });
 
-            y2 = checkPage(doc, y2, counters, 30);
+            y2 = (y2 + 30 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : y2;
             y2 += 4;
             y2 = noteBox(doc, `Código de documento: ${DOC_META.codigo} | Versión: ${DOC_META.version} | Fecha de emisión: ${DOC_META.fecha}\nEste documento reemplaza a cualquier versión anterior del manual de procedimientos del sistema ADM-QUI. Una vez aprobado, el original firmado debe archivarse en el Departamento de Calidad.`, y2, 'info');
         }
@@ -1227,7 +1227,7 @@ export async function generateManualPDF() {
         // ── COMPLETAR ÍNDICE EN PÁGINA 2 ─────────────────────────────────────
         {
             const totalPages = counters.page;
-            currentY = checkPage(doc, currentY, 30, counters);
+            currentY = (currentY + 30 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : currentY;
     currentY = drawSignatures(doc, currentY + 10);
     doc.setPage(2);
             // Completar TOC
@@ -1277,30 +1277,9 @@ export async function generateManualPDF() {
                 ty += isMain ? 8 : 6;
             });
 
-            // Actualizar el total de páginas en el header de cada página
-            for (let p = 1; p <= totalPages; p++) {
-                doc.setPage(p);
-                if (p === 1) {
-                    // Portada — no tiene header estándar
-                    continue;
-                }
-                // Sobrescribir el número de página con el total correcto
-                const pageNumX = W - 14;
-                const pageNumY = 11;
-                // Borrar con rectángulo del color del header
-                doc.setFillColor(...COLORS.primary);
-                doc.rect(pageNumX - 30, 0, 35, 17, 'F');
-                doc.setTextColor(...COLORS.white);
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(7);
-                doc.text(`${DOC_META.codigo}  |  v${DOC_META.version}`, pageNumX, 5.5, { align: 'right' });
-                doc.setFont('helvetica', 'normal');
-                doc.text(`Página ${p} de ${totalPages}`, pageNumX, 11, { align: 'right' });
-            }
+            doc.putTotalPages('{total_pages_count_string}');
+            doc.setPage(counters.page);
         }
-
-        // Volver a la última página antes de guardar
-        doc.setPage(counters.page);
     }
 
     // ─── Descargar el PDF ────────────────────────────────────────────────────
