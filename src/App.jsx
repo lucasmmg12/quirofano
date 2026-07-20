@@ -152,7 +152,7 @@ function App({ currentUser, onLogout }) {
     const [showFrojoCelebration, setShowFrojoCelebration] = useState(() => {
         if (currentUser?.usuario !== 'frojo') return false;
         if (Date.now() > new Date('2026-07-25T00:00:00-03:00').getTime()) return false;
-        return sessionStorage.getItem('frojo_celebrated') !== 'true';
+        return true;
     });
     // Beto widget open state (controlled from sidebar avatar)
     const [betoWidgetOpen, setBetoWidgetOpen] = useState(false);
@@ -1150,10 +1150,7 @@ function App({ currentUser, onLogout }) {
             )}
 
             {showFrojoCelebration && (
-                <FrojoCelebration onClose={() => {
-                    sessionStorage.setItem('frojo_celebrated', 'true');
-                    setShowFrojoCelebration(false);
-                }} />
+                <FrojoCelebration onClose={() => setShowFrojoCelebration(false)} />
             )}
         </div>
     );
