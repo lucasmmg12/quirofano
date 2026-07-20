@@ -54,6 +54,7 @@ import PacientesPanel from './components/PacientesPanel.jsx';
 import WelcomeOnboarding from './components/WelcomeOnboarding.jsx';
 import UserActivityPanel from './components/UserActivityPanel.jsx';
 import ModuleOnboarding from './components/ModuleOnboarding.jsx';
+import FrojoCelebration from './components/FrojoCelebration.jsx';
 import { startSession, endSession, trackModuleChange } from './lib/activityTracker';
 import { supabase } from './lib/supabase';
 import './App.css';
@@ -148,6 +149,11 @@ function App({ currentUser, onLogout }) {
     // #4 Command Palette
     const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
     const betoWidgetRef = useRef(null);
+    const [showFrojoCelebration, setShowFrojoCelebration] = useState(() => {
+        if (currentUser?.usuario !== 'frojo') return false;
+        if (Date.now() > new Date('2026-07-25T00:00:00-03:00').getTime()) return false;
+        return sessionStorage.getItem('frojo_celebrated') !== 'true';
+    });
     // Beto widget open state (controlled from sidebar avatar)
     const [betoWidgetOpen, setBetoWidgetOpen] = useState(false);
     const [activeView, setActiveViewRaw] = useState(() => localStorage.getItem('active_view') || 'inicio');
@@ -1141,6 +1147,13 @@ function App({ currentUser, onLogout }) {
                         </button>
                     </div>
                 </div>
+            )}
+
+            {showFrojoCelebration && (
+                <FrojoCelebration onClose={() => {
+                    sessionStorage.setItem('frojo_celebrated', 'true');
+                    setShowFrojoCelebration(false);
+                }} />
             )}
         </div>
     );
