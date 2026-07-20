@@ -396,8 +396,8 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
 
     // Ordenamiento
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' }); // { key, direction: 'asc'|'desc' }
-
     const [kpiFilter, setKpiFilter] = useState('all');
+    const [selectedMonthFilter, setSelectedMonthFilter] = useState('all');
     const [showStats, setShowStats] = useState(false);
     const [activeTab, setActiveTab] = useState('resumen'); // 'resumen' | 'distribucion' | 'tendencias' | 'avanzado'
 
@@ -545,12 +545,40 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
             setColumnMapping({});
             setColumnFilters({});
             setKpiFilter('all');
+            setSelectedMonthFilter('all');
             setSortConfig({ key: null, direction: 'asc' });
             setPatientRiskFilter('all');
             setPatientSearch('');
             setPatientPage(1);
         }
     };
+
+    // =============================================
+    // LÓGICA DE FILTRADO GLOBAL POR MES
+    // =============================================
+    const availableMonths = useMemo(() => {
+        const unique = [];
+        groupedPatients.forEach(pat => {
+            if (pat.mesAdmision && !unique.includes(pat.mesAdmision)) {
+                unique.push(pat.mesAdmision);
+            }
+        });
+        return unique;
+    }, [groupedPatients]);
+
+    const { filteredOriginalRows, filteredGroupedPatientsByMonth } = useMemo(() => {
+        if (selectedMonthFilter === 'all') {
+            return { filteredOriginalRows: originalRows, filteredGroupedPatientsByMonth: groupedPatients };
+        }
+        
+        const filteredGroups = groupedPatients.filter(pat => pat.mesAdmision === selectedMonthFilter);
+        const filteredRows = [];
+        filteredGroups.forEach(pat => {
+            filteredRows.push(...pat.rows);
+        });
+        
+        return { filteredOriginalRows: filteredRows, filteredGroupedPatientsByMonth: filteredGroups };
+    }, [originalRows, groupedPatients, selectedMonthFilter]);
 
     // =============================================
     // LÓGICA DE FILTRADO Y MÉTRIQUES
@@ -568,7 +596,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
 
         const altaCol = columnMapping.fechaAlta;
 
-        originalRows.forEach(row => {
+        filteredOriginalRows.forEach(row => {
             const status = row._auditStatus;
             if (status === 'OK') ok++;
             else if (status === 'SIN_AMBOS') {
@@ -589,15 +617,15 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
             }
         });
 
-        groupedPatients.forEach(pat => {
+        filteredGroupedPatientsByMonth.forEach(pat => {
             totalGaps += pat.gaps.length;
             totalDuplicados += pat.evoluciones.filter(ev => ev.isDuplicated).length;
 
         });
 
         return {
-            total: originalRows.length,
-            totalAdmisiones: groupedPatients.length,
+            total: filteredOriginalRows.length,
+            totalAdmisiones: filteredGroupedPatientsByMonth.length,
             ok,
             sinFecha,
             sinRespuesta,
@@ -606,11 +634,11 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
             totalGaps,
             totalDuplicados
         };
-    }, [originalRows, columnMapping, groupedPatients]);
+    }, [filteredOriginalRows, columnMapping, filteredGroupedPatientsByMonth]);
 
     // Estadísticas de Omisiones avanzadas para los 10 gráficos
     const statsData = useMemo(() => {
-        const obsRows = originalRows.filter(row => row._auditStatus !== 'OK');
+        const obsRows = filteredOriginalRows.filter(row => row._auditStatus !== 'OK');
         const espCol = columnMapping.especialidad;
         const serieCol = columnMapping.serieAdmision;
         const roomCol = columnMapping.habitacion;
@@ -618,8 +646,8 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
         const pacCol = columnMapping.paciente;
 
         // 1. Score de Calidad
-        const total = originalRows.length;
-        const okCount = originalRows.filter(r => r._auditStatus === 'OK').length;
+        const total = filteredOriginalRows.length;
+        const okCount = filteredOriginalRows.filter(r => r._auditStatus === 'OK').length;
         const qualityScore = total > 0 ? Math.round((okCount / total) * 100) : 0;
 
         // 2. Gráfico de Dona: Distribución
@@ -633,8 +661,8 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
         ].filter(item => item.value > 0);
 
         // 3. Embudo de Calidad (Funnel)
-        const conFecha = originalRows.filter(r => r._hasFecha).length;
-        const conRespuesta = originalRows.filter(r => r._hasRespuesta).length;
+        const conFecha = filteredOriginalRows.filter(r => r._hasFecha).length;
+        const conRespuesta = filteredOriginalRows.filter(r => r._hasRespuesta).length;
         const funnelData = [
             { stage: '1. Procesados', valor: total, fill: '#1e5fa6' },
             { stage: '2. Con Fecha', valor: conFecha, fill: '#3b82f6' },
@@ -733,13 +761,13 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
             bySpecialty, bySerie, byRoom, 
             temporalData, treemapData, scatterData 
         };
-    }, [originalRows, columnMapping, kpis]);
+    }, [filteredOriginalRows, columnMapping, kpis]);
 
     // 1. Filtrar por KPI pill activo
     const rowsFilteredByKpi = useMemo(() => {
-        if (kpiFilter === 'all') return originalRows;
+        if (kpiFilter === 'all') return filteredOriginalRows;
         const altaCol = columnMapping.fechaAlta;
-        return originalRows.filter(row => {
+        return filteredOriginalRows.filter(row => {
             if (kpiFilter === 'ok') return row._auditStatus === 'OK';
             if (kpiFilter === 'sin_ambos') return row._auditStatus === 'SIN_AMBOS';
             if (kpiFilter === 'sin_fecha') return !row._hasFecha; // incluye sin ambos
@@ -751,7 +779,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
             }
             return true;
         });
-    }, [originalRows, kpiFilter, columnMapping]);
+    }, [filteredOriginalRows, kpiFilter, columnMapping]);
 
     // Valores únicos para menús de filtros por columna (se basan en las filas filtradas por KPI para no sugerir valores inexistentes)
     const uniqueColumnValues = useMemo(() => {
@@ -834,7 +862,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
 
     // Filtrado de pacientes (Ciclos de Internación)
     const filteredGroupedPatients = useMemo(() => {
-        let result = groupedPatients;
+        let result = filteredGroupedPatientsByMonth;
 
         if (patientSearch) {
             const q = patientSearch.toLowerCase();
@@ -859,7 +887,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
         }
 
         return result;
-    }, [groupedPatients, patientSearch, patientRiskFilter]);
+    }, [filteredGroupedPatientsByMonth, patientSearch, patientRiskFilter]);
 
     const patientPageSize = 10;
     const totalPatientPages = Math.ceil(filteredGroupedPatients.length / patientPageSize) || 1;
@@ -1507,6 +1535,32 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
 
                 {fileName && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        {availableMonths.length > 0 && (
+                            <select
+                                value={selectedMonthFilter}
+                                onChange={(e) => {
+                                    setSelectedMonthFilter(e.target.value);
+                                    setPatientPage(1);
+                                    setCurrentPage(1);
+                                }}
+                                style={{
+                                    padding: '8px 14px', borderRadius: '10px',
+                                    background: '#fff', color: 'var(--primary-700)',
+                                    border: '1px solid rgba(30, 95, 166, 0.25)',
+                                    fontSize: '0.85rem', fontWeight: 700,
+                                    cursor: 'pointer', outline: 'none',
+                                    appearance: 'none',
+                                    minWidth: '150px'
+                                }}
+                                onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
+                                onMouseOut={e => e.currentTarget.style.background = '#fff'}
+                            >
+                                <option value="all">📅 Todos los Meses</option>
+                                {availableMonths.map(m => (
+                                    <option key={m} value={m}>{m}</option>
+                                ))}
+                            </select>
+                        )}
                         <button
                             onClick={() => setShowStats(prev => !prev)}
                             style={{
