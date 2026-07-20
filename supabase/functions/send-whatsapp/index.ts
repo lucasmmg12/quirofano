@@ -126,10 +126,17 @@ Deno.serve(async (req) => {
         // ========================================
         if (action === 'send_template') {
             // Force string coercion to prevent Zod validation issues in BuilderBot
-            const to = String(body.to || '').trim();
+            const to = String(body.to || body.number || '').trim();
             const templateName = String(body.templateName || '').trim();
             const languageCode = String(body.languageCode || 'es').trim();
-            const components = body.components;
+            const components = body.components || body.templateVariables ? (
+                body.components || [
+                    {
+                        type: 'body',
+                        parameters: (body.templateVariables || []).map(text => ({ type: 'text', text: String(text) }))
+                    }
+                ]
+            ) : undefined;
             
             console.log(`[send-whatsapp] send_template parsed | to: "${to}" | template: "${templateName}" | lang: "${languageCode}"`);
             

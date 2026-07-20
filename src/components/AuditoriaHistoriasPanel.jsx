@@ -80,7 +80,6 @@ const COLUMN_KEYWORDS = {
     medico: ['medico', 'médico', 'profesional', 'doctor', 'dr', 'medico_nombre', 'nombre_medico', 'profesional_nombre'],
     habitacion: ['habitacion', 'habitación', 'hab', 'pieza', 'cama'],
     serieAdmision: ['serie admision', 'serie admisión', 'serie_admision', 'serie'],
-    fojaQuirurgica: ['foja_quirurgica', 'foja quirurgica', 'protocolo_quirurgico', 'protocolo quirurgico', 'quirurgica', 'tiene_protocolo', 'foja', 'foja_quir', 'protocolo'],
     fechaIngreso: ['fecha ingreso', 'fecha_ingreso', 'ingreso', 'fec_ingreso', 'ingreso_fecha', 'fec_ing', 'fecha_ing']
 };
 
@@ -175,7 +174,6 @@ const processAuditData = (processedRows, mapping) => {
                 habitacion: mapping.habitacion ? String(row[mapping.habitacion] || '').trim() : 'Sin Habitación',
                 fechaIngreso: mapping.fechaIngreso ? String(row[mapping.fechaIngreso] || '').trim() : '',
                 fechaAlta: mapping.fechaAlta ? String(row[mapping.fechaAlta] || '').trim() : '',
-                fojaQuirurgica: mapping.fojaQuirurgica ? String(row[mapping.fojaQuirurgica] || '').trim() : '',
                 evoluciones: [],
                 rows: []
             };
@@ -239,17 +237,6 @@ const processAuditData = (processedRows, mapping) => {
             }
         });
 
-        const esQuirurgico = specialtyKeywordsQuir.some(kw => pat.especialidad.toLowerCase().includes(kw)) ||
-                             (pat.fojaQuirurgica && pat.fojaQuirurgica.toLowerCase() !== 'no');
-        
-        const tieneFoja = pat.fojaQuirurgica && 
-                          pat.fojaQuirurgica.toLowerCase() !== 'no' && 
-                          pat.fojaQuirurgica.toLowerCase() !== 'false' && 
-                          pat.fojaQuirurgica.toLowerCase() !== 'null' && 
-                          pat.fojaQuirurgica.trim() !== '';
-
-        const faltaFoja = esQuirurgico && !tieneFoja;
-
         const alertas = [];
         if (gaps.length > 0) {
             alertas.push({
@@ -268,23 +255,12 @@ const processAuditData = (processedRows, mapping) => {
             });
         }
 
-        if (faltaFoja) {
-            alertas.push({
-                tipo: 'CRITICO',
-                codigo: 'FALTA_FOJA',
-                mensaje: 'Falta registrar Foja Quirúrgica en paciente quirúrgico'
-            });
-        }
-
         return {
             ...pat,
             gaps,
-            esQuirurgico,
-            tieneFoja,
-            faltaFoja,
             alertas,
 
-            hasCriticalIssues: gaps.length > 0 || faltaFoja || duplicadosCount > 0
+            hasCriticalIssues: gaps.length > 0 || duplicadosCount > 0
         };
     });
 };
@@ -292,7 +268,7 @@ const processAuditData = (processedRows, mapping) => {
 const isSurgicalDay = (day) => {
     if (!day.valRespuesta) return false;
     const txt = day.valRespuesta.toLowerCase();
-    return ['cirugia', 'cirugía', 'quirurg', 'quirúrg', 'foja', 'quirofano', 'quirófano', 'operacion', 'operación'].some(kw => txt.includes(kw));
+    return ['cirugia', 'cirugía', 'quirurg', 'quirúrg', 'quirofano', 'quirófano', 'operacion', 'operación'].some(kw => txt.includes(kw));
 };
 
 const getPatientTimelineDays = (pat) => {
@@ -363,7 +339,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
     const [fileName, setFileName] = useState('');
     const [originalRows, setOriginalRows] = useState([]);
     const [groupedPatients, setGroupedPatients] = useState([]);
-    const [viewMode, setViewMode] = useState('planilla'); // 'planilla' | 'pacientes'
+    const [viewMode, setViewMode] = useState('pacientes'); // 'planilla' | 'pacientes'
     const [headers, setHeaders] = useState([]);
     const [columnMapping, setColumnMapping] = useState({});
     const [dragOver, setDragOver] = useState(false);
@@ -555,8 +531,6 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
         let sinAlta = 0;
         let totalGaps = 0;
         let totalDuplicados = 0;
-        let totalFaltaFoja = 0;
-
 
         const altaCol = columnMapping.fechaAlta;
 
@@ -584,7 +558,6 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
         groupedPatients.forEach(pat => {
             totalGaps += pat.gaps.length;
             totalDuplicados += pat.evoluciones.filter(ev => ev.isDuplicated).length;
-            if (pat.faltaFoja) totalFaltaFoja++;
 
         });
 
@@ -596,8 +569,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
             sinAmbos,
             sinAlta,
             totalGaps,
-            totalDuplicados,
-            totalFaltaFoja
+            totalDuplicados
         };
     }, [originalRows, columnMapping, groupedPatients]);
 
@@ -841,7 +813,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
 
         if (patientRiskFilter !== 'all') {
             result = result.filter(p => {
-                const hasCritical = p.gaps.length > 0 || p.faltaFoja;
+                const hasCritical = p.gaps.length > 0;
                 const hasMedium = p.evoluciones.some(ev => ev.isDuplicated);
 
                 if (patientRiskFilter === 'high') return hasCritical;
@@ -1816,7 +1788,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                     </div>
                                 </div>
                             </div>
-                            <span className="kpi-card__desc">Días sin evolución cargada</span>
+                            <span className="kpi-card__desc">Días de internación sin evolución registrada. Riesgo de glosa.</span>
                         </div>
 
                         {/* 2. Duplicados */}
@@ -1833,24 +1805,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                     </div>
                                 </div>
                             </div>
-                            <span className="kpi-card__desc">Observaciones repetidas (copy-paste)</span>
-                        </div>
-
-                        {/* 3. Quirófano sin Foja */}
-                        <div 
-                            className="kpi-card"
-                            style={{ borderLeft: '4px solid #8B5CF6' }}
-                        >
-                            <div>
-                                <span className="kpi-card__title">Falta Foja Quirúrgica</span>
-                                <div className="kpi-card__main">
-                                    <span className="kpi-card__value">{kpis.totalFaltaFoja}</span>
-                                    <div className="kpi-card__icon-wrap" style={{ background: '#F3E8FF', color: '#6D28D9' }}>
-                                        <AlertCircle size={20} />
-                                    </div>
-                                </div>
-                            </div>
-                            <span className="kpi-card__desc">Omisión de registro quirúrgico</span>
+                            <span className="kpi-card__desc">Días consecutivos con textos idénticos o muy similares.</span>
                         </div>
                     </div>
 
@@ -2277,6 +2232,12 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                 )}
                             </div>
 
+                            {/* Mensaje descriptivo Planilla General */}
+                            <div style={{ marginBottom: '16px', fontSize: '0.8rem', color: 'var(--neutral-600)', background: 'var(--primary-50)', padding: '10px 14px', borderRadius: '8px', borderLeft: '4px solid var(--primary-400)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Info size={16} style={{ color: 'var(--primary-600)' }} />
+                                Esta vista te muestra de forma detallada, fila por fila, el contenido original del Excel importado. Ideal para usar los filtros avanzados por columna y auditar datos crudos.
+                            </div>
+
                             {/* CONTENEDOR DE TABLA ESTILO EXCEL */}
                             <div className="cart" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: '800px' }}>
                                 <div className="cart__table-wrapper" style={{ overflow: 'auto', flex: 1 }}>
@@ -2457,6 +2418,12 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                         </>
                     ) : (
                         <>
+                            {/* Mensaje descriptivo Auditoria Pacientes */}
+                            <div style={{ marginBottom: '16px', width: '100%', fontSize: '0.8rem', color: 'var(--neutral-600)', background: '#F8FAFC', padding: '10px 14px', borderRadius: '8px', borderLeft: '4px solid #10B981', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Info size={16} style={{ color: '#10B981' }} />
+                                Esta vista agrupa las filas del Excel por Número de Admisión, reconstruyendo el "ciclo de internación" de cada paciente para facilitar el seguimiento cronológico y detectar los días puntuales (Gaps) donde falta información.
+                            </div>
+
                             {/* BARRA DE BÚSQUEDA PACIENTES */}
                             <div style={{
                                 display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap',
@@ -2497,7 +2464,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                 ) : (
                                     paginatedPatients.map(pat => {
                                         const timelineDays = getPatientTimelineDays(pat);
-                                        const hasAlertaCritica = pat.gaps.length > 0 || pat.faltaFoja;
+                                        const hasAlertaCritica = pat.gaps.length > 0;
                                         
                                         let riskColor = '#10B981';
                                         let riskBg = '#E6FCF5';
