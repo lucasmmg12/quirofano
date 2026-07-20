@@ -165,10 +165,14 @@ const processAuditData = (processedRows, mapping) => {
         const fechaIng = mapping.fechaIngreso ? String(row[mapping.fechaIngreso] || '').trim() : '';
         
         let mesStr = '';
+        let mesNombre = '';
         if (fechaIng) {
             const dateObj = parseDateDMY(fechaIng);
             if (dateObj) {
                 mesStr = `-${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
+                // Obtener nombre del mes en español
+                const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+                mesNombre = `${meses[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
             }
         }
         
@@ -178,6 +182,7 @@ const processAuditData = (processedRows, mapping) => {
             patientsMap[groupKey] = {
                 id: groupKey,
                 numeroAdmision: numAdm || 'Sin N°',
+                mesAdmision: mesNombre,
                 paciente: mapping.paciente ? String(row[mapping.paciente] || '').trim() : 'Paciente Desconocido',
                 especialidad: mapping.especialidad ? String(row[mapping.especialidad] || '').trim() : 'Sin Especialidad',
                 medico: mapping.medico ? String(row[mapping.medico] || '').trim() : 'Sin Profesional',
@@ -577,6 +582,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
 
         return {
             total: originalRows.length,
+            totalAdmisiones: groupedPatients.length,
             ok,
             sinFecha,
             sinRespuesta,
@@ -1649,13 +1655,13 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                             <div>
                                 <span className="kpi-card__title">Total Admisiones</span>
                                 <div className="kpi-card__main">
-                                    <span className="kpi-card__value">{kpis.total}</span>
+                                    <span className="kpi-card__value">{kpis.totalAdmisiones}</span>
                                     <div className="kpi-card__icon-wrap" style={{ background: 'rgba(30, 95, 166, 0.08)', color: '#1e5fa6' }}>
                                         <FileSpreadsheet size={20} />
                                     </div>
                                 </div>
                             </div>
-                            <span className="kpi-card__desc">Filas totales importadas</span>
+                            <span className="kpi-card__desc">Ciclos de internación (de {kpis.total} filas)</span>
                         </div>
 
                         {/* 2. OK */}
@@ -2529,7 +2535,14 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                                             </span>
                                                         </h3>
                                                         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '4px', fontSize: '0.75rem', color: 'var(--neutral-500)' }}>
-                                                            <span>Admisión: <strong style={{ color: 'var(--neutral-700)' }}>{pat.numeroAdmision}</strong></span>
+                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                Admisión: <strong style={{ color: 'var(--neutral-700)' }}>{pat.numeroAdmision}</strong>
+                                                                {pat.mesAdmision && (
+                                                                    <span style={{ fontSize: '0.65rem', background: '#E2E8F0', color: '#475569', padding: '2px 6px', borderRadius: '4px', textTransform: 'capitalize' }}>
+                                                                        {pat.mesAdmision}
+                                                                    </span>
+                                                                )}
+                                                            </span>
                                                             <span>•</span>
                                                             <span>Habitación: <strong style={{ color: 'var(--neutral-700)' }}>{pat.habitacion || '—'}</strong></span>
                                                             <span>•</span>
