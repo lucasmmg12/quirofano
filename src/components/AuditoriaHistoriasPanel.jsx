@@ -166,9 +166,11 @@ const processAuditData = (processedRows, mapping) => {
         
         let mesStr = '';
         let mesNombre = '';
+        let fechaObjIngreso = null;
         if (fechaIng) {
             const dateObj = parseDateDMY(fechaIng);
             if (dateObj) {
+                fechaObjIngreso = dateObj;
                 mesStr = `-${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
                 // Obtener nombre del mes en español
                 const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -183,6 +185,7 @@ const processAuditData = (processedRows, mapping) => {
                 id: groupKey,
                 numeroAdmision: numAdm || 'Sin N°',
                 mesAdmision: mesNombre,
+                fechaObjIngreso: fechaObjIngreso,
                 paciente: mapping.paciente ? String(row[mapping.paciente] || '').trim() : 'Paciente Desconocido',
                 especialidad: mapping.especialidad ? String(row[mapping.especialidad] || '').trim() : 'Sin Especialidad',
                 medico: mapping.medico ? String(row[mapping.medico] || '').trim() : 'Sin Profesional',
@@ -213,7 +216,8 @@ const processAuditData = (processedRows, mapping) => {
 
     const specialtyKeywordsQuir = ['cirugia', 'cirugía', 'quirurg', 'quirúrg', 'traumato', 'gineco', 'obstetr', 'cardio', 'urolog', 'quir', 'qx'];
 
-    return Object.values(patientsMap).map(pat => {
+
+    const result = Object.values(patientsMap).map(pat => {
         pat.evoluciones.sort((a, b) => {
             if (!a.fechaObj) return 1;
             if (!b.fechaObj) return -1;
@@ -282,6 +286,17 @@ const processAuditData = (processedRows, mapping) => {
             hasCriticalIssues: gaps.length > 0 || duplicadosCount > 0
         };
     });
+
+    result.sort((a, b) => {
+        if (a.fechaObjIngreso && b.fechaObjIngreso) {
+            return b.fechaObjIngreso - a.fechaObjIngreso;
+        }
+        if (a.fechaObjIngreso) return -1;
+        if (b.fechaObjIngreso) return 1;
+        return String(b.numeroAdmision).localeCompare(String(a.numeroAdmision));
+    });
+
+    return result;
 };
 
 const isSurgicalDay = (day) => {
@@ -2482,9 +2497,12 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                         <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--neutral-400)' }}>Ajusta los filtros o la búsqueda.</p>
                                     </div>
                                 ) : (
-                                    paginatedPatients.map(pat => {
+                                    paginatedPatients.map((pat, idx) => {
                                         const timelineDays = getPatientTimelineDays(pat);
                                         const hasAlertaCritica = pat.gaps.length > 0;
+                                        
+                                        const prevPat = idx > 0 ? paginatedPatients[idx - 1] : null;
+                                        const showMonthHeader = pat.mesAdmision && (!prevPat || prevPat.mesAdmision !== pat.mesAdmision);
                                         
                                         let riskColor = '#10B981';
                                         let riskBg = '#E6FCF5';
@@ -2504,14 +2522,22 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                         }
 
                                         return (
-                                            <div 
-                                                key={pat.id} 
-                                                style={{
-                                                    background: '#ffffff',
-                                                    borderRadius: '12px',
-                                                    border: `1px solid ${hasAlertaCritica ? '#FEE2E2' : 'rgba(0, 0, 0, 0.06)'}`,
-                                                    padding: '16px',
-                                                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.02)',
+                                            <div key={pat.id} style={{ display: 'contents' }}>
+                                                {showMonthHeader && (
+                                                    <div style={{ marginTop: idx === 0 ? '0' : '8px', paddingBottom: '8px', borderBottom: '2px solid var(--primary-100)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <Calendar size={18} style={{ color: 'var(--primary-600)' }} />
+                                                        <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--primary-800)', textTransform: 'capitalize' }}>
+                                                            {pat.mesAdmision}
+                                                        </h2>
+                                                    </div>
+                                                )}
+                                                <div 
+                                                    style={{
+                                                        background: '#ffffff',
+                                                        borderRadius: '12px',
+                                                        border: `1px solid ${hasAlertaCritica ? '#FEE2E2' : 'rgba(0, 0, 0, 0.06)'}`,
+                                                        padding: '16px',
+                                                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.02)',
                                                     display: 'flex',
                                                     flexDirection: 'column',
                                                     gap: '12px'
@@ -2680,6 +2706,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                                     </div>
                                                 )}
                                             </div>
+                                        </div>
                                         );
                                     })
                                 )}
