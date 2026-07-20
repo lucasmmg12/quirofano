@@ -4,7 +4,7 @@ import {
     Upload, FileSpreadsheet, Search, RefreshCw, X, Download, 
     CheckCircle, AlertTriangle, AlertCircle, FileText, ChevronDown, 
     ChevronUp, ChevronLeft, ChevronRight, ListFilter, Trash2, ShieldAlert,
-    DollarSign, Copy, Calendar
+    DollarSign, Copy, Calendar, Info
 } from 'lucide-react';
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
