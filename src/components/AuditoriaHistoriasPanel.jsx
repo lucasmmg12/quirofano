@@ -162,7 +162,17 @@ const processAuditData = (processedRows, mapping) => {
 
     processedRows.forEach(row => {
         const numAdm = mapping.numeroAdmision ? String(row[mapping.numeroAdmision] || '').trim() : '';
-        const groupKey = numAdm || String(row[mapping.paciente] || '').trim() || `fila-${row._origIndex}`;
+        const fechaIng = mapping.fechaIngreso ? String(row[mapping.fechaIngreso] || '').trim() : '';
+        
+        let mesStr = '';
+        if (fechaIng) {
+            const dateObj = parseDateDMY(fechaIng);
+            if (dateObj) {
+                mesStr = `-${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
+            }
+        }
+        
+        const groupKey = (numAdm ? numAdm + mesStr : '') || String(row[mapping.paciente] || '').trim() || `fila-${row._origIndex}`;
 
         if (!patientsMap[groupKey]) {
             patientsMap[groupKey] = {
@@ -246,12 +256,16 @@ const processAuditData = (processedRows, mapping) => {
             });
         }
 
-        const duplicadosCount = pat.evoluciones.filter(ev => ev.isDuplicated).length;
+        const duplicados = pat.evoluciones.filter(ev => ev.isDuplicated);
+        const duplicadosCount = duplicados.length;
         if (duplicadosCount > 0) {
+            const diasDuplicadosStr = duplicados.map(ev => ev.fechaStr).join(', ');
+            const detallesTextos = duplicados.map(ev => `${ev.fechaStr}: "${ev.texto.substring(0, 100)}${ev.texto.length > 100 ? '...' : ''}"`);
             alertas.push({
                 tipo: 'MEDIO',
                 codigo: 'RIESGO_DUPLICADO',
-                mensaje: `${duplicadosCount} evolución/es duplicada/s (Copy-paste)`
+                mensaje: `${duplicadosCount} evolución/es duplicada/s (Copy-paste). Días afectados: ${diasDuplicadosStr}`,
+                detalles: detallesTextos
             });
         }
 
@@ -2627,18 +2641,27 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                                                 key={alIdx} 
                                                                 style={{ 
                                                                     display: 'flex', 
-                                                                    alignItems: 'center', 
-                                                                    gap: '8px', 
+                                                                    flexDirection: 'column',
+                                                                    gap: '4px',
                                                                     fontSize: '0.75rem', 
                                                                     color: al.tipo === 'CRITICO' ? '#B91C1C' : '#D97706',
                                                                     background: al.tipo === 'CRITICO' ? '#FEF2F2' : '#FEF3C7',
-                                                                    padding: '6px 10px',
+                                                                    padding: '8px 12px',
                                                                     borderRadius: '6px',
                                                                     fontWeight: 500
                                                                 }}
                                                             >
-                                                                {al.tipo === 'CRITICO' ? <AlertCircle size={14} /> : <AlertTriangle size={14} />}
-                                                                {al.mensaje}
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    {al.tipo === 'CRITICO' ? <AlertCircle size={14} style={{ flexShrink: 0 }} /> : <AlertTriangle size={14} style={{ flexShrink: 0 }} />}
+                                                                    <span>{al.mensaje}</span>
+                                                                </div>
+                                                                {al.detalles && al.detalles.length > 0 && (
+                                                                    <div style={{ marginTop: '4px', paddingLeft: '22px', fontSize: '0.7rem', color: al.tipo === 'CRITICO' ? '#991B1B' : '#B45309', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                                                        {al.detalles.map((det, idx) => (
+                                                                            <span key={idx} style={{ fontStyle: 'italic', background: 'rgba(255,255,255,0.4)', padding: '2px 6px', borderRadius: '4px' }}>{det}</span>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         ))}
                                                     </div>
