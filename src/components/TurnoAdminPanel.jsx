@@ -1031,14 +1031,14 @@ function TurnoCard({ turno, config, elapsed, onLlamar, onIniciar, onFinalizar, o
                                         ...s.turnoActionBtn,
                                         background: 'linear-gradient(135deg, #16A34A, #15803D)',
                                         color: '#fff', flex: 1, justifyContent: 'center',
-                                        padding: '10px', fontSize: '0.88rem', ...lockedStyle
-                                    }} title={lockedTitle}>
+                                        padding: '10px', fontSize: '0.88rem'
+                                    }} title="Finalizar turno (Override permitido)">
                                         <Square size={14} /> Finalizar Atención
                                     </button>
                                     <button onClick={onDerivar} style={{ ...s.turnoActionBtn, background: '#F0F4F8', color: '#475569', border: '1px solid #E2E8F0', padding: '10px' }}>
                                         <ArrowRightLeft size={14} /> Derivar
                                     </button>
-                                    <button onClick={() => onDevolver()} style={{ ...s.turnoActionBtn, background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A', padding: '10px', ...lockedStyle }} title={lockedTitle || "Devolver a espera"}>
+                                    <button onClick={() => onDevolver()} style={{ ...s.turnoActionBtn, background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A', padding: '10px' }} title="Devolver a espera (Override permitido)">
                                         <RotateCcw size={14} /> Devolver
                                     </button>
                                 </>
