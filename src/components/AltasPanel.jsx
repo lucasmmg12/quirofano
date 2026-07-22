@@ -24,6 +24,9 @@ import SalusSyncButton from './SalusSyncButton';
 import AltasMetricsPanel from './AltasMetricsPanel';
 import SignaturePad from './SignaturePad';
 import { SkeletonTablePanel } from './SkeletonLoader';
+import { hcLocalStore } from '../store/hcLocalStore';
+import { processHCExcelFile } from '../utils/parseHCExcel';
+import HistoriaClinicaTimeline3D from './historias/HistoriaClinicaTimeline3D';
 
 // ── Helpers ──
 function formatDate(d) {
@@ -70,6 +73,8 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [altas, setAltas] = useState([]);
     const [loading, setLoading] = useState(true);
     const [expandedId, setExpandedId] = useState(null);
+    const [hcLoadedCount, setHcLoadedCount] = useState(0);
+    const [showHCTimelineFor, setShowHCTimelineFor] = useState(null);
     const [historialInternaciones, setHistorialInternaciones] = useState([]);
     const [loadingHistorial, setLoadingHistorial] = useState(false);
     const [statusDropdownId, setStatusDropdownId] = useState(null);
@@ -1065,6 +1070,34 @@ export default function AltasPanel({ addToast, currentUser }) {
                         }}>
                         <Scissors size={14} /> Corte de Mes (Neo/UCI)
                     </button>
+                    {hcLoadedCount > 0 && (
+                        <span style={{ fontSize: '0.75rem', color: '#059669', background: '#D1FAE5', padding: '4px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                            {hcLoadedCount} HC en memoria
+                        </span>
+                    )}
+                    <label style={{
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        padding: '8px 14px', borderRadius: '8px',
+                        background: '#EFF6FF', color: '#1D4ED8',
+                        border: '1px solid #BFDBFE', cursor: 'pointer',
+                        fontSize: '0.8rem', fontWeight: 600,
+                    }}>
+                        <FileDown size={14} /> Cargar HC (Excel)
+                        <input type="file" accept=".xlsx" style={{ display: 'none' }}
+                            onChange={async (e) => {
+                                if(e.target.files && e.target.files[0]) {
+                                    try {
+                                        addToast?.('Procesando archivo Excel...', 'info');
+                                        const count = await processHCExcelFile(e.target.files[0]);
+                                        setHcLoadedCount(count);
+                                        addToast?.(`¡${count} historias cargadas a memoria!`, 'success');
+                                    } catch(err) {
+                                        addToast?.(`Error: ${err.message}`, 'error');
+                                    }
+                                }
+                            }} 
+                        />
+                    </label>
                     <SalusSyncButton onComplete={loadData} addToast={addToast} />
                     {/* Export buttons */}
                     <button
@@ -2057,6 +2090,18 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                                     </div>
                                                                 ))}
                                                             </div>
+                                                            {hcLocalStore.getAdmissionData(alta.numero_admision) && (
+                                                                <div style={{ marginTop: '12px' }}>
+                                                                    <button 
+                                                                        onClick={(e) => { e.stopPropagation(); setShowHCTimelineFor(alta.numero_admision); }}
+                                                                        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '8px', background: '#1E293B', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s' }}
+                                                                        onMouseOver={e => e.currentTarget.style.background = '#0F172A'}
+                                                                        onMouseOut={e => e.currentTarget.style.background = '#1E293B'}
+                                                                    >
+                                                                        <span style={{ fontSize: '1rem' }}>🧊</span> Ver Línea de Tiempo 3D
+                                                                    </button>
+                                                                </div>
+                                                            )}
                                                             {/* Botón Cerrar Período (para internaciones que cruzan mes) */}
                                                             {alta._cruzaMes && (
                                                                 <div style={{ marginTop: '12px', padding: '10px', borderRadius: '8px', background: alta.facturacion_cerrada_hasta ? '#F0FDF4' : '#EEF2FF', border: `1px solid ${alta.facturacion_cerrada_hasta ? '#A7F3D0' : '#C7D2FE'}` }}>
@@ -2503,6 +2548,24 @@ export default function AltasPanel({ addToast, currentUser }) {
                                 {corteLoading ? 'Ejecutando...' : 'Confirmar y Ejecutar'}
                             </button>
                         </div>
+                    </div>
+                </div>
+                </div>
+            )}
+            
+            {/* Modal HC Timeline */}
+            {showHCTimelineFor && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', backdropFilter: 'blur(4px)' }}>
+                    <div style={{ background: '#0F172A', width: '100%', maxWidth: '1200px', height: '80vh', borderRadius: '12px', position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+                        <button 
+                            onClick={() => setShowHCTimelineFor(null)} 
+                            style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer', zIndex: 50, transition: 'background 0.2s' }}
+                            onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+                            onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                        >
+                            <X size={20} />
+                        </button>
+                        <HistoriaClinicaTimeline3D admissionData={hcLocalStore.getAdmissionData(showHCTimelineFor)} />
                     </div>
                 </div>
             )}
