@@ -280,7 +280,7 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     const handleSelectAllSelectable = () => {
         const selectableIds = sortedAltas
-            .filter(a => (!a.en_carrito_traspaso || a.carrito_traspaso_por === currentUser?.usuario) && (!(a._isFacturada && !a._cruzaMes)) && (!(a.traspaso_id && !a._cruzaMes)))
+            .filter(a => (!a.en_carrito_traspaso || a.carrito_traspaso_por === currentUser?.usuario) && (!(a._isFacturada && !a._cruzaMes)) && (!(a.traspaso_id && !a._cruzaMes && !a._isDevueltaFac)))
             .map(a => a.id);
         setSelectedIds(new Set(selectableIds));
     };
@@ -1808,7 +1808,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }} onClick={e => e.stopPropagation()}>
                                                 {(alta._isFacturada && !alta._cruzaMes) ? (
                                                     <Receipt size={14} style={{ color: '#059669', opacity: 0.7 }} title="Ya facturada" />
-                                                ) : (alta.traspaso_id && !alta._cruzaMes) ? (
+                                                ) : (alta.traspaso_id && !alta._cruzaMes && !alta._isDevueltaFac) ? (
                                                     <PackageCheck size={14} style={{ color: '#059669', opacity: 0.7 }} title="Ya traspasada" />
                                                 ) : (!alta.en_carrito_traspaso || alta.carrito_traspaso_por === currentUser?.usuario) ? (
                                                     !isReadOnly && (
