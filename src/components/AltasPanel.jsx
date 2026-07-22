@@ -2550,7 +2550,6 @@ export default function AltasPanel({ addToast, currentUser }) {
                         </div>
                     </div>
                 </div>
-                </div>
             )}
             
             {/* Modal HC Timeline */}
