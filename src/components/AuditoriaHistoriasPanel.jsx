@@ -10,6 +10,9 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart, Pie, Cell, LineChart, Line, ComposedChart, Treemap, ScatterChart, Scatter, Area
 } from 'recharts';
+import { hcLocalStore } from '../store/hcLocalStore';
+import { processHCExcelFile } from '../utils/parseHCExcel';
+import HistoriaClinicaTimeline3D from './historias/HistoriaClinicaTimeline3D';
 
 // Normalizar celdas vacías, NULL de texto, etc.
 const isNullOrEmpty = (val) => {
@@ -371,6 +374,8 @@ const getPatientTimelineDays = (pat) => {
 export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
     // Archivo y Datos
     const [fileName, setFileName] = useState('');
+    const [hcLoadedCount, setHcLoadedCount] = useState(0);
+    const [showHCTimelineFor, setShowHCTimelineFor] = useState(null);
     const [originalRows, setOriginalRows] = useState([]);
     const [groupedPatients, setGroupedPatients] = useState([]);
     const [viewMode, setViewMode] = useState('pacientes'); // 'planilla' | 'pacientes'
@@ -417,6 +422,15 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
 
         setLoading(true);
         setFileName(file.name);
+
+        // Procesar la data del timeline 3D de HC
+        processHCExcelFile(file)
+            .then(count => {
+                setHcLoadedCount(count);
+                if (count > 0) addToast?.(`Timeline 3D: ${count} historias cargadas a memoria`, 'success');
+            })
+            .catch(e => console.error("Error timeline:", e));
+
         const reader = new FileReader();
 
         reader.onload = (e) => {
@@ -2717,6 +2731,18 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                                             <span>Evolución Quirúrgica</span>
                                                         </div>
                                                     </div>
+                                                    {hcLocalStore.getAdmissionData(pat.numeroAdmision) && (
+                                                        <div style={{ marginTop: '12px' }}>
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); setShowHCTimelineFor(pat.numeroAdmision); }}
+                                                                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '8px', background: '#1E293B', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s' }}
+                                                                onMouseOver={e => e.currentTarget.style.background = '#0F172A'}
+                                                                onMouseOut={e => e.currentTarget.style.background = '#1E293B'}
+                                                            >
+                                                                <span style={{ fontSize: '1rem' }}>🧊</span> Ver Línea de Tiempo 3D Completa
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 {/* Detalle de Alertas del Paciente */}
@@ -2816,6 +2842,23 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                         </>
                     )}
                 </>
+            )}
+
+            {/* Modal HC Timeline */}
+            {showHCTimelineFor && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', backdropFilter: 'blur(4px)' }}>
+                    <div style={{ background: '#0F172A', width: '100%', maxWidth: '1200px', height: '80vh', borderRadius: '12px', position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+                        <button 
+                            onClick={() => setShowHCTimelineFor(null)} 
+                            style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer', zIndex: 50, transition: 'background 0.2s' }}
+                            onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+                            onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                        >
+                            <X size={20} />
+                        </button>
+                        <HistoriaClinicaTimeline3D admissionData={hcLocalStore.getAdmissionData(showHCTimelineFor)} />
+                    </div>
+                </div>
             )}
         </div>
     );
