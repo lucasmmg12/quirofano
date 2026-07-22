@@ -12,7 +12,6 @@ import {
 } from 'recharts';
 import { hcLocalStore } from '../store/hcLocalStore';
 import { processHCExcelFile } from '../utils/parseHCExcel';
-import HistoriaClinicaTimeline3D from './historias/HistoriaClinicaTimeline3D';
 
 // Normalizar celdas vacías, NULL de texto, etc.
 const isNullOrEmpty = (val) => {
@@ -83,7 +82,8 @@ const COLUMN_KEYWORDS = {
     medico: ['medico', 'médico', 'profesional', 'doctor', 'dr', 'medico_nombre', 'nombre_medico', 'profesional_nombre'],
     habitacion: ['habitacion', 'habitación', 'hab', 'pieza', 'cama'],
     serieAdmision: ['serie admision', 'serie admisión', 'serie_admision', 'serie'],
-    fechaIngreso: ['fecha ingreso', 'fecha_ingreso', 'ingreso', 'fec_ingreso', 'ingreso_fecha', 'fec_ing', 'fecha_ing']
+    fechaIngreso: ['fecha ingreso', 'fecha_ingreso', 'ingreso', 'fec_ingreso', 'ingreso_fecha', 'fec_ing', 'fecha_ing'],
+    obraSocial: ['obra social', 'obra_social', 'os', 'financiador', 'cobertura']
 };
 
 const parseDateDMY = (str) => {
@@ -193,6 +193,7 @@ const processAuditData = (processedRows, mapping) => {
                 especialidad: mapping.especialidad ? String(row[mapping.especialidad] || '').trim() : 'Sin Especialidad',
                 medico: mapping.medico ? String(row[mapping.medico] || '').trim() : 'Sin Profesional',
                 habitacion: mapping.habitacion ? String(row[mapping.habitacion] || '').trim() : 'Sin Habitación',
+                obraSocial: mapping.obraSocial ? String(row[mapping.obraSocial] || '').trim() : 'Sin Obra Social',
                 fechaIngreso: mapping.fechaIngreso ? String(row[mapping.fechaIngreso] || '').trim() : '',
                 fechaAlta: mapping.fechaAlta ? String(row[mapping.fechaAlta] || '').trim() : '',
                 evoluciones: [],
@@ -375,7 +376,6 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
     // Archivo y Datos
     const [fileName, setFileName] = useState('');
     const [hcLoadedCount, setHcLoadedCount] = useState(0);
-    const [showHCTimelineFor, setShowHCTimelineFor] = useState(null);
     const [originalRows, setOriginalRows] = useState([]);
     const [groupedPatients, setGroupedPatients] = useState([]);
     const [viewMode, setViewMode] = useState('pacientes'); // 'planilla' | 'pacientes'
@@ -393,6 +393,16 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
     const [patientRiskFilter, setPatientRiskFilter] = useState('all');
     const [patientSearch, setPatientSearch] = useState('');
     const [patientPage, setPatientPage] = useState(1);
+    const [expandedPatients, setExpandedPatients] = useState(new Set());
+
+    const togglePatientExpansion = (id) => {
+        setExpandedPatients(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
 
     // Filtros por Columna (estilo Excel)
     const [columnFilters, setColumnFilters] = useState({}); // { [header]: Set(selectedValues) }
@@ -2627,6 +2637,23 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                                             }}>
                                                                 {riskText}
                                                             </span>
+                                                            {(() => {
+                                                                const adData = hcLocalStore.getAdmissionData(pat.numeroAdmision);
+                                                                const hasFoja = adData && adData.fojas && adData.fojas.length > 0;
+                                                                return (
+                                                                    <span style={{ 
+                                                                        fontSize: '0.7rem', 
+                                                                        padding: '2px 8px', 
+                                                                        borderRadius: '6px', 
+                                                                        fontWeight: 700,
+                                                                        color: hasFoja ? '#1E40AF' : '#94A3B8',
+                                                                        background: hasFoja ? '#DBEAFE' : '#F1F5F9',
+                                                                        border: `1px solid ${hasFoja ? '#BFDBFE' : '#E2E8F0'}`
+                                                                    }}>
+                                                                        {hasFoja ? 'Con Foja Quirúrgica' : 'Sin Foja Quirúrgica'}
+                                                                    </span>
+                                                                );
+                                                            })()}
                                                         </h3>
                                                         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '4px', fontSize: '0.75rem', color: 'var(--neutral-500)' }}>
                                                             <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -2638,6 +2665,8 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                                                 )}
                                                             </span>
                                                             <span>•</span>
+                                                            <span>Obra Social: <strong style={{ color: 'var(--neutral-700)' }}>{pat.obraSocial || '—'}</strong></span>
+                                                            <span>•</span>
                                                             <span>Habitación: <strong style={{ color: 'var(--neutral-700)' }}>{pat.habitacion || '—'}</strong></span>
                                                             <span>•</span>
                                                             <span>Especialidad: <strong style={{ color: 'var(--neutral-700)' }}>{pat.especialidad || '—'}</strong></span>
@@ -2645,10 +2674,29 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                                             <span>Profesional: <strong style={{ color: 'var(--neutral-700)' }}>{pat.medico || '—'}</strong></span>
                                                         </div>
                                                     </div>
-                                                    
+                                                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); togglePatientExpansion(pat.id); }}
+                                                            style={{
+                                                                background: 'var(--primary-50)', color: 'var(--primary-600)', border: 'none',
+                                                                padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600,
+                                                                cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '4px'
+                                                            }}
+                                                            onMouseOver={e => e.currentTarget.style.background = 'var(--primary-100)'}
+                                                            onMouseOut={e => e.currentTarget.style.background = 'var(--primary-50)'}
+                                                        >
+                                                            {expandedPatients.has(pat.id) ? (
+                                                                <>Ocultar Detalles <ChevronUp size={14} /></>
+                                                            ) : (
+                                                                <>Ver Detalles <ChevronDown size={14} /></>
+                                                            )}
+                                                        </button>
+                                                    </div>
                                                 </div>
 
-                                                {/* Fechas de Ingreso y Alta */}
+                                                {expandedPatients.has(pat.id) && (
+                                                    <>
+                                                        {/* Fechas de Ingreso y Alta */}
                                                 <div style={{ 
                                                     background: '#F8FAFC', 
                                                     borderRadius: '8px', 
@@ -2731,18 +2779,37 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                                             <span>Evolución Quirúrgica</span>
                                                         </div>
                                                     </div>
-                                                    {hcLocalStore.getAdmissionData(pat.numeroAdmision) && (
-                                                        <div style={{ marginTop: '12px' }}>
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); setShowHCTimelineFor(pat.numeroAdmision); }}
-                                                                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '8px', background: '#1E293B', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s' }}
-                                                                onMouseOver={e => e.currentTarget.style.background = '#0F172A'}
-                                                                onMouseOut={e => e.currentTarget.style.background = '#1E293B'}
-                                                            >
-                                                                <span style={{ fontSize: '1rem' }}>🧊</span> Ver Línea de Tiempo 3D Completa
-                                                            </button>
-                                                        </div>
-                                                    )}
+                                                    
+                                                    {/* Detalle de Fojas Quirúrgicas */}
+                                                    {(() => {
+                                                        const adData = hcLocalStore.getAdmissionData(pat.numeroAdmision);
+                                                        if (!adData || adData.fojas.length === 0) return null;
+                                                        return (
+                                                            <div style={{ marginTop: '16px', background: '#F8FAFC', borderRadius: '8px', padding: '12px', border: '1px solid #E2E8F0' }}>
+                                                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary-700)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3B82F6' }}></div>
+                                                                    Fojas Quirúrgicas Detectadas
+                                                                </div>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                                    {adData.fojas.map((fq, i) => (
+                                                                        <div key={`fq-${i}`} style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '8px 12px', fontSize: '0.75rem' }}>
+                                                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                                                <strong style={{ color: '#0F172A' }}>Foja: {fq.id || 'N/A'}</strong>
+                                                                                <span style={{ color: '#64748B', fontWeight: 500 }}>
+                                                                                    {fq.fecha_cirugia ? new Date(fq.fecha_cirugia).toLocaleDateString('es-AR') : 'Sin fecha'} • {fq.hora_comienzo ? new Date(fq.hora_comienzo).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '--:--'} a {fq.hora_finalizacion ? new Date(fq.hora_finalizacion).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div style={{ color: '#334155', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+                                                                                <div><span style={{ color: '#94A3B8' }}>Cirujano:</span> {fq.cirujano || '-'}</div>
+                                                                                <div><span style={{ color: '#94A3B8' }}>Procedimiento:</span> {fq.procedimiento || '-'}</div>
+                                                                                <div style={{ gridColumn: 'span 2' }}><span style={{ color: '#94A3B8' }}>Diagnóstico:</span> {fq.diagnostico || '-'}</div>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
 
                                                 {/* Detalle de Alertas del Paciente */}
@@ -2784,6 +2851,8 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                                             </div>
                                                         ))}
                                                     </div>
+                                                )}
+                                                </>
                                                 )}
                                             </div>
                                         </div>
@@ -2842,23 +2911,6 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                         </>
                     )}
                 </>
-            )}
-
-            {/* Modal HC Timeline */}
-            {showHCTimelineFor && (
-                <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', backdropFilter: 'blur(4px)' }}>
-                    <div style={{ background: '#0F172A', width: '100%', maxWidth: '1200px', height: '80vh', borderRadius: '12px', position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
-                        <button 
-                            onClick={() => setShowHCTimelineFor(null)} 
-                            style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer', zIndex: 50, transition: 'background 0.2s' }}
-                            onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
-                            onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                        >
-                            <X size={20} />
-                        </button>
-                        <HistoriaClinicaTimeline3D admissionData={hcLocalStore.getAdmissionData(showHCTimelineFor)} />
-                    </div>
-                </div>
             )}
         </div>
     );

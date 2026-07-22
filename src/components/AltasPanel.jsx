@@ -26,7 +26,6 @@ import SignaturePad from './SignaturePad';
 import { SkeletonTablePanel } from './SkeletonLoader';
 import { hcLocalStore } from '../store/hcLocalStore';
 import { processHCExcelFile } from '../utils/parseHCExcel';
-import HistoriaClinicaTimeline3D from './historias/HistoriaClinicaTimeline3D';
 
 // ── Helpers ──
 function formatDate(d) {
@@ -74,7 +73,6 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [loading, setLoading] = useState(true);
     const [expandedId, setExpandedId] = useState(null);
     const [hcLoadedCount, setHcLoadedCount] = useState(0);
-    const [showHCTimelineFor, setShowHCTimelineFor] = useState(null);
     const [historialInternaciones, setHistorialInternaciones] = useState([]);
     const [loadingHistorial, setLoadingHistorial] = useState(false);
     const [statusDropdownId, setStatusDropdownId] = useState(null);
@@ -2548,23 +2546,6 @@ export default function AltasPanel({ addToast, currentUser }) {
                                 {corteLoading ? 'Ejecutando...' : 'Confirmar y Ejecutar'}
                             </button>
                         </div>
-                    </div>
-                </div>
-            )}
-            
-            {/* Modal HC Timeline */}
-            {showHCTimelineFor && (
-                <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', backdropFilter: 'blur(4px)' }}>
-                    <div style={{ background: '#0F172A', width: '100%', maxWidth: '1200px', height: '80vh', borderRadius: '12px', position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
-                        <button 
-                            onClick={() => setShowHCTimelineFor(null)} 
-                            style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', padding: '0.5rem', borderRadius: '50%', cursor: 'pointer', zIndex: 50, transition: 'background 0.2s' }}
-                            onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
-                            onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                        >
-                            <X size={20} />
-                        </button>
-                        <HistoriaClinicaTimeline3D admissionData={hcLocalStore.getAdmissionData(showHCTimelineFor)} />
                     </div>
                 </div>
             )}
