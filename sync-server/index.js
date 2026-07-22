@@ -605,7 +605,7 @@ async function syncDeudas(db, fastSync = false) {
         // Upsert paciente
         const { data: existente } = await supabase
             .from('deudas_pacientes')
-            .select('id, telefono')
+            .select('id, telefono, categoria')
             .eq('nhc', nhc)
             .maybeSingle();
 
@@ -620,6 +620,15 @@ async function syncDeudas(db, fastSync = false) {
                 fecha_ultima_factura: fechaMasReciente?.toISOString() || null,
                 updated_at: new Date().toISOString(),
             };
+            
+            let reactivado = false;
+            if (['deuda_cancelada', 'sin_deuda_salus'].includes(existente.categoria) && deudaTotal > 0) {
+                upd.categoria = 'sin_gestionar';
+                upd.deuda_cancelada_at = null;
+                upd.deuda_cancelada_por = null;
+                reactivado = true;
+            }
+
             if (!existente.telefono && grupo.telefono) {
                 upd.telefono = grupo.telefono;
                 upd.telefono_invalido = grupo.telefono_invalido;
@@ -627,6 +636,15 @@ async function syncDeudas(db, fastSync = false) {
             await supabase.from('deudas_pacientes').update(upd).eq('id', existente.id);
             pacienteId = existente.id;
             pacientesActualizados++;
+
+            if (reactivado) {
+                await supabase.from('deudas_seguimiento').insert({
+                    paciente_id: existente.id,
+                    usuario: 'Sistema',
+                    descripcion: '⚠️ Paciente reingresa a gestión por nueva deuda sincronizada desde SALUS.',
+                    tipo: 'cambio_categoria',
+                });
+            }
         } else {
             const { data: nuevo } = await supabase
                 .from('deudas_pacientes')

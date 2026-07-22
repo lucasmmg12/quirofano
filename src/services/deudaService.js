@@ -356,6 +356,15 @@ export async function importarDeudas(registros, usuario, onProgress) {
                 fecha_ultima_factura: fechaMasReciente ? fechaMasReciente.toISOString() : null,
                 updated_at: new Date().toISOString(),
             };
+
+            let reactivado = false;
+            // Reactivar paciente si estaba cancelado o sin deuda y ahora trae deuda nueva
+            if (['deuda_cancelada', 'sin_deuda_salus'].includes(existente.categoria) && deudaTotal > 0) {
+                updateData.categoria = 'sin_gestionar';
+                updateData.deuda_cancelada_at = null;
+                updateData.deuda_cancelada_por = null;
+                reactivado = true;
+            }
             
             // Solo insertamos el tel del Excel si el paciente NO tenía uno válido antes
             // o si el excel trae uno pero en la BD no había ninguno.
@@ -376,6 +385,17 @@ export async function importarDeudas(registros, usuario, onProgress) {
                 .eq('id', existente.id);
             pacienteId = existente.id;
             pacientesActualizados++;
+
+            if (reactivado) {
+                await supabase
+                    .from('deudas_seguimiento')
+                    .insert({
+                        paciente_id: existente.id,
+                        usuario: 'Sistema',
+                        descripcion: '⚠️ Paciente reingresa a gestión por nueva deuda pendiente.',
+                        tipo: 'cambio_categoria',
+                    });
+            }
         } else {
             const { data: nuevo } = await supabase
                 .from('deudas_pacientes')
