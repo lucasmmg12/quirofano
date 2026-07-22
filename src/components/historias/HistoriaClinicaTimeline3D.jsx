@@ -26,11 +26,11 @@ function TimelineEvolucion({ data, xPos, index }) {
 
             {hovered && (
                 <Html position={[0, 0.5, 0]} center zIndexRange={[100, 0]}>
-                    <div className="bg-white p-3 rounded-lg shadow-lg border border-slate-200 w-64 text-sm z-50 pointer-events-none">
-                        <div className="font-bold text-slate-700 mb-1">
+                    <div style={{ background: '#fff', padding: '12px', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', border: '1px solid #e2e8f0', width: '16rem', fontSize: '0.875rem', zIndex: 50, pointerEvents: 'none' }}>
+                        <div style={{ fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
                             {new Date(data.fecha).toLocaleString('es-AR')}
                         </div>
-                        <div className="text-slate-600 max-h-40 overflow-y-auto">
+                        <div style={{ color: '#475569', maxHeight: '10rem', overflowY: 'auto' }}>
                             {data.texto}
                         </div>
                     </div>
@@ -58,20 +58,20 @@ function TimelineFoja({ data, startX, endX }) {
             
             {hovered && (
                 <Html position={[0, 1, 0]} center zIndexRange={[100, 0]}>
-                    <div className="bg-amber-50 p-3 rounded-lg shadow-lg border border-amber-200 w-64 text-sm z-50 pointer-events-none">
-                        <div className="font-bold text-amber-800 mb-1 border-b border-amber-200 pb-1">
+                    <div style={{ background: '#fffbeb', padding: '12px', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', border: '1px solid #fde68a', width: '16rem', fontSize: '0.875rem', zIndex: 50, pointerEvents: 'none' }}>
+                        <div style={{ fontWeight: 700, color: '#92400e', marginBottom: '4px', borderBottom: '1px solid #fde68a', paddingBottom: '4px' }}>
                             Foja Quirúrgica
                         </div>
-                        <div className="text-amber-900 mt-1">
-                            <span className="font-semibold">Cirujano:</span> {data.cirujano || 'N/A'}
+                        <div style={{ color: '#78350f', marginTop: '4px' }}>
+                            <span style={{ fontWeight: 600 }}>Cirujano:</span> {data.cirujano || 'N/A'}
                         </div>
-                        <div className="text-amber-900">
-                            <span className="font-semibold">Procedimiento:</span> {data.procedimiento || 'N/A'}
+                        <div style={{ color: '#78350f' }}>
+                            <span style={{ fontWeight: 600 }}>Procedimiento:</span> {data.procedimiento || 'N/A'}
                         </div>
-                        <div className="text-amber-900">
-                            <span className="font-semibold">Diagnóstico:</span> {data.diagnostico || 'N/A'}
+                        <div style={{ color: '#78350f' }}>
+                            <span style={{ fontWeight: 600 }}>Diagnóstico:</span> {data.diagnostico || 'N/A'}
                         </div>
-                        <div className="text-amber-900 mt-1 text-xs text-amber-700">
+                        <div style={{ color: '#b45309', marginTop: '4px', fontSize: '0.75rem' }}>
                             {new Date(data.hora_comienzo || data.fecha_cirugia).toLocaleTimeString('es-AR')} - 
                             {data.hora_finalizacion ? new Date(data.hora_finalizacion).toLocaleTimeString('es-AR') : 'N/A'}
                         </div>
@@ -85,7 +85,7 @@ function TimelineFoja({ data, startX, endX }) {
 export default function HistoriaClinicaTimeline3D({ admissionData }) {
     if (!admissionData || (admissionData.evoluciones.length === 0 && admissionData.fojas.length === 0)) {
         return (
-            <div className="flex items-center justify-center h-full w-full bg-slate-50 text-slate-500 rounded-lg border border-slate-200">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', background: '#f8fafc', color: '#64748b', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                 No hay datos de evolución para esta admisión.
             </div>
         );
@@ -127,8 +127,8 @@ export default function HistoriaClinicaTimeline3D({ admissionData }) {
     };
 
     return (
-        <div className="w-full h-full bg-slate-900 rounded-lg overflow-hidden relative">
-            <div className="absolute top-4 left-4 z-10 bg-black/50 text-white px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-md">
+        <div style={{ width: '100%', height: '100%', background: '#0f172a', borderRadius: '8px', overflow: 'hidden', position: 'relative' }}>
+            <div style={{ position: 'absolute', top: '16px', left: '16px', zIndex: 10, background: 'rgba(0,0,0,0.5)', color: '#fff', padding: '6px 12px', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 600, backdropFilter: 'blur(12px)' }}>
                 Línea de Tiempo 3D: Admisión {admissionData.numero_admision}
             </div>
             
