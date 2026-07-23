@@ -494,6 +494,7 @@ async function syncPresupuestos(db, fastSync = false) {
 // SYNC DEUDAS — SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function syncDeudas(db, fastSync = false) {
+    const syncStartTime = new Date().toISOString();
     console.log(`📊 [3/7] Extrayendo deudas de SALUS... (fastSync: ${fastSync})`);
     const req = db.request();
     req.timeout = 300000; // 5 minutos — TABLEAU es una vista muy pesada
@@ -685,6 +686,89 @@ async function syncDeudas(db, fastSync = false) {
                     if (!error) filasImportadas++;
                 }
             }
+        }
+    }
+
+    // ==========================================
+    // LIMPIEZA DE FACTURAS PAGADAS/ANULADAS
+    // ==========================================
+    const cutoffDate = fastSync
+        ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+        : new Date('2025-05-01T00:00:00Z');
+
+    const { data: facturasHuerfanas } = await supabase
+        .from('deudas_facturas')
+        .select('id, paciente_id, fecha_hospitalizacion')
+        .lt('updated_at', syncStartTime)
+        .gt('pendiente', 0);
+
+    let facturasLimpiadas = 0;
+    if (facturasHuerfanas && facturasHuerfanas.length > 0) {
+        const idsALimpiar = [];
+        const pacientesAfectados = new Set();
+        
+        for (const f of facturasHuerfanas) {
+            let entraEnRango = false;
+            if (f.fecha_hospitalizacion) {
+                const parts = f.fecha_hospitalizacion.split('/');
+                if (parts.length === 3) {
+                    const d = new Date(parts[2], parseInt(parts[1]) - 1, parts[0]);
+                    if (!isNaN(d.getTime()) && d >= cutoffDate) {
+                        entraEnRango = true;
+                    }
+                }
+            } else {
+                if (!fastSync) entraEnRango = true;
+            }
+            
+            if (entraEnRango) {
+                idsALimpiar.push(f.id);
+                pacientesAfectados.add(f.paciente_id);
+            }
+        }
+
+        if (idsALimpiar.length > 0) {
+            console.log(`   🧹 Limpiando ${idsALimpiar.length} facturas que ya no tienen deuda en SALUS...`);
+            
+            for (let i = 0; i < idsALimpiar.length; i += 500) {
+                const batch = idsALimpiar.slice(i, i + 500);
+                await supabase
+                    .from('deudas_facturas')
+                    .update({ pendiente: 0, updated_at: new Date().toISOString() })
+                    .in('id', batch);
+            }
+                
+            facturasLimpiadas = idsALimpiar.length;
+
+            for (const pid of pacientesAfectados) {
+                const { data: facturasActivas } = await supabase
+                    .from('deudas_facturas')
+                    .select('pendiente')
+                    .eq('paciente_id', pid)
+                    .gt('pendiente', 0);
+                
+                const nuevaDeudaTotal = (facturasActivas || []).reduce((s, f) => s + f.pendiente, 0);
+                const nuevaCantidad = (facturasActivas || []).length;
+                
+                const updPaciente = {
+                    deuda_total: nuevaDeudaTotal,
+                    cantidad_facturas: nuevaCantidad,
+                    updated_at: new Date().toISOString()
+                };
+                
+                if (nuevaDeudaTotal === 0) {
+                    updPaciente.categoria = 'sin_deuda_salus';
+                    await supabase.from('deudas_seguimiento').insert({
+                        paciente_id: pid,
+                        usuario: 'Sistema',
+                        descripcion: '✅ Paciente sin deuda en SALUS tras limpieza automática.',
+                        tipo: 'cambio_categoria',
+                    });
+                }
+                
+                await supabase.from('deudas_pacientes').update(updPaciente).eq('id', pid);
+            }
+            console.log(`   ✨ Limpieza OK: ${pacientesAfectados.size} pacientes recalculados.`);
         }
     }
 
