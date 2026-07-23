@@ -33,7 +33,7 @@ export async function fetchDeudores(filters = {}) {
         query = query.eq('categoria', filters.categoria);
     }
     if (filters.search) {
-        const safeSearch = filters.search.replace(/,/g, ' ').trim();
+        const safeSearch = filters.search.trim().replace(/[\s,]+/g, '%');
         query = query.or(`nombre.ilike.%${safeSearch}%,nhc.ilike.%${safeSearch}%,telefono.ilike.%${safeSearch}%`);
     }
     if (filters.conTelefono === true) {

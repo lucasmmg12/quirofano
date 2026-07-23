@@ -49,11 +49,11 @@ export async function fetchAltas({ fromDate, toDate, search } = {}) {
             // no se rompa con comas, paréntesis, puntos, etc.
             const sanitized = search
                 .replace(/\\/g, '\\\\')
-                .replace(/,/g, ' ')
                 .replace(/\(/g, '\\(')
                 .replace(/\)/g, '\\)')
                 .replace(/%/g, '\\%')
-                .trim();
+                .trim()
+                .replace(/[\s,]+/g, '%');
             query = query.or(`paciente.ilike.%${sanitized}%,doctor.ilike.%${sanitized}%,cliente.ilike.%${sanitized}%,numero_admision.ilike.%${sanitized}%`);
         }
 
@@ -272,11 +272,11 @@ export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
         if (search) {
             const sanitized = search
                 .replace(/\\/g, '\\\\')
-                .replace(/,/g, ' ')
                 .replace(/\(/g, '\\(')
                 .replace(/\)/g, '\\)')
                 .replace(/%/g, '\\%')
-                .trim();
+                .trim()
+                .replace(/[\s,]+/g, '%');
             query = query.or(`paciente.ilike.%${sanitized}%,doctor.ilike.%${sanitized}%,cliente.ilike.%${sanitized}%,numero_admision.ilike.%${sanitized}%`);
         }
 
@@ -449,7 +449,7 @@ export async function fetchTraspasos({ search, limit = 100 } = {}) {
         .order('fecha_traspaso', { ascending: false });
 
     if (search) {
-        const safeSearch = search.replace(/,/g, ' ').trim();
+        const safeSearch = search.trim().replace(/[\s,]+/g, '%');
         const { data: matchedDetalle } = await supabase
             .from('altas_administrativas')
             .select('traspaso_id')
@@ -639,7 +639,7 @@ export async function fetchDevoluciones({ search, limit = 100 } = {}) {
         .order('fecha_devolucion', { ascending: false });
 
     if (search) {
-        const safeSearch = search.replace(/,/g, ' ').trim();
+        const safeSearch = search.trim().replace(/[\s,]+/g, '%');
         const { data: matchedDetalle } = await supabase
             .from('altas_administrativas')
             .select('devolucion_id')

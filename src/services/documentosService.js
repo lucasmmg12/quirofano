@@ -89,7 +89,7 @@ export async function fetchDocumentos({ search = '', categoria = '' } = {}) {
     }
 
     if (search) {
-        const safeSearch = search.replace(/,/g, ' ').trim();
+        const safeSearch = search.trim().replace(/[\s,]+/g, '%');
         query = query.or(
             `nombre_original.ilike.%${safeSearch}%,descripcion.ilike.%${safeSearch}%,subido_por.ilike.%${safeSearch}%`
         );

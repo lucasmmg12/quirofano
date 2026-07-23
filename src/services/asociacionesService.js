@@ -55,7 +55,7 @@ export async function fetchAsociacionesCirugias({ asociacion, fechaDesde, fechaH
         // En Supabase/PostgREST, las comas dentro del string de un .or() se interpretan como separadores de condiciones.
         // Si el usuario busca "Morales, Ma", la coma rompe la consulta y da error 400.
         // Reemplazamos la coma por un comodín "%" o un espacio para evitar el error.
-        const safeSearch = search.replace(/,/g, ' ').trim();
+        const safeSearch = search.trim().replace(/[\s,]+/g, '%');
         query = query.or(`nombre_paciente.ilike.%${safeSearch}%,dni.ilike.%${safeSearch}%,cirujano.ilike.%${safeSearch}%`);
     }
 
@@ -274,7 +274,7 @@ export async function fetchConstancias({ asociacion, limit = 1000, search } = {}
     }
 
     if (search) {
-        const safeSearch = search.replace(/,/g, ' ').trim();
+        const safeSearch = search.trim().replace(/[\s,]+/g, '%');
         const { data: matchedDetalle } = await supabase
             .from('asociaciones_cirugias')
             .select('constancia_id')

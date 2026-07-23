@@ -194,7 +194,7 @@ export async function fetchConstanciasLab({ laboratorio, search } = {}) {
     }
 
     if (search) {
-        const safeSearch = search.replace(/,/g, ' ').trim();
+        const safeSearch = search.trim().replace(/[\s,]+/g, '%');
         const { data: matchedDetalle, error: searchError } = await supabase
             .from('laboratorios_anatomia_patologica')
             .select('constancia_id')
