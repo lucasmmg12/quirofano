@@ -710,12 +710,9 @@ async function syncDeudas(db, fastSync = false) {
         for (const f of facturasHuerfanas) {
             let entraEnRango = false;
             if (f.fecha_hospitalizacion) {
-                const parts = f.fecha_hospitalizacion.split('/');
-                if (parts.length === 3) {
-                    const d = new Date(parts[2], parseInt(parts[1]) - 1, parts[0]);
-                    if (!isNaN(d.getTime()) && d >= cutoffDate) {
-                        entraEnRango = true;
-                    }
+                const d = new Date(f.fecha_hospitalizacion);
+                if (!isNaN(d.getTime()) && d >= cutoffDate) {
+                    entraEnRango = true;
                 }
             } else {
                 if (!fastSync) entraEnRango = true;
@@ -741,6 +738,14 @@ async function syncDeudas(db, fastSync = false) {
             facturasLimpiadas = idsALimpiar.length;
 
             for (const pid of pacientesAfectados) {
+                // 1. Obtener deuda anterior para el registro
+                const { data: pacienteViejo } = await supabase
+                    .from('deudas_pacientes')
+                    .select('deuda_total')
+                    .eq('id', pid)
+                    .single();
+
+                // 2. Calcular nueva deuda
                 const { data: facturasActivas } = await supabase
                     .from('deudas_facturas')
                     .select('pendiente')
@@ -756,14 +761,28 @@ async function syncDeudas(db, fastSync = false) {
                     updated_at: new Date().toISOString()
                 };
                 
-                if (nuevaDeudaTotal === 0) {
-                    updPaciente.categoria = 'sin_deuda_salus';
-                    await supabase.from('deudas_seguimiento').insert({
-                        paciente_id: pid,
-                        usuario: 'Sistema',
-                        descripcion: '✅ Paciente sin deuda en SALUS tras limpieza automática.',
-                        tipo: 'cambio_categoria',
-                    });
+                // 3. Registrar el cambio en seguimiento
+                const viejaDeuda = pacienteViejo?.deuda_total || 0;
+                if (viejaDeuda > nuevaDeudaTotal) {
+                    const reduccion = viejaDeuda - nuevaDeudaTotal;
+                    const formateado = reduccion.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                    
+                    if (nuevaDeudaTotal === 0) {
+                        updPaciente.categoria = 'sin_deuda_salus';
+                        await supabase.from('deudas_seguimiento').insert({
+                            paciente_id: pid,
+                            usuario: 'Sistema',
+                            descripcion: `✅ Deuda SALDADA en SALUS. Reducción automática de $${formateado}.`,
+                            tipo: 'cambio_categoria',
+                        });
+                    } else {
+                        await supabase.from('deudas_seguimiento').insert({
+                            paciente_id: pid,
+                            usuario: 'Sistema',
+                            descripcion: `📉 Reducción parcial en SALUS. Se descontaron $${formateado} de facturas pagadas.`,
+                            tipo: 'nota',
+                        });
+                    }
                 }
                 
                 await supabase.from('deudas_pacientes').update(updPaciente).eq('id', pid);
@@ -1009,7 +1028,11 @@ async function syncAltasAdministrativas(db) {
                 ROW_NUMBER() OVER (PARTITION BY TA.[Paciente], CAST(TA.[Fecha ingreso] AS DATE) ORDER BY TA.[Número admisión] DESC) as rn
             FROM [SALUS].[dbo].[TABLEAU_Admisiones] TA
             WHERE 
-                TA.[Fecha ingreso] >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE))
+                (
+                    TA.[Fecha ingreso] >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE))
+                    OR TA.[Fecha alta] >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE))
+                    OR (TA.[Fecha alta] IS NULL AND TA.[Fecha ingreso] >= '2025-01-01')
+                )
                 AND TA.[Fecha ingreso] < DATEADD(DAY, 1, CAST(GETDATE() AS DATE))
         )
         SELECT * FROM CTE WHERE rn = 1

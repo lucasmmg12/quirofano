@@ -61,7 +61,11 @@ export async function fetchAltas({ fromDate, toDate, search } = {}) {
         if (error) throw error;
 
         const rows = data || [];
-        allData = allData.concat(rows);
+        // Filtro por frontend: No mostrar admisiones A-CE con especialidad CHEQUEO
+        const filteredRows = rows.filter(row => 
+            !(row.numero_admision?.startsWith('A-CE') && row.especialidad?.toUpperCase() === 'CHEQUEO')
+        );
+        allData = allData.concat(filteredRows);
         hasMore = rows.length === PAGE_SIZE;
         from += PAGE_SIZE;
     }
@@ -284,7 +288,11 @@ export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
         if (error) throw error;
 
         const rows = data || [];
-        allData = allData.concat(rows);
+        // Filtro por frontend: No mostrar admisiones A-CE con especialidad CHEQUEO
+        const filteredRows = rows.filter(row => 
+            !(row.numero_admision?.startsWith('A-CE') && row.especialidad?.toUpperCase() === 'CHEQUEO')
+        );
+        allData = allData.concat(filteredRows);
         hasMore = rows.length === PAGE_SIZE;
         from += PAGE_SIZE;
     }
