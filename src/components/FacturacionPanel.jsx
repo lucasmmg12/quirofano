@@ -1636,8 +1636,8 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                         const isDevuelta = estadoFac === 'Devuelta';
                                         const dias = daysBetween(alta.fecha_ingreso, alta.fecha_alta);
                                         const canSelect = (!alta.en_carrito_devolucion || alta.carrito_devolucion_por === currentUser?.usuario) && !alta.devolucion_id && !alta._isSuspendida;
-                                        // Read-only: fichas facturadas o suspendidas no se pueden editar (Devueltas sí se pueden editar)
-                                        const isReadOnly = estadoFac === 'Facturada' || alta._isSuspendida;
+                                        // Read-only: fichas suspendidas no se pueden editar (Facturadas y Devueltas sí se pueden editar)
+                                        const isReadOnly = alta._isSuspendida;
                                         const rowBg = alta._isSuspendida ? '#FEF2F2'
                                             : alta._isObsoleteAdmission ? '#FFFBEB'
                                             : isDevuelta ? '#FEF2F2'
