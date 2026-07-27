@@ -43,6 +43,7 @@ async function getSchemaContext(): Promise<string> {
                 'altas_administrativas', 'altas_traspasos', 'altas_asignacion',
                 'whatsapp_messages', 'whatsapp_templates',
                 'consultas_guardia', 'consultas_imports',
+                'garantias_rendiciones'
             ];
             const filtered = columns.filter((c: any) => relevantTables.includes(c.table_name));
             schemaCache = formatSchemaFromColumns(filtered);
@@ -102,6 +103,9 @@ function getFallbackSchema(): string {
 - \`notificado_at\`, \`autorizado_at\`, \`confirmado_at\` (timestamptz)
 - \`descripcion\` (text)
 - \`instrucciones\` (text)
+- \`requiere_garantia\` (boolean) — Si la cirugía exige un Pagaré
+- \`garantia_estado\` (text) — 'Pendiente', 'Rendido'
+- \`rendicion_garantia_id\` (uuid FK) — ID de la rendición asociada
 
 **FLUJO DE ESTADOS (CRÍTICO — leé con atención):**
 Los estados de cirugía son colores que representan un pipeline de gestión:
@@ -154,6 +158,23 @@ Los estados de cirugía son colores que representan un pipeline de gestión:
 - \`docs_completos\` (boolean) — Documentación completa
 - \`constancia_entregada\` (boolean)
 - \`carrito_id\` (uuid)
+
+### \`garantias_rendiciones\` (Rendiciones de Garantías y Pagarés)
+- \`id\` (uuid PK)
+- \`entrega\` (text) — Nombre de quien entrega (Recepción)
+- \`recibe\` (text) — Nombre de quien recibe (Administración)
+- \`notas\` (text) — Observaciones opcionales
+- \`firma_entrega\` (text) — Firma digital (base64)
+- \`firma_recibe\` (text) — Firma digital (base64)
+- \`created_at\` (timestamptz)
+- \`garantias_count\` (integer) — Cantidad de garantías en esta rendición
+
+**FLUJO DE GARANTÍAS:**
+1. Ciertas cirugías requieren que el paciente firme un Pagaré (Garantía). Estas cirugías se marcan en la tabla \`surgeries\` con el campo \`requiere_garantia = true\`.
+2. Recepción tiene físicamente el pagaré y el estado es "Pendiente de rendir" (\`garantia_estado = 'Pendiente'\`).
+3. El usuario puede agrupar múltiples garantías en el "Carrito de Rendición".
+4. Desde el carrito, se emite una "Hoja de Rendición" que traspasa los documentos a Administración.
+5. Se inserta un registro en \`garantias_rendiciones\` y las cirugías se actualizan con \`rendicion_garantia_id = [ID]\` y \`garantia_estado = 'Rendido'\`.
 
 ### \`laboratorios_anatomia_patologica\` (Biopsias de anatomía patológica — ~1245 registros)
 - \`id\` (uuid PK)

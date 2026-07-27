@@ -88,6 +88,18 @@ const TUTORIALS = {
             { target: null, title: '✅ ¡Listo!', text: 'Ya conocés el flujo de facturación: recepción → asignación → estado → detalle SALUS → devolución si aplica. ¡Consultame!', position: 'center' },
         ]
     },
+    garantias: {
+        title: 'Gestión y Rendición de Garantías',
+        steps: [
+            { target: null, title: '🛡️ Bienvenido a Garantías', text: 'Este módulo permite registrar, controlar y documentar el movimiento físico de las Garantías (Pagarés) entre Recepción y Administración.', position: 'center' },
+            { target: null, title: '📊 Paso 1: Revisar Listado', text: 'En la pestaña "Garantías" verás todas las cirugías con garantía. El estado inicial es "Pendiente de rendir".', position: 'center' },
+            { target: null, title: '✅ Paso 2: Seleccionar Garantías', text: 'Usá los checkboxes de la izquierda para seleccionar las garantías que querés rendir. Aparecerá el botón "Enviar al Carrito".', position: 'center' },
+            { target: null, title: '🛒 Paso 3: Carrito de Rendición', text: 'Andá a la pestaña "Carrito". Aquí verás las garantías seleccionadas. Podés quitarlas o proceder a generar la rendición.', position: 'center' },
+            { target: null, title: '📝 Paso 4: Emitir Rendición', text: 'Completá tu nombre (quien entrega) y el nombre de quien recibe. Al confirmar, se generará la hoja de rendición en PDF.', position: 'center' },
+            { target: null, title: '🖨️ Paso 5: Hoja de Rendición', text: 'El PDF incluye el detalle de las garantías, fecha y espacios para firmas ológrafas o digitales. Podés imprimirlo y firmarlo.', position: 'center' },
+            { target: null, title: '✅ ¡Listo!', text: 'Al emitir, las garantías cambian a estado "Rendido". En el listado principal verás un badge verde. ¡Eso es todo!', position: 'center' },
+        ]
+    },
 };
 
 export default function BetoTutorial({ isOpen, onClose, tutorialId, onNavigate }) {

@@ -910,6 +910,19 @@ export async function generateManualPDF() {
                 'Acceso al Manual de Procedimientos (documento presente)',
                 'Gestión de usuarios y roles (para administradores)',
             ], yn4);
+
+            // ─── 4.19 Módulo de Garantías y Rendiciones ──────────────────────────
+            yn4 = (yn4 + 40 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : yn4;
+            tocEntries.push({ titulo: '   4.19  Módulo de Garantías y Rendiciones', page: counters.page });
+            yn4 = subTitle(doc, '4.19  Módulo de Garantías y Rendiciones', yn4);
+            yn4 = para(doc, 'Este módulo permite registrar, controlar y documentar el movimiento físico y el estado administrativo de las Garantías y Compromisos de Pago entre los sectores de Recepción y Administración, asegurando la trazabilidad completa del documento.', yn4 + 1);
+            yn4 = bulletList(doc, [
+                'Vista del listado de garantías con indicadores visuales de estado (Pendiente de rendir, Rendido).',
+                'Funcionalidad de "Carrito de Rendición" para agrupar múltiples garantías.',
+                'Emisión de constancia de rendición en PDF (Hoja de Rendición) con el detalle de las garantías y espacio para firmas (Recepción y Administración).',
+                'Posibilidad de utilizar firma digital para las constancias.',
+                'Integración directa desde el módulo principal de Cirugías.'
+            ], yn4);
         }
 
         // ── SECCIÓN 5: INTEGRACIONES EXTERNAS ────────────────────────────────

@@ -231,9 +231,9 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
 
         // #19 — Detect tutorial requests
         const tutorialMatch = text.match(/ense[ñn]ame|tutorial|como\s+(?:uso|funciona)|aprend/i);
-        const moduleMatch = text.match(/cirug[ií]a|deuda|pedido|mensaje|whatsapp|auditor[ií]a|alta|facturaci[oó]n/i);
+        const moduleMatch = text.match(/cirug[ií]a|deuda|pedido|mensaje|whatsapp|auditor[ií]a|alta|facturaci[oó]n|garant[ií]a/i);
         if (tutorialMatch && moduleMatch) {
-            const modMap = { cirug: 'cirugias', deuda: 'deudas', pedido: 'pedidos', mensaj: 'mensajeria', whatsapp: 'mensajeria', auditor: 'auditoria_historias', alta: 'altas', factur: 'facturacion' };
+            const modMap = { cirug: 'cirugias', deuda: 'deudas', pedido: 'pedidos', mensaj: 'mensajeria', whatsapp: 'mensajeria', auditor: 'auditoria_historias', alta: 'altas', factur: 'facturacion', garantia: 'garantias' };
             const key = Object.keys(modMap).find(k => moduleMatch[0].toLowerCase().startsWith(k));
             if (key) { setTutorialId(modMap[key]); setInput(''); return; }
         }

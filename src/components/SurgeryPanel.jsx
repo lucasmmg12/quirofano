@@ -16,7 +16,7 @@ import {
     FileText, Eye, ArrowRight, RefreshCw, User, Calendar, Building2, Phone,
     X, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Clock,
     ChevronDown, ChevronUp, Timer, Activity, Zap, Pencil, Trash2,
-    MessageSquare, ChevronRight, DollarSign
+    MessageSquare, ChevronRight, DollarSign, Shield
 } from 'lucide-react';
 import {
     fetchSurgeries, createSurgery, updateSurgery, deleteSurgery, getSurgeryStats,
