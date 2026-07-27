@@ -32,6 +32,7 @@ import PublicRecepcionView from './components/PublicRecepcionView.jsx';
 import DeudasPanel from './components/DeudasPanel.jsx';
 import AltasPanel from './components/AltasPanel.jsx';
 import FacturacionPanel from './components/FacturacionPanel.jsx';
+import GarantiasPanel from './components/GarantiasPanel.jsx';
 import TxtProvinciaPanel from './components/TxtProvinciaPanel.jsx';
 import AsignacionPanel from './components/AsignacionPanel.jsx';
 import ConsultasPanel from './components/ConsultasPanel.jsx';
@@ -135,6 +136,7 @@ const VIEW_LABELS = {
     deudas: 'Deudas',
     altas: 'Altas Administrativas',
     facturacion: 'Control de Facturación',
+    garantias: 'Garantías y Pagarés',
     asignacion: 'Asignación',
     consultas: 'Consultas',
     auditoria_historias: 'Auditoría de Historias',
@@ -913,6 +915,12 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'altas' && (
                     <AltasPanel addToast={addToast} currentUser={currentUser} />
+                )}
+
+                {activeView === 'garantias' && (
+                    <div className="animate-fade-in" style={{ height: '100%', overflowY: 'auto' }}>
+                        <GarantiasPanel addToast={addToast} currentUser={currentUser} />
+                    </div>
                 )}
 
                 {activeView === 'facturacion' && (

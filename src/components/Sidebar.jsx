@@ -3,7 +3,7 @@ import {
     ClipboardList, History, BookOpen, Settings, PanelLeftClose, PanelLeft,
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
     ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain, Users, PackageCheck, Microscope,
-    Activity, FileSpreadsheet, BookMarked, FolderOpen, Receipt, FileCheck,
+    Activity, FileSpreadsheet, BookMarked, FolderOpen, Receipt, FileCheck, Shield,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '', onOpenBeto, currentUser, selectedModules }) {
@@ -25,6 +25,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const altasSubItems = [
         { id: 'altas', label: 'Control de Altas', icon: ClipboardCheck },
         { id: 'facturacion', label: 'Facturación', icon: Receipt },
+        { id: 'garantias', label: 'Garantías', icon: Shield },
         { id: 'txt_provincia', label: 'Txt Provincia', icon: FileText },
         { id: 'asignaciones', label: 'Asignaciones', icon: Users },
         { id: 'auditoria_historias', label: 'Auditoría H.C.', icon: FileSpreadsheet },
