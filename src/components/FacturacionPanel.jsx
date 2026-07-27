@@ -137,6 +137,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     const [filterEstado, setFilterEstado] = useState('all');
     const [filterResponsable, setFilterResponsable] = useState('all');
     const [sortConfig, setSortConfig] = useState({ key: 'fecha_ingreso', direction: 'desc' });
+    const [chartFilterAnalista, setChartFilterAnalista] = useState(null);
 
     // ── Paginación ──
     const PAGE_SIZE = 100;
@@ -701,7 +702,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             ingresosMensuales: []
         };
 
-        // 1. Estados
+        // 1. Estados (sobre todas)
         const estadoCounts = {};
         filteredAltas.forEach(a => {
             const estado = a.estado_fac || 'Pendiente';
@@ -709,7 +710,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         });
         result.estados = Object.entries(estadoCounts).map(([name, value]) => ({ name, value }));
 
-        // 2. Productividad por Analista
+        // 2. Productividad por Analista (sobre todas)
         const analistaMap = {};
         filteredAltas.forEach(a => {
             const resp = a.responsable_fac || 'Sin Asignar';
@@ -723,9 +724,14 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         });
         result.analistas = Object.values(analistaMap).sort((a, b) => (b.Facturadas + b.Pendientes) - (a.Facturadas + a.Pendientes));
 
-        // 3. Obras Sociales (Top 10)
+        // Filtro interactivo para los demás gráficos
+        const chartFilteredAltas = chartFilterAnalista 
+            ? filteredAltas.filter(a => shortName(a.responsable_fac || 'Sin Asignar') === chartFilterAnalista)
+            : filteredAltas;
+
+        // 3. Obras Sociales (Top 10) (Filtrado)
         const osMap = {};
-        filteredAltas.forEach(a => {
+        chartFilteredAltas.forEach(a => {
             const os = a.cliente || 'Sin OS';
             if (!osMap[os]) osMap[os] = { name: os.substring(0, 20), Total: 0, Facturadas: 0 };
             osMap[os].Total += 1;
@@ -733,10 +739,10 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         });
         result.obrasSociales = Object.values(osMap).sort((a, b) => b.Total - a.Total).slice(0, 10);
 
-        // 4. Triage de Demora (Solo Pendientes/En Proceso)
+        // 4. Triage de Demora (Filtrado)
         const demoraBuckets = { '0-3 días': 0, '4-7 días': 0, '8-15 días': 0, '+15 días': 0 };
         const now = new Date();
-        filteredAltas.forEach(a => {
+        chartFilteredAltas.forEach(a => {
             const estado = a.estado_fac || 'Pendiente';
             if (estado !== 'Facturada' && !a.facturada && a.fecha_alta) {
                 const altaDate = new Date(a.fecha_alta);
@@ -751,9 +757,9 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         });
         result.triageDemora = Object.entries(demoraBuckets).map(([name, Fichas]) => ({ name, Fichas }));
 
-        // 5. Evolución de Ingresos
+        // 5. Evolución de Ingresos (Filtrado)
         const ingresosMap = {};
-        filteredAltas.forEach(a => {
+        chartFilteredAltas.forEach(a => {
             if (a.fecha_ingreso) {
                 const dateKey = formatDate(a.fecha_ingreso);
                 if (!ingresosMap[dateKey]) ingresosMap[dateKey] = { date: dateKey, sortKey: a.fecha_ingreso, Ingresos: 0 };
@@ -763,7 +769,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         result.ingresosMensuales = Object.values(ingresosMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 
         return result;
-    }, [filteredAltas]);
+    }, [filteredAltas, chartFilterAnalista]);
 
     // ── Handlers ──
     const handleEstadoChange = async (id, newEstado) => {
@@ -1135,38 +1141,70 @@ export default function FacturacionPanel({ addToast, currentUser }) {
 
             {activeTab === 'metricas' ? (
                 /* ══════ MÉTRICAS TAB ══════ */
-                <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px' }}>
+                <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(600px, 1fr))', gap: '24px' }}>
                         
                         {/* 1. Productividad por Analista */}
-                        <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', border: '1px solid var(--neutral-200)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
-                            <h3 style={{ margin: '0 0 16px', fontSize: '1rem', color: 'var(--neutral-700)' }}>Desempeño por Analista</h3>
-                            <div style={{ height: '300px' }}>
+                        <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', border: '1px solid var(--neutral-200)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--neutral-700)' }}>Desempeño por Analista</h3>
+                                {chartFilterAnalista && (
+                                    <button onClick={() => setChartFilterAnalista(null)} style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>
+                                        Limpiar filtro: {chartFilterAnalista} ✖
+                                    </button>
+                                )}
+                            </div>
+                            <div style={{ height: '400px' }}>
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={metricsData.analistas} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
+                                    <BarChart 
+                                        data={metricsData.analistas} 
+                                        margin={{ top: 10, right: 30, left: 0, bottom: 20 }}
+                                        onClick={(data) => {
+                                            if (data && data.activeLabel) {
+                                                setChartFilterAnalista(prev => prev === data.activeLabel ? null : data.activeLabel);
+                                            }
+                                        }}
+                                        style={{ cursor: 'pointer' }}
+                                    >
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                                         <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-25} textAnchor="end" interval={0} />
                                         <YAxis tick={{ fontSize: 11 }} />
-                                        <RechartsTooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
+                                        <RechartsTooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
                                         <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                                        <Bar dataKey="Facturadas" stackId="a" fill="#10B981" radius={[0, 0, 4, 4]} />
-                                        <Bar dataKey="En proceso" stackId="a" fill="#F59E0B" />
-                                        <Bar dataKey="Pendientes" stackId="a" fill="#94A3B8" />
-                                        <Bar dataKey="Devueltas" stackId="a" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="Facturadas" stackId="a" fill="#10B981" radius={[0, 0, 4, 4]}>
+                                            {metricsData.analistas.map((entry, index) => (
+                                                <Cell key={`cell-f-${index}`} fillOpacity={chartFilterAnalista && chartFilterAnalista !== entry.name ? 0.3 : 1} />
+                                            ))}
+                                        </Bar>
+                                        <Bar dataKey="En proceso" stackId="a" fill="#F59E0B">
+                                            {metricsData.analistas.map((entry, index) => (
+                                                <Cell key={`cell-e-${index}`} fillOpacity={chartFilterAnalista && chartFilterAnalista !== entry.name ? 0.3 : 1} />
+                                            ))}
+                                        </Bar>
+                                        <Bar dataKey="Pendientes" stackId="a" fill="#94A3B8">
+                                            {metricsData.analistas.map((entry, index) => (
+                                                <Cell key={`cell-p-${index}`} fillOpacity={chartFilterAnalista && chartFilterAnalista !== entry.name ? 0.3 : 1} />
+                                            ))}
+                                        </Bar>
+                                        <Bar dataKey="Devueltas" stackId="a" fill="#EF4444" radius={[4, 4, 0, 0]}>
+                                            {metricsData.analistas.map((entry, index) => (
+                                                <Cell key={`cell-d-${index}`} fillOpacity={chartFilterAnalista && chartFilterAnalista !== entry.name ? 0.3 : 1} />
+                                            ))}
+                                        </Bar>
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
                         </div>
 
                         {/* 2. Top 10 Obras Sociales */}
-                        <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', border: '1px solid var(--neutral-200)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
-                            <h3 style={{ margin: '0 0 16px', fontSize: '1rem', color: 'var(--neutral-700)' }}>Top 10 Obras Sociales (Volumen)</h3>
-                            <div style={{ height: '300px' }}>
+                        <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', border: '1px solid var(--neutral-200)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+                            <h3 style={{ margin: '0 0 16px', fontSize: '1.1rem', color: 'var(--neutral-700)' }}>Top 10 Obras Sociales (Volumen)</h3>
+                            <div style={{ height: '400px' }}>
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={metricsData.obrasSociales} layout="vertical" margin={{ top: 10, right: 30, left: 50, bottom: 5 }}>
                                         <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
                                         <XAxis type="number" tick={{ fontSize: 11 }} />
-                                        <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={120} />
+                                        <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={120} />
                                         <RechartsTooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
                                         <Legend wrapperStyle={{ fontSize: '12px' }} />
                                         <Bar dataKey="Facturadas" stackId="a" fill="#10B981" />
@@ -1177,9 +1215,9 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                         </div>
 
                         {/* 3. Evolución de Ingresos */}
-                        <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', border: '1px solid var(--neutral-200)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
-                            <h3 style={{ margin: '0 0 16px', fontSize: '1rem', color: 'var(--neutral-700)' }}>Evolución de Ingresos</h3>
-                            <div style={{ height: '300px' }}>
+                        <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', border: '1px solid var(--neutral-200)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+                            <h3 style={{ margin: '0 0 16px', fontSize: '1.1rem', color: 'var(--neutral-700)' }}>Evolución de Ingresos</h3>
+                            <div style={{ height: '400px' }}>
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={metricsData.ingresosMensuales} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
@@ -1193,9 +1231,9 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                         </div>
 
                         {/* 4. Triage de Demora */}
-                        <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', border: '1px solid var(--neutral-200)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
-                            <h3 style={{ margin: '0 0 16px', fontSize: '1rem', color: 'var(--neutral-700)' }}>Triage: Demora desde el Alta (Pendientes)</h3>
-                            <div style={{ height: '300px' }}>
+                        <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', border: '1px solid var(--neutral-200)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+                            <h3 style={{ margin: '0 0 16px', fontSize: '1.1rem', color: 'var(--neutral-700)' }}>Triage: Demora desde el Alta (Pendientes)</h3>
+                            <div style={{ height: '400px' }}>
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={metricsData.triageDemora} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
