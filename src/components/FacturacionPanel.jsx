@@ -17,8 +17,12 @@ import {
     Search, RefreshCw, ChevronRight, ChevronLeft, ChevronDown, Clock, Calendar,
     Filter, X, Loader2, FileText, User, Building2,
     Stethoscope, Download, AlertTriangle, CheckCircle2, Receipt,
-    ListFilter, ChevronUp, ShoppingCart, Trash2, Printer, PackageCheck, Undo2, Activity
+    ListFilter, ChevronUp, ShoppingCart, Trash2, Printer, PackageCheck, Undo2, Activity,
+    Sheet
 } from 'lucide-react';
+import { utils, writeFile } from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
     fetchAltasFacturacion, updateEstadoFac, updateResponsableFac,
     fetchFacturacionDetalle, FACTURACION_ESTADOS,
@@ -769,6 +773,54 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         }
     }, [selectedMonth]);
 
+    // ── Funciones de Exportación ──
+    const getExportData = () => {
+        return filteredAltas.map(a => ({
+            'N° Admisión': a.numero_admision || '',
+            'Paciente': a.paciente || '',
+            'Obra Social': a.cliente || '',
+            'Resp. ADM': a._responsableAdm || '',
+            'Proceso': a.proceso || '',
+            'Médico': a.doctor || '',
+            'Fecha Ingreso': a.fecha_ingreso ? formatDate(a.fecha_ingreso) : '',
+            'Fecha Alta': a.fecha_alta ? formatDate(a.fecha_alta) : '',
+            'Días Int.': typeof a.dias_internacion === 'number' ? a.dias_internacion : '',
+            'Facturada': a.facturada ? 'Sí' : 'No',
+            'Resp. FAC': a.responsable_fac || '',
+            'Estado FAC': a.estado_fac || 'Pendiente'
+        }));
+    };
+
+    const handleExportExcel = () => {
+        const data = getExportData();
+        const ws = utils.json_to_sheet(data);
+        const wb = utils.book_new();
+        utils.book_append_sheet(wb, ws, "Fichas");
+        writeFile(wb, `Facturacion_${selectedMonth}.xlsx`);
+    };
+
+    const handleExportPDF = () => {
+        const doc = new jsPDF('landscape');
+        doc.setFontSize(16);
+        doc.text(`Control de Facturación - ${selectedMonth}`, 14, 15);
+        doc.setFontSize(10);
+        doc.text(`Total de registros: ${filteredAltas.length}`, 14, 22);
+
+        const data = getExportData();
+        const columns = Object.keys(data[0] || {});
+        const rows = data.map(obj => columns.map(col => obj[col]));
+
+        autoTable(doc, {
+            head: [columns],
+            body: rows,
+            startY: 28,
+            styles: { fontSize: 7, cellPadding: 2 },
+            headStyles: { fillColor: [79, 70, 229] } // Indigo 600
+        });
+
+        doc.save(`Facturacion_${selectedMonth}.pdf`);
+    };
+
     // ── FilterHeader Component ──
     const FilterHeader = ({ label, col, width }) => {
         const isActive = !!columnFilters[col];
@@ -1312,6 +1364,28 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                             {searchTerm && (
                                 <X size={14} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', color: 'var(--neutral-400)' }} onClick={() => setSearchTerm('')} />
                             )}
+                        </div>
+
+                        {/* Botones de Exportación */}
+                        <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', marginRight: '8px' }}>
+                            <button onClick={handleExportExcel} title="Exportar a Excel"
+                                style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    padding: '6px 12px', borderRadius: '8px',
+                                    background: '#ECFDF5', border: '1px solid #A7F3D0',
+                                    color: '#059669', cursor: 'pointer', gap: '6px', fontSize: '0.8rem', fontWeight: 600
+                                }}>
+                                <Sheet size={16} /> Excel
+                            </button>
+                            <button onClick={handleExportPDF} title="Exportar a PDF"
+                                style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    padding: '6px 12px', borderRadius: '8px',
+                                    background: '#FEF2F2', border: '1px solid #FECACA',
+                                    color: '#DC2626', cursor: 'pointer', gap: '6px', fontSize: '0.8rem', fontWeight: 600
+                                }}>
+                                <FileText size={16} /> PDF
+                            </button>
                         </div>
 
                         <select value={filterEstado} onChange={e => setFilterEstado(e.target.value)}
