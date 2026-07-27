@@ -1001,41 +1001,37 @@ async function syncAltasAdministrativas(db) {
 
     // Rango: últimos 60 días de altas
     const result = await db.request().query(`
-        WITH CTE AS (
-            SELECT 
-                TA.[Número admisión],
-                TA.[Fecha ingreso],
-                CAST(TA.[Fecha alta] AS DATE) AS [Fecha alta],
-                TA.[Paciente],
-                TA.[Cliente],
-                TA.[Especialidad],
-                TA.[Proceso],
-                TA.[Doctor],
-                TA.[Motivo de alta],
-                TA.[Control ADM finalizado],
-                (
-                    SELECT STUFF((
-                        SELECT CHAR(13) + CHAR(10) + '---' + CHAR(13) + CHAR(10) + CAST(O.ValorM AS NVARCHAR(MAX))
-                        FROM [PR InstRespHospi] O
-                        WHERE O.idHospi = TA.idAdmision
-                          AND O.activo = 1
-                          AND O.ValorM IS NOT NULL
-                          AND O.idPreguntaPr = 6175
-                          AND LEN(LTRIM(RTRIM(CAST(O.ValorM AS NVARCHAR(MAX))))) > 0
-                        FOR XML PATH(''), TYPE
-                    ).value('.', 'NVARCHAR(MAX)'), 1, 7, '')
-                ) AS [Observaciones],
-                ROW_NUMBER() OVER (PARTITION BY TA.[Paciente], CAST(TA.[Fecha ingreso] AS DATE) ORDER BY TA.[Número admisión] DESC) as rn
-            FROM [SALUS].[dbo].[TABLEAU_Admisiones] TA
-            WHERE 
-                (
-                    TA.[Fecha ingreso] >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE))
-                    OR TA.[Fecha alta] >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE))
-                    OR (TA.[Fecha alta] IS NULL AND TA.[Fecha ingreso] >= '2025-01-01')
-                )
-                AND TA.[Fecha ingreso] < DATEADD(DAY, 1, CAST(GETDATE() AS DATE))
-        )
-        SELECT * FROM CTE WHERE rn = 1
+        SELECT 
+            TA.[Número admisión],
+            TA.[Fecha ingreso],
+            CAST(TA.[Fecha alta] AS DATE) AS [Fecha alta],
+            TA.[Paciente],
+            TA.[Cliente],
+            TA.[Especialidad],
+            TA.[Proceso],
+            TA.[Doctor],
+            TA.[Motivo de alta],
+            TA.[Control ADM finalizado],
+            (
+                SELECT STUFF((
+                    SELECT CHAR(13) + CHAR(10) + '---' + CHAR(13) + CHAR(10) + CAST(O.ValorM AS NVARCHAR(MAX))
+                    FROM [PR InstRespHospi] O
+                    WHERE O.idHospi = TA.idAdmision
+                        AND O.activo = 1
+                        AND O.ValorM IS NOT NULL
+                        AND O.idPreguntaPr = 6175
+                        AND LEN(LTRIM(RTRIM(CAST(O.ValorM AS NVARCHAR(MAX))))) > 0
+                    FOR XML PATH(''), TYPE
+                ).value('.', 'NVARCHAR(MAX)'), 1, 7, '')
+            ) AS [Observaciones]
+        FROM [SALUS].[dbo].[TABLEAU_Admisiones] TA
+        WHERE 
+            (
+                TA.[Fecha ingreso] >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE))
+                OR TA.[Fecha alta] >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE))
+                OR (TA.[Fecha alta] IS NULL AND TA.[Fecha ingreso] >= '2025-01-01')
+            )
+            AND TA.[Fecha ingreso] < DATEADD(DAY, 1, CAST(GETDATE() AS DATE))
     `);
     console.log(`   📥 ${result.recordset.length} registros extraídos`);
 
