@@ -552,10 +552,7 @@ export default function AltasPanel({ addToast, currentUser }) {
         let result = altas.filter(alta => {
             const doc = (alta.doctor || '').toLowerCase().trim();
             if (doc.includes('qsoft') || (doc.includes('profesional') && doc.includes('chequeo'))) return false;
-            // Particulares: si paciente = obra social, no nos interesa
-            const pac = (alta.paciente || '').trim().toUpperCase();
-            const os = (alta.cliente || '').trim().toUpperCase();
-            if (pac && os && pac === os) return false;
+            // Removed particulares filtering to show them in the panel
             return true;
         });
 

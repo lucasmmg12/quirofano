@@ -228,8 +228,13 @@ export async function getAltasStats(fromDate, toDate) {
 
 // ─── Estados de Facturación ───
 export const FACTURACION_ESTADOS = {
-    'Pendiente':    { label: 'Pendiente',    color: '#94A3B8', bg: '#F8FAFC', icon: '⏳' },
+    'Pendiente':    { label: 'Pendiente de repartir', color: '#94A3B8', bg: '#F8FAFC', icon: '⏳' },
+    'PENDIENTE':    { label: 'PENDIENTE',             color: '#64748B', bg: '#F1F5F9', icon: '📝' },
     'En proceso':   { label: 'En proceso',   color: '#F59E0B', bg: '#FFFBEB', icon: '🔄' },
+    'Falta biopsia':{ label: 'Falta biopsia',color: '#D946EF', bg: '#FDF4FF', icon: '🔬' },
+    'Alta prox. mes':{label: 'Alta prox. mes',color:'#6366F1', bg: '#EEF2FF', icon: '⏭️' },
+    'Hc incompleta':{ label: 'Hc incompleta',color: '#F97316', bg: '#FFF7ED', icon: '📄' },
+    'Parcial':      { label: 'Parcial',      color: '#0EA5E9', bg: '#F0F9FF', icon: '✂️' },
     'Facturada':    { label: 'Facturada',    color: '#10B981', bg: '#ECFDF5', icon: '✅' },
     'Devuelta':     { label: 'Devuelta',     color: '#EF4444', bg: '#FEF2F2', icon: '⚠️' },
 };

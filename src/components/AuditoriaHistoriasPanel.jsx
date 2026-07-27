@@ -2784,29 +2784,45 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                                     {(() => {
                                                         const adData = hcLocalStore.getAdmissionData(pat.numeroAdmision);
                                                         if (!adData || adData.fojas.length === 0) return null;
+
+                                                        const isNullFoja = (fq) => {
+                                                            return (!fq.id || fq.id === 'NULL') &&
+                                                                   (!fq.cirujano || fq.cirujano === 'NULL') &&
+                                                                   (!fq.procedimiento || fq.procedimiento === 'NULL') &&
+                                                                   (!fq.diagnostico || fq.diagnostico === 'NULL');
+                                                        };
+                                                        
+                                                        const allNull = adData.fojas.every(isNullFoja);
+
                                                         return (
                                                             <div style={{ marginTop: '16px', background: '#F8FAFC', borderRadius: '8px', padding: '12px', border: '1px solid #E2E8F0' }}>
                                                                 <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary-700)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                     <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3B82F6' }}></div>
                                                                     Fojas Quirúrgicas Detectadas
                                                                 </div>
-                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                                    {adData.fojas.map((fq, i) => (
-                                                                        <div key={`fq-${i}`} style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '8px 12px', fontSize: '0.75rem' }}>
-                                                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                                                                <strong style={{ color: '#0F172A' }}>Foja: {fq.id || 'N/A'}</strong>
-                                                                                <span style={{ color: '#64748B', fontWeight: 500 }}>
-                                                                                    {fq.fecha_cirugia ? new Date(fq.fecha_cirugia).toLocaleDateString('es-AR') : 'Sin fecha'} • {fq.hora_comienzo ? new Date(fq.hora_comienzo).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '--:--'} a {fq.hora_finalizacion ? new Date(fq.hora_finalizacion).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
-                                                                                </span>
+                                                                {allNull ? (
+                                                                    <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '8px 12px', fontSize: '0.75rem', color: '#64748B', fontStyle: 'italic' }}>
+                                                                        No hay foja quirúrgica
+                                                                    </div>
+                                                                ) : (
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                                        {adData.fojas.filter(fq => !isNullFoja(fq)).map((fq, i) => (
+                                                                            <div key={`fq-${i}`} style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '8px 12px', fontSize: '0.75rem' }}>
+                                                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                                                    <strong style={{ color: '#0F172A' }}>Foja: {fq.id || 'N/A'}</strong>
+                                                                                    <span style={{ color: '#64748B', fontWeight: 500 }}>
+                                                                                        {fq.fecha_cirugia && fq.fecha_cirugia !== 'NULL' ? new Date(fq.fecha_cirugia).toLocaleDateString('es-AR') : 'Sin fecha'} • {fq.hora_comienzo && fq.hora_comienzo !== 'NULL' ? new Date(fq.hora_comienzo).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '--:--'} a {fq.hora_finalizacion && fq.hora_finalizacion !== 'NULL' ? new Date(fq.hora_finalizacion).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div style={{ color: '#334155', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+                                                                                    <div><span style={{ color: '#94A3B8' }}>Cirujano:</span> {fq.cirujano || '-'}</div>
+                                                                                    <div><span style={{ color: '#94A3B8' }}>Procedimiento:</span> {fq.procedimiento || '-'}</div>
+                                                                                    <div style={{ gridColumn: 'span 2' }}><span style={{ color: '#94A3B8' }}>Diagnóstico:</span> {fq.diagnostico || '-'}</div>
+                                                                                </div>
                                                                             </div>
-                                                                            <div style={{ color: '#334155', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-                                                                                <div><span style={{ color: '#94A3B8' }}>Cirujano:</span> {fq.cirujano || '-'}</div>
-                                                                                <div><span style={{ color: '#94A3B8' }}>Procedimiento:</span> {fq.procedimiento || '-'}</div>
-                                                                                <div style={{ gridColumn: 'span 2' }}><span style={{ color: '#94A3B8' }}>Diagnóstico:</span> {fq.diagnostico || '-'}</div>
-                                                                            </div>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         );
                                                     })()}

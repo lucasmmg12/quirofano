@@ -130,6 +130,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     const [debouncedHistorialSearch, setDebouncedHistorialSearch] = useState('');
     const [filterEstado, setFilterEstado] = useState('all');
     const [filterResponsable, setFilterResponsable] = useState('all');
+    const [sortConfig, setSortConfig] = useState({ key: 'fecha_ingreso', direction: 'desc' });
 
     // ── Paginación ──
     const PAGE_SIZE = 100;
@@ -553,6 +554,11 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             const lastDayPrevMonth = new Date(prevYear, prevMonth, 0).getDate();
             const fechaCierreSugerida = cruzaMes ? `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(lastDayPrevMonth).padStart(2, '0')}` : null;
 
+            let estado_fac = alta.estado_fac;
+            if (alta.facturada && estado_fac === 'Devuelta') {
+                estado_fac = 'Facturada';
+            }
+
             return {
                 ...alta, _responsableAdm: respAdm, _isSuspendida: isSuspendida,
                 _isDuplicate: isDuplicate, _duplicateAdmissions: duplicateAdmissions,
@@ -564,7 +570,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                 _siblingAdmissionNumbers: siblingAdmissionNumbers,
                 _cruzaMes: cruzaMes,
                 _fechaCierreSugerida: fechaCierreSugerida,
-                doctor, proceso, cliente
+                doctor, proceso, cliente, estado_fac
             };
         });
 
@@ -605,19 +611,32 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     }, [preFilteredAltas]);
 
     const filteredAltas = useMemo(() => {
-        if (Object.keys(columnFilters).length === 0) return preFilteredAltas;
-        return preFilteredAltas.filter(a => {
-            if (columnFilters.cliente && !columnFilters.cliente.has(a.cliente)) return false;
-            if (columnFilters._responsableAdm && !columnFilters._responsableAdm.has(a._responsableAdm)) return false;
-            if (columnFilters.proceso && !columnFilters.proceso.has(a.proceso)) return false;
-            if (columnFilters.doctor && !columnFilters.doctor.has(a.doctor)) return false;
-            if (columnFilters.responsable_fac && !columnFilters.responsable_fac.has(a.responsable_fac)) return false;
-            
-            const est = a.estado_fac || 'Pendiente';
-            if (columnFilters.estado_fac && !columnFilters.estado_fac.has(est)) return false;
-            return true;
-        });
-    }, [preFilteredAltas, columnFilters]);
+        let result = preFilteredAltas;
+        if (Object.keys(columnFilters).length > 0) {
+            result = result.filter(a => {
+                if (columnFilters.cliente && !columnFilters.cliente.has(a.cliente)) return false;
+                if (columnFilters._responsableAdm && !columnFilters._responsableAdm.has(a._responsableAdm)) return false;
+                if (columnFilters.proceso && !columnFilters.proceso.has(a.proceso)) return false;
+                if (columnFilters.doctor && !columnFilters.doctor.has(a.doctor)) return false;
+                if (columnFilters.responsable_fac && !columnFilters.responsable_fac.has(a.responsable_fac)) return false;
+                
+                const est = a.estado_fac || 'Pendiente';
+                if (columnFilters.estado_fac && !columnFilters.estado_fac.has(est)) return false;
+                return true;
+            });
+        }
+        
+        if (sortConfig.key === 'paciente') {
+            result = [...result].sort((a, b) => {
+                const nameA = (a.paciente || '').toLowerCase();
+                const nameB = (b.paciente || '').toLowerCase();
+                if (nameA < nameB) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (nameA > nameB) return sortConfig.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+        return result;
+    }, [preFilteredAltas, columnFilters, sortConfig]);
 
     // ── Paginación: solo renderizar PAGE_SIZE filas ──
     const totalPages = Math.max(1, Math.ceil(filteredAltas.length / PAGE_SIZE));
@@ -655,12 +674,13 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         });
         const total = base.length;
         const pendientes = base.filter(a => !a.estado_fac || a.estado_fac === 'Pendiente').length;
+        const pendientesParcial = base.filter(a => a.estado_fac === 'PENDIENTE').length;
         const enProceso = base.filter(a => a.estado_fac === 'En proceso').length;
         const facturadas = base.filter(a => a.estado_fac === 'Facturada' || a.facturada).length;
         const devueltas = base.filter(a => a.estado_fac === 'Devuelta').length;
         const autoFacturadas = base.filter(a => a.facturada).length;
         const suspendidas = base.filter(a => a.estado === 'Suspendida' && !a.traspaso_id).length;
-        return { total, pendientes, enProceso, facturadas, devueltas, autoFacturadas, suspendidas };
+        return { total, pendientes, pendientesParcial, enProceso, facturadas, devueltas, autoFacturadas, suspendidas };
     }, [altas]);
 
     // ── Responsables únicos ──
@@ -1359,7 +1379,9 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                         </th>
                                         <th style={{ ...thStyle, width: '28px' }}></th>
                                         <th style={{ ...thStyle, width: '90px' }}>Admisión</th>
-                                        <th style={thStyle}>Paciente</th>
+                                        <th style={{ ...thStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => setSortConfig(prev => ({ key: 'paciente', direction: prev.key === 'paciente' && prev.direction === 'asc' ? 'desc' : 'asc' }))}>
+                                            Paciente {sortConfig.key === 'paciente' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                                        </th>
                                         <FilterHeader label="Cliente" col="cliente" />
                                         <FilterHeader label="Resp. ADM" col="_responsableAdm" width="120px" />
                                         <FilterHeader label="Proceso" col="proceso" width="100px" />
@@ -1381,8 +1403,8 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                         const isDevuelta = estadoFac === 'Devuelta';
                                         const dias = daysBetween(alta.fecha_ingreso, alta.fecha_alta);
                                         const canSelect = (!alta.en_carrito_devolucion || alta.carrito_devolucion_por === currentUser?.usuario) && !alta.devolucion_id && !alta._isSuspendida;
-                                        // Read-only: fichas facturadas, devueltas, o suspendidas no se pueden editar
-                                        const isReadOnly = estadoFac === 'Facturada' || estadoFac === 'Devuelta' || alta._isSuspendida;
+                                        // Read-only: fichas facturadas o suspendidas no se pueden editar (Devueltas sí se pueden editar)
+                                        const isReadOnly = estadoFac === 'Facturada' || alta._isSuspendida;
                                         const rowBg = alta._isSuspendida ? '#FEF2F2'
                                             : alta._isObsoleteAdmission ? '#FFFBEB'
                                             : isDevuelta ? '#FEF2F2'
@@ -1718,8 +1740,13 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                                             <tbody>
                                                                                 {alta._siblingAdmissions.map(sib => {
                                                                                     const sibEstados = {
-                                                                                        'Pendiente': { label: 'Pendiente', color: '#F59E0B', bg: '#FFFBEB', icon: '⏳' },
+                                                                                        'Pendiente': { label: 'Pendiente de repartir', color: '#F59E0B', bg: '#FFFBEB', icon: '⏳' },
+                                                                                        'PENDIENTE': { label: 'PENDIENTE', color: '#64748B', bg: '#F1F5F9', icon: '📝' },
                                                                                         'En Proceso': { label: 'En Proceso', color: '#3B82F6', bg: '#EFF6FF', icon: '🔄' },
+                                                                                        'Falta biopsia':{ label: 'Falta biopsia', color: '#D946EF', bg: '#FDF4FF', icon: '🔬' },
+                                                                                        'Alta prox. mes':{label: 'Alta prox. mes', color: '#6366F1', bg: '#EEF2FF', icon: '⏭️' },
+                                                                                        'Hc incompleta':{ label: 'Hc incompleta', color: '#F97316', bg: '#FFF7ED', icon: '📄' },
+                                                                                        'Parcial':      { label: 'Parcial', color: '#0EA5E9', bg: '#F0F9FF', icon: '✂️' },
                                                                                         'Facturada': { label: 'Facturada', color: '#10B981', bg: '#ECFDF5', icon: '✅' },
                                                                                         'Devuelta': { label: 'Devuelta', color: '#EF4444', bg: '#FEF2F2', icon: '🔙' },
                                                                                     };
