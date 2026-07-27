@@ -739,23 +739,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         });
         result.obrasSociales = Object.values(osMap).sort((a, b) => b.Total - a.Total).slice(0, 10);
 
-        // 4. Triage de Demora (Filtrado)
-        const demoraBuckets = { '0-3 días': 0, '4-7 días': 0, '8-15 días': 0, '+15 días': 0 };
-        const now = new Date();
-        chartFilteredAltas.forEach(a => {
-            const estado = a.estado_fac || 'Pendiente';
-            if (estado !== 'Facturada' && !a.facturada && a.fecha_alta) {
-                const altaDate = new Date(a.fecha_alta);
-                const diffTime = Math.abs(now - altaDate);
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                
-                if (diffDays <= 3) demoraBuckets['0-3 días'] += 1;
-                else if (diffDays <= 7) demoraBuckets['4-7 días'] += 1;
-                else if (diffDays <= 15) demoraBuckets['8-15 días'] += 1;
-                else demoraBuckets['+15 días'] += 1;
-            }
-        });
-        result.triageDemora = Object.entries(demoraBuckets).map(([name, Fichas]) => ({ name, Fichas }));
+        // 4. (Eliminado: Triage de Demora)
 
         // 5. Evolución de Ingresos (Filtrado)
         const ingresosMap = {};
@@ -1230,29 +1214,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                             </div>
                         </div>
 
-                        {/* 4. Triage de Demora */}
-                        <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', border: '1px solid var(--neutral-200)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
-                            <h3 style={{ margin: '0 0 16px', fontSize: '1.1rem', color: 'var(--neutral-700)' }}>Triage: Demora desde el Alta (Pendientes)</h3>
-                            <div style={{ height: '400px' }}>
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={metricsData.triageDemora} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                                        <XAxis dataKey="name" tick={{ fontSize: 12, fontWeight: 600 }} />
-                                        <YAxis tick={{ fontSize: 11 }} />
-                                        <RechartsTooltip cursor={{ fill: '#F3F4F6' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
-                                        <Bar dataKey="Fichas" fill="#F59E0B" radius={[6, 6, 0, 0]}>
-                                            {metricsData.triageDemora.map((entry, index) => (
-                                                <Cell key={`cell-${index}`} fill={
-                                                    entry.name === '0-3 días' ? '#10B981' : 
-                                                    entry.name === '4-7 días' ? '#F59E0B' : 
-                                                    entry.name === '8-15 días' ? '#F97316' : '#EF4444'
-                                                } />
-                                            ))}
-                                        </Bar>
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
+
 
                     </div>
                 </div>
