@@ -28,6 +28,7 @@ import PedidosMarcela from './components/PedidosMarcela.jsx';
 import WhatsAppLineStatus from './components/WhatsAppLineStatus.jsx';
 import MetricsPanel from './components/MetricsPanel.jsx';
 import TurnoAdminPanel from './components/TurnoAdminPanel.jsx';
+import PublicRecepcionView from './components/PublicRecepcionView.jsx';
 import DeudasPanel from './components/DeudasPanel.jsx';
 import AltasPanel from './components/AltasPanel.jsx';
 import FacturacionPanel from './components/FacturacionPanel.jsx';
@@ -77,6 +78,11 @@ function AppRoot() {
         authLogout();
         setCurrentUser(null);
     }, [currentUser]);
+
+    // Public route for guarantees
+    if (path === '/recepcion/garantias') {
+        return <PublicRecepcionView />;
+    }
 
     // Lab Portal routes (authenticated) — /lab/aguero, /lab/cedap, /lab/cuyo
     const labMatch = path.match(/^\/lab\/(aguero|cedap|cuyo)\/?$/);

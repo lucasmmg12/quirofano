@@ -3,16 +3,16 @@ import { supabase } from '../lib/supabase';
 // Obtiene todas las cirugías que tienen una garantía o que podrían tenerla.
 export async function fetchGarantias() {
     const { data, error } = await supabase
-        .from('surgeries')
+        .from('altas_administrativas')
         .select(`
-            id, nombre, dni, obra_social, fecha_cirugia, modulo, 
+            id, paciente, dni, cliente, fecha_ingreso, especialidad,
+            numero_admision,
             garantia_estado, garantia_ubicacion, 
             en_carrito_rendicion, carrito_rendicion_por,
             rendicion_garantia_id,
             rendiciones_garantias(codigo)
         `)
-        .eq('excluido', false)
-        .order('fecha_cirugia', { ascending: false });
+        .order('fecha_ingreso', { ascending: false });
 
     if (error) throw error;
     return data || [];
@@ -30,62 +30,52 @@ export async function fetchHistorialGarantia(surgeryId) {
     return data || [];
 }
 
-// Cambiar estado o ubicación de una garantía manualmente
-export async function cambiarEstadoGarantia(surgeryId, updates, usuario, tipoMovimiento = 'Cambio de Estado', observaciones = '') {
-    // 1. Obtener estado anterior
-    const { data: oldData } = await supabase
-        .from('surgeries')
-        .select('garantia_estado, garantia_ubicacion')
-        .eq('id', surgeryId)
-        .single();
-    
-    // 2. Actualizar cirugía
-    const { data, error } = await supabase
-        .from('surgeries')
-        .update(updates)
-        .eq('id', surgeryId)
-        .select()
-        .single();
-    if (error) throw error;
+export async function toggleCarritoRendicion(surgeryId, inCart, userDetails) {
+    const { error } = await supabase
+        .from('altas_administrativas')
+        .update({
+            en_carrito_rendicion: inCart,
+            carrito_rendicion_por: inCart ? userDetails : null,
+            carrito_rendicion_at: inCart ? new Date().toISOString() : null
+        })
+        .eq('id', surgeryId);
 
-    // 3. Registrar en historial
+    if (error) throw error;
+    
+    // Log history
     await supabase.from('garantias_historial').insert([{
         surgery_id: surgeryId,
-        usuario,
-        tipo_movimiento: tipoMovimiento,
-        origen: oldData?.garantia_ubicacion || 'Recepción',
-        destino: updates.garantia_ubicacion || oldData?.garantia_ubicacion || 'Recepción',
-        estado_vigente: updates.garantia_estado || oldData?.garantia_estado || 'Activa',
-        observaciones: observaciones
+        accion: inCart ? 'Agregado al Carrito' : 'Quitado del Carrito',
+        usuario: userDetails,
+        detalles: null
     }]);
-
-    return data;
 }
 
-// Agregar o quitar del carrito de rendición
-export async function toggleCarritoRendicion(surgeryId, enCarrito, usuario) {
-    const updates = {
-        en_carrito_rendicion: enCarrito,
-        carrito_rendicion_por: enCarrito ? usuario : null,
-        carrito_rendicion_at: enCarrito ? new Date().toISOString() : null
-    };
-
-    const { data, error } = await supabase
-        .from('surgeries')
-        .update(updates)
-        .eq('id', surgeryId)
-        .select()
-        .single();
+// Cambiar estado administrativo
+export async function cambiarEstadoGarantia(surgeryId, updates, userDetails, nota = null) {
+    const updateData = { ...updates };
     
+    // If state changes to Archivada, record the date
+    if (updates.garantia_estado === 'Archivada') {
+        updateData.garantia_fecha_archivada = new Date().toISOString().split('T')[0];
+    } else if (updates.garantia_estado && updates.garantia_estado !== 'Archivada') {
+        // Clear archived date if it moves out of archived state
+        updateData.garantia_fecha_archivada = null;
+    }
+
+    const { error } = await supabase
+        .from('altas_administrativas')
+        .update(updateData)
+        .eq('id', surgeryId);
+
     if (error) throw error;
-    return data;
 }
 
 // Obtener las garantías actualmente en el carrito de rendición
 export async function fetchCarritoRendicion(usuario) {
     const { data, error } = await supabase
-        .from('surgeries')
-        .select('id, nombre, dni, obra_social, fecha_cirugia')
+        .from('altas_administrativas')
+        .select('id, paciente, dni, especialidad, fecha_ingreso')
         .eq('en_carrito_rendicion', true)
         // .eq('carrito_rendicion_por', usuario) // Descomentar si el carrito es por usuario estrictamente
         .order('carrito_rendicion_at', { ascending: true });
@@ -95,45 +85,47 @@ export async function fetchCarritoRendicion(usuario) {
 }
 
 // Emitir rendición (Mueve de Recepción a Administración y guarda la rendición)
-export async function emitirRendicion(surgeryIds, usuario, firmaUsuario) {
-    if (!surgeryIds || surgeryIds.length === 0) throw new Error("No hay garantías seleccionadas.");
+export async function emitirRendicion(garantiasIds, data, userDetails) {
+    if (!garantiasIds.length) throw new Error("No hay garantías en el carrito");
 
-    const codigo = `REN-${Date.now().toString().slice(-6)}`;
-    
-    // 1. Crear registro de rendición
-    const { data: rendicion, error: rError } = await supabase
-        .from('rendiciones_garantias')
-        .insert([{
-            codigo,
-            responsable_entrega: usuario,
-            firma_entrega: firmaUsuario, // Firma digital
-            cantidad_garantias: surgeryIds.length
-        }])
-        .select()
-        .single();
-    
-    if (rError) throw rError;
-
-    // 2. Actualizar las cirugías
-    const updates = {
-        en_carrito_rendicion: false,
-        carrito_rendicion_por: null,
-        carrito_rendicion_at: null,
-        garantia_ubicacion: 'Administración',
-        rendicion_garantia_id: rendicion.id
+    // 1. Crear la rendición en rendiciones_garantias
+    const rendicion = {
+        entrega: data.entrega,
+        recibe: data.recibe,
+        notas: data.notas,
+        firma_entrega: data.firma_entrega,
+        firma_recibe: data.firma_recibe,
+        garantias_count: garantiasIds.length,
+        created_at: new Date().toISOString()
     };
 
-    const { error: sError } = await supabase
-        .from('surgeries')
-        .update(updates)
-        .in('id', surgeryIds);
+    const { data: rendicionData, error: rendicionError } = await supabase
+        .from('rendiciones_garantias')
+        .insert([rendicion])
+        .select('id')
+        .single();
 
-    if (sError) throw sError;
+    if (rendicionError) throw rendicionError;
+
+    // 2. Actualizar las altas (garantías) asociadas
+    const { error: updateError } = await supabase
+        .from('altas_administrativas')
+        .update({
+            rendicion_garantia_id: rendicionData.id,
+            garantia_estado: 'Activa',
+            garantia_ubicacion: 'Administración',
+            en_carrito_rendicion: false,
+            carrito_rendicion_por: null,
+            carrito_rendicion_at: null
+        })
+        .in('id', garantiasIds);
+
+    if (updateError) throw updateError;
 
     // 3. Registrar en el historial para cada cirugía
-    const historialEntries = surgeryIds.map(id => ({
+    const historialEntries = garantiasIds.map(id => ({
         surgery_id: id,
-        usuario,
+        usuario: userDetails,
         tipo_movimiento: 'Rendición de Garantía',
         origen: 'Recepción',
         destino: 'Administración',

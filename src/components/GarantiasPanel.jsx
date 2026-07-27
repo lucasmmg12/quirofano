@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-    Search, FileText, ShoppingCart, RefreshCw, Archive, 
-    Trash2, AlertTriangle, Scale, History, Printer, Shield, ChevronDown 
+    Search, FileText, RefreshCw, Archive, 
+    Trash2, AlertTriangle, Scale, History, Printer, Shield, ChevronDown, Link, Check
 } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import PrintGarantias from './PrintGarantias';
@@ -16,17 +16,14 @@ export default function GarantiasPanel({ addToast, currentUser }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterEstado, setFilterEstado] = useState('Todas');
     const [filterUbicacion, setFilterUbicacion] = useState('Todas');
+    const [copied, setCopied] = useState(false);
     
     // Historial Modal
     const [showHistorial, setShowHistorial] = useState(false);
     const [selectedHistorial, setSelectedHistorial] = useState([]);
     const [historialLoading, setHistorialLoading] = useState(false);
     
-    // Impresión
-    const printRef = useRef();
-    const [rendicionData, setRendicionData] = useState(null);
-
-    // Initial load
+    // Historial Modal
     const loadData = async () => {
         setLoading(true);
         try {
@@ -44,7 +41,13 @@ export default function GarantiasPanel({ addToast, currentUser }) {
         loadData();
     }, []);
 
-    const cartItems = useMemo(() => garantias.filter(g => g.en_carrito_rendicion), [garantias]);
+    const copyLink = () => {
+        const url = `${window.location.origin}/recepcion/garantias`;
+        navigator.clipboard.writeText(url);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+        addToast('Link copiado al portapapeles', 'success');
+    };
     
     const filteredGarantias = useMemo(() => {
         return garantias.filter(g => {
@@ -60,16 +63,6 @@ export default function GarantiasPanel({ addToast, currentUser }) {
     }, [garantias, searchTerm, filterEstado, filterUbicacion]);
 
     // Actions
-    const handleToggleCart = async (surgeryId, currentCartState) => {
-        try {
-            await toggleCarritoRendicion(surgeryId, !currentCartState, currentUser?.nombre || currentUser?.usuario);
-            // Optimistic update
-            setGarantias(prev => prev.map(g => g.id === surgeryId ? { ...g, en_carrito_rendicion: !currentCartState } : g));
-            addToast(!currentCartState ? 'Garantía agregada al carrito' : 'Garantía quitada del carrito', 'success');
-        } catch (error) {
-            addToast('Error al actualizar carrito', 'error');
-        }
-    };
 
     const handleChangeEstado = async (surgeryId, nuevoEstado) => {
         if (!window.confirm(`¿Seguro que deseas cambiar el estado a "${nuevoEstado}"?`)) return;
@@ -95,68 +88,32 @@ export default function GarantiasPanel({ addToast, currentUser }) {
         }
     };
 
-    const handlePrint = useReactToPrint({
-        content: () => printRef.current,
-        documentTitle: 'Rendicion_Garantias',
-        onAfterPrint: () => {
-            setRendicionData(null);
-            loadData(); // Recargar para actualizar los estados a "Administración"
-        }
-    });
-
-    const handleEmitirRendicion = async () => {
-        if (cartItems.length === 0) return;
-        if (!window.confirm(`Estás por emitir una rendición con ${cartItems.length} garantías que se transferirán a Administración. ¿Continuar?`)) return;
-        
-        try {
-            const rendicion = await emitirRendicion(cartItems.map(g => g.id), currentUser?.nombre || currentUser?.usuario, currentUser?.nombre || currentUser?.usuario);
-            addToast('Rendición emitida correctamente', 'success');
-            setRendicionData({ info: rendicion, items: cartItems });
-            setTimeout(() => {
-                handlePrint();
-            }, 500);
-        } catch (error) {
-            console.error(error);
-            addToast('Error al emitir rendición', 'error');
-        }
-    };
-
     return (
-        <div className="animate-fade-in" style={{ padding: '24px' }}>
-            {/* Cabecera */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <div style={{ minHeight: '100%', background: '#F8FAFC', padding: '24px' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
                 <div>
                     <h2 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--neutral-800)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Shield style={{ color: 'var(--primary-600)' }} />
-                        Gestión de Garantías (Pagarés)
+                        <Shield color="var(--primary-600)" />
+                        Gestión de Garantías
                     </h2>
                     <p style={{ margin: '4px 0 0', color: 'var(--neutral-500)', fontSize: '0.9rem' }}>
-                        Trazabilidad física y administrativa de los documentos de compromiso de pago.
+                        Supervisión y trazabilidad de pagarés físicos
                     </p>
                 </div>
                 
-                {/* Carrito Resumen */}
-                {cartItems.length > 0 && (
-                    <div style={{ 
-                        background: 'var(--primary-50)', border: '1px solid var(--primary-200)',
-                        padding: '12px 20px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '16px' 
-                    }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary-700)', fontWeight: 600 }}>
-                            <ShoppingCart size={20} />
-                            {cartItems.length} en carrito
-                        </div>
-                        <button 
-                            onClick={handleEmitirRendicion}
-                            style={{
-                                background: 'var(--primary-600)', color: 'white', border: 'none',
-                                padding: '8px 16px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', gap: '6px'
-                            }}
-                        >
-                            <Printer size={16} /> Emitir Rendición
-                        </button>
-                    </div>
-                )}
+                <button 
+                    onClick={copyLink}
+                    style={{
+                        background: 'white', color: copied ? '#10B981' : '#4F46E5', border: `1px solid ${copied ? '#34D399' : '#C7D2FE'}`,
+                        padding: '8px 16px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        transition: 'all 0.2s'
+                    }}
+                >
+                    {copied ? <Check size={18} /> : <Link size={18} />}
+                    {copied ? '¡Copiado!' : 'Copiar Link para Recepción'}
+                </button>
             </div>
 
             {/* Filtros */}
@@ -222,10 +179,10 @@ export default function GarantiasPanel({ addToast, currentUser }) {
                             filteredGarantias.map(g => (
                                 <tr key={g.id} style={{ borderBottom: '1px solid var(--neutral-100)', background: g.en_carrito_rendicion ? 'var(--primary-50)' : 'transparent' }}>
                                     <td style={{ padding: '12px' }}>
-                                        <div style={{ fontWeight: 600, color: 'var(--neutral-800)' }}>{g.nombre}</div>
-                                        <div style={{ color: 'var(--neutral-500)', fontSize: '0.75rem' }}>DNI: {g.dni} | Ingreso: {g.fecha_cirugia ? new Date(g.fecha_cirugia + 'T12:00:00').toLocaleDateString('es-AR') : '-'}</div>
+                                        <div style={{ fontWeight: 600, color: 'var(--neutral-800)' }}>{g.paciente}</div>
+                                        <div style={{ color: 'var(--neutral-500)', fontSize: '0.75rem' }}>DNI: {g.dni} | Ingreso: {g.fecha_ingreso ? new Date(g.fecha_ingreso + 'T12:00:00').toLocaleDateString('es-AR') : '-'}</div>
                                     </td>
-                                    <td style={{ padding: '12px', color: 'var(--neutral-600)' }}>{g.obra_social}</td>
+                                    <td style={{ padding: '12px', color: 'var(--neutral-600)' }}>{g.cliente}</td>
                                     <td style={{ padding: '12px' }}>
                                         <span style={{ 
                                             padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600,
@@ -343,12 +300,6 @@ export default function GarantiasPanel({ addToast, currentUser }) {
                 </div>
             )}
 
-            {/* Print Component (Hidden) */}
-            <PrintGarantias 
-                ref={printRef} 
-                items={rendicionData?.items || []} 
-                rendicionInfo={rendicionData?.info} 
-            />
         </div>
     );
 }
