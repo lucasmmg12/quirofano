@@ -323,9 +323,20 @@ export async function updateEstadoFac(id, estado_fac, operador = 'operador') {
  * Actualiza el responsable de facturación
  */
 export async function updateResponsableFac(id, responsable_fac) {
+    const { data: current } = await supabase
+        .from('altas_administrativas')
+        .select('estado_fac')
+        .eq('id', id)
+        .single();
+
+    let updatePayload = { responsable_fac };
+    if (responsable_fac && (!current?.estado_fac || current.estado_fac === 'Pendiente')) {
+        updatePayload.estado_fac = 'En proceso';
+    }
+
     const { data, error } = await supabase
         .from('altas_administrativas')
-        .update({ responsable_fac })
+        .update(updatePayload)
         .eq('id', id)
         .select()
         .single();
