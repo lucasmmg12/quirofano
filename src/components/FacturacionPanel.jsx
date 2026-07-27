@@ -1038,6 +1038,43 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                 </div>
             </div>
 
+            {/* ── Selector de Mes ── */}
+            <div className="month-selector" style={{ marginBottom: '16px' }}>
+                <button
+                    className="month-selector__arrow"
+                    onClick={() => {
+                        const idx = monthOptions.findIndex(m => m.key === selectedMonth);
+                        if (idx > 0) setSelectedMonth(monthOptions[idx - 1].key);
+                    }}
+                    disabled={monthOptions.findIndex(m => m.key === selectedMonth) === 0}
+                    title="Mes anterior"
+                >
+                    <ChevronLeft size={16} />
+                </button>
+                <div className="month-selector__scroll" ref={monthScrollRef}>
+                    {monthOptions.map(m => (
+                        <button
+                            key={m.key}
+                            className={`month-pill${m.key === selectedMonth ? ' month-pill--active' : ''}${m.isCurrent ? ' month-pill--current' : ''}`}
+                            onClick={() => setSelectedMonth(m.key)}
+                        >
+                            {m.fullLabel}
+                        </button>
+                    ))}
+                </div>
+                <button
+                    className="month-selector__arrow"
+                    onClick={() => {
+                        const idx = monthOptions.findIndex(m => m.key === selectedMonth);
+                        if (idx < monthOptions.length - 1) setSelectedMonth(monthOptions[idx + 1].key);
+                    }}
+                    disabled={monthOptions.findIndex(m => m.key === selectedMonth) === monthOptions.length - 1}
+                    title="Mes siguiente"
+                >
+                    <ChevronRight size={16} />
+                </button>
+            </div>
+
             {/* ── KPIs ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', marginBottom: '20px' }}>
                 {[
@@ -1458,42 +1495,6 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             ) : (
                 /* ══════ TABLA PRINCIPAL ══════ */
                 <>
-                    {/* ── Selector de Mes ── */}
-                    <div className="month-selector" style={{ marginBottom: '16px' }}>
-                        <button
-                            className="month-selector__arrow"
-                            onClick={() => {
-                                const idx = monthOptions.findIndex(m => m.key === selectedMonth);
-                                if (idx > 0) setSelectedMonth(monthOptions[idx - 1].key);
-                            }}
-                            disabled={monthOptions.findIndex(m => m.key === selectedMonth) === 0}
-                            title="Mes anterior"
-                        >
-                            <ChevronLeft size={16} />
-                        </button>
-                        <div className="month-selector__scroll" ref={monthScrollRef}>
-                            {monthOptions.map(m => (
-                                <button
-                                    key={m.key}
-                                    className={`month-pill${m.key === selectedMonth ? ' month-pill--active' : ''}${m.isCurrent ? ' month-pill--current' : ''}`}
-                                    onClick={() => setSelectedMonth(m.key)}
-                                >
-                                    {m.fullLabel}
-                                </button>
-                            ))}
-                        </div>
-                        <button
-                            className="month-selector__arrow"
-                            onClick={() => {
-                                const idx = monthOptions.findIndex(m => m.key === selectedMonth);
-                                if (idx < monthOptions.length - 1) setSelectedMonth(monthOptions[idx + 1].key);
-                            }}
-                            disabled={monthOptions.findIndex(m => m.key === selectedMonth) === monthOptions.length - 1}
-                            title="Mes siguiente"
-                        >
-                            <ChevronRight size={16} />
-                        </button>
-                    </div>
 
                     {/* ── KPIs ── */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '16px' }}>
