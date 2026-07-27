@@ -20,6 +20,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
+    "react-to-print": "^3.3.0",
     "recharts": "^3.8.1",
     "three": "^0.184.0",
     "uuid": "^11.0.5",
