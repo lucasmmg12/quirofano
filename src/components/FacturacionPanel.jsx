@@ -23,6 +23,7 @@ import {
 import { utils, writeFile } from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import {
     fetchAltasFacturacion, updateEstadoFac, updateResponsableFac,
     fetchFacturacionDetalle, FACTURACION_ESTADOS,
@@ -671,11 +672,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
 
     // ── KPIs ──
     const kpis = useMemo(() => {
-        // Base: altas sin chequeos
-        const base = altas.filter(a => {
-            const doc = (a.doctor || '').toLowerCase().trim();
-            return !(doc.includes('qsoft') || (doc.includes('profesional') && doc.includes('chequeo')));
-        });
+        const base = filteredAltas;
         const total = base.length;
         const pendientes = base.filter(a => !a.estado_fac || a.estado_fac === 'Pendiente').length;
         const pendientesParcial = base.filter(a => a.estado_fac === 'PENDIENTE').length;
@@ -683,15 +680,89 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         const facturadas = base.filter(a => a.estado_fac === 'Facturada' || a.facturada).length;
         const devueltas = base.filter(a => a.estado_fac === 'Devuelta').length;
         const autoFacturadas = base.filter(a => a.facturada).length;
-        const suspendidas = base.filter(a => a.estado === 'Suspendida' && !a.traspaso_id).length;
+        const suspendidas = base.filter(a => a._isSuspendida).length;
         return { total, pendientes, pendientesParcial, enProceso, facturadas, devueltas, autoFacturadas, suspendidas };
-    }, [altas]);
+    }, [filteredAltas]);
 
     // ── Responsables únicos ──
     const uniqueResponsables = useMemo(() => {
         const set = new Set(altas.map(a => a.responsable_fac).filter(Boolean));
         return [...set].sort();
     }, [altas]);
+
+    // ── Metrics Data ──
+    const metricsData = useMemo(() => {
+        const result = {
+            estados: [],
+            analistas: [],
+            obrasSociales: [],
+            triageDemora: [],
+            ingresosMensuales: []
+        };
+
+        // 1. Estados
+        const estadoCounts = {};
+        filteredAltas.forEach(a => {
+            const estado = a.estado_fac || 'Pendiente';
+            estadoCounts[estado] = (estadoCounts[estado] || 0) + 1;
+        });
+        result.estados = Object.entries(estadoCounts).map(([name, value]) => ({ name, value }));
+
+        // 2. Productividad por Analista
+        const analistaMap = {};
+        filteredAltas.forEach(a => {
+            const resp = a.responsable_fac || 'Sin Asignar';
+            if (!analistaMap[resp]) analistaMap[resp] = { name: shortName(resp), Facturadas: 0, Pendientes: 0, Devueltas: 0, 'En proceso': 0 };
+            
+            const estado = a.estado_fac || 'Pendiente';
+            if (estado === 'Facturada' || a.facturada) analistaMap[resp].Facturadas += 1;
+            else if (estado === 'Devuelta') analistaMap[resp].Devueltas += 1;
+            else if (estado === 'En proceso') analistaMap[resp]['En proceso'] += 1;
+            else analistaMap[resp].Pendientes += 1;
+        });
+        result.analistas = Object.values(analistaMap).sort((a, b) => (b.Facturadas + b.Pendientes) - (a.Facturadas + a.Pendientes));
+
+        // 3. Obras Sociales (Top 10)
+        const osMap = {};
+        filteredAltas.forEach(a => {
+            const os = a.cliente || 'Sin OS';
+            if (!osMap[os]) osMap[os] = { name: os.substring(0, 20), Total: 0, Facturadas: 0 };
+            osMap[os].Total += 1;
+            if (a.estado_fac === 'Facturada' || a.facturada) osMap[os].Facturadas += 1;
+        });
+        result.obrasSociales = Object.values(osMap).sort((a, b) => b.Total - a.Total).slice(0, 10);
+
+        // 4. Triage de Demora (Solo Pendientes/En Proceso)
+        const demoraBuckets = { '0-3 días': 0, '4-7 días': 0, '8-15 días': 0, '+15 días': 0 };
+        const now = new Date();
+        filteredAltas.forEach(a => {
+            const estado = a.estado_fac || 'Pendiente';
+            if (estado !== 'Facturada' && !a.facturada && a.fecha_alta) {
+                const altaDate = new Date(a.fecha_alta);
+                const diffTime = Math.abs(now - altaDate);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                
+                if (diffDays <= 3) demoraBuckets['0-3 días'] += 1;
+                else if (diffDays <= 7) demoraBuckets['4-7 días'] += 1;
+                else if (diffDays <= 15) demoraBuckets['8-15 días'] += 1;
+                else demoraBuckets['+15 días'] += 1;
+            }
+        });
+        result.triageDemora = Object.entries(demoraBuckets).map(([name, Fichas]) => ({ name, Fichas }));
+
+        // 5. Evolución de Ingresos
+        const ingresosMap = {};
+        filteredAltas.forEach(a => {
+            if (a.fecha_ingreso) {
+                const dateKey = formatDate(a.fecha_ingreso);
+                if (!ingresosMap[dateKey]) ingresosMap[dateKey] = { date: dateKey, sortKey: a.fecha_ingreso, Ingresos: 0 };
+                ingresosMap[dateKey].Ingresos += 1;
+            }
+        });
+        result.ingresosMensuales = Object.values(ingresosMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+        return result;
+    }, [filteredAltas]);
 
     // ── Handlers ──
     const handleEstadoChange = async (id, newEstado) => {
@@ -995,6 +1066,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             }}>
                 {[
                     { key: 'tabla', label: '📋 Fichas' },
+                    { key: 'metricas', label: '📊 Métricas' },
                     { key: 'carrito_devolucion', label: '🔙 Carrito Devolución', badge: carritoDevItems.length },
                     { key: 'historial_devoluciones', label: '📄 Historial Dev.' },
                 ].map(tab => (
@@ -1023,7 +1095,92 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                 ))}
             </div>
 
-            {activeTab === 'carrito_devolucion' ? (
+            {activeTab === 'metricas' ? (
+                /* ══════ MÉTRICAS TAB ══════ */
+                <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px' }}>
+                        
+                        {/* 1. Productividad por Analista */}
+                        <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', border: '1px solid var(--neutral-200)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+                            <h3 style={{ margin: '0 0 16px', fontSize: '1rem', color: 'var(--neutral-700)' }}>Desempeño por Analista</h3>
+                            <div style={{ height: '300px' }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={metricsData.analistas} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                                        <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-25} textAnchor="end" interval={0} />
+                                        <YAxis tick={{ fontSize: 11 }} />
+                                        <RechartsTooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
+                                        <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                                        <Bar dataKey="Facturadas" stackId="a" fill="#10B981" radius={[0, 0, 4, 4]} />
+                                        <Bar dataKey="En proceso" stackId="a" fill="#F59E0B" />
+                                        <Bar dataKey="Pendientes" stackId="a" fill="#94A3B8" />
+                                        <Bar dataKey="Devueltas" stackId="a" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        {/* 2. Top 10 Obras Sociales */}
+                        <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', border: '1px solid var(--neutral-200)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+                            <h3 style={{ margin: '0 0 16px', fontSize: '1rem', color: 'var(--neutral-700)' }}>Top 10 Obras Sociales (Volumen)</h3>
+                            <div style={{ height: '300px' }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={metricsData.obrasSociales} layout="vertical" margin={{ top: 10, right: 30, left: 50, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
+                                        <XAxis type="number" tick={{ fontSize: 11 }} />
+                                        <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={120} />
+                                        <RechartsTooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
+                                        <Legend wrapperStyle={{ fontSize: '12px' }} />
+                                        <Bar dataKey="Facturadas" stackId="a" fill="#10B981" />
+                                        <Bar dataKey="Total" stackId="b" fill="#6366F1" radius={[0, 4, 4, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        {/* 3. Evolución de Ingresos */}
+                        <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', border: '1px solid var(--neutral-200)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+                            <h3 style={{ margin: '0 0 16px', fontSize: '1rem', color: 'var(--neutral-700)' }}>Evolución de Ingresos</h3>
+                            <div style={{ height: '300px' }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={metricsData.ingresosMensuales} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                                        <XAxis dataKey="date" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" />
+                                        <YAxis tick={{ fontSize: 11 }} />
+                                        <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
+                                        <Line type="monotone" dataKey="Ingresos" stroke="#6366F1" strokeWidth={3} dot={{ r: 4, fill: '#6366F1', strokeWidth: 0 }} activeDot={{ r: 6 }} />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        {/* 4. Triage de Demora */}
+                        <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', border: '1px solid var(--neutral-200)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+                            <h3 style={{ margin: '0 0 16px', fontSize: '1rem', color: 'var(--neutral-700)' }}>Triage: Demora desde el Alta (Pendientes)</h3>
+                            <div style={{ height: '300px' }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={metricsData.triageDemora} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                                        <XAxis dataKey="name" tick={{ fontSize: 12, fontWeight: 600 }} />
+                                        <YAxis tick={{ fontSize: 11 }} />
+                                        <RechartsTooltip cursor={{ fill: '#F3F4F6' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
+                                        <Bar dataKey="Fichas" fill="#F59E0B" radius={[6, 6, 0, 0]}>
+                                            {metricsData.triageDemora.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={
+                                                    entry.name === '0-3 días' ? '#10B981' : 
+                                                    entry.name === '4-7 días' ? '#F59E0B' : 
+                                                    entry.name === '8-15 días' ? '#F97316' : '#EF4444'
+                                                } />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            ) : activeTab === 'carrito_devolucion' ? (
                 /* ══════ CARRITO DEVOLUCIÓN TAB ══════ */
                 <div className="animate-fade-in">
                     {carritoDevLoading ? (
