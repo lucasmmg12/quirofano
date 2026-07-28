@@ -40,7 +40,6 @@ import { fetchPatientsByIds } from '../services/patientService';
 import SalusSyncButton from './SalusSyncButton';
 import { SkeletonTable } from './SkeletonLoader';
 import BulkTemplateSender from './BulkTemplateSender';
-import GarantiasPanel from './GarantiasPanel';
 
 // ============================================================
 // CONSTANTS & CONFIG
@@ -158,7 +157,6 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const [processing, setProcessing] = useState(false);
     const [showExcelZone, setShowExcelZone] = useState(false);
     const [viewMode, setViewMode] = useState('upcoming'); // 'upcoming' | 'history'
-    const [mainTab, setMainTab] = useState('cirugias'); // 'cirugias' | 'garantias'
 
     // Excel upload state
     const [excelPreview, setExcelPreview] = useState(null);
@@ -1657,36 +1655,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             position: 'relative',
             maxWidth: '100%',
         }}>
-            {/* MAIN TABS */}
-            <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--neutral-200)', marginBottom: '16px', paddingBottom: '8px' }}>
-                <button
-                    onClick={() => setMainTab('cirugias')}
-                    style={{
-                        padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-                        background: mainTab === 'cirugias' ? 'var(--primary-100)' : 'transparent',
-                        color: mainTab === 'cirugias' ? 'var(--primary-700)' : 'var(--neutral-500)',
-                        fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px'
-                    }}
-                >
-                    <Activity size={18} /> Gestión de Cirugías
-                </button>
-                <button
-                    onClick={() => setMainTab('garantias')}
-                    style={{
-                        padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-                        background: mainTab === 'garantias' ? 'var(--primary-100)' : 'transparent',
-                        color: mainTab === 'garantias' ? 'var(--primary-700)' : 'var(--neutral-500)',
-                        fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px'
-                    }}
-                >
-                    <Shield size={18} /> Garantías / Pagarés
-                </button>
-            </div>
 
-            {mainTab === 'garantias' ? (
-                <GarantiasPanel addToast={addToast} currentUser={currentUser} />
-            ) : (
-                <>
             {/* ==================== URGENCY ALERT BAR ==================== */}
             {urgencySummary.critical > 0 && (
                 <div style={{
@@ -2926,8 +2895,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 addToast={addToast}
                 currentUser={currentUser}
             />
-            </>
-            )}
+
         </div>
     );
 }

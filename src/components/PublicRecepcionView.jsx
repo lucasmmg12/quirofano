@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import { useReactToPrint } from 'react-to-print';
 import PrintGarantias from './PrintGarantias';
 import { toggleCarritoRendicion, emitirRendicion } from '../services/garantiasService';
+import { Shield } from 'lucide-react';
 
 export default function PublicRecepcionView() {
     const [admisiones, setAdmisiones] = useState([]);
@@ -138,26 +139,35 @@ export default function PublicRecepcionView() {
     });
 
     return (
-        <div style={{ minHeight: '100vh', background: '#F8FAFC', fontFamily: "'Inter', sans-serif" }}>
-            {/* Header Público */}
-            <div style={{ background: 'white', padding: '16px 24px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10 }}>
+    return (
+        <div style={{ minHeight: '100vh', background: 'var(--bg-main, #f0f4f8)', fontFamily: "'Inter', sans-serif" }}>
+            {/* Header Público con estética del sistema */}
+            <div style={{ 
+                background: 'white', padding: '16px 24px', borderBottom: '1px solid var(--neutral-200)', 
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', 
+                position: 'sticky', top: 0, zIndex: 10,
+                boxShadow: 'var(--shadow-sm)'
+            }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ background: '#3B82F6', color: 'white', padding: '8px', borderRadius: '8px' }}>
-                        <Activity size={24} />
+                    <div style={{ background: 'var(--primary-100)', color: 'var(--primary-700)', padding: '8px', borderRadius: '8px' }}>
+                        <Shield size={24} />
                     </div>
                     <div>
-                        <h1 style={{ margin: 0, fontSize: '1.2rem', color: '#1E293B' }}>Portal Recepción</h1>
-                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748B' }}>Gestión de Garantías Físicas</p>
+                        <h1 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--neutral-800)', fontWeight: 700 }}>
+                            Portal Recepción
+                        </h1>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--neutral-500)' }}>Gestión de Pagarés y Rendiciones</p>
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: '16px' }}>
                     <button 
                         onClick={() => setActiveTab('pendientes')}
                         style={{ 
-                            background: activeTab === 'pendientes' ? '#EEF2FF' : 'transparent',
-                            color: activeTab === 'pendientes' ? '#4F46E5' : '#64748B',
+                            background: activeTab === 'pendientes' ? 'var(--primary-100)' : 'transparent',
+                            color: activeTab === 'pendientes' ? 'var(--primary-700)' : 'var(--neutral-500)',
                             border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 600,
-                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'
+                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                            transition: 'all 0.2s'
                         }}
                     >
                         <FileText size={18} /> Admisiones
@@ -165,15 +175,16 @@ export default function PublicRecepcionView() {
                     <button 
                         onClick={() => setActiveTab('carrito')}
                         style={{ 
-                            background: activeTab === 'carrito' ? '#EEF2FF' : 'transparent',
-                            color: activeTab === 'carrito' ? '#4F46E5' : '#64748B',
+                            background: activeTab === 'carrito' ? 'var(--primary-100)' : 'transparent',
+                            color: activeTab === 'carrito' ? 'var(--primary-700)' : 'var(--neutral-500)',
                             border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 600,
-                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'
+                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                            transition: 'all 0.2s'
                         }}
                     >
                         <ShoppingCart size={18} /> Carrito Rendición
                         {cartItems.length > 0 && (
-                            <span style={{ background: '#EF4444', color: 'white', padding: '2px 6px', borderRadius: '12px', fontSize: '0.7rem' }}>
+                            <span style={{ background: 'var(--danger-500)', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 700 }}>
                                 {cartItems.length}
                             </span>
                         )}
@@ -184,46 +195,48 @@ export default function PublicRecepcionView() {
             <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
                 {activeTab === 'pendientes' ? (
                     <div>
-                        <div style={{ marginBottom: '20px', position: 'relative' }}>
-                            <Search size={20} style={{ position: 'absolute', left: '16px', top: '14px', color: '#94A3B8' }} />
-                            <input 
-                                type="text"
-                                placeholder="Buscar paciente, DNI o número de admisión..."
-                                value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
-                                style={{ 
-                                    width: '100%', padding: '14px 16px 14px 44px', 
-                                    borderRadius: '12px', border: '1px solid #CBD5E1',
-                                    fontSize: '1rem', outline: 'none',
-                                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-                                }}
-                            />
+                        <div style={{ marginBottom: '24px', background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid var(--neutral-200)', display: 'flex', gap: '16px', boxShadow: 'var(--shadow-sm)' }}>
+                            <div style={{ flex: 1, position: 'relative' }}>
+                                <Search size={20} style={{ position: 'absolute', left: '16px', top: '12px', color: 'var(--neutral-400)' }} />
+                                <input 
+                                    type="text"
+                                    placeholder="Buscar paciente, DNI o número de admisión..."
+                                    value={searchTerm}
+                                    onChange={e => setSearchTerm(e.target.value)}
+                                    style={{ 
+                                        width: '100%', padding: '12px 16px 12px 44px', 
+                                        borderRadius: '8px', border: '1px solid var(--neutral-300)',
+                                        fontSize: '0.95rem', outline: 'none'
+                                    }}
+                                />
+                            </div>
                         </div>
 
                         {loading ? (
-                            <p style={{ textAlign: 'center', color: '#64748B', padding: '40px' }}>Cargando admisiones recientes...</p>
+                            <p style={{ textAlign: 'center', color: 'var(--neutral-500)', padding: '40px' }}>Cargando admisiones recientes...</p>
                         ) : (
                             <div style={{ display: 'grid', gap: '12px' }}>
                                 {filteredAdmisiones.length === 0 ? (
-                                    <div style={{ textAlign: 'center', padding: '40px', background: 'white', borderRadius: '12px', border: '1px dashed #CBD5E1' }}>
-                                        <p style={{ color: '#64748B', margin: 0 }}>No hay admisiones que coincidan con la búsqueda.</p>
+                                    <div style={{ textAlign: 'center', padding: '40px', background: 'white', borderRadius: '12px', border: '1px dashed var(--neutral-300)' }}>
+                                        <p style={{ color: 'var(--neutral-500)', margin: 0 }}>No hay admisiones que coincidan con la búsqueda.</p>
                                     </div>
                                 ) : (
                                     filteredAdmisiones.map(adm => (
                                         <div key={adm.id} style={{ 
-                                            background: adm.en_carrito_rendicion ? '#F0FDF4' : 'white', 
-                                            border: `1px solid ${adm.en_carrito_rendicion ? '#BBF7D0' : '#E2E8F0'}`, 
+                                            background: adm.en_carrito_rendicion ? 'var(--success-50)' : 'white', 
+                                            border: `1px solid ${adm.en_carrito_rendicion ? 'var(--success-300)' : 'var(--neutral-200)'}`, 
                                             padding: '16px', borderRadius: '12px',
-                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                            boxShadow: 'var(--shadow-sm)', transition: 'all 0.2s'
                                         }}>
                                             <div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                                                    <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#1E293B' }}>{adm.paciente}</h3>
-                                                    <span style={{ fontSize: '0.75rem', background: '#F1F5F9', color: '#475569', padding: '2px 8px', borderRadius: '12px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                                    <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--neutral-800)' }}>{adm.paciente}</h3>
+                                                    <span style={{ fontSize: '0.75rem', background: 'var(--neutral-100)', color: 'var(--neutral-600)', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
                                                         {adm.numero_admision}
                                                     </span>
                                                 </div>
-                                                <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748B', display: 'flex', gap: '16px' }}>
+                                                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--neutral-500)', display: 'flex', gap: '16px' }}>
                                                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><User size={14}/> DNI: {adm.dni || '-'}</span>
                                                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Calendar size={14}/> Ingreso: {adm.fecha_ingreso ? new Date(adm.fecha_ingreso + 'T12:00:00').toLocaleDateString('es-AR') : '-'}</span>
                                                     <span>OS: {adm.cliente}</span>
@@ -235,7 +248,7 @@ export default function PublicRecepcionView() {
                                                     <button 
                                                         onClick={() => handleRegistrarGarantia(adm.id)}
                                                         style={{ 
-                                                            background: 'white', color: '#3B82F6', border: '1px solid #BFDBFE',
+                                                            background: 'white', color: 'var(--primary-600)', border: '1px solid var(--primary-300)',
                                                             padding: '8px 16px', borderRadius: '8px', fontWeight: 600,
                                                             cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
                                                         }}
@@ -246,7 +259,7 @@ export default function PublicRecepcionView() {
                                                     <button 
                                                         onClick={() => handleToggleCart(adm.id, false)}
                                                         style={{ 
-                                                            background: '#FEE2E2', color: '#DC2626', border: 'none',
+                                                            background: 'var(--danger-50)', color: 'var(--danger-600)', border: '1px solid var(--danger-300)',
                                                             padding: '8px 16px', borderRadius: '8px', fontWeight: 600,
                                                             cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
                                                         }}
@@ -257,7 +270,7 @@ export default function PublicRecepcionView() {
                                                     <button 
                                                         onClick={() => handleToggleCart(adm.id, true)}
                                                         style={{ 
-                                                            background: '#4F46E5', color: 'white', border: 'none',
+                                                            background: 'var(--primary-600)', color: 'white', border: 'none',
                                                             padding: '8px 16px', borderRadius: '8px', fontWeight: 600,
                                                             cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
                                                         }}
@@ -274,22 +287,23 @@ export default function PublicRecepcionView() {
                     </div>
                 ) : (
                     <div>
-                        <div style={{ background: 'white', borderRadius: '12px', padding: '24px', border: '1px solid #E2E8F0' }}>
-                            <h2 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px', color: '#1E293B' }}>
-                                <ShoppingCart size={24} color="#4F46E5"/> Carrito de Rendición
+                    <div>
+                        <div style={{ background: 'white', borderRadius: '12px', padding: '24px', border: '1px solid var(--neutral-200)', boxShadow: 'var(--shadow-sm)' }}>
+                            <h2 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--neutral-800)' }}>
+                                <ShoppingCart size={24} color="var(--primary-600)"/> Carrito de Rendición
                             </h2>
                             
                             {cartItems.length === 0 ? (
-                                <p style={{ color: '#64748B', textAlign: 'center', padding: '40px 0' }}>El carrito está vacío. Buscá admisiones y envialas al carrito para generar la rendición.</p>
+                                <p style={{ color: 'var(--neutral-500)', textAlign: 'center', padding: '40px 0' }}>El carrito está vacío. Buscá admisiones y envialas al carrito para generar la rendición.</p>
                             ) : (
                                 <div>
-                                    <div style={{ background: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0', padding: '16px', marginBottom: '24px' }}>
-                                        <h4 style={{ margin: '0 0 12px 0', color: '#334155' }}>Garantías a rendir ({cartItems.length})</h4>
+                                    <div style={{ background: 'var(--neutral-50)', borderRadius: '8px', border: '1px solid var(--neutral-200)', padding: '16px', marginBottom: '24px' }}>
+                                        <h4 style={{ margin: '0 0 12px 0', color: 'var(--neutral-700)' }}>Garantías a rendir ({cartItems.length})</h4>
                                         <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: '8px' }}>
                                             {cartItems.map(c => (
-                                                <li key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #E2E8F0' }}>
-                                                    <span><strong style={{color: '#0F172A'}}>{c.paciente}</strong> <span style={{color: '#64748B', fontSize: '0.85rem'}}>— {c.cliente}</span></span>
-                                                    <button onClick={() => handleToggleCart(c.id, false)} style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer' }}><Trash2 size={16}/></button>
+                                                <li key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--neutral-200)' }}>
+                                                    <span><strong style={{color: 'var(--neutral-800)'}}>{c.paciente}</strong> <span style={{color: 'var(--neutral-500)', fontSize: '0.85rem'}}>— {c.cliente}</span></span>
+                                                    <button onClick={() => handleToggleCart(c.id, false)} style={{ background: 'none', border: 'none', color: 'var(--danger-500)', cursor: 'pointer' }}><Trash2 size={16}/></button>
                                                 </li>
                                             ))}
                                         </ul>
@@ -298,22 +312,22 @@ export default function PublicRecepcionView() {
                                     {!showRendicionForm ? (
                                         <button 
                                             onClick={() => setShowRendicionForm(true)}
-                                            style={{ background: '#10B981', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', fontWeight: 600, width: '100%', cursor: 'pointer', fontSize: '1rem' }}
+                                            style={{ background: 'var(--success-500)', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', fontWeight: 600, width: '100%', cursor: 'pointer', fontSize: '1rem', boxShadow: 'var(--shadow-sm)' }}
                                         >
                                             Generar Hoja de Rendición
                                         </button>
                                     ) : (
-                                        <div style={{ display: 'grid', gap: '16px', background: '#EFF6FF', padding: '20px', borderRadius: '12px', border: '1px solid #BFDBFE' }}>
-                                            <h4 style={{ margin: 0, color: '#1E40AF' }}>Datos de Entrega</h4>
-                                            <input type="text" placeholder="Entregado por (Tu nombre)" value={entrega} onChange={e => setEntrega(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #93C5FD' }} />
-                                            <input type="text" placeholder="Recibido por (Nombre en Administración)" value={recibe} onChange={e => setRecibe(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #93C5FD' }} />
-                                            <textarea placeholder="Notas u observaciones (opcional)" value={notas} onChange={e => setNotas(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #93C5FD', minHeight: '80px' }} />
+                                        <div style={{ display: 'grid', gap: '16px', background: 'var(--primary-50)', padding: '20px', borderRadius: '12px', border: '1px solid var(--primary-200)' }}>
+                                            <h4 style={{ margin: 0, color: 'var(--primary-800)' }}>Datos de Entrega</h4>
+                                            <input type="text" placeholder="Entregado por (Tu nombre)" value={entrega} onChange={e => setEntrega(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--primary-300)', outline: 'none' }} />
+                                            <input type="text" placeholder="Recibido por (Nombre en Administración)" value={recibe} onChange={e => setRecibe(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--primary-300)', outline: 'none' }} />
+                                            <textarea placeholder="Notas u observaciones (opcional)" value={notas} onChange={e => setNotas(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--primary-300)', minHeight: '80px', outline: 'none', resize: 'vertical' }} />
                                             
                                             <div style={{ display: 'flex', gap: '12px' }}>
-                                                <button onClick={() => setShowRendicionForm(false)} style={{ flex: 1, background: 'white', color: '#475569', border: '1px solid #CBD5E1', padding: '12px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
+                                                <button onClick={() => setShowRendicionForm(false)} style={{ flex: 1, background: 'white', color: 'var(--neutral-600)', border: '1px solid var(--neutral-300)', padding: '12px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
                                                     Cancelar
                                                 </button>
-                                                <button onClick={handleEmitirRendicion} style={{ flex: 2, background: '#3B82F6', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                                <button onClick={handleEmitirRendicion} style={{ flex: 2, background: 'var(--primary-600)', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: 'var(--shadow-sm)' }}>
                                                     <Printer size={18} /> Confirmar e Imprimir Rendición
                                                 </button>
                                             </div>
