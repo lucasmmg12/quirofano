@@ -35,14 +35,14 @@ export default function PublicRecepcionView() {
             const { data, error } = await supabase
                 .from('altas_administrativas')
                 .select(`
-                    id, paciente, dni, cliente, fecha_ingreso, especialidad, numero_admision,
+                    id, paciente, numero_documento, cliente, fecha_ingreso, especialidad, numero_admision,
                     garantia_estado, garantia_ubicacion, en_carrito_rendicion
                 `)
                 .gte('fecha_ingreso', thirtyDaysAgo.toISOString().split('T')[0])
                 .order('fecha_ingreso', { ascending: false });
 
             if (error) throw error;
-            setAdmisiones(data || []);
+            setAdmisiones((data || []).map(a => ({ ...a, dni: a.numero_documento })));
         } catch (error) {
             console.error("Error al cargar admisiones:", error);
             alert("Error al cargar los datos");
