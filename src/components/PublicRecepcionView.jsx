@@ -10,7 +10,7 @@ import {
     Search, ShoppingCart, CheckCircle, PlusCircle, Trash2, Printer,
     Calendar, User, FileText, Shield, RefreshCw, ChevronDown,
     Package, ArrowRight, Clock, Building2, ChevronLeft, ChevronRight,
-    ChevronsLeft, ChevronsRight
+    ChevronsLeft, ChevronsRight, History, X
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { toggleCarritoRendicion, emitirRendicion } from '../services/garantiasService';
@@ -32,6 +32,13 @@ export default function PublicRecepcionView() {
     const [showRendicionForm, setShowRendicionForm] = useState(false);
 
     const [generatingPDF, setGeneratingPDF] = useState(false);
+
+    // Historial
+    const [rendiciones, setRendiciones] = useState([]);
+    const [historialSearch, setHistorialSearch] = useState('');
+    const [expandedRendicion, setExpandedRendicion] = useState(null);
+    const [rendicionDetalle, setRendicionDetalle] = useState({});
+    const [loadingHistorial, setLoadingHistorial] = useState(false);
 
     // ── Cargar datos con paginación ──
     const loadData = useCallback(async (page = currentPage, size = pageSize, search = searchTerm) => {
@@ -343,12 +350,76 @@ export default function PublicRecepcionView() {
             setShowRendicionForm(false);
 
             await Promise.all([loadData(currentPage, pageSize, searchTerm), loadCartItems()]);
+            // Refresh historial if we're on that tab
+            loadHistorial();
             alert('✅ Rendición generada exitosamente. El PDF se descargó automáticamente.');
         } catch (error) {
             console.error(error);
             alert("Error al emitir rendición: " + (error.message || error));
         } finally {
             setGeneratingPDF(false);
+        }
+    };
+
+    // ── Historial de Rendiciones ──
+    const loadHistorial = useCallback(async () => {
+        setLoadingHistorial(true);
+        try {
+            let query = supabase
+                .from('rendiciones_garantias')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (historialSearch.trim()) {
+                const s = historialSearch.trim();
+                query = query.or(`codigo.ilike.%${s}%,responsable_entrega.ilike.%${s}%,responsable_recibe.ilike.%${s}%,observaciones.ilike.%${s}%`);
+            }
+
+            const { data, error } = await query;
+            if (error) throw error;
+            setRendiciones(data || []);
+        } catch (e) {
+            console.error('Error loading historial:', e);
+        } finally {
+            setLoadingHistorial(false);
+        }
+    }, [historialSearch]);
+
+    useEffect(() => {
+        if (activeTab === 'historial') loadHistorial();
+    }, [activeTab, loadHistorial]);
+
+    const handleExpandRendicion = async (rendicionId) => {
+        if (expandedRendicion === rendicionId) {
+            setExpandedRendicion(null);
+            return;
+        }
+        setExpandedRendicion(rendicionId);
+        if (!rendicionDetalle[rendicionId]) {
+            const { data, error } = await supabase
+                .from('altas_administrativas')
+                .select('id, paciente, id_paciente, cliente, fecha_ingreso, especialidad, numero_admision')
+                .eq('rendicion_garantia_id', rendicionId);
+            if (!error) {
+                setRendicionDetalle(prev => ({ ...prev, [rendicionId]: data || [] }));
+            }
+        }
+    };
+
+    const handleReprintRendicion = async (rendicion) => {
+        const detalle = rendicionDetalle[rendicion.id];
+        if (!detalle) {
+            // Load detail first
+            const { data } = await supabase
+                .from('altas_administrativas')
+                .select('id, paciente, id_paciente, cliente, fecha_ingreso, especialidad, numero_admision')
+                .eq('rendicion_garantia_id', rendicion.id);
+            if (data) {
+                setRendicionDetalle(prev => ({ ...prev, [rendicion.id]: data }));
+                await generateRendicionPDF(rendicion.codigo, data, rendicion.responsable_entrega, rendicion.responsable_recibe, rendicion.observaciones);
+            }
+        } else {
+            await generateRendicionPDF(rendicion.codigo, detalle, rendicion.responsable_entrega, rendicion.responsable_recibe, rendicion.observaciones);
         }
     };
 
@@ -424,6 +495,7 @@ export default function PublicRecepcionView() {
                     {[
                         { id: 'pendientes', label: 'Tabla', icon: <FileText size={15} /> },
                         { id: 'carrito', label: 'Carrito', icon: <ShoppingCart size={15} />, badge: cartItems.length },
+                        { id: 'historial', label: 'Historial', icon: <History size={15} />, badge: rendiciones.length },
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -455,7 +527,7 @@ export default function PublicRecepcionView() {
             {/* ═══ CONTENT ═══ */}
             <div style={{ padding: '24px 32px', maxWidth: '1400px', margin: '0 auto' }}>
 
-                {activeTab === 'pendientes' ? (
+                {activeTab === 'pendientes' && (
                     <div>
                         {/* Search + Page Size + Refresh */}
                         <div style={{
@@ -642,7 +714,9 @@ export default function PublicRecepcionView() {
                             )}
                         </div>
                     </div>
-                ) : (
+                )}
+
+                {activeTab === 'carrito' && (
                     /* ═══ CARRITO DE RENDICIÓN ═══ */
                     <div>
                         <div style={{
@@ -785,6 +859,203 @@ export default function PublicRecepcionView() {
                                 </div>
                             )}
                         </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ═══ TAB 3: HISTORIAL ═══ */}
+                {activeTab === 'historial' && (
+                    <div>
+                        {/* Search */}
+                        <div style={{
+                            background: 'white', borderRadius: '12px', padding: '12px 16px',
+                            border: '1px solid #E2E8F0', marginBottom: '16px',
+                            display: 'flex', gap: '12px', alignItems: 'center',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                        }}>
+                            <div style={{ flex: 1, position: 'relative' }}>
+                                <Search size={18} style={{ position: 'absolute', left: '14px', top: '11px', color: '#94A3B8' }} />
+                                <input
+                                    type="text"
+                                    placeholder="🔍 Buscar por código, responsable u observaciones..."
+                                    value={historialSearch}
+                                    onChange={e => setHistorialSearch(e.target.value)}
+                                    style={{
+                                        width: '100%', padding: '10px 16px 10px 42px',
+                                        borderRadius: '8px', border: '1px solid #CBD5E1',
+                                        fontSize: '0.9rem', outline: 'none',
+                                    }}
+                                />
+                                {historialSearch && (
+                                    <button onClick={() => setHistorialSearch('')} style={{
+                                        position: 'absolute', right: '12px', top: '10px',
+                                        background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: '2px',
+                                    }}>
+                                        <X size={16} />
+                                    </button>
+                                )}
+                            </div>
+                            <button
+                                onClick={loadHistorial}
+                                style={{
+                                    background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px',
+                                    padding: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#475569'
+                                }}
+                                title="Actualizar"
+                            >
+                                <RefreshCw size={16} />
+                            </button>
+                        </div>
+
+                        {/* Rendiciones Table */}
+                        <div style={{
+                            background: 'white', borderRadius: '12px',
+                            border: '1px solid #E2E8F0', overflow: 'hidden',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                        }}>
+                            {loadingHistorial ? (
+                                <p style={{ textAlign: 'center', color: '#64748B', padding: '40px' }}>Cargando historial...</p>
+                            ) : rendiciones.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94A3B8' }}>
+                                    <History size={48} strokeWidth={1.2} style={{ margin: '0 auto 12px', display: 'block' }} />
+                                    <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#64748B', margin: '0 0 4px' }}>Sin resultados</h3>
+                                    <p style={{ fontSize: '0.82rem' }}>No se encontraron rendiciones.</p>
+                                </div>
+                            ) : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
+                                            <th style={{ ...thStyle, width: '36px' }}></th>
+                                            <th style={thStyle}>Código</th>
+                                            <th style={thStyle}>Fecha</th>
+                                            <th style={thStyle}>Entrega</th>
+                                            <th style={thStyle}>Recibe</th>
+                                            <th style={{ ...thStyle, textAlign: 'center' }}>Garantías</th>
+                                            <th style={{ ...thStyle, textAlign: 'center', width: '100px' }}>Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {rendiciones.map(rend => {
+                                            const isExpanded = expandedRendicion === rend.id;
+                                            const detalle = rendicionDetalle[rend.id];
+                                            const fechaStr = rend.created_at
+                                                ? new Date(rend.created_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                                : '—';
+
+                                            return (
+                                                <React.Fragment key={rend.id}>
+                                                    <tr
+                                                        style={{
+                                                            borderBottom: '1px solid #F1F5F9',
+                                                            cursor: 'pointer', transition: 'background 0.15s',
+                                                        }}
+                                                        onClick={() => handleExpandRendicion(rend.id)}
+                                                        onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
+                                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                    >
+                                                        <td style={{ ...tdStyle, textAlign: 'center', padding: '0 4px' }}>
+                                                            {isExpanded
+                                                                ? <ChevronDown size={16} style={{ color: '#184D87', transition: 'transform 0.2s' }} />
+                                                                : <ChevronRight size={16} style={{ color: '#94A3B8', transition: 'transform 0.2s' }} />
+                                                            }
+                                                        </td>
+                                                        <td style={tdStyle}>
+                                                            <span style={{
+                                                                fontFamily: 'monospace', fontWeight: 700,
+                                                                background: '#EBF2FA', color: '#184D87',
+                                                                padding: '2px 8px', borderRadius: '6px', fontSize: '0.78rem',
+                                                            }}>
+                                                                {rend.codigo}
+                                                            </span>
+                                                        </td>
+                                                        <td style={tdStyle}>{fechaStr}</td>
+                                                        <td style={tdStyle}>{rend.responsable_entrega || '—'}</td>
+                                                        <td style={tdStyle}>{rend.responsable_recibe || '—'}</td>
+                                                        <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700 }}>
+                                                            {rend.cantidad_garantias || '—'}
+                                                        </td>
+                                                        <td style={{ ...tdStyle, textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                                                            <button
+                                                                onClick={() => handleReprintRendicion(rend)}
+                                                                style={{
+                                                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                                    padding: '4px 10px', fontSize: '0.72rem', fontWeight: 600,
+                                                                    borderRadius: '6px', border: '1px solid #93C5FD',
+                                                                    background: '#EFF6FF', color: '#2563EB',
+                                                                    cursor: 'pointer', transition: 'all 0.2s',
+                                                                }}
+                                                                onMouseOver={e => e.currentTarget.style.background = '#DBEAFE'}
+                                                                onMouseOut={e => e.currentTarget.style.background = '#EFF6FF'}
+                                                            >
+                                                                <Printer size={12} /> Descargar PDF
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+
+                                                    {isExpanded && detalle && (
+                                                        <tr key={`${rend.id}-detail`}>
+                                                            <td colSpan={7} style={{ padding: 0, border: 'none' }}>
+                                                                <div style={{
+                                                                    background: '#F9FAFB',
+                                                                    borderLeft: '3px solid #184D87',
+                                                                    margin: '0 8px 8px 24px',
+                                                                    borderRadius: '0 8px 8px 0',
+                                                                    padding: '8px 16px',
+                                                                }}>
+                                                                    {rend.observaciones && (
+                                                                        <div style={{
+                                                                            background: '#FFFBEB', border: '1px solid #FDE68A',
+                                                                            borderRadius: '6px', padding: '6px 12px', marginBottom: '8px',
+                                                                            fontSize: '0.78rem', color: '#92400E'
+                                                                        }}>
+                                                                            <strong>Observaciones:</strong> {rend.observaciones}
+                                                                        </div>
+                                                                    )}
+                                                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                                                                        <thead>
+                                                                            <tr>
+                                                                                <th style={thSmall}>#</th>
+                                                                                <th style={thSmall}>Ingreso</th>
+                                                                                <th style={thSmall}>Paciente</th>
+                                                                                <th style={thSmall}>DNI</th>
+                                                                                <th style={thSmall}>Obra Social</th>
+                                                                                <th style={thSmall}>Especialidad</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            {detalle.map((item, idx) => (
+                                                                                <tr key={item.id} style={{ borderTop: '1px solid #F1F5F9' }}>
+                                                                                    <td style={{ ...tdSmall, textAlign: 'center', fontWeight: 700, color: '#9CA3AF' }}>{idx + 1}</td>
+                                                                                    <td style={tdSmall}>
+                                                                                        {item.fecha_ingreso ? new Date(item.fecha_ingreso + 'T12:00:00').toLocaleDateString('es-AR') : '—'}
+                                                                                    </td>
+                                                                                    <td style={{ ...tdSmall, fontWeight: 600 }}>{item.paciente}</td>
+                                                                                    <td style={{ ...tdSmall, fontFamily: 'monospace' }}>{item.id_paciente || '—'}</td>
+                                                                                    <td style={tdSmall}>{item.cliente || '—'}</td>
+                                                                                    <td style={tdSmall}>{item.especialidad || '—'}</td>
+                                                                                </tr>
+                                                                            ))}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+
+                                                    {isExpanded && !detalle && (
+                                                        <tr key={`${rend.id}-loading`}>
+                                                            <td colSpan={7} style={{ padding: '16px', textAlign: 'center', color: '#64748B', fontSize: '0.82rem' }}>
+                                                                Cargando detalle...
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
@@ -882,3 +1153,21 @@ const pgBtn = (disabled) => ({
     opacity: disabled ? 0.5 : 1,
     transition: 'all 0.15s'
 });
+
+const thSmall = {
+    padding: '4px 8px',
+    textAlign: 'left',
+    fontSize: '0.7rem',
+    fontWeight: 600,
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+    letterSpacing: '0.3px',
+    borderBottom: '1px solid #E5E7EB'
+};
+
+const tdSmall = {
+    padding: '5px 8px',
+    fontSize: '0.78rem',
+    color: '#374151',
+    verticalAlign: 'middle'
+};
