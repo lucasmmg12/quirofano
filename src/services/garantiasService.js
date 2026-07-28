@@ -94,14 +94,17 @@ export async function fetchCarritoRendicion(usuario) {
 export async function emitirRendicion(garantiasIds, data, userDetails) {
     if (!garantiasIds.length) throw new Error("No hay garantías en el carrito");
 
+    const codigo = `REN-${new Date().toISOString().split('T')[0].replace(/-/g,'')}-${Math.floor(Math.random()*10000).toString().padStart(4,'0')}`;
+
     // 1. Crear la rendición en rendiciones_garantias
     const rendicion = {
-        entrega: data.entrega,
-        recibe: data.recibe,
-        notas: data.notas,
+        codigo: codigo,
+        responsable_entrega: data.entrega,
+        responsable_recibe: data.recibe,
+        observaciones: data.notas,
         firma_entrega: data.firma_entrega,
         firma_recibe: data.firma_recibe,
-        garantias_count: garantiasIds.length,
+        cantidad_garantias: garantiasIds.length,
         created_at: new Date().toISOString()
     };
 
