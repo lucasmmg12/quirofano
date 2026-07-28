@@ -22,6 +22,7 @@ import {
 import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
 import SalusSyncButton from './SalusSyncButton';
 import AltasMetricsPanel from './AltasMetricsPanel';
+import GarantiasPanel from './GarantiasPanel';
 import SignaturePad from './SignaturePad';
 import { SkeletonTablePanel } from './SkeletonLoader';
 import { hcLocalStore } from '../store/hcLocalStore';
@@ -1163,6 +1164,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                     { key: 'carrito', label: '📦 Carrito', icon: null, badge: carritoItems.length },
                     { key: 'historial', label: '📄 Historial', icon: null },
                     { key: 'metricas', label: '📊 Métricas BI', icon: null },
+                    { key: 'garantias', label: '🛡️ Garantías', icon: null },
                 ].map(tab => (
                     <button
                         key={tab.key}
@@ -1191,6 +1193,16 @@ export default function AltasPanel({ addToast, currentUser }) {
 
             {activeTab === 'metricas' ? (
                 <AltasMetricsPanel altas={preFilteredAltas} />
+            ) : activeTab === 'garantias' ? (
+                /* ── GARANTÍAS TAB ── */
+                <div className="animate-fade-in" style={{ marginTop: '16px' }}>
+                    <GarantiasPanel 
+                        addToast={addToast} 
+                        currentUser={currentUser} 
+                        garantiasData={preFilteredAltas} 
+                        onRefresh={loadData}
+                    />
+                </div>
             ) : activeTab === 'carrito' ? (
                 /* ══════ CARRITO TAB ══════ */
                 <div className="animate-fade-in">

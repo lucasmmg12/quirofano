@@ -10,7 +10,7 @@ import {
     cambiarEstadoGarantia, fetchHistorialGarantia 
 } from '../services/garantiasService';
 
-export default function GarantiasPanel({ addToast, currentUser }) {
+export default function GarantiasPanel({ addToast, currentUser, garantiasData = null, onRefresh = null }) {
     const [garantias, setGarantias] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -38,8 +38,13 @@ export default function GarantiasPanel({ addToast, currentUser }) {
     };
 
     useEffect(() => {
-        loadData();
-    }, []);
+        if (garantiasData) {
+            setGarantias(garantiasData);
+            setLoading(false);
+        } else {
+            loadData();
+        }
+    }, [garantiasData]);
 
     const copyLink = () => {
         const url = `${window.location.origin}/recepcion/garantias`;
@@ -52,9 +57,9 @@ export default function GarantiasPanel({ addToast, currentUser }) {
     const filteredGarantias = useMemo(() => {
         return garantias.filter(g => {
             const matchSearch = (
-                (g.nombre || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (g.paciente || g.nombre || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (g.dni || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (g.obra_social || '').toLowerCase().includes(searchTerm.toLowerCase())
+                (g.cliente || g.obra_social || '').toLowerCase().includes(searchTerm.toLowerCase())
             );
             const matchEstado = filterEstado === 'Todas' || g.garantia_estado === filterEstado;
             const matchUbicacion = filterUbicacion === 'Todas' || g.garantia_ubicacion === filterUbicacion;
@@ -70,6 +75,7 @@ export default function GarantiasPanel({ addToast, currentUser }) {
             await cambiarEstadoGarantia(surgeryId, { garantia_estado: nuevoEstado }, currentUser?.nombre || currentUser?.usuario, 'Cambio de Estado');
             setGarantias(prev => prev.map(g => g.id === surgeryId ? { ...g, garantia_estado: nuevoEstado } : g));
             addToast('Estado actualizado correctamente', 'success');
+            if (onRefresh) onRefresh();
         } catch (error) {
             addToast('Error al actualizar estado', 'error');
         }
@@ -150,7 +156,7 @@ export default function GarantiasPanel({ addToast, currentUser }) {
                     <option value="Destruida">Destruida</option>
                 </select>
                 <button 
-                    onClick={loadData}
+                    onClick={() => { if (onRefresh) onRefresh(); else loadData(); }}
                     style={{ padding: '8px', background: 'var(--neutral-100)', border: '1px solid var(--neutral-300)', borderRadius: '8px', cursor: 'pointer' }}
                     title="Actualizar datos"
                 >
