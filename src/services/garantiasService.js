@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 
-// Obtiene todas las cirugías que tienen una garantía o que podrían tenerla.
+// Obtiene todas las admisiones que tienen una garantía o que podrían tenerla.
 export async function fetchGarantias() {
     const { data, error } = await supabase
         .from('altas_administrativas')
@@ -9,8 +9,7 @@ export async function fetchGarantias() {
             numero_admision,
             garantia_estado, garantia_ubicacion, 
             en_carrito_rendicion, carrito_rendicion_por,
-            rendicion_garantia_id,
-            rendiciones_garantias(codigo)
+            rendicion_garantia_id
         `)
         .order('fecha_ingreso', { ascending: false });
 
@@ -45,12 +44,15 @@ export async function toggleCarritoRendicion(surgeryId, inCart, userDetails) {
 
     if (error) throw error;
     
-    // Log history
+    // Log history con las columnas correctas del schema
     await supabase.from('garantias_historial').insert([{
         surgery_id: surgeryId,
-        accion: inCart ? 'Agregado al Carrito' : 'Quitado del Carrito',
+        tipo_movimiento: inCart ? 'Agregado al Carrito' : 'Quitado del Carrito',
         usuario: userDetails,
-        detalles: null
+        origen: 'Recepción',
+        destino: inCart ? 'Carrito Rendición' : 'Recepción',
+        estado_vigente: 'Pendiente',
+        observaciones: null
     }]);
 }
 
@@ -78,9 +80,8 @@ export async function cambiarEstadoGarantia(surgeryId, updates, userDetails, not
 export async function fetchCarritoRendicion(usuario) {
     const { data, error } = await supabase
         .from('altas_administrativas')
-        .select('id, paciente, id_paciente, especialidad, fecha_ingreso')
+        .select('id, paciente, id_paciente, especialidad, fecha_ingreso, cliente')
         .eq('en_carrito_rendicion', true)
-        // .eq('carrito_rendicion_por', usuario) // Descomentar si el carrito es por usuario estrictamente
         .order('carrito_rendicion_at', { ascending: true });
 
     if (error) throw error;
@@ -144,5 +145,5 @@ export async function emitirRendicion(garantiasIds, data, userDetails) {
 
     await supabase.from('garantias_historial').insert(historialEntries);
 
-    return rendicion;
+    return { ...rendicion, codigo };
 }

@@ -3,12 +3,14 @@
  * 
  * Gestión de garantías y rendiciones para el sector Recepción.
  * Diseño alineado con la estética institucional del sistema ADM-QUI.
+ * Paginación completa, buscador y generación de PDF.
  */
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
     Search, ShoppingCart, CheckCircle, PlusCircle, Trash2, Printer,
     Calendar, User, FileText, Shield, RefreshCw, ChevronDown,
-    Package, ArrowRight, Clock, Building2
+    Package, ArrowRight, Clock, Building2, ChevronLeft, ChevronRight,
+    ChevronsLeft, ChevronsRight
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useReactToPrint } from 'react-to-print';
@@ -17,9 +19,13 @@ import { toggleCarritoRendicion, emitirRendicion } from '../services/garantiasSe
 
 export default function PublicRecepcionView() {
     const [admisiones, setAdmisiones] = useState([]);
+    const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [searchInput, setSearchInput] = useState('');
     const [activeTab, setActiveTab] = useState('pendientes');
+    const [pageSize, setPageSize] = useState(50);
+    const [currentPage, setCurrentPage] = useState(0);
 
     // Rendición
     const [entrega, setEntrega] = useState('');
@@ -32,44 +38,76 @@ export default function PublicRecepcionView() {
     const [rendicionData, setRendicionData] = useState(null);
     const [readyToPrint, setReadyToPrint] = useState(false);
 
-    const loadData = async () => {
+    // ── Cargar datos con paginación ──
+    const loadData = useCallback(async (page = currentPage, size = pageSize, search = searchTerm) => {
         setLoading(true);
         try {
-            const thirtyDaysAgo = new Date();
-            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            const from = page * size;
+            const to = from + size - 1;
 
-            const { data, error } = await supabase
+            let query = supabase
                 .from('altas_administrativas')
                 .select(`
                     id, paciente, id_paciente, cliente, fecha_ingreso, especialidad, numero_admision,
                     garantia_estado, garantia_ubicacion, en_carrito_rendicion
-                `)
-                .gte('fecha_ingreso', thirtyDaysAgo.toISOString().split('T')[0])
-                .order('fecha_ingreso', { ascending: false });
+                `, { count: 'exact' })
+                .order('fecha_ingreso', { ascending: false })
+                .range(from, to);
+
+            // Aplicar búsqueda server-side
+            if (search && search.trim()) {
+                const s = search.trim();
+                query = query.or(`paciente.ilike.%${s}%,id_paciente.ilike.%${s}%,cliente.ilike.%${s}%,numero_admision.ilike.%${s}%`);
+            }
+
+            const { data, error, count } = await query;
 
             if (error) throw error;
             setAdmisiones((data || []).map(a => ({ ...a, dni: a.id_paciente })));
+            setTotalCount(count || 0);
         } catch (error) {
             console.error("Error al cargar admisiones:", error);
         } finally {
             setLoading(false);
         }
+    }, [currentPage, pageSize, searchTerm]);
+
+    useEffect(() => { loadData(currentPage, pageSize, searchTerm); }, [currentPage, pageSize, searchTerm]);
+
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+    // Buscar con debounce al presionar Enter o el botón
+    const handleSearch = () => {
+        setSearchTerm(searchInput);
+        setCurrentPage(0);
     };
 
-    useEffect(() => { loadData(); }, []);
+    const handleSearchKeyDown = (e) => {
+        if (e.key === 'Enter') handleSearch();
+    };
 
-    const cartItems = useMemo(() => admisiones.filter(a => a.en_carrito_rendicion), [admisiones]);
+    const handlePageSizeChange = (newSize) => {
+        setPageSize(newSize);
+        setCurrentPage(0);
+    };
 
-    const filteredAdmisiones = useMemo(() => {
-        return admisiones.filter(a => {
-            const matchSearch = (
-                (a.paciente || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (a.numero_admision || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (a.dni || '').toLowerCase().includes(searchTerm.toLowerCase())
-            );
-            return matchSearch;
-        });
-    }, [admisiones, searchTerm]);
+    // Cart items (loaded separately since they may not be in current page)
+    const [cartItems, setCartItems] = useState([]);
+    const loadCartItems = useCallback(async () => {
+        try {
+            const { data, error } = await supabase
+                .from('altas_administrativas')
+                .select('id, paciente, id_paciente, cliente, fecha_ingreso, especialidad, numero_admision')
+                .eq('en_carrito_rendicion', true)
+                .order('carrito_rendicion_at', { ascending: true });
+            if (error) throw error;
+            setCartItems((data || []).map(a => ({ ...a, dni: a.id_paciente })));
+        } catch (e) {
+            console.error('Error loading cart:', e);
+        }
+    }, []);
+
+    useEffect(() => { loadCartItems(); }, []);
 
     const handleRegistrarGarantia = async (id) => {
         try {
@@ -93,6 +131,7 @@ export default function PublicRecepcionView() {
         try {
             await toggleCarritoRendicion(id, inCart, 'Recepción');
             setAdmisiones(prev => prev.map(a => a.id === id ? { ...a, en_carrito_rendicion: inCart } : a));
+            await loadCartItems();
         } catch (error) {
             console.error(error);
             alert("Error al actualizar carrito");
@@ -104,15 +143,16 @@ export default function PublicRecepcionView() {
 
         try {
             const ids = cartItems.map(c => c.id);
+            const snapshotGarantias = [...cartItems]; // Snapshot BEFORE anything changes
             const data = { entrega, recibe, notas, firma_entrega: null, firma_recibe: null };
             const result = await emitirRendicion(ids, data, 'Recepción');
 
-            // Save data for print BEFORE reloading
+            // Set print data with the snapshot
             setRendicionData({
-                codigo: result.codigo || `REN-${Date.now().toString().slice(-6)}`,
+                codigo: result.codigo,
                 fecha: new Date(),
                 entrega, recibe, notas,
-                garantias: [...cartItems] // Clone to preserve before loadData clears them
+                garantias: snapshotGarantias
             });
 
             setEntrega('');
@@ -120,12 +160,14 @@ export default function PublicRecepcionView() {
             setNotas('');
             setShowRendicionForm(false);
 
-            await loadData();
-            // Signal that we're ready to print (handled by useEffect)
+            // Reload everything
+            await Promise.all([loadData(currentPage, pageSize, searchTerm), loadCartItems()]);
+
+            // Trigger print after state settles
             setReadyToPrint(true);
         } catch (error) {
             console.error(error);
-            alert("Error al emitir rendición");
+            alert("Error al emitir rendición: " + (error.message || error));
         }
     };
 
@@ -134,7 +176,7 @@ export default function PublicRecepcionView() {
         documentTitle: 'Rendicion_Garantias',
     });
 
-    // Effect: once rendicionData is set and readyToPrint is true, trigger print
+    // Effect: trigger print when ready
     useEffect(() => {
         if (readyToPrint && rendicionData && rendicionData.garantias?.length > 0) {
             const timer = setTimeout(() => {
@@ -142,53 +184,18 @@ export default function PublicRecepcionView() {
                     handlePrint();
                 }
                 setReadyToPrint(false);
-            }, 600);
+            }, 800);
             return () => clearTimeout(timer);
         }
     }, [readyToPrint, rendicionData]);
 
     // Stats
     const stats = useMemo(() => {
-        const total = admisiones.length;
-        const conGarantia = admisiones.filter(a => a.garantia_estado).length;
-        const enRecepcion = admisiones.filter(a => a.garantia_ubicacion === 'Recepción').length;
-        const enAdmin = admisiones.filter(a => a.garantia_ubicacion === 'Administración').length;
-        return { total, conGarantia, enRecepcion, enAdmin };
-    }, [admisiones]);
-
-    const ubicacionBadge = (ub) => {
-        const map = {
-            'Recepción': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A' },
-            'Administración': { bg: '#D1FAE5', color: '#065F46', border: '#A7F3D0' },
+        return {
+            totalVisible: totalCount,
+            enCarrito: cartItems.length,
         };
-        const s = map[ub] || { bg: '#F1F5F9', color: '#475569', border: '#E2E8F0' };
-        return (
-            <span style={{
-                padding: '2px 10px', borderRadius: '12px', fontSize: '0.75rem',
-                fontWeight: 600, background: s.bg, color: s.color, border: `1px solid ${s.border}`,
-                whiteSpace: 'nowrap'
-            }}>
-                {ub || '-'}
-            </span>
-        );
-    };
-
-    const estadoBadge = (estado) => {
-        const map = {
-            'Activa': { bg: '#DBEAFE', color: '#1E40AF', border: '#BFDBFE' },
-            'Pendiente': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A' },
-        };
-        const s = map[estado] || { bg: '#F1F5F9', color: '#475569', border: '#E2E8F0' };
-        return (
-            <span style={{
-                padding: '2px 10px', borderRadius: '12px', fontSize: '0.75rem',
-                fontWeight: 600, background: s.bg, color: s.color, border: `1px solid ${s.border}`,
-                whiteSpace: 'nowrap'
-            }}>
-                {estado || '-'}
-            </span>
-        );
-    };
+    }, [totalCount, cartItems]);
 
     return (
         <div style={{ minHeight: '100vh', background: '#F1F5F9', fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>
@@ -239,14 +246,11 @@ export default function PublicRecepcionView() {
                             <Shield size={22} color="white" />
                         </div>
                         <div>
-                            <h1 style={{
-                                margin: 0, color: 'white', fontSize: '1.35rem', fontWeight: 700,
-                                letterSpacing: '-0.3px'
-                            }}>
+                            <h1 style={{ margin: 0, color: 'white', fontSize: '1.35rem', fontWeight: 700, letterSpacing: '-0.3px' }}>
                                 Gestión de Garantías — Recepción
                             </h1>
                             <p style={{ margin: '2px 0 0', color: 'rgba(255,255,255,0.65)', fontSize: '0.82rem' }}>
-                                Registro y rendición de garantías / compromisos de pago
+                                Registro y rendición de garantías / compromisos de pago — {totalCount} registros
                             </p>
                         </div>
                     </div>
@@ -264,14 +268,10 @@ export default function PublicRecepcionView() {
                             style={{
                                 background: activeTab === tab.id ? 'white' : 'rgba(255,255,255,0.1)',
                                 color: activeTab === tab.id ? '#184D87' : 'rgba(255,255,255,0.8)',
-                                border: 'none',
-                                padding: '10px 20px',
-                                borderRadius: '8px 8px 0 0',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', gap: '8px',
-                                fontSize: '0.88rem',
-                                transition: 'all 0.2s'
+                                border: 'none', padding: '10px 20px',
+                                borderRadius: '8px 8px 0 0', fontWeight: 600,
+                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                                fontSize: '0.88rem', transition: 'all 0.2s'
                             }}
                         >
                             {tab.icon} {tab.label}
@@ -294,34 +294,7 @@ export default function PublicRecepcionView() {
 
                 {activeTab === 'pendientes' ? (
                     <div>
-                        {/* Stats Row */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '20px' }}>
-                            {[
-                                { label: 'Total Admisiones', value: stats.total, icon: <FileText size={18} />, color: '#3B82F6' },
-                                { label: 'Con Garantía', value: stats.conGarantia, icon: <Shield size={18} />, color: '#8B5CF6' },
-                                { label: 'En Recepción', value: stats.enRecepcion, icon: <Package size={18} />, color: '#F59E0B' },
-                                { label: 'En Administración', value: stats.enAdmin, icon: <Building2 size={18} />, color: '#10B981' },
-                            ].map((s, i) => (
-                                <div key={i} style={{
-                                    background: 'white', borderRadius: '12px', padding: '16px 20px',
-                                    border: '1px solid #E2E8F0', boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-                                    display: 'flex', alignItems: 'center', gap: '14px'
-                                }}>
-                                    <div style={{
-                                        background: `${s.color}15`, borderRadius: '10px', padding: '10px',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: s.color
-                                    }}>
-                                        {s.icon}
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1E293B', letterSpacing: '-0.5px' }}>{s.value}</div>
-                                        <div style={{ fontSize: '0.78rem', color: '#64748B', fontWeight: 500 }}>{s.label}</div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Search + Refresh */}
+                        {/* Search + Page Size + Refresh */}
                         <div style={{
                             background: 'white', borderRadius: '12px', padding: '12px 16px',
                             border: '1px solid #E2E8F0', marginBottom: '16px',
@@ -333,8 +306,9 @@ export default function PublicRecepcionView() {
                                 <input
                                     type="text"
                                     placeholder="Buscar por nombre, DNI u Obra Social..."
-                                    value={searchTerm}
-                                    onChange={e => setSearchTerm(e.target.value)}
+                                    value={searchInput}
+                                    onChange={e => setSearchInput(e.target.value)}
+                                    onKeyDown={handleSearchKeyDown}
                                     style={{
                                         width: '100%', padding: '10px 16px 10px 42px',
                                         borderRadius: '8px', border: '1px solid #CBD5E1',
@@ -346,14 +320,47 @@ export default function PublicRecepcionView() {
                                 />
                             </div>
                             <button
-                                onClick={loadData}
+                                onClick={handleSearch}
                                 style={{
-                                    background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px',
-                                    padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center',
-                                    gap: '6px', color: '#475569', fontWeight: 500, fontSize: '0.85rem'
+                                    background: '#184D87', color: 'white', border: 'none', borderRadius: '8px',
+                                    padding: '10px 18px', cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                    gap: '6px', fontWeight: 600, fontSize: '0.85rem'
                                 }}
                             >
-                                <RefreshCw size={16} /> Actualizar
+                                <Search size={16} /> Buscar
+                            </button>
+
+                            {/* Page Size Selector */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: '#64748B' }}>
+                                <span>Mostrar:</span>
+                                {[10, 50, 100].map(size => (
+                                    <button
+                                        key={size}
+                                        onClick={() => handlePageSizeChange(size)}
+                                        style={{
+                                            background: pageSize === size ? '#184D87' : '#F1F5F9',
+                                            color: pageSize === size ? 'white' : '#475569',
+                                            border: '1px solid ' + (pageSize === size ? '#184D87' : '#CBD5E1'),
+                                            borderRadius: '6px', padding: '5px 10px',
+                                            cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem',
+                                            transition: 'all 0.15s'
+                                        }}
+                                    >
+                                        {size}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <button
+                                onClick={() => loadData(currentPage, pageSize, searchTerm)}
+                                style={{
+                                    background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px',
+                                    padding: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                    color: '#475569'
+                                }}
+                                title="Actualizar"
+                            >
+                                <RefreshCw size={16} />
                             </button>
                         </div>
 
@@ -365,89 +372,110 @@ export default function PublicRecepcionView() {
                         }}>
                             {loading ? (
                                 <p style={{ textAlign: 'center', color: '#64748B', padding: '40px' }}>
-                                    Cargando admisiones recientes...
+                                    Cargando admisiones...
                                 </p>
-                            ) : filteredAdmisiones.length === 0 ? (
+                            ) : admisiones.length === 0 ? (
                                 <p style={{ textAlign: 'center', color: '#64748B', padding: '40px' }}>
                                     No hay admisiones que coincidan con la búsqueda.
                                 </p>
                             ) : (
-                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                    <thead>
-                                        <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
-                                            <th style={thStyle}>Paciente / Internación</th>
-                                            <th style={thStyle}>Obra Social</th>
-                                            <th style={thStyle}>Ubicación</th>
-                                            <th style={thStyle}>Estado</th>
-                                            <th style={{ ...thStyle, textAlign: 'right' }}>Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {filteredAdmisiones.map(adm => (
-                                            <tr key={adm.id} style={{
-                                                borderBottom: '1px solid #F1F5F9',
-                                                transition: 'background 0.15s',
-                                                background: adm.en_carrito_rendicion ? '#F0FDF4' : 'transparent'
-                                            }}
-                                                onMouseEnter={e => e.currentTarget.style.background = adm.en_carrito_rendicion ? '#DCFCE7' : '#F8FAFC'}
-                                                onMouseLeave={e => e.currentTarget.style.background = adm.en_carrito_rendicion ? '#F0FDF4' : 'transparent'}
-                                            >
-                                                <td style={tdStyle}>
-                                                    <div style={{ fontWeight: 600, color: '#1E293B', fontSize: '0.92rem' }}>
-                                                        {adm.paciente}
-                                                    </div>
-                                                    <div style={{ fontSize: '0.78rem', color: '#94A3B8', display: 'flex', gap: '12px', marginTop: '2px' }}>
-                                                        <span>DNI: {adm.dni || '-'}</span>
-                                                        <span>|</span>
-                                                        <span>Ingreso: {adm.fecha_ingreso ? new Date(adm.fecha_ingreso + 'T12:00:00').toLocaleDateString('es-AR') : '-'}</span>
-                                                    </div>
-                                                </td>
-                                                <td style={tdStyle}>
-                                                    <span style={{ color: '#334155', fontSize: '0.88rem' }}>{adm.cliente || '-'}</span>
-                                                </td>
-                                                <td style={tdStyle}>
-                                                    {ubicacionBadge(adm.garantia_ubicacion)}
-                                                </td>
-                                                <td style={tdStyle}>
-                                                    {estadoBadge(adm.garantia_estado)}
-                                                </td>
-                                                <td style={{ ...tdStyle, textAlign: 'right' }}>
-                                                    {adm.garantia_ubicacion === 'Administración' ? (
-                                                        <span style={{
-                                                            display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                                            padding: '5px 12px', borderRadius: '8px',
-                                                            background: '#D1FAE5', color: '#065F46',
-                                                            fontSize: '0.8rem', fontWeight: 600
-                                                        }}>
-                                                            <CheckCircle size={14} /> Enviado a Adm.
-                                                        </span>
-                                                    ) : !adm.garantia_estado ? (
-                                                        <button
-                                                            onClick={() => handleRegistrarGarantia(adm.id)}
-                                                            style={btnOutline}
-                                                        >
-                                                            <PlusCircle size={14} /> Garantía
-                                                        </button>
-                                                    ) : adm.en_carrito_rendicion ? (
-                                                        <button
-                                                            onClick={() => handleToggleCart(adm.id, false)}
-                                                            style={btnSuccess}
-                                                        >
-                                                            <CheckCircle size={14} /> En Carrito
-                                                        </button>
-                                                    ) : (
-                                                        <button
-                                                            onClick={() => handleToggleCart(adm.id, true)}
-                                                            style={btnPrimary}
-                                                        >
-                                                            <ShoppingCart size={14} /> Al Carrito
-                                                        </button>
-                                                    )}
-                                                </td>
+                                <>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                        <thead>
+                                            <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
+                                                <th style={thStyle}>Paciente / Internación</th>
+                                                <th style={thStyle}>Obra Social</th>
+                                                <th style={thStyle}>Ubicación</th>
+                                                <th style={thStyle}>Estado</th>
+                                                <th style={{ ...thStyle, textAlign: 'right' }}>Acciones</th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody>
+                                            {admisiones.map(adm => (
+                                                <tr key={adm.id} style={{
+                                                    borderBottom: '1px solid #F1F5F9',
+                                                    transition: 'background 0.15s',
+                                                    background: adm.en_carrito_rendicion ? '#F0FDF4' : 'transparent'
+                                                }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = adm.en_carrito_rendicion ? '#DCFCE7' : '#F8FAFC'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = adm.en_carrito_rendicion ? '#F0FDF4' : 'transparent'}
+                                                >
+                                                    <td style={tdStyle}>
+                                                        <div style={{ fontWeight: 600, color: '#1E293B', fontSize: '0.92rem' }}>
+                                                            {adm.paciente}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.78rem', color: '#94A3B8', display: 'flex', gap: '12px', marginTop: '2px' }}>
+                                                            <span>DNI: {adm.dni || '-'}</span>
+                                                            <span>|</span>
+                                                            <span>Ingreso: {adm.fecha_ingreso ? new Date(adm.fecha_ingreso + 'T12:00:00').toLocaleDateString('es-AR') : '-'}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td style={tdStyle}>
+                                                        <span style={{ color: '#334155', fontSize: '0.88rem' }}>{adm.cliente || '-'}</span>
+                                                    </td>
+                                                    <td style={tdStyle}>
+                                                        {ubicacionBadge(adm.garantia_ubicacion)}
+                                                    </td>
+                                                    <td style={tdStyle}>
+                                                        {estadoBadge(adm.garantia_estado)}
+                                                    </td>
+                                                    <td style={{ ...tdStyle, textAlign: 'right' }}>
+                                                        {adm.garantia_ubicacion === 'Administración' ? (
+                                                            <span style={{
+                                                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                                padding: '5px 12px', borderRadius: '8px',
+                                                                background: '#D1FAE5', color: '#065F46',
+                                                                fontSize: '0.8rem', fontWeight: 600
+                                                            }}>
+                                                                <CheckCircle size={14} /> Enviado a Adm.
+                                                            </span>
+                                                        ) : !adm.garantia_estado ? (
+                                                            <button onClick={() => handleRegistrarGarantia(adm.id)} style={btnOutline}>
+                                                                <PlusCircle size={14} /> Garantía
+                                                            </button>
+                                                        ) : adm.en_carrito_rendicion ? (
+                                                            <button onClick={() => handleToggleCart(adm.id, false)} style={btnSuccess}>
+                                                                <CheckCircle size={14} /> En Carrito
+                                                            </button>
+                                                        ) : (
+                                                            <button onClick={() => handleToggleCart(adm.id, true)} style={btnPrimary}>
+                                                                <ShoppingCart size={14} /> Al Carrito
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+
+                                    {/* ── Pagination ── */}
+                                    <div style={{
+                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                        padding: '12px 16px', borderTop: '1px solid #E2E8F0',
+                                        background: '#F8FAFC', fontSize: '0.82rem', color: '#64748B'
+                                    }}>
+                                        <span>
+                                            Mostrando {currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, totalCount)} de <strong>{totalCount}</strong> registros
+                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <button onClick={() => setCurrentPage(0)} disabled={currentPage === 0} style={pgBtn(currentPage === 0)}>
+                                                <ChevronsLeft size={16} />
+                                            </button>
+                                            <button onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0} style={pgBtn(currentPage === 0)}>
+                                                <ChevronLeft size={16} />
+                                            </button>
+                                            <span style={{ padding: '0 12px', fontWeight: 600, color: '#1E293B' }}>
+                                                Página {currentPage + 1} de {totalPages}
+                                            </span>
+                                            <button onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))} disabled={currentPage >= totalPages - 1} style={pgBtn(currentPage >= totalPages - 1)}>
+                                                <ChevronRight size={16} />
+                                            </button>
+                                            <button onClick={() => setCurrentPage(totalPages - 1)} disabled={currentPage >= totalPages - 1} style={pgBtn(currentPage >= totalPages - 1)}>
+                                                <ChevronsRight size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </>
                             )}
                         </div>
                     </div>
@@ -487,7 +515,6 @@ export default function PublicRecepcionView() {
                                 </div>
                             ) : (
                                 <div>
-                                    {/* Cart Table */}
                                     <div style={{
                                         borderRadius: '8px', border: '1px solid #E2E8F0', overflow: 'hidden',
                                         marginBottom: '24px'
@@ -528,7 +555,6 @@ export default function PublicRecepcionView() {
                                         </table>
                                     </div>
 
-                                    {/* Action */}
                                     {!showRendicionForm ? (
                                         <button
                                             onClick={() => setShowRendicionForm(true)}
@@ -539,10 +565,7 @@ export default function PublicRecepcionView() {
                                                 width: '100%', cursor: 'pointer', fontSize: '1rem',
                                                 boxShadow: '0 2px 8px rgba(24,77,135,0.25)',
                                                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                                                transition: 'transform 0.15s, box-shadow 0.15s'
                                             }}
-                                            onMouseEnter={e => { e.target.style.transform = 'translateY(-1px)'; e.target.style.boxShadow = '0 4px 12px rgba(24,77,135,0.35)'; }}
-                                            onMouseLeave={e => { e.target.style.transform = 'translateY(0)'; e.target.style.boxShadow = '0 2px 8px rgba(24,77,135,0.25)'; }}
                                         >
                                             <Printer size={20} /> Generar Hoja de Rendición ({cartItems.length} garantías)
                                         </button>
@@ -604,10 +627,45 @@ export default function PublicRecepcionView() {
             </div>
 
             {/* ═══ HIDDEN PRINT TEMPLATE ═══ */}
-            <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
+            <div style={{ position: 'absolute', left: '-9999px', top: 0, width: '210mm' }}>
                 <PrintGarantias ref={printRef} data={rendicionData} />
             </div>
         </div>
+    );
+}
+
+// ── Helpers de badges ──
+function ubicacionBadge(ub) {
+    const map = {
+        'Recepción': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A' },
+        'Administración': { bg: '#D1FAE5', color: '#065F46', border: '#A7F3D0' },
+    };
+    const s = map[ub] || { bg: '#F1F5F9', color: '#475569', border: '#E2E8F0' };
+    return (
+        <span style={{
+            padding: '2px 10px', borderRadius: '12px', fontSize: '0.75rem',
+            fontWeight: 600, background: s.bg, color: s.color, border: `1px solid ${s.border}`,
+            whiteSpace: 'nowrap'
+        }}>
+            {ub || '-'}
+        </span>
+    );
+}
+
+function estadoBadge(estado) {
+    const map = {
+        'Activa': { bg: '#DBEAFE', color: '#1E40AF', border: '#BFDBFE' },
+        'Pendiente': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A' },
+    };
+    const s = map[estado] || { bg: '#F1F5F9', color: '#475569', border: '#E2E8F0' };
+    return (
+        <span style={{
+            padding: '2px 10px', borderRadius: '12px', fontSize: '0.75rem',
+            fontWeight: 600, background: s.bg, color: s.color, border: `1px solid ${s.border}`,
+            whiteSpace: 'nowrap'
+        }}>
+            {estado || '-'}
+        </span>
     );
 }
 
@@ -654,3 +712,14 @@ const inputStyle = {
     border: '1px solid #CBD5E1', outline: 'none', fontSize: '0.9rem',
     background: 'white'
 };
+
+const pgBtn = (disabled) => ({
+    background: disabled ? '#F1F5F9' : 'white',
+    border: '1px solid #CBD5E1',
+    borderRadius: '6px', padding: '6px 8px',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    color: disabled ? '#CBD5E1' : '#475569',
+    display: 'flex', alignItems: 'center',
+    opacity: disabled ? 0.5 : 1,
+    transition: 'all 0.15s'
+});
