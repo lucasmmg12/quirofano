@@ -59,9 +59,6 @@ export default function PublicRecepcionView() {
     
     const filteredAdmisiones = useMemo(() => {
         return admisiones.filter(a => {
-            // Solo mostramos las que NO han sido pasadas a Administración
-            if (a.garantia_ubicacion === 'Administración') return false;
-            
             const matchSearch = (
                 (a.paciente || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (a.numero_admision || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -243,7 +240,14 @@ export default function PublicRecepcionView() {
                                             </div>
 
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                {!adm.garantia_estado ? (
+                                                {adm.garantia_ubicacion === 'Administración' ? (
+                                                    <div style={{ 
+                                                        background: 'var(--success-50)', color: 'var(--success-700)', border: '1px solid var(--success-200)',
+                                                        padding: '6px 12px', borderRadius: '8px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px'
+                                                    }}>
+                                                        <CheckCircle size={16} /> Enviado a Adm.
+                                                    </div>
+                                                ) : !adm.garantia_estado ? (
                                                     <button 
                                                         onClick={() => handleRegistrarGarantia(adm.id)}
                                                         style={{ 
@@ -252,18 +256,18 @@ export default function PublicRecepcionView() {
                                                             cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
                                                         }}
                                                     >
-                                                        <PlusCircle size={16} /> Tengo el Pagaré
+                                                        <PlusCircle size={16} /> Garantía
                                                     </button>
                                                 ) : adm.en_carrito_rendicion ? (
                                                     <button 
                                                         onClick={() => handleToggleCart(adm.id, false)}
                                                         style={{ 
-                                                            background: 'var(--danger-50)', color: 'var(--danger-600)', border: '1px solid var(--danger-300)',
+                                                            background: 'var(--success-100)', color: 'var(--success-700)', border: '1px solid var(--success-300)',
                                                             padding: '8px 16px', borderRadius: '8px', fontWeight: 600,
                                                             cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
                                                         }}
                                                     >
-                                                        <Trash2 size={16} /> Quitar de carrito
+                                                        <CheckCircle size={16} /> En Carrito (Quitar)
                                                     </button>
                                                 ) : (
                                                     <button 
