@@ -286,7 +286,6 @@ export default function PublicRecepcionView() {
                     </div>
                 ) : (
                     <div>
-                    <div>
                         <div style={{ background: 'white', borderRadius: '12px', padding: '24px', border: '1px solid var(--neutral-200)', boxShadow: 'var(--shadow-sm)' }}>
                             <h2 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--neutral-800)' }}>
                                 <ShoppingCart size={24} color="var(--primary-600)"/> Carrito de Rendición
