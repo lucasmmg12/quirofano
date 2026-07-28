@@ -6,7 +6,7 @@ import React, { forwardRef } from 'react';
 
 const PrintGarantias = forwardRef(function PrintGarantias({ data }, ref) {
     if (!data || !data.garantias || data.garantias.length === 0) {
-        return null;
+        return <div ref={ref} />;
     }
 
     const { garantias, codigo, fecha, entrega, recibe, notas } = data;
