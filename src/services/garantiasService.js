@@ -5,7 +5,7 @@ export async function fetchGarantias() {
     const { data, error } = await supabase
         .from('altas_administrativas')
         .select(`
-            id, paciente, numero_documento, cliente, fecha_ingreso, especialidad,
+            id, paciente, id_paciente, cliente, fecha_ingreso, especialidad,
             numero_admision,
             garantia_estado, garantia_ubicacion, 
             en_carrito_rendicion, carrito_rendicion_por,
@@ -17,7 +17,7 @@ export async function fetchGarantias() {
     if (error) throw error;
     return (data || []).map(g => ({
         ...g,
-        dni: g.numero_documento
+        dni: g.id_paciente
     }));
 }
 
@@ -78,7 +78,7 @@ export async function cambiarEstadoGarantia(surgeryId, updates, userDetails, not
 export async function fetchCarritoRendicion(usuario) {
     const { data, error } = await supabase
         .from('altas_administrativas')
-        .select('id, paciente, numero_documento, especialidad, fecha_ingreso')
+        .select('id, paciente, id_paciente, especialidad, fecha_ingreso')
         .eq('en_carrito_rendicion', true)
         // .eq('carrito_rendicion_por', usuario) // Descomentar si el carrito es por usuario estrictamente
         .order('carrito_rendicion_at', { ascending: true });
@@ -86,7 +86,7 @@ export async function fetchCarritoRendicion(usuario) {
     if (error) throw error;
     return (data || []).map(g => ({
         ...g,
-        dni: g.numero_documento
+        dni: g.id_paciente
     }));
 }
 
