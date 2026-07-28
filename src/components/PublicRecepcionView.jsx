@@ -3,9 +3,9 @@
  * 
  * Gestión de garantías y rendiciones para el sector Recepción.
  * Diseño alineado con la estética institucional del sistema ADM-QUI.
- * Paginación completa, buscador y generación de PDF.
+ * Paginación completa, buscador y generación de PDF con jsPDF.
  */
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     Search, ShoppingCart, CheckCircle, PlusCircle, Trash2, Printer,
     Calendar, User, FileText, Shield, RefreshCw, ChevronDown,
@@ -13,8 +13,6 @@ import {
     ChevronsLeft, ChevronsRight
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useReactToPrint } from 'react-to-print';
-import PrintGarantias from './PrintGarantias';
 import { toggleCarritoRendicion, emitirRendicion } from '../services/garantiasService';
 
 export default function PublicRecepcionView() {
@@ -33,10 +31,7 @@ export default function PublicRecepcionView() {
     const [notas, setNotas] = useState('');
     const [showRendicionForm, setShowRendicionForm] = useState(false);
 
-    // Print
-    const printRef = useRef();
-    const [rendicionData, setRendicionData] = useState(null);
-    const [readyToPrint, setReadyToPrint] = useState(false);
+    const [generatingPDF, setGeneratingPDF] = useState(false);
 
     // ── Cargar datos con paginación ──
     const loadData = useCallback(async (page = currentPage, size = pageSize, search = searchTerm) => {
@@ -138,56 +133,224 @@ export default function PublicRecepcionView() {
         }
     };
 
+    // ── Generar PDF con jsPDF (mismo estilo que AsociacionesEntregaPanel) ──
+    const generateRendicionPDF = async (codigo, garantias, entregaPor, recibePor, observaciones) => {
+        const { default: jsPDF } = await import('jspdf');
+        const { default: autoTable } = await import('jspdf-autotable');
+        const doc = new jsPDF();
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        const margin = 14;
+        const colW = pageW - margin * 2;
+        let y = 0;
+
+        // Load logo
+        let logoCircleBase64 = null;
+        try {
+            const logoImg = new Image();
+            logoImg.crossOrigin = 'anonymous';
+            logoImg.src = '/logosanatorio.png';
+            await new Promise((resolve, reject) => {
+                logoImg.onload = resolve;
+                logoImg.onerror = reject;
+            });
+            const canvasSize = 200;
+            const canvas = document.createElement('canvas');
+            canvas.width = canvasSize; canvas.height = canvasSize;
+            const ctx = canvas.getContext('2d');
+            ctx.beginPath();
+            ctx.arc(canvasSize / 2, canvasSize / 2, canvasSize / 2, 0, Math.PI * 2);
+            ctx.closePath(); ctx.clip();
+            ctx.drawImage(logoImg, 0, 0, canvasSize, canvasSize);
+            logoCircleBase64 = canvas.toDataURL('image/png');
+        } catch (e) { /* logo optional */ }
+
+        // ═══ HEADER ═══
+        doc.setFillColor(13, 59, 102);
+        doc.rect(0, 0, pageW, 34, 'F');
+
+        const logoX = margin + 1, logoY = 10, logoSize = 14;
+        if (logoCircleBase64) {
+            doc.setFillColor(255, 255, 255);
+            doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2 + 1.2, 'F');
+            doc.addImage(logoCircleBase64, 'PNG', logoX, logoY, logoSize, logoSize);
+        } else {
+            doc.setFillColor(255, 255, 255);
+            doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 'F');
+            doc.setFontSize(6); doc.setTextColor(13, 59, 102);
+            doc.text('SA', logoX + 3.5, logoY + logoSize / 2 + 1.5);
+        }
+
+        doc.setFontSize(16); doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold');
+        doc.text('SANATORIO ARGENTINO', margin + 18, 14);
+        doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(180, 200, 220);
+        doc.text('Recepción · Rendición de Garantías', margin + 18, 21);
+
+        doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+        doc.text('RENDICIÓN DE GARANTÍAS', pageW - margin, 14, { align: 'right' });
+        doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(180, 200, 220);
+        doc.text('Sistema ADM-QUI', pageW - margin, 21, { align: 'right' });
+
+        doc.setFillColor(59, 130, 246);
+        doc.rect(0, 34, pageW, 2, 'F');
+        y = 44;
+
+        // ═══ INFO BAR ═══
+        const fechaHora = new Date().toLocaleString('es-AR', {
+            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+        });
+
+        doc.setFillColor(241, 245, 249);
+        doc.roundedRect(margin, y, colW, 18, 3, 3, 'F');
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(margin, y, colW, 18, 3, 3, 'S');
+
+        const infoItems = [
+            { label: 'CÓDIGO', value: codigo },
+            { label: 'FECHA Y HORA', value: fechaHora },
+            { label: 'ENTREGA', value: entregaPor },
+            { label: 'GARANTÍAS', value: String(garantias.length) },
+        ];
+
+        const cellW = colW / 4;
+        infoItems.forEach((item, i) => {
+            const x = margin + cellW * i + 6;
+            doc.setFontSize(6); doc.setFont('helvetica', 'normal'); doc.setTextColor(148, 163, 184);
+            doc.text(item.label, x, y + 6);
+            doc.setFontSize(i === 0 || i === 3 ? 11 : 9); doc.setFont('helvetica', 'bold'); doc.setTextColor(13, 59, 102);
+            doc.text(item.value || '—', x, y + 13);
+        });
+        y += 26;
+
+        // ═══ SECTION TITLE ═══
+        doc.setFillColor(59, 130, 246);
+        doc.rect(margin, y, 3, 7, 'F');
+        doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(13, 59, 102);
+        doc.text('DETALLE DE GARANTÍAS ENTREGADAS', margin + 6, y + 5.5);
+        y += 12;
+
+        // ═══ TABLE ═══
+        const tableBody = garantias.map((g, idx) => {
+            const fecha = g.fecha_ingreso
+                ? new Date(g.fecha_ingreso + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+                : '—';
+            return [
+                String(idx + 1),
+                fecha,
+                g.paciente || '—',
+                g.id_paciente || g.dni || '—',
+                g.cliente || '—',
+                (g.especialidad || '—').substring(0, 35),
+            ];
+        });
+
+        autoTable(doc, {
+            startY: y,
+            head: [['#', 'Ingreso', 'Paciente', 'DNI', 'Obra Social', 'Especialidad']],
+            body: tableBody,
+            theme: 'grid',
+            headStyles: { fillColor: [13, 59, 102], textColor: [255, 255, 255], fontSize: 7.5, fontStyle: 'bold', halign: 'left', cellPadding: 3 },
+            bodyStyles: { fontSize: 7.5, cellPadding: 2.5, textColor: [30, 30, 30] },
+            alternateRowStyles: { fillColor: [248, 250, 252] },
+            columnStyles: {
+                0: { cellWidth: 8, halign: 'center', fontStyle: 'bold', textColor: [148, 163, 184] },
+                1: { cellWidth: 20 },
+                2: { fontStyle: 'bold', cellWidth: 45 },
+                3: { cellWidth: 25, font: 'courier' },
+                4: { cellWidth: 40 },
+                5: { cellWidth: 40 },
+            },
+            margin: { left: margin, right: margin },
+            didDrawPage: () => {
+                doc.setFillColor(13, 59, 102); doc.rect(0, 0, pageW, 8, 'F');
+                doc.setFillColor(59, 130, 246); doc.rect(0, 8, pageW, 1, 'F');
+            },
+        });
+
+        y = doc.lastAutoTable.finalY + 6;
+
+        // ═══ OBSERVACIONES ═══
+        if (observaciones) {
+            doc.setFillColor(255, 251, 235); doc.setDrawColor(253, 230, 138);
+            doc.roundedRect(margin, y, colW, 14, 2, 2, 'FD');
+            doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(146, 64, 14);
+            doc.text('OBSERVACIONES:', margin + 4, y + 5);
+            doc.setFont('helvetica', 'normal');
+            doc.text(observaciones.substring(0, 120), margin + 32, y + 5);
+            y += 18;
+        }
+
+        // ═══ FIRMAS ═══
+        if (y > pageH - 65) { doc.addPage(); y = 20; }
+        y += 8;
+        const sigBoxW = (colW - 20) / 2;
+
+        // Firma Entrega
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(margin, y, sigBoxW, 42, 3, 3, 'S');
+        doc.setFontSize(6.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(148, 163, 184);
+        doc.text('ENTREGA', margin + sigBoxW / 2, y + 6, { align: 'center' });
+        doc.setDrawColor(13, 59, 102); doc.setLineWidth(0.5);
+        doc.line(margin + 12, y + 30, margin + sigBoxW - 12, y + 30);
+        doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(13, 59, 102);
+        doc.text(entregaPor || '________________________', margin + sigBoxW / 2, y + 35, { align: 'center' });
+        doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 116, 139);
+        doc.text('Sector Recepción', margin + sigBoxW / 2, y + 40, { align: 'center' });
+
+        // Firma Recibe
+        const sig2X = margin + sigBoxW + 20;
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(sig2X, y, sigBoxW, 42, 3, 3, 'S');
+        doc.setFontSize(6.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(148, 163, 184);
+        doc.text('RECIBE', sig2X + sigBoxW / 2, y + 6, { align: 'center' });
+        doc.setDrawColor(13, 59, 102);
+        doc.line(sig2X + 12, y + 30, sig2X + sigBoxW - 12, y + 30);
+        doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(13, 59, 102);
+        doc.text(recibePor || '________________________', sig2X + sigBoxW / 2, y + 35, { align: 'center' });
+        doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 116, 139);
+        doc.text('Sector Administración', sig2X + sigBoxW / 2, y + 40, { align: 'center' });
+
+        // ═══ FOOTER ═══
+        const totalPages = doc.internal.getNumberOfPages();
+        for (let p = 1; p <= totalPages; p++) {
+            doc.setPage(p);
+            doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.3);
+            doc.line(margin, pageH - 12, pageW - margin, pageH - 12);
+            doc.setFontSize(6.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(170, 170, 170);
+            doc.text('Esta constancia acredita la entrega de garantías / compromisos de pago. Conserve este documento como comprobante.', margin, pageH - 8);
+            doc.text(`Sistema ADM-QUI — Sanatorio Argentino · Pág. ${p}/${totalPages}`, pageW - margin, pageH - 8, { align: 'right' });
+        }
+
+        doc.save(`rendicion_${codigo}.pdf`);
+    };
+
     const handleEmitirRendicion = async () => {
         if (!entrega || !recibe) return alert("Completá quién entrega y quién recibe");
+        setGeneratingPDF(true);
 
         try {
             const ids = cartItems.map(c => c.id);
-            const snapshotGarantias = [...cartItems]; // Snapshot BEFORE anything changes
+            const snapshotGarantias = [...cartItems];
             const data = { entrega, recibe, notas, firma_entrega: null, firma_recibe: null };
             const result = await emitirRendicion(ids, data, 'Recepción');
 
-            // Set print data with the snapshot
-            setRendicionData({
-                codigo: result.codigo,
-                fecha: new Date(),
-                entrega, recibe, notas,
-                garantias: snapshotGarantias
-            });
+            // Generate PDF immediately with the snapshot
+            await generateRendicionPDF(result.codigo, snapshotGarantias, entrega, recibe, notas);
 
             setEntrega('');
             setRecibe('');
             setNotas('');
             setShowRendicionForm(false);
 
-            // Reload everything
             await Promise.all([loadData(currentPage, pageSize, searchTerm), loadCartItems()]);
-
-            // Trigger print after state settles
-            setReadyToPrint(true);
+            alert('✅ Rendición generada exitosamente. El PDF se descargó automáticamente.');
         } catch (error) {
             console.error(error);
             alert("Error al emitir rendición: " + (error.message || error));
+        } finally {
+            setGeneratingPDF(false);
         }
     };
-
-    const handlePrint = useReactToPrint({
-        content: () => printRef.current,
-        documentTitle: 'Rendicion_Garantias',
-    });
-
-    // Effect: trigger print when ready
-    useEffect(() => {
-        if (readyToPrint && rendicionData && rendicionData.garantias?.length > 0) {
-            const timer = setTimeout(() => {
-                if (printRef.current) {
-                    handlePrint();
-                }
-                setReadyToPrint(false);
-            }, 800);
-            return () => clearTimeout(timer);
-        }
-    }, [readyToPrint, rendicionData]);
 
     // Stats
     const stats = useMemo(() => {
@@ -626,10 +789,6 @@ export default function PublicRecepcionView() {
                 )}
             </div>
 
-            {/* ═══ HIDDEN PRINT TEMPLATE ═══ */}
-            <div style={{ position: 'absolute', left: '-9999px', top: 0, width: '210mm' }}>
-                <PrintGarantias ref={printRef} data={rendicionData} />
-            </div>
         </div>
     );
 }
