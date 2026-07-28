@@ -139,7 +139,6 @@ export default function PublicRecepcionView() {
     });
 
     return (
-    return (
         <div style={{ minHeight: '100vh', background: 'var(--bg-main, #f0f4f8)', fontFamily: "'Inter', sans-serif" }}>
             {/* Header Público con estética del sistema */}
             <div style={{ 
