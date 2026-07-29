@@ -257,7 +257,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             const data = await fetchAltasFacturacion({
                 fromDate,
                 toDate: toDate || undefined,
-                search: searchTerm,
+                search: debouncedSearch,
             });
             // Normalizar: mapear usuario_facturo de SALUS al responsable y estado
             const normalized = data.map(a => {
@@ -278,7 +278,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         } finally {
             setLoading(false);
         }
-    }, [fromDate, toDate, searchTerm, addToast]);
+    }, [fromDate, toDate, debouncedSearch, addToast]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
@@ -671,6 +671,20 @@ export default function FacturacionPanel({ addToast, currentUser }) {
 
     const filteredAltas = useMemo(() => {
         let result = preFilteredAltas;
+
+        if (debouncedSearch) {
+            const s = debouncedSearch.toLowerCase().trim();
+            result = result.filter(a =>
+                (a.paciente || '').toLowerCase().includes(s) ||
+                (a.numero_admision || '').toLowerCase().includes(s) ||
+                (a.doctor || '').toLowerCase().includes(s) ||
+                (a.cliente || '').toLowerCase().includes(s) ||
+                (a.proceso || '').toLowerCase().includes(s) ||
+                (a.responsable_fac || '').toLowerCase().includes(s) ||
+                (a._responsableAdm || '').toLowerCase().includes(s)
+            );
+        }
+
         if (Object.keys(columnFilters).length > 0) {
             result = result.filter(a => {
                 if (columnFilters.cliente && !columnFilters.cliente.has(a.cliente)) return false;
@@ -695,7 +709,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             });
         }
         return result;
-    }, [preFilteredAltas, columnFilters, sortConfig]);
+    }, [preFilteredAltas, columnFilters, sortConfig, debouncedSearch]);
 
     // ── Paginación: solo renderizar PAGE_SIZE filas ──
     const totalPages = Math.max(1, Math.ceil(filteredAltas.length / PAGE_SIZE));

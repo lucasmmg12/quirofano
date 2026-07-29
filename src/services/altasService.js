@@ -345,6 +345,16 @@ export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
         }
     }
 
+    if (search) {
+        const s = search.toLowerCase().trim();
+        allData = allData.filter(a =>
+            (a.paciente || '').toLowerCase().includes(s) ||
+            (a.doctor || '').toLowerCase().includes(s) ||
+            (a.cliente || '').toLowerCase().includes(s) ||
+            (a.numero_admision || '').toLowerCase().includes(s)
+        );
+    }
+
     return allData;
 }
 
