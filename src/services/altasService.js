@@ -42,7 +42,15 @@ export async function fetchAltas({ fromDate, toDate, search } = {}) {
 
         if (toDate) query = query.lte('fecha_ingreso', toDate);
         if (fromDate) {
-            query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},fecha_alta.is.null`);
+            // Incluir admisiones que: ingresaron en el mes, O tienen alta en el mes,
+            // O siguen internadas (sin alta) PERO ingresaron antes del fin del mes seleccionado.
+            // La cláusula and(fecha_alta.is.null,...) evita traer admisiones antiguas sin alta
+            // de meses muy anteriores al rango seleccionado.
+            if (toDate) {
+                query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},and(fecha_alta.is.null,fecha_ingreso.lte.${toDate})`);
+            } else {
+                query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},fecha_alta.is.null`);
+            }
         }
         if (search) {
             // Sanitizar: escapar caracteres especiales de PostgREST para que la búsqueda
@@ -202,7 +210,11 @@ export async function getAltasStats(fromDate, toDate) {
 
         if (toDate) query = query.lte('fecha_ingreso', toDate);
         if (fromDate) {
-            query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},fecha_alta.is.null`);
+            if (toDate) {
+                query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},and(fecha_alta.is.null,fecha_ingreso.lte.${toDate})`);
+            } else {
+                query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},fecha_alta.is.null`);
+            }
         }
 
         const { data, error } = await query;
@@ -276,7 +288,11 @@ export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
 
         if (toDate) query = query.lte('fecha_ingreso', toDate);
         if (fromDate) {
-            query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},fecha_alta.is.null`);
+            if (toDate) {
+                query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},and(fecha_alta.is.null,fecha_ingreso.lte.${toDate})`);
+            } else {
+                query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},fecha_alta.is.null`);
+            }
         }
         if (search) {
             const sanitized = search
