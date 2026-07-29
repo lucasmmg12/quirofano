@@ -859,7 +859,6 @@ export default function PublicRecepcionView() {
                                 </div>
                             )}
                         </div>
-                        </div>
                     </div>
                 )}
 
