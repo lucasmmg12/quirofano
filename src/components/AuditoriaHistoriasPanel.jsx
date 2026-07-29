@@ -73,11 +73,12 @@ const formatExcelCell = (val, header) => {
 
 // Palabras clave para la detección inteligente de columnas críticas
 const COLUMN_KEYWORDS = {
-    paciente: ['paciente', 'nombre', 'nombre paciente', 'nombre_paciente', 'paciente_nombre', 'nomyape', 'nombre y apellido', 'nom_ape', 'paciente_admi', 'paciente_admision'],
+    paciente: ['paciente_admi', 'paciente_admision', 'paciente', 'nombre paciente', 'nombre_paciente', 'paciente_nombre', 'nomyape', 'nombre y apellido', 'nom_ape'],
     numeroAdmision: ['numero admision', 'numero admisión', 'número admisión', 'num admision', 'nro admision', 'nro_admision', 'nroadmision', 'admision', 'admisión', 'nro_adm', 'id_admision', 'id_visita_fecha', 'id_visita_evolu', 'id_visita', 'idvisita', 'nhc', 'fq_idvisita', 'fq_idvis'],
-    fechaEvolucion: ['fecha_evolucion', 'fecha_evolucio', 'fecha evolucion', 'fecha evolución', 'fecha_evolucio', 'fecha evolucio', 'fecha_evol', 'evolucion_fecha', 'evolucion', 'evolución', 'fecha_respuesta', 'fecha respuesta', 'fq_fecha'],
-    fechaAlta: ['fecha alta', 'fecha de alta', 'fecha_alta', 'fec_alta', 'alta_fecha', 'alta', 'fecha_egreso', 'egreso', 'fecha_alta_hosp', 'fecha_alta_med', 'fecha alta hosp', 'horas de alta'],
-    valorRespuestaMedica: ['valor_respuesta_medica', 'valor_respuesta', 'valor_respues', 'valor respuesta medica', 'respuesta_medica', 'respuesta medica', 'valor respuesta médica', 'valor_respuesta_médica', 'valor_alta', 'valor alta', 'observac', 'observacion', 'observaciones', 'fq_respu', 'operacio', 'procedim'],
+    fechaEvolucion: ['fecha_evolucion', 'fecha_evolucio', 'fecha_evol', 'fecha evolucion', 'fecha evolución', 'fecha_respuesta', 'fecha respuesta', 'fq_fecha', 'fec_evolucion', 'fec_evol'],
+    fechaAlta: ['fecha alta', 'fecha de alta', 'fecha_alta', 'fec_alta', 'alta_fecha', 'fecha_egreso', 'fecha_alta_hosp', 'fecha_alta_med', 'fecha alta hosp', 'horas de alta'],
+    valorRespuestaMedica: ['valor_respuesta_medica', 'valor_respuesta', 'valor_respues', 'valor respuesta medica', 'respuesta_medica', 'respuesta medica', 'valor respuesta médica', 'valor_respuesta_médica'],
+    valorAlta: ['valor_alta', 'valor alta', 'respuesta_alta', 'alta_valor'],
     especialidad: ['especialidad', 'esp', 'especial', 'proceso'],
     medico: ['medico', 'médico', 'profesional', 'doctor', 'dr', 'medico_nombre', 'nombre_medico', 'profesional_nombre', 'cirujano', 'fq_responsable'],
     habitacion: ['habitacion', 'habitación', 'hab', 'pieza', 'cama', 'habitacion_asig', 'habitacion_asignada', 'habitacion_adm'],
@@ -115,8 +116,9 @@ const findDateGaps = (dates, startStr, endStr) => {
     
     const gaps = [];
     const dateSet = new Set(dates.map(d => formatDateDMY(d)));
+    const endStrFormatted = formatDateDMY(end);
     
-    // Generar secuencia de días
+    // Generar secuencia de días desde el ingreso
     let curr = new Date(start.getFullYear(), start.getMonth(), start.getDate());
     const limit = new Date(end.getFullYear(), end.getMonth(), end.getDate());
     limit.setDate(limit.getDate() + 1); // incluir día final
@@ -125,8 +127,12 @@ const findDateGaps = (dates, startStr, endStr) => {
     while (curr < limit && safetyCounter < 365) { // Límite de 1 año por seguridad
         safetyCounter++;
         const currStr = formatDateDMY(curr);
+        // Si el día no tiene evolución registrada
         if (!dateSet.has(currStr)) {
-            gaps.push(currStr);
+            // El día de alta es válido que no tenga evolución diaria
+            if (currStr !== endStrFormatted) {
+                gaps.push(currStr);
+            }
         }
         curr.setDate(curr.getDate() + 1);
     }
@@ -206,6 +212,11 @@ const processAuditData = (processedRows, mapping) => {
 
         const fechaEv = mapping.fechaEvolucion ? String(row[mapping.fechaEvolucion] || '').trim() : '';
         const textoEv = mapping.valorRespuestaMedica ? String(row[mapping.valorRespuestaMedica] || '').trim() : '';
+        const valAlta = mapping.valorAlta ? String(row[mapping.valorAlta] || '').trim() : (row['Valor_Alta'] || row['Valor Alta'] || '');
+
+        if (valAlta && !isNullOrEmpty(valAlta) && !patient.valorAlta) {
+            patient.valorAlta = valAlta;
+        }
 
         const isUCIFormat = (txt, r) => {
             let fullStr = String(txt || '');
@@ -457,120 +468,123 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
         setLoading(true);
         setFileName(file.name);
 
-        // Procesar la data del timeline 3D de HC
-        processHCExcelFile(file)
-            .then(count => {
-                setHcLoadedCount(count);
-                if (count > 0) addToast?.(`Timeline 3D: ${count} historias cargadas a memoria`, 'success');
-            })
-            .catch(e => console.error("Error timeline:", e));
+        // Permitir que React renderice inmediatamente la pantalla de carga antes de bloquear el hilo principal
+        setTimeout(() => {
+            // Procesar la data del timeline 3D de HC
+            processHCExcelFile(file)
+                .then(count => {
+                    setHcLoadedCount(count);
+                    if (count > 0) addToast?.(`Timeline 3D: ${count} historias cargadas a memoria`, 'success');
+                })
+                .catch(e => console.error("Error timeline:", e));
 
-        const reader = new FileReader();
+            const reader = new FileReader();
 
-        reader.onload = (e) => {
-            try {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const firstSheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[firstSheetName];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
 
-                if (jsonData.length === 0) {
-                    addToast?.('El archivo Excel está vacío', 'error');
-                    setLoading(false);
-                    return;
-                }
-
-                // Obtener cabeceras y filtrar las vacías generadas por SheetJS
-                const sheetHeaders = Object.keys(jsonData[0]).filter(header => header && !header.startsWith('__EMPTY'));
-                setHeaders(sheetHeaders);
-
-                // Detección automática de columnas críticas
-                const mapping = {};
-                sheetHeaders.forEach(header => {
-                    const normalizedHeader = header.toLowerCase().replace(/[\s_\-\.]/g, '');
-                    for (const [field, keywords] of Object.entries(COLUMN_KEYWORDS)) {
-                        if (mapping[field]) continue; // Ya mapeado
-                        
-                        // Match exacto, parcial o truncado
-                        const matches = keywords.some(keyword => {
-                            const normalizedKeyword = keyword.toLowerCase().replace(/[\s_\-\.]/g, '');
-                            return normalizedHeader === normalizedKeyword || 
-                                   normalizedHeader.includes(normalizedKeyword) ||
-                                   (normalizedHeader.length >= 4 && normalizedKeyword.includes(normalizedHeader));
-                        });
-
-                        if (matches) {
-                            mapping[field] = header;
-                        }
+                    if (jsonData.length === 0) {
+                        addToast?.('El archivo Excel está vacío', 'error');
+                        setLoading(false);
+                        return;
                     }
-                });
 
-                setColumnMapping(mapping);
+                    // Obtener cabeceras y filtrar las vacías generadas por SheetJS
+                    const sheetHeaders = Object.keys(jsonData[0]).filter(header => header && !header.startsWith('__EMPTY'));
+                    setHeaders(sheetHeaders);
 
-                // Guardar filas con sus índices de Excel y auditoría calculada
-                const processed = jsonData.map((row, idx) => {
-                    const formattedRow = {};
+                    // Detección automática de columnas críticas
+                    const mapping = {};
                     sheetHeaders.forEach(header => {
-                        formattedRow[header] = formatExcelCell(row[header], header);
+                        const normalizedHeader = header.toLowerCase().replace(/[\s_\-\.]/g, '');
+                        for (const [field, keywords] of Object.entries(COLUMN_KEYWORDS)) {
+                            if (mapping[field]) continue; // Ya mapeado
+                            
+                            // Match exacto, parcial o truncado
+                            const matches = keywords.some(keyword => {
+                                const normalizedKeyword = keyword.toLowerCase().replace(/[\s_\-\.]/g, '');
+                                return normalizedHeader === normalizedKeyword || 
+                                       normalizedHeader.includes(normalizedKeyword) ||
+                                       (normalizedHeader.length >= 4 && normalizedKeyword.includes(normalizedHeader));
+                            });
+
+                            if (matches) {
+                                mapping[field] = header;
+                            }
+                        }
                     });
 
-                    const mappedFecha = mapping.fechaEvolucion ? formattedRow[mapping.fechaEvolucion] : null;
-                    const mappedRespuesta = mapping.valorRespuestaMedica ? formattedRow[mapping.valorRespuestaMedica] : null;
-                    const mappedAlta = mapping.fechaAlta ? formattedRow[mapping.fechaAlta] : null;
+                    setColumnMapping(mapping);
 
-                    const emptyFecha = isNullOrEmpty(mappedFecha);
-                    const emptyRespuesta = isNullOrEmpty(mappedRespuesta);
-                    const emptyAlta = isNullOrEmpty(mappedAlta);
+                    // Guardar filas con sus índices de Excel y auditoría calculada
+                    const processed = jsonData.map((row, idx) => {
+                        const formattedRow = {};
+                        sheetHeaders.forEach(header => {
+                            formattedRow[header] = formatExcelCell(row[header], header);
+                        });
 
-                    let status = 'OK';
-                    let detail = 'Auditoría correcta';
+                        const mappedFecha = mapping.fechaEvolucion ? formattedRow[mapping.fechaEvolucion] : null;
+                        const mappedRespuesta = mapping.valorRespuestaMedica ? formattedRow[mapping.valorRespuestaMedica] : null;
+                        const mappedAlta = mapping.fechaAlta ? formattedRow[mapping.fechaAlta] : null;
 
-                    if (emptyFecha && emptyRespuesta) {
-                        status = 'SIN_AMBOS';
-                        detail = 'Falta Fecha Evolución y Respuesta Médica';
-                    } else if (emptyFecha) {
-                        status = 'SIN_FECHA';
-                        detail = 'Falta Fecha de Evolución';
-                    } else if (emptyRespuesta) {
-                        status = 'SIN_RESPUESTA';
-                        detail = 'Falta Valor de Respuesta Médica';
-                    }
+                        const emptyFecha = isNullOrEmpty(mappedFecha);
+                        const emptyRespuesta = isNullOrEmpty(mappedRespuesta);
+                        const emptyAlta = isNullOrEmpty(mappedAlta);
 
-                    return {
-                        ...formattedRow,
-                        _origIndex: idx + 2, // Fila 1 es cabecera, index base 0
-                        _auditStatus: status,
-                        _auditDetail: detail,
-                        _hasFecha: !emptyFecha,
-                        _hasRespuesta: !emptyRespuesta,
-                        _hasAlta: !emptyAlta
-                    };
-                });
+                        let status = 'OK';
+                        let detail = 'Auditoría correcta';
 
-                const auditedGrouped = processAuditData(processed, mapping);
-                setGroupedPatients(auditedGrouped);
-                setOriginalRows(processed);
-                setCurrentPage(1);
-                setColumnFilters({});
-                setKpiFilter('all');
-                setSortConfig({ key: null, direction: 'asc' });
+                        if (emptyFecha && emptyRespuesta) {
+                            status = 'SIN_AMBOS';
+                            detail = 'Falta Fecha Evolución y Respuesta Médica';
+                        } else if (emptyFecha) {
+                            status = 'SIN_FECHA';
+                            detail = 'Falta Fecha de Evolución';
+                        } else if (emptyRespuesta) {
+                            status = 'SIN_RESPUESTA';
+                            detail = 'Falta Valor de Respuesta Médica';
+                        }
 
-                addToast?.(`Importado: ${processed.length} registros cargados`, 'success');
-            } catch (err) {
-                console.error(err);
-                addToast?.('Error al procesar el archivo: ' + err.message, 'error');
-            } finally {
+                        return {
+                            ...formattedRow,
+                            _origIndex: idx + 2, // Fila 1 es cabecera, index base 0
+                            _auditStatus: status,
+                            _auditDetail: detail,
+                            _hasFecha: !emptyFecha,
+                            _hasRespuesta: !emptyRespuesta,
+                            _hasAlta: !emptyAlta
+                        };
+                    });
+
+                    const auditedGrouped = processAuditData(processed, mapping);
+                    setGroupedPatients(auditedGrouped);
+                    setOriginalRows(processed);
+                    setCurrentPage(1);
+                    setColumnFilters({});
+                    setKpiFilter('all');
+                    setSortConfig({ key: null, direction: 'asc' });
+
+                    addToast?.(`Importado: ${processed.length} registros cargados`, 'success');
+                } catch (err) {
+                    console.error(err);
+                    addToast?.('Error al procesar el archivo: ' + err.message, 'error');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            reader.onerror = () => {
+                addToast?.('Error de lectura del archivo', 'error');
                 setLoading(false);
-            }
-        };
+            };
 
-        reader.onerror = () => {
-            addToast?.('Error de lectura del archivo', 'error');
-            setLoading(false);
-        };
-
-        reader.readAsArrayBuffer(file);
+            reader.readAsArrayBuffer(file);
+        }, 50);
     };
 
     const handleDrop = (e) => {
@@ -1254,6 +1268,15 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
             
             {/* ESTILOS INTERNOS LOCALES PARA HOVER, ANIMACIÓN Y RESALTADO */}
             <style dangerouslySetInnerHTML={{__html: `
+                @keyframes hcSpin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+                @keyframes hcProgress {
+                    0% { left: -35%; width: 35%; }
+                    50% { left: 35%; width: 60%; }
+                    100% { left: 100%; width: 35%; }
+                }
                 .auditoria-drag-zone {
                     border: 2px dashed rgba(30, 95, 166, 0.3);
                     border-radius: 16px;
@@ -2722,20 +2745,28 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
 
                                                 {expandedPatients.has(pat.id) && (
                                                     <>
-                                                        {/* Fechas de Ingreso y Alta */}
-                                                <div style={{ 
-                                                    background: '#F8FAFC', 
-                                                    borderRadius: '8px', 
-                                                    padding: '8px 12px', 
-                                                    fontSize: '0.75rem', 
-                                                    color: 'var(--neutral-600)',
-                                                    display: 'flex',
-                                                    gap: '24px'
-                                                }}>
-                                                    <span>Fecha Ingreso: <strong>{pat.fechaIngreso || '—'}</strong></span>
-                                                    <span>Fecha Alta: <strong>{pat.fechaAlta || 'Activo / Sin Alta'}</strong></span>
-                                                    <span>Días de Internación: <strong>{timelineDays.length} días</strong></span>
-                                                </div>
+                                                        {/* Fechas de Ingreso y Alta y Valor Alta */}
+                                                        <div style={{ 
+                                                            background: '#F8FAFC', 
+                                                            borderRadius: '8px', 
+                                                            padding: '10px 14px', 
+                                                            fontSize: '0.75rem', 
+                                                            color: 'var(--neutral-600)',
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            gap: '6px'
+                                                        }}>
+                                                            <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+                                                                <span>Fecha Ingreso: <strong>{pat.fechaIngreso || '—'}</strong></span>
+                                                                <span>Fecha Alta: <strong>{pat.fechaAlta || 'Activo / Sin Alta'}</strong></span>
+                                                                <span>Días de Internación: <strong>{timelineDays.length} días</strong></span>
+                                                            </div>
+                                                            {pat.valorAlta && (
+                                                                <div style={{ marginTop: '4px', paddingTop: '6px', borderTop: '1px solid #E2E8F0', color: '#B45309', fontWeight: 600 }}>
+                                                                    📋 Valor / Protocolo de Alta: <span style={{ color: '#0F172A', fontWeight: 500 }}>{pat.valorAlta}</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
 
                                                 {/* Timeline Visual (Grid de días) */}
                                                 <div>
