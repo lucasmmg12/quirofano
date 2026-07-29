@@ -204,6 +204,9 @@ const processAuditData = (processedRows, mapping) => {
         const patient = patientsMap[groupKey];
         patient.rows.push(row);
 
+        const fechaEv = mapping.fechaEvolucion ? String(row[mapping.fechaEvolucion] || '').trim() : '';
+        const textoEv = mapping.valorRespuestaMedica ? String(row[mapping.valorRespuestaMedica] || '').trim() : '';
+
         const isUCIFormat = (txt) => {
             if (!txt) return false;
             const upper = String(txt).toUpperCase();
