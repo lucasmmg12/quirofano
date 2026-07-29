@@ -68,20 +68,20 @@ export async function processHCExcelFile(file) {
                 const headers = rawData[0];
                 const rows = rawData.slice(1);
 
-                // Función auxiliar para buscar índices con coincidencia flexible de palabras clave
+                // Función auxiliar para buscar índices con coincidencia flexible de palabras clave (incluso encabezados truncados)
                 const findIdx = (keywords) => headers.findIndex(h => {
                     if (!h) return false;
                     const str = h.toString().trim().toLowerCase().replace(/[\s_\-\.]/g, '');
                     return keywords.some(kw => {
                         const normKw = kw.toLowerCase().replace(/[\s_\-\.]/g, '');
-                        return str === normKw || str.startsWith(normKw) || normKw.startsWith(str);
+                        return str === normKw || str.startsWith(normKw) || normKw.startsWith(str) || (str.length >= 4 && normKw.includes(str));
                     });
                 });
 
-                // Índices conocidos con soporte flexible para nuevos encabezados de SALUS
-                const idxAdmision = findIdx(['numero admision', 'número admisión', 'num admision', 'nro admision', 'id_visita_fecha', 'id_visita', 'nhc', 'fq_idvisita', 'fq_idvis']);
-                const idxFechaEvolucion = findIdx(['fecha_evolucion', 'fecha_respuesta', 'fecha_alta_hosp', 'fq_fecha']);
-                const idxValorRespuesta = findIdx(['valor_respuesta_medica', 'valor_respuesta', 'valor_alta', 'observac']);
+                // Índices conocidos con soporte flexible para nuevos encabezados de SALUS (incluyendo truncados de Excel)
+                const idxAdmision = findIdx(['numero admision', 'número admisión', 'num admision', 'nro admision', 'id_visita_fecha', 'id_visita', 'nhc', 'fq_idvisita', 'fq_idvis', 'id_admision']);
+                const idxFechaEvolucion = findIdx(['fecha_evolucion', 'fecha_evolucio', 'fecha_respuesta', 'fecha_alta_hosp', 'fq_fecha']);
+                const idxValorRespuesta = findIdx(['valor_respuesta_medica', 'valor_respuesta', 'valor_respues', 'valor_alta', 'observac']);
                 const idxFqId = findIdx(['fq_idvisita', 'fq_idvis', 'fq_id']);
                 const idxFqFechaCirugia = findIdx(['fq_fecha_cirugia', 'fq_fecha', 'fecha admision']);
                 const idxFqComienzo = findIdx(['hora de comienzo', 'hora inic', 'hora_inicio']);
@@ -113,9 +113,12 @@ export async function processHCExcelFile(file) {
                     const fechaEvol = row[idxFechaEvolucion];
                     const textoEvol = row[idxValorRespuesta];
                     
-                    const isUCIFormat = (txt) => {
-                        if (!txt) return false;
-                        const upper = String(txt).toUpperCase();
+                    const isUCIFormat = (txt, r) => {
+                        let fullStr = String(txt || '');
+                        if (r && Array.isArray(r)) {
+                            fullStr += ' ' + r.join(' ');
+                        }
+                        const upper = fullStr.toUpperCase();
                         const hasResumen = upper.includes('RESUMEN');
                         const hasPronostico = upper.includes('PRONOSTICO') || upper.includes('PRONÓSTICO');
                         const hasEvolucion = upper.includes('EVOLUCION') || upper.includes('EVOLUCIÓN');
@@ -124,7 +127,7 @@ export async function processHCExcelFile(file) {
                     };
                     
                     if (fechaEvol || textoEvol) {
-                        const isUCI = isUCIFormat(textoEvol);
+                        const isUCI = isUCIFormat(textoEvol, row);
                         record.evoluciones.push({
                             fecha: parseExcelDate(fechaEvol),
                             texto: textoEvol,

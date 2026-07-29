@@ -73,11 +73,11 @@ const formatExcelCell = (val, header) => {
 
 // Palabras clave para la detección inteligente de columnas críticas
 const COLUMN_KEYWORDS = {
-    paciente: ['paciente', 'nombre', 'nombre paciente', 'nombre_paciente', 'paciente_nombre', 'nomyape', 'nombre y apellido', 'nom_ape'],
-    numeroAdmision: ['numero admision', 'numero admisión', 'número admisión', 'num admision', 'nro admision', 'nro_admision', 'nroadmision', 'admision', 'admisión', 'nro_adm', 'id_visita_fecha', 'id_visita', 'idvisita', 'nhc', 'fq_idvisita', 'fq_idvis'],
-    fechaEvolucion: ['fecha_evolucion', 'fecha evolucion', 'fecha evolución', 'fecha_evolucio', 'fecha evolucio', 'fecha_evol', 'evolucion_fecha', 'evolucion', 'evolución', 'fecha_respuesta', 'fecha respuesta', 'fq_fecha'],
-    fechaAlta: ['fecha alta', 'fecha de alta', 'fecha_alta', 'fec_alta', 'alta_fecha', 'alta', 'fecha_egreso', 'egreso', 'fecha_alta_hosp', 'fecha alta hosp', 'horas de alta'],
-    valorRespuestaMedica: ['valor_respuesta_medica', 'valor respuesta medica', 'valor_respuesta', 'respuesta_medica', 'respuesta medica', 'valor respuesta médica', 'valor_respuesta_médica', 'valor_alta', 'valor alta', 'observac', 'observacion', 'observaciones', 'fq_respu', 'operacio', 'procedim'],
+    paciente: ['paciente', 'nombre', 'nombre paciente', 'nombre_paciente', 'paciente_nombre', 'nomyape', 'nombre y apellido', 'nom_ape', 'paciente_admi', 'paciente_admision'],
+    numeroAdmision: ['numero admision', 'numero admisión', 'número admisión', 'num admision', 'nro admision', 'nro_admision', 'nroadmision', 'admision', 'admisión', 'nro_adm', 'id_admision', 'id_visita_fecha', 'id_visita_evolu', 'id_visita', 'idvisita', 'nhc', 'fq_idvisita', 'fq_idvis'],
+    fechaEvolucion: ['fecha_evolucion', 'fecha_evolucio', 'fecha evolucion', 'fecha evolución', 'fecha_evolucio', 'fecha evolucio', 'fecha_evol', 'evolucion_fecha', 'evolucion', 'evolución', 'fecha_respuesta', 'fecha respuesta', 'fq_fecha'],
+    fechaAlta: ['fecha alta', 'fecha de alta', 'fecha_alta', 'fec_alta', 'alta_fecha', 'alta', 'fecha_egreso', 'egreso', 'fecha_alta_hosp', 'fecha_alta_med', 'fecha alta hosp', 'horas de alta'],
+    valorRespuestaMedica: ['valor_respuesta_medica', 'valor_respuesta', 'valor_respues', 'valor respuesta medica', 'respuesta_medica', 'respuesta medica', 'valor respuesta médica', 'valor_respuesta_médica', 'valor_alta', 'valor alta', 'observac', 'observacion', 'observaciones', 'fq_respu', 'operacio', 'procedim'],
     especialidad: ['especialidad', 'esp', 'especial', 'proceso'],
     medico: ['medico', 'médico', 'profesional', 'doctor', 'dr', 'medico_nombre', 'nombre_medico', 'profesional_nombre', 'cirujano', 'fq_responsable'],
     habitacion: ['habitacion', 'habitación', 'hab', 'pieza', 'cama', 'habitacion_asig', 'habitacion_asignada', 'habitacion_adm'],
@@ -207,9 +207,14 @@ const processAuditData = (processedRows, mapping) => {
         const fechaEv = mapping.fechaEvolucion ? String(row[mapping.fechaEvolucion] || '').trim() : '';
         const textoEv = mapping.valorRespuestaMedica ? String(row[mapping.valorRespuestaMedica] || '').trim() : '';
 
-        const isUCIFormat = (txt) => {
-            if (!txt) return false;
-            const upper = String(txt).toUpperCase();
+        const isUCIFormat = (txt, r) => {
+            let fullStr = String(txt || '');
+            if (r && typeof r === 'object') {
+                Object.values(r).forEach(v => {
+                    if (v) fullStr += ' ' + String(v);
+                });
+            }
+            const upper = fullStr.toUpperCase();
             const hasResumen = upper.includes('RESUMEN');
             const hasPronostico = upper.includes('PRONOSTICO') || upper.includes('PRONÓSTICO');
             const hasEvolucion = upper.includes('EVOLUCION') || upper.includes('EVOLUCIÓN');
@@ -218,7 +223,7 @@ const processAuditData = (processedRows, mapping) => {
         };
 
         if (fechaEv || textoEv) {
-            const isUCI = isUCIFormat(textoEv);
+            const isUCI = isUCIFormat(textoEv, row);
             patient.evoluciones.push({
                 fechaStr: fechaEv,
                 fechaObj: parseDateDMY(fechaEv),
@@ -487,10 +492,12 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                     for (const [field, keywords] of Object.entries(COLUMN_KEYWORDS)) {
                         if (mapping[field]) continue; // Ya mapeado
                         
-                        // Match exacto o parcial
+                        // Match exacto, parcial o truncado
                         const matches = keywords.some(keyword => {
                             const normalizedKeyword = keyword.toLowerCase().replace(/[\s_\-\.]/g, '');
-                            return normalizedHeader === normalizedKeyword || normalizedHeader.includes(normalizedKeyword);
+                            return normalizedHeader === normalizedKeyword || 
+                                   normalizedHeader.includes(normalizedKeyword) ||
+                                   (normalizedHeader.length >= 4 && normalizedKeyword.includes(normalizedHeader));
                         });
 
                         if (matches) {
