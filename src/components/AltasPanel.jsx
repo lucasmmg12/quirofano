@@ -591,8 +591,19 @@ export default function AltasPanel({ addToast, currentUser }) {
             for (const [dateKey, dateEntries] of byDate) {
                 if (dateEntries.length > 1) {
                     const sorted = [...dateEntries].sort((a, b) => {
-                        const dateA = a.fecha_ingreso ? new Date(a.fecha_ingreso) : new Date(0);
-                        const dateB = b.fecha_ingreso ? new Date(b.fecha_ingreso) : new Date(0);
+                        // 1. Priorizar ficha con fecha_alta registrada
+                        const hasAltaA = a.fecha_alta ? 1 : 0;
+                        const hasAltaB = b.fecha_alta ? 1 : 0;
+                        if (hasAltaA !== hasAltaB) return hasAltaB - hasAltaA;
+
+                        // 2. Priorizar admisión principal (I0...) sobre admisión UCI (UCI...)
+                        const isMainA = (a.numero_admision || '').toUpperCase().startsWith('I') ? 1 : 0;
+                        const isMainB = (b.numero_admision || '').toUpperCase().startsWith('I') ? 1 : 0;
+                        if (isMainA !== isMainB) return isMainB - isMainA;
+
+                        // 3. Fallback a fecha de creación más reciente
+                        const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
+                        const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
                         return dateB - dateA;
                     });
                     const latestId = sorted[0].id;
@@ -601,7 +612,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                         admissions: sorted.map(e => e.numero_admision),
                         latestId,
                         count: dateEntries.length,
-                        firstAdmission: sorted[sorted.length - 1],
+                        entries: sorted,
                     });
                 }
             }
@@ -613,20 +624,6 @@ export default function AltasPanel({ addToast, currentUser }) {
             const isCtrlAdmSi = ctrlAdm === 'sí' || ctrlAdm === 'si' || ctrlAdm === 's' 
                 || ctrlAdm === 'true' || ctrlAdm === '1' || ctrlAdm === 'yes';
             const obsHasAltaAdm = (alta.observaciones || '').toLowerCase().includes('alta adm');
-            // Alta Adm se detecta de 3 fuentes:
-            // 1) SALUS control_adm_finalizado = 'Si'
-            // 2) Observaciones contienen 'alta adm' (escrito por el personal)
-            // 3) Estado manual = 'Alta Adm' (puesto por operador)
-            // Facturada: si existe factura en PDV 21/31 (cruce automático SALUS)
-            // Devuelta FAC: si tiene devolucion_id y estado_fac === 'Devuelta'
-            const isFacturada = !!(alta.facturada || alta.estado_fac === 'Facturada');
-            const isDevueltaFac = !!(alta.devolucion_id && alta.estado_fac === 'Devuelta' && !isFacturada);
-            const effectiveEstado = (isCtrlAdmSi || obsHasAltaAdm || alta.estado === 'Alta Adm')
-                ? 'Alta Adm'
-                : (alta.estado || 'Vacío');
-            // Responsable: manual override tiene prioridad sobre auto-match
-            const autoResp = asignacion?.responsable || '';
-            const finalResp = alta.responsable_override || autoResp;
 
             const pacKey = (alta.paciente || '').trim().toUpperCase();
             const dateKey = alta.fecha_ingreso || 'sin-fecha';
@@ -640,21 +637,38 @@ export default function AltasPanel({ addToast, currentUser }) {
             // Flag: paciente tiene otras internaciones con fecha diferente
             const hasSiblingInternaciones = siblingPatients.has(pacKey);
 
-            // FUSIÓN AUTOMÁTICA (solo entre misma fecha_ingreso)
+            // FUSIÓN AUTOMÁTICA (entre misma fecha_ingreso) — Absorber campos clínicos/altas
             let doctor = alta.doctor;
             let proceso = alta.proceso;
             let cliente = alta.cliente;
+            let fecha_alta = alta.fecha_alta;
+            let motivo_alta = alta.motivo_alta;
+            let observaciones = alta.observaciones;
+            let control_adm_finalizado = alta.control_adm_finalizado;
             let mergedAdmissions = null;
 
             if (isDuplicate && isLatestAdmission) {
-                const first = dupInfo.firstAdmission;
-                if (first && first.id !== alta.id) {
-                    doctor = alta.doctor || first.doctor;
-                    proceso = alta.proceso || first.proceso;
-                    cliente = alta.cliente || first.cliente;
+                const entries = dupInfo.entries || [];
+                for (const e of entries) {
+                    if (!doctor && e.doctor) doctor = e.doctor;
+                    if (!proceso && e.proceso) proceso = e.proceso;
+                    if (!cliente && e.cliente) cliente = e.cliente;
+                    if (!fecha_alta && e.fecha_alta) fecha_alta = e.fecha_alta;
+                    if (!motivo_alta && e.motivo_alta) motivo_alta = e.motivo_alta;
+                    if (!observaciones && e.observaciones) observaciones = e.observaciones;
+                    if (!control_adm_finalizado && e.control_adm_finalizado) control_adm_finalizado = e.control_adm_finalizado;
                 }
                 mergedAdmissions = duplicateAdmissions;
             }
+
+            const isFacturada = !!(alta.facturada || alta.estado_fac === 'Facturada');
+            const isDevueltaFac = !!(alta.devolucion_id && alta.estado_fac === 'Devuelta' && !isFacturada);
+            const effectiveEstado = (isCtrlAdmSi || obsHasAltaAdm || alta.estado === 'Alta Adm')
+                ? 'Alta Adm'
+                : (alta.estado || 'Vacío');
+            // Responsable: manual override tiene prioridad sobre auto-match
+            const autoResp = asignacion?.responsable || '';
+            const finalResp = alta.responsable_override || autoResp;
 
             // Obtener las admisiones hermanas (diferente fecha_ingreso) — objetos completos
             const siblingAdmissions = hasSiblingInternaciones

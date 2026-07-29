@@ -318,6 +318,33 @@ export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
         from += PAGE_SIZE;
     }
 
+    // Traer admisiones hermanas (duplicados de la misma internación) para los pacientes en la lista
+    // así Facturación puede realizar la fusión completa con datos clínicos/altas
+    if (allData.length > 0) {
+        const patientNames = [...new Set(allData.map(r => r.paciente).filter(Boolean))];
+        const existingIds = new Set(allData.map(r => r.id));
+        const BATCH_SIZE = 50;
+
+        for (let i = 0; i < patientNames.length; i += BATCH_SIZE) {
+            const batchNames = patientNames.slice(i, i + BATCH_SIZE);
+            const { data: siblings } = await supabase
+                .from('altas_administrativas')
+                .select('*')
+                .in('paciente', batchNames);
+
+            if (siblings && siblings.length > 0) {
+                for (const s of siblings) {
+                    if (!existingIds.has(s.id)) {
+                        if (!(s.numero_admision?.toUpperCase().startsWith('A') && s.especialidad?.toUpperCase() === 'CHEQUEO')) {
+                            allData.push(s);
+                            existingIds.add(s.id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     return allData;
 }
 

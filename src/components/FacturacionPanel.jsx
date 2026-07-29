@@ -499,8 +499,24 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             for (const [dateKey, dateEntries] of byDate) {
                 if (dateEntries.length > 1) {
                     const sorted = [...dateEntries].sort((a, b) => {
-                        const dateA = a.fecha_ingreso ? new Date(a.fecha_ingreso) : new Date(0);
-                        const dateB = b.fecha_ingreso ? new Date(b.fecha_ingreso) : new Date(0);
+                        // 1. Priorizar ficha con fecha_alta registrada
+                        const hasAltaA = a.fecha_alta ? 1 : 0;
+                        const hasAltaB = b.fecha_alta ? 1 : 0;
+                        if (hasAltaA !== hasAltaB) return hasAltaB - hasAltaA;
+
+                        // 2. Priorizar admisión principal (I0...) sobre admisión UCI (UCI...)
+                        const isMainA = (a.numero_admision || '').toUpperCase().startsWith('I') ? 1 : 0;
+                        const isMainB = (b.numero_admision || '').toUpperCase().startsWith('I') ? 1 : 0;
+                        if (isMainA !== isMainB) return isMainB - isMainA;
+
+                        // 3. Priorizar la que tenga procedimientos cargados
+                        const hasProcA = (a.procedimientos_detalle && a.procedimientos_detalle.length > 0) ? 1 : 0;
+                        const hasProcB = (b.procedimientos_detalle && b.procedimientos_detalle.length > 0) ? 1 : 0;
+                        if (hasProcA !== hasProcB) return hasProcB - hasProcA;
+
+                        // 4. Fallback a fecha de creación más reciente
+                        const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
+                        const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
                         return dateB - dateA;
                     });
                     const latestId = sorted[0].id;
@@ -509,7 +525,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                         admissions: sorted.map(e => e.numero_admision),
                         latestId,
                         count: dateEntries.length,
-                        firstAdmission: sorted[sorted.length - 1],
+                        entries: sorted,
                     });
                 }
             }
@@ -530,18 +546,52 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             const isObsoleteAdmission = isDuplicate && !isLatestAdmission;
             const hasSiblingInternaciones = siblingPatients.has(pacKey);
 
-            // FUSIÓN AUTOMÁTICA (solo entre misma fecha_ingreso)
+            // FUSIÓN AUTOMÁTICA (solo entre misma fecha_ingreso) — Absorber campos clínicos, altas y traspasos
             let doctor = alta.doctor;
             let proceso = alta.proceso;
             let cliente = alta.cliente;
+            let fecha_alta = alta.fecha_alta;
+            let motivo_alta = alta.motivo_alta;
+            let observaciones = alta.observaciones;
+            let control_adm_finalizado = alta.control_adm_finalizado;
+            let procedimientos_detalle = alta.procedimientos_detalle;
+            let triage_facturacion = alta.triage_facturacion;
+            let cantidad_procedimientos = alta.cantidad_procedimientos;
+            let traspaso_id = alta.traspaso_id;
+            let traspasada_at = alta.traspasada_at;
+            let traspasada_por = alta.traspasada_por;
+            let en_carrito_traspaso = alta.en_carrito_traspaso;
+            let estado_fac = alta.estado_fac;
+            let responsable_fac = alta.responsable_fac;
+            let facturada = alta.facturada;
             let mergedAdmissions = null;
             
             if (isDuplicate && isLatestAdmission) {
-                const first = dupInfo.firstAdmission;
-                if (first && first.id !== alta.id) {
-                    doctor = alta.doctor || first.doctor;
-                    proceso = alta.proceso || first.proceso;
-                    cliente = alta.cliente || first.cliente;
+                const entries = dupInfo.entries || [];
+                for (const e of entries) {
+                    if (!doctor && e.doctor) doctor = e.doctor;
+                    if (!proceso && e.proceso) proceso = e.proceso;
+                    if (!cliente && e.cliente) cliente = e.cliente;
+                    if (!fecha_alta && e.fecha_alta) fecha_alta = e.fecha_alta;
+                    if (!motivo_alta && e.motivo_alta) motivo_alta = e.motivo_alta;
+                    if (!observaciones && e.observaciones) observaciones = e.observaciones;
+                    if (!control_adm_finalizado && e.control_adm_finalizado) control_adm_finalizado = e.control_adm_finalizado;
+                    if ((!procedimientos_detalle || procedimientos_detalle.length === 0) && e.procedimientos_detalle) {
+                        procedimientos_detalle = e.procedimientos_detalle;
+                        triage_facturacion = e.triage_facturacion;
+                        cantidad_procedimientos = e.cantidad_procedimientos;
+                    }
+                    if (!traspaso_id && e.traspaso_id) {
+                        traspaso_id = e.traspaso_id;
+                        traspasada_at = e.traspasada_at;
+                        traspasada_por = e.traspasada_por;
+                    }
+                    if (!en_carrito_traspaso && e.en_carrito_traspaso) en_carrito_traspaso = e.en_carrito_traspaso;
+                    if ((!estado_fac || estado_fac === 'Pendiente') && e.estado_fac && e.estado_fac !== 'Pendiente') {
+                        estado_fac = e.estado_fac;
+                    }
+                    if (!responsable_fac && e.responsable_fac) responsable_fac = e.responsable_fac;
+                    if (!facturada && e.facturada) facturada = e.facturada;
                 }
                 mergedAdmissions = duplicateAdmissions;
             }
@@ -561,8 +611,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             const lastDayPrevMonth = new Date(prevYear, prevMonth, 0).getDate();
             const fechaCierreSugerida = cruzaMes ? `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(lastDayPrevMonth).padStart(2, '0')}` : null;
 
-            let estado_fac = alta.estado_fac;
-            if (alta.facturada && estado_fac === 'Devuelta') {
+            if (facturada && estado_fac === 'Devuelta') {
                 estado_fac = 'Facturada';
             }
 
@@ -577,7 +626,10 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                 _siblingAdmissionNumbers: siblingAdmissionNumbers,
                 _cruzaMes: cruzaMes,
                 _fechaCierreSugerida: fechaCierreSugerida,
-                doctor, proceso, cliente, estado_fac
+                doctor, proceso, cliente, fecha_alta, motivo_alta, observaciones,
+                control_adm_finalizado, procedimientos_detalle, triage_facturacion,
+                cantidad_procedimientos, traspaso_id, traspasada_at, traspasada_por,
+                en_carrito_traspaso, estado_fac, responsable_fac, facturada
             };
         });
 
