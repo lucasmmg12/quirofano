@@ -93,9 +93,12 @@ const parseDateDMY = (str) => {
     if (match) {
         return new Date(parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]));
     }
-    const isoMatch = String(str).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const isoMatch = String(str).match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}):(\d{2}))?/);
     if (isoMatch) {
-        return new Date(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, parseInt(isoMatch[3]));
+        const h = parseInt(isoMatch[4] || 0);
+        const m = parseInt(isoMatch[5] || 0);
+        const s = parseInt(isoMatch[6] || 0);
+        return new Date(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, parseInt(isoMatch[3]), h, m, s);
     }
     const parsed = new Date(str);
     return isNaN(parsed.getTime()) ? null : parsed;
@@ -116,6 +119,7 @@ const findDateGaps = (dates, startStr, endStr) => {
     
     const gaps = [];
     const dateSet = new Set(dates.map(d => formatDateDMY(d)));
+    const startStrFormatted = formatDateDMY(start);
     const endStrFormatted = formatDateDMY(end);
     
     // Generar secuencia de días desde el ingreso
@@ -129,8 +133,8 @@ const findDateGaps = (dates, startStr, endStr) => {
         const currStr = formatDateDMY(curr);
         // Si el día no tiene evolución registrada
         if (!dateSet.has(currStr)) {
-            // El día de alta es válido que no tenga evolución diaria
-            if (currStr !== endStrFormatted) {
+            // Ni el día de ingreso ni el día de alta requieren evolución médica diaria obligatoria
+            if (currStr !== startStrFormatted && currStr !== endStrFormatted) {
                 gaps.push(currStr);
             }
         }
@@ -254,18 +258,40 @@ const processAuditData = (processedRows, mapping) => {
 
 
     const result = Object.values(patientsMap).map(pat => {
+        // Ordenar evoluciones cronológicamente por timestamp original
         pat.evoluciones.sort((a, b) => {
             if (!a.fechaObj) return 1;
             if (!b.fechaObj) return -1;
             return a.fechaObj - b.fechaObj;
         });
 
-        const validDates = pat.evoluciones
-            .filter(ev => ev.fechaObj)
-            .map(ev => ev.fechaObj);
+        // Reasignación Inteligente de Guardia Nocturna (00:00 a 05:59 AM)
+        pat.evoluciones.forEach(ev => {
+            if (ev.fechaObj) {
+                const hours = ev.fechaObj.getHours();
+                if (hours >= 0 && hours < 6) {
+                    const prevDay = new Date(ev.fechaObj);
+                    prevDay.setDate(prevDay.getDate() - 1);
+                    ev.fechaObjEfectiva = prevDay;
+                    ev.fechaStrEfectiva = formatDateDMY(prevDay);
+                    ev.isMadrugada = true;
+                    ev.horaCargaStr = `${String(ev.fechaObj.getHours()).padStart(2, '0')}:${String(ev.fechaObj.getMinutes()).padStart(2, '0')} hs`;
+                } else {
+                    ev.fechaObjEfectiva = ev.fechaObj;
+                    ev.fechaStrEfectiva = formatDateDMY(ev.fechaObj);
+                }
+            } else {
+                ev.fechaObjEfectiva = null;
+                ev.fechaStrEfectiva = ev.fechaStr;
+            }
+        });
 
-        const fechaIngresoStr = pat.fechaIngreso || (pat.evoluciones[0] ? pat.evoluciones[0].fechaStr : '');
-        const fechaAltaStr = pat.fechaAlta || (pat.evoluciones[pat.evoluciones.length - 1] ? pat.evoluciones[pat.evoluciones.length - 1].fechaStr : '');
+        const validDates = pat.evoluciones
+            .filter(ev => ev.fechaObjEfectiva)
+            .map(ev => ev.fechaObjEfectiva);
+
+        const fechaIngresoStr = pat.fechaIngreso || (pat.evoluciones[0] ? pat.evoluciones[0].fechaStrEfectiva : '');
+        const fechaAltaStr = pat.fechaAlta || (pat.evoluciones[pat.evoluciones.length - 1] ? pat.evoluciones[pat.evoluciones.length - 1].fechaStrEfectiva : '');
 
         const gaps = findDateGaps(validDates, fechaIngresoStr, fechaAltaStr);
 
@@ -304,8 +330,8 @@ const processAuditData = (processedRows, mapping) => {
         const duplicados = pat.evoluciones.filter(ev => ev.isDuplicated);
         const duplicadosCount = duplicados.length;
         if (duplicadosCount > 0) {
-            const diasDuplicadosStr = duplicados.map(ev => ev.fechaStr).join(', ');
-            const detallesTextos = duplicados.map(ev => `${ev.fechaStr}: "${ev.texto.substring(0, 100)}${ev.texto.length > 100 ? '...' : ''}"`);
+            const diasDuplicadosStr = duplicados.map(ev => ev.fechaStrEfectiva || ev.fechaStr).join(', ');
+            const detallesTextos = duplicados.map(ev => `${ev.fechaStrEfectiva || ev.fechaStr}: "${ev.texto.substring(0, 100)}${ev.texto.length > 100 ? '...' : ''}"`);
             alertas.push({
                 tipo: 'MEDIO',
                 codigo: 'RIESGO_DUPLICADO',
@@ -342,20 +368,21 @@ const isSurgicalDay = (day) => {
 };
 
 const getPatientTimelineDays = (pat) => {
-    const start = parseDateDMY(pat.fechaIngreso) || (pat.evoluciones[0] ? pat.evoluciones[0].fechaObj : null);
-    const end = parseDateDMY(pat.fechaAlta) || (pat.evoluciones[pat.evoluciones.length - 1] ? pat.evoluciones[pat.evoluciones.length - 1].fechaObj : null);
+    const start = parseDateDMY(pat.fechaIngreso) || (pat.evoluciones[0] ? pat.evoluciones[0].fechaObjEfectiva : null);
+    const end = parseDateDMY(pat.fechaAlta) || (pat.evoluciones[pat.evoluciones.length - 1] ? pat.evoluciones[pat.evoluciones.length - 1].fechaObjEfectiva : null);
     
     if (!start || !end) return [];
     
     const days = [];
     let curr = new Date(start.getFullYear(), start.getMonth(), start.getDate());
     const limit = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-    limit.setDate(limit.getDate() + 1); // include end date
+    limit.setDate(limit.getDate() + 1); // incluir día final
     
     const evolutionMap = {};
     pat.evoluciones.forEach(ev => {
-        if (ev.fechaStr) {
-            evolutionMap[ev.fechaStr] = ev;
+        const key = ev.fechaStrEfectiva || ev.fechaStr;
+        if (key) {
+            evolutionMap[key] = ev;
         }
     });
     
@@ -386,11 +413,23 @@ const getPatientTimelineDays = (pat) => {
                 detail = `Texto repetitivo (${Math.round(similarity * 100)}% similitud con día anterior)`;
             } else {
                 status = 'OK';
-                detail = isUCI ? 'Evolución UCI (Resumen - Pronóstico - Evolución - Consignas)' : 'Evolución registrada correctamente';
+                if (ev.isMadrugada) {
+                    detail = `🌙 Guardia Nocturna (Cargada a las ${ev.horaCargaStr} del día siguiente)`;
+                } else if (isUCI) {
+                    detail = 'Evolución UCI (Resumen - Pronóstico - Evolución - Consignas)';
+                } else {
+                    detail = 'Evolución registrada correctamente';
+                }
             }
         } else {
-            status = 'GAP';
-            detail = 'Sin evolución registrada';
+            // El día de ingreso y el día de alta están exentos si no tienen evolución médica
+            if (dateStr === pat.fechaIngreso || dateStr === pat.fechaAlta) {
+                status = 'OK';
+                detail = dateStr === pat.fechaIngreso ? 'Día de Ingreso (Exento de evolución)' : 'Día de Alta (Exento de evolución)';
+            } else {
+                status = 'GAP';
+                detail = 'Sin evolución registrada';
+            }
         }
         
         days.push({
