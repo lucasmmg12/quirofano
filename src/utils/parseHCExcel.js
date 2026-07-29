@@ -68,19 +68,29 @@ export async function processHCExcelFile(file) {
                 const headers = rawData[0];
                 const rows = rawData.slice(1);
 
-                // Índices conocidos
-                const idxAdmision = headers.findIndex(h => h && h.toString().trim() === 'Número admisión');
-                const idxFechaEvolucion = headers.findIndex(h => h === 'Fecha_Evolucion');
-                const idxValorRespuesta = headers.findIndex(h => h === 'Valor_Respuesta_Medica');
-                const idxFqId = headers.findIndex(h => h === 'FQ_idvisita');
-                const idxFqFechaCirugia = headers.findIndex(h => h === 'FQ_Fecha_Cirugia');
-                const idxFqComienzo = headers.findIndex(h => h === 'Hora de comienzo');
-                const idxFqFinal = headers.findIndex(h => h === 'Hora Finalización');
-                const idxCirujano = headers.findIndex(h => h === 'Cirujano');
-                const idxProcedimiento = headers.findIndex(h => h === 'Procedimiento quirúrgico');
-                const idxDiagnostico = headers.findIndex(h => h === 'Diagnostico 1');
+                // Función auxiliar para buscar índices con coincidencia flexible de palabras clave
+                const findIdx = (keywords) => headers.findIndex(h => {
+                    if (!h) return false;
+                    const str = h.toString().trim().toLowerCase().replace(/[\s_\-\.]/g, '');
+                    return keywords.some(kw => {
+                        const normKw = kw.toLowerCase().replace(/[\s_\-\.]/g, '');
+                        return str === normKw || str.startsWith(normKw) || normKw.startsWith(str);
+                    });
+                });
 
-                if (idxAdmision === -1) throw new Error("No se encontró la columna 'Número admisión'");
+                // Índices conocidos con soporte flexible para nuevos encabezados de SALUS
+                const idxAdmision = findIdx(['numero admision', 'número admisión', 'num admision', 'nro admision', 'id_visita_fecha', 'id_visita', 'nhc', 'fq_idvisita', 'fq_idvis']);
+                const idxFechaEvolucion = findIdx(['fecha_evolucion', 'fecha_respuesta', 'fecha_alta_hosp', 'fq_fecha']);
+                const idxValorRespuesta = findIdx(['valor_respuesta_medica', 'valor_respuesta', 'valor_alta', 'observac']);
+                const idxFqId = findIdx(['fq_idvisita', 'fq_idvis', 'fq_id']);
+                const idxFqFechaCirugia = findIdx(['fq_fecha_cirugia', 'fq_fecha', 'fecha admision']);
+                const idxFqComienzo = findIdx(['hora de comienzo', 'hora inic', 'hora_inicio']);
+                const idxFqFinal = findIdx(['hora finalización', 'hora fina', 'hora_fin']);
+                const idxCirujano = findIdx(['cirujano', 'doctor', 'medico']);
+                const idxProcedimiento = findIdx(['procedimiento quirúrgico', 'procedim', 'operacio']);
+                const idxDiagnostico = findIdx(['diagnostico 1', 'diagnost', 'diagnos1']);
+
+                if (idxAdmision === -1) throw new Error("No se encontró la columna de admisión o N° de Visita ('ID_Visita_Fecha', 'NHC', 'Número admisión', 'FQ_idvisita')");
 
                 const admissionsMap = new Map();
 
@@ -103,28 +113,46 @@ export async function processHCExcelFile(file) {
                     const fechaEvol = row[idxFechaEvolucion];
                     const textoEvol = row[idxValorRespuesta];
                     
-                    if (fechaEvol && textoEvol) {
+                    const isUCIFormat = (txt) => {
+                        if (!txt) return false;
+                        const upper = String(txt).toUpperCase();
+                        const hasResumen = upper.includes('RESUMEN');
+                        const hasPronostico = upper.includes('PRONOSTICO') || upper.includes('PRONÓSTICO');
+                        const hasEvolucion = upper.includes('EVOLUCION') || upper.includes('EVOLUCIÓN');
+                        const hasConsignas = upper.includes('CONSIGNAS');
+                        return (hasResumen && hasPronostico && hasEvolucion && hasConsignas) || upper.includes('TERAPIA INTENSIVA') || upper.includes('UCI');
+                    };
+                    
+                    if (fechaEvol || textoEvol) {
+                        const isUCI = isUCIFormat(textoEvol);
                         record.evoluciones.push({
                             fecha: parseExcelDate(fechaEvol),
-                            texto: textoEvol
+                            texto: textoEvol,
+                            isUCI: isUCI,
+                            tipo: isUCI ? 'Evolución UCI (Resumen - Pronóstico - Evolución - Consignas)' : 'Evolución Clínica'
                         });
+                        if (isUCI) {
+                            record.hasUCI = true;
+                        }
                     }
 
-                    // Extraer Foja Quirúrgica
+                    // Extraer Foja Quirúrgica (solo si fq_idvisita NO es null ni vacío)
                     const fqId = row[idxFqId];
-                    if (fqId) {
-                        const fqIdStr = fqId.toString();
-                        if (!record.fojas.has(fqIdStr)) {
-                            const fechaCirugiaStr = parseExcelDate(row[idxFqFechaCirugia]);
-                            record.fojas.set(fqIdStr, {
-                                id: fqIdStr,
-                                fecha_cirugia: fechaCirugiaStr,
-                                hora_comienzo: parseTimeStr(row[idxFqComienzo], fechaCirugiaStr),
-                                hora_finalizacion: parseTimeStr(row[idxFqFinal], fechaCirugiaStr),
-                                cirujano: row[idxCirujano],
-                                procedimiento: row[idxProcedimiento],
-                                diagnostico: row[idxDiagnostico]
-                            });
+                    if (fqId !== null && fqId !== undefined) {
+                        const fqIdStr = fqId.toString().trim();
+                        if (fqIdStr && fqIdStr.toLowerCase() !== 'null' && fqIdStr !== '0' && fqIdStr.toLowerCase() !== 'undefined') {
+                            if (!record.fojas.has(fqIdStr)) {
+                                const fechaCirugiaStr = parseExcelDate(row[idxFqFechaCirugia]);
+                                record.fojas.set(fqIdStr, {
+                                    id: fqIdStr,
+                                    fecha_cirugia: fechaCirugiaStr,
+                                    hora_comienzo: parseTimeStr(row[idxFqComienzo], fechaCirugiaStr),
+                                    hora_finalizacion: parseTimeStr(row[idxFqFinal], fechaCirugiaStr),
+                                    cirujano: row[idxCirujano],
+                                    procedimiento: row[idxProcedimiento],
+                                    diagnostico: row[idxDiagnostico]
+                                });
+                            }
                         }
                     }
                 });

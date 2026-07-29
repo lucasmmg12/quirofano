@@ -74,16 +74,16 @@ const formatExcelCell = (val, header) => {
 // Palabras clave para la detección inteligente de columnas críticas
 const COLUMN_KEYWORDS = {
     paciente: ['paciente', 'nombre', 'nombre paciente', 'nombre_paciente', 'paciente_nombre', 'nomyape', 'nombre y apellido', 'nom_ape'],
-    numeroAdmision: ['numero admision', 'numero admisión', 'número admisión', 'num admision', 'nro admision', 'nro_admision', 'nroadmision', 'admision', 'admisión', 'nro_adm'],
-    fechaEvolucion: ['fecha_evolucion', 'fecha evolucion', 'fecha evolución', 'fecha_evolucio', 'fecha evolucio', 'fecha_evol', 'evolucion_fecha', 'evolucion', 'evolución'],
-    fechaAlta: ['fecha alta', 'fecha de alta', 'fecha_alta', 'fec_alta', 'alta_fecha', 'alta', 'fecha_egreso', 'egreso'],
-    valorRespuestaMedica: ['valor_respuesta_medica', 'valor respuesta medica', 'valor_respuesta', 'respuesta_medica', 'respuesta medica', 'valor respuesta médica', 'valor_respuesta_médica', 'respuesta medica', 'respuesta_medica'],
-    especialidad: ['especialidad', 'esp', 'especial'],
-    medico: ['medico', 'médico', 'profesional', 'doctor', 'dr', 'medico_nombre', 'nombre_medico', 'profesional_nombre'],
-    habitacion: ['habitacion', 'habitación', 'hab', 'pieza', 'cama'],
+    numeroAdmision: ['numero admision', 'numero admisión', 'número admisión', 'num admision', 'nro admision', 'nro_admision', 'nroadmision', 'admision', 'admisión', 'nro_adm', 'id_visita_fecha', 'id_visita', 'idvisita', 'nhc', 'fq_idvisita', 'fq_idvis'],
+    fechaEvolucion: ['fecha_evolucion', 'fecha evolucion', 'fecha evolución', 'fecha_evolucio', 'fecha evolucio', 'fecha_evol', 'evolucion_fecha', 'evolucion', 'evolución', 'fecha_respuesta', 'fecha respuesta', 'fq_fecha'],
+    fechaAlta: ['fecha alta', 'fecha de alta', 'fecha_alta', 'fec_alta', 'alta_fecha', 'alta', 'fecha_egreso', 'egreso', 'fecha_alta_hosp', 'fecha alta hosp', 'horas de alta'],
+    valorRespuestaMedica: ['valor_respuesta_medica', 'valor respuesta medica', 'valor_respuesta', 'respuesta_medica', 'respuesta medica', 'valor respuesta médica', 'valor_respuesta_médica', 'valor_alta', 'valor alta', 'observac', 'observacion', 'observaciones', 'fq_respu', 'operacio', 'procedim'],
+    especialidad: ['especialidad', 'esp', 'especial', 'proceso'],
+    medico: ['medico', 'médico', 'profesional', 'doctor', 'dr', 'medico_nombre', 'nombre_medico', 'profesional_nombre', 'cirujano', 'fq_responsable'],
+    habitacion: ['habitacion', 'habitación', 'hab', 'pieza', 'cama', 'habitacion_asig', 'habitacion_asignada', 'habitacion_adm'],
     serieAdmision: ['serie admision', 'serie admisión', 'serie_admision', 'serie'],
-    fechaIngreso: ['fecha ingreso', 'fecha_ingreso', 'ingreso', 'fec_ingreso', 'ingreso_fecha', 'fec_ing', 'fecha_ing'],
-    obraSocial: ['obra social', 'obra_social', 'os', 'financiador', 'cobertura']
+    fechaIngreso: ['fecha ingreso', 'fecha_ingreso', 'ingreso', 'fec_ingreso', 'ingreso_fecha', 'fec_ing', 'fecha_ing', 'fecha admision', 'fecha admisión', 'fecha_admision'],
+    obraSocial: ['obra social', 'obra_social', 'os', 'financiador', 'cobertura', 'grupo_gasto', 'gpe_gasto']
 };
 
 const parseDateDMY = (str) => {
@@ -204,17 +204,30 @@ const processAuditData = (processedRows, mapping) => {
         const patient = patientsMap[groupKey];
         patient.rows.push(row);
 
-        const fechaEv = mapping.fechaEvolucion ? String(row[mapping.fechaEvolucion] || '').trim() : '';
-        const textoEv = mapping.valorRespuestaMedica ? String(row[mapping.valorRespuestaMedica] || '').trim() : '';
-        
+        const isUCIFormat = (txt) => {
+            if (!txt) return false;
+            const upper = String(txt).toUpperCase();
+            const hasResumen = upper.includes('RESUMEN');
+            const hasPronostico = upper.includes('PRONOSTICO') || upper.includes('PRONÓSTICO');
+            const hasEvolucion = upper.includes('EVOLUCION') || upper.includes('EVOLUCIÓN');
+            const hasConsignas = upper.includes('CONSIGNAS');
+            return (hasResumen && hasPronostico && hasEvolucion && hasConsignas) || upper.includes('TERAPIA INTENSIVA') || upper.includes('UCI');
+        };
+
         if (fechaEv || textoEv) {
+            const isUCI = isUCIFormat(textoEv);
             patient.evoluciones.push({
                 fechaStr: fechaEv,
                 fechaObj: parseDateDMY(fechaEv),
                 texto: textoEv,
+                isUCI: isUCI,
                 filaExcel: row._origIndex,
                 rowRef: row
             });
+            if (isUCI) {
+                patient.hasUCI = true;
+                patient.isUCI = true;
+            }
         }
     });
 
@@ -340,19 +353,21 @@ const getPatientTimelineDays = (pat) => {
         let similarity = 0;
         let valRespuesta = '';
         
+        let isUCI = false;
         if (gapSet.has(dateStr)) {
             status = 'GAP';
             detail = 'Día sin evolución médica (Pérdida de cobro OSP)';
         } else if (evolutionMap[dateStr]) {
             const ev = evolutionMap[dateStr];
             valRespuesta = ev.texto;
+            isUCI = ev.isUCI || (ev.texto && String(ev.texto).toUpperCase().includes('RESUMEN') && String(ev.texto).toUpperCase().includes('PRONOSTICO') && String(ev.texto).toUpperCase().includes('EVOLUCION') && String(ev.texto).toUpperCase().includes('CONSIGNAS'));
             if (ev.isDuplicated) {
                 status = 'DUPLICADO';
                 similarity = ev.similarity;
                 detail = `Texto repetitivo (${Math.round(similarity * 100)}% similitud con día anterior)`;
             } else {
                 status = 'OK';
-                detail = 'Evolución registrada correctamente';
+                detail = isUCI ? 'Evolución UCI (Resumen - Pronóstico - Evolución - Consignas)' : 'Evolución registrada correctamente';
             }
         } else {
             status = 'GAP';
@@ -364,7 +379,8 @@ const getPatientTimelineDays = (pat) => {
             status,
             detail,
             similarity,
-            valRespuesta
+            valRespuesta,
+            isUCI
         });
         
         curr.setDate(curr.getDate() + 1);
