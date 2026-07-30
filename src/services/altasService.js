@@ -531,7 +531,7 @@ export async function fetchTraspasos({ search, limit = 100 } = {}) {
             .from('altas_administrativas')
             .select('traspaso_id')
             .not('traspaso_id', 'is', null)
-            .or(`nombre_paciente.ilike.%${safeSearch}%,dni.ilike.%${safeSearch}%,cirujano.ilike.%${safeSearch}%`);
+            .or(`paciente.ilike.%${safeSearch}%,doctor.ilike.%${safeSearch}%`);
         
         const matchedIds = [...new Set((matchedDetalle || []).map(a => a.traspaso_id))];
         if (matchedIds.length > 0) {

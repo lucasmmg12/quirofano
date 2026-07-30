@@ -79,18 +79,54 @@ export async function processHCExcelFile(file) {
                 });
 
                 // Índices conocidos con soporte flexible para nuevos encabezados de SALUS (incluyendo truncados de Excel)
-                const idxAdmision = findIdx(['numero admision', 'número admisión', 'num admision', 'nro admision', 'id_visita_fecha', 'id_visita', 'nhc', 'fq_idvisita', 'fq_idvis', 'id_admision']);
+                const idxAdmision = findIdx(['id_admision', 'numero admision', 'número admisión', 'num admision', 'nro admision', 'id_visita_fecha', 'id_visita', 'nhc', 'fq_idvisita', 'fq_idvis']);
+                
+                // NUEVA: Fecha_Clinica_Evolucion es la fecha canónica (prioridad máxima)
+                const idxFechaClinica = findIdx(['fecha_clinica_evolucion', 'fecha_clinica_evoluc', 'fecha_clinica']);
                 const idxFechaEvolucion = findIdx(['fecha_evolucion', 'fecha_evolucio', 'fecha_respuesta', 'fecha_alta_hosp', 'fq_fecha']);
+                // Usar fecha clínica si está disponible, sino caer a la anterior
+                const idxFechaEfectiva = idxFechaClinica !== -1 ? idxFechaClinica : idxFechaEvolucion;
+                
                 const idxValorRespuesta = findIdx(['valor_respuesta_medica', 'valor_respuesta', 'valor_respues', 'valor_alta', 'observac']);
+                
+                // NUEVA: Tipo de registro clínico (EVOLUCION DIARIA vs RESUMEN-PRONOSTICO-EVOLUCION-CONSIGNAS)
+                const idxTipoRegistro = findIdx(['tipo_registro_clinico', 'tipo_registro', 'tipo_regist']);
+                
+                // NUEVA: Fecha de escritura (para auditoría de trazabilidad)
+                const idxFechaEscritura = findIdx(['fecha_escritura_evolucion', 'fecha_escritura', 'fecha_escritu']);
+                
+                // NUEVA: Fuente de la fecha clínica
+                const idxFuenteFecha = findIdx(['fuente_fecha_clinica', 'fuente_fecha']);
+                
+                // NUEVA: Alta Médica como concepto separado
+                const idxValorAltaMedica = findIdx(['valor_alta_medica', 'valor_alta_med']);
+                const idxFechaAltaMedica = findIdx(['fecha_alta_medica', 'fecha_alta_med']);
+                const idxDiasDesfaseAlta = findIdx(['dias_desfase_alta', 'dias_desfase']);
+                
+                // NUEVA: Motivo de alta
+                const idxMotivoAlta = findIdx(['motivo de alta', 'motivo_alta', 'motivo_de_alt']);
+                
+                // NUEVA: Edad y Días de estadía
+                const idxEdad = findIdx(['edad']);
+                const idxDiasEstadia = findIdx(['dias de estadia', 'dias_estadia', 'dias_de_esta']);
+
+                // Foja Quirúrgica (mejorada con nuevas columnas de la query)
                 const idxFqId = findIdx(['fq_idvisita', 'fq_idvis', 'fq_id']);
-                const idxFqFechaCirugia = findIdx(['fq_fecha_cirugia', 'fq_fecha', 'fecha admision']);
+                const idxFqFechaCirugia = findIdx(['fq_fecha_cirugia', 'fq_fecha_ciru', 'fq_fecha']);
                 const idxFqComienzo = findIdx(['hora de comienzo', 'hora inic', 'hora_inicio']);
                 const idxFqFinal = findIdx(['hora finalización', 'hora fina', 'hora_fin']);
                 const idxCirujano = findIdx(['cirujano', 'doctor', 'medico']);
-                const idxProcedimiento = findIdx(['procedimiento quirúrgico', 'procedim', 'operacio']);
+                const idxProcedimiento = findIdx(['procedimiento quirúrgico', 'procedimiento quir', 'procedim', 'operacio']);
                 const idxDiagnostico = findIdx(['diagnostico 1', 'diagnost', 'diagnos1']);
+                // NUEVAS columnas de FQ desde la query optimizada
+                const idxDiagPostOp = findIdx(['diagnóstico post-operatorio', 'diagnostico post', 'diag_postop']);
+                const idxOperacionHallazgos = findIdx(['operacion y hallazgos', 'operacion_hall']);
+                const idxProcedimiento2 = findIdx(['procedimiento quirúrgico 2', 'procedimiento quir 2']);
+                const idxProcedimiento3 = findIdx(['procedimiento quirúrgico 3', 'procedimiento quir 3']);
+                const idxProcedimiento4 = findIdx(['procedimiento quirúrgico 4', 'procedimiento quir 4']);
+                const idxFqObservaciones = findIdx(['observaciones']);
 
-                if (idxAdmision === -1) throw new Error("No se encontró la columna de admisión o N° de Visita ('ID_Visita_Fecha', 'NHC', 'Número admisión', 'FQ_idvisita')");
+                if (idxAdmision === -1) throw new Error("No se encontró la columna de admisión o N° de Visita ('ID_Admision', 'ID_Visita_Fecha', 'NHC', 'Número admisión', 'FQ_idvisita')");
 
                 const admissionsMap = new Map();
 
@@ -103,17 +139,62 @@ export async function processHCExcelFile(file) {
                         admissionsMap.set(nroAdmision, {
                             numero_admision: nroAdmision,
                             evoluciones: [],
-                            fojas: new Map() // Map para evitar fojas duplicadas
+                            fojas: new Map(), // Map para evitar fojas duplicadas
+                            // Nuevos campos de la query optimizada
+                            altaMedica: null,
+                            motivoAlta: null,
+                            edad: null,
+                            diasEstadia: null
                         });
                     }
 
                     const record = admissionsMap.get(nroAdmision);
 
+                    // Extraer datos de admisión enriquecidos (solo la primera vez)
+                    if (idxMotivoAlta !== -1 && !record.motivoAlta) {
+                        const motivo = row[idxMotivoAlta];
+                        if (motivo && String(motivo).trim().toLowerCase() !== 'null') {
+                            record.motivoAlta = String(motivo).trim();
+                        }
+                    }
+                    if (idxEdad !== -1 && record.edad === null) {
+                        const edad = row[idxEdad];
+                        if (edad !== null && edad !== undefined && String(edad).trim().toLowerCase() !== 'null') {
+                            record.edad = edad;
+                        }
+                    }
+                    if (idxDiasEstadia !== -1 && record.diasEstadia === null) {
+                        const dias = row[idxDiasEstadia];
+                        if (dias !== null && dias !== undefined && String(dias).trim().toLowerCase() !== 'null') {
+                            record.diasEstadia = dias;
+                        }
+                    }
+
+                    // Extraer Alta Médica (nueva sección separada de la query)
+                    if (idxValorAltaMedica !== -1 && !record.altaMedica) {
+                        const textoAlta = row[idxValorAltaMedica];
+                        if (textoAlta && String(textoAlta).trim().toLowerCase() !== 'null' && String(textoAlta).trim() !== '') {
+                            record.altaMedica = {
+                                texto: String(textoAlta).trim(),
+                                fecha: idxFechaAltaMedica !== -1 ? parseExcelDate(row[idxFechaAltaMedica]) : null,
+                                diasDesfase: idxDiasDesfaseAlta !== -1 ? row[idxDiasDesfaseAlta] : null
+                            };
+                        }
+                    }
+
                     // Extraer evolución
-                    const fechaEvol = row[idxFechaEvolucion];
+                    const fechaEvol = idxFechaEfectiva !== -1 ? row[idxFechaEfectiva] : null;
                     const textoEvol = row[idxValorRespuesta];
                     
+                    // Detectar tipo UCI: primero por columna Tipo_Registro_Clinico, sino por heurística
+                    const tipoRegistro = idxTipoRegistro !== -1 ? String(row[idxTipoRegistro] || '').trim() : '';
+                    
                     const isUCIFormat = (txt, r) => {
+                        // Prioridad 1: Si la columna Tipo_Registro_Clinico dice "RESUMEN - PRONOSTICO..."
+                        if (tipoRegistro.toUpperCase().includes('RESUMEN') && tipoRegistro.toUpperCase().includes('PRONOSTICO')) {
+                            return true;
+                        }
+                        // Prioridad 2: Heurística de texto (fallback para datos sin la columna)
                         let fullStr = String(txt || '');
                         if (r && Array.isArray(r)) {
                             fullStr += ' ' + r.join(' ');
@@ -128,12 +209,17 @@ export async function processHCExcelFile(file) {
                     
                     if (fechaEvol || textoEvol) {
                         const isUCI = isUCIFormat(textoEvol, row);
-                        record.evoluciones.push({
+                        const evolucion = {
                             fecha: parseExcelDate(fechaEvol),
                             texto: textoEvol,
                             isUCI: isUCI,
-                            tipo: isUCI ? 'Evolución UCI (Resumen - Pronóstico - Evolución - Consignas)' : 'Evolución Clínica'
-                        });
+                            tipo: isUCI ? 'Evolución UCI (Resumen - Pronóstico - Evolución - Consignas)' : 'Evolución Clínica',
+                            // Nuevos campos de trazabilidad
+                            tipoRegistro: tipoRegistro || null,
+                            fechaEscritura: idxFechaEscritura !== -1 ? parseExcelDate(row[idxFechaEscritura]) : null,
+                            fuenteFecha: idxFuenteFecha !== -1 ? String(row[idxFuenteFecha] || '').trim() : null
+                        };
+                        record.evoluciones.push(evolucion);
                         if (isUCI) {
                             record.hasUCI = true;
                         }
@@ -153,7 +239,14 @@ export async function processHCExcelFile(file) {
                                     hora_finalizacion: parseTimeStr(row[idxFqFinal], fechaCirugiaStr),
                                     cirujano: row[idxCirujano],
                                     procedimiento: row[idxProcedimiento],
-                                    diagnostico: row[idxDiagnostico]
+                                    diagnostico: row[idxDiagnostico],
+                                    // Nuevos campos de la query optimizada
+                                    diagnostico_postop: idxDiagPostOp !== -1 ? row[idxDiagPostOp] : null,
+                                    operacion_hallazgos: idxOperacionHallazgos !== -1 ? row[idxOperacionHallazgos] : null,
+                                    procedimiento2: idxProcedimiento2 !== -1 ? row[idxProcedimiento2] : null,
+                                    procedimiento3: idxProcedimiento3 !== -1 ? row[idxProcedimiento3] : null,
+                                    procedimiento4: idxProcedimiento4 !== -1 ? row[idxProcedimiento4] : null,
+                                    observaciones: idxFqObservaciones !== -1 ? row[idxFqObservaciones] : null
                                 });
                             }
                         }

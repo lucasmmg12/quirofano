@@ -72,19 +72,31 @@ const formatExcelCell = (val, header) => {
 };
 
 // Palabras clave para la detección inteligente de columnas críticas
+// Actualizado para la query optimizada de 10 pasos
 const COLUMN_KEYWORDS = {
     paciente: ['paciente_admi', 'paciente_admision', 'paciente', 'nombre paciente', 'nombre_paciente', 'paciente_nombre', 'nomyape', 'nombre y apellido', 'nom_ape'],
-    numeroAdmision: ['numero admision', 'numero admisión', 'número admisión', 'num admision', 'nro admision', 'nro_admision', 'nroadmision', 'admision', 'admisión', 'nro_adm', 'id_admision', 'id_visita_fecha', 'id_visita_evolu', 'id_visita', 'idvisita', 'nhc', 'fq_idvisita', 'fq_idvis'],
-    fechaEvolucion: ['fecha_evolucion', 'fecha_evolucio', 'fecha_evol', 'fecha evolucion', 'fecha evolución', 'fecha_respuesta', 'fecha respuesta', 'fq_fecha', 'fec_evolucion', 'fec_evol'],
-    fechaAlta: ['fecha alta', 'fecha de alta', 'fecha_alta', 'fec_alta', 'alta_fecha', 'fecha_egreso', 'fecha_alta_hosp', 'fecha_alta_med', 'fecha alta hosp', 'horas de alta'],
+    numeroAdmision: ['id_admision', 'numero admision', 'numero admisión', 'número admisión', 'num admision', 'nro admision', 'nro_admision', 'nroadmision', 'admision', 'admisión', 'nro_adm', 'id_visita_fecha', 'id_visita_evolu', 'id_visita', 'idvisita', 'nhc', 'fq_idvisita', 'fq_idvis'],
+    // PRIORIDAD: Fecha_Clinica_Evolucion es la fecha canónica de la query optimizada
+    fechaEvolucion: ['fecha_clinica_evolucion', 'fecha_clinica_evoluc', 'fecha_clinica', 'fecha_evolucion', 'fecha_evolucio', 'fecha_evol', 'fecha evolucion', 'fecha evolución', 'fecha_respuesta', 'fecha respuesta', 'fq_fecha', 'fec_evolucion', 'fec_evol'],
+    fechaAlta: ['fecha alta', 'fecha de alta', 'fecha_alta', 'fec_alta', 'alta_fecha', 'fecha_egreso', 'fecha_alta_hosp', 'fecha alta hosp', 'horas de alta'],
     valorRespuestaMedica: ['valor_respuesta_medica', 'valor_respuesta', 'valor_respues', 'valor respuesta medica', 'respuesta_medica', 'respuesta medica', 'valor respuesta médica', 'valor_respuesta_médica'],
-    valorAlta: ['valor_alta', 'valor alta', 'respuesta_alta', 'alta_valor'],
+    // Alta Médica separada (query optimizada trae Valor_Alta_Medica como campo propio)
+    valorAlta: ['valor_alta_medica', 'valor_alta_med', 'valor_alta', 'valor alta', 'respuesta_alta', 'alta_valor'],
     especialidad: ['especialidad', 'esp', 'especial', 'proceso'],
     medico: ['medico', 'médico', 'profesional', 'doctor', 'dr', 'medico_nombre', 'nombre_medico', 'profesional_nombre', 'cirujano', 'fq_responsable'],
     habitacion: ['habitacion', 'habitación', 'hab', 'pieza', 'cama', 'habitacion_asig', 'habitacion_asignada', 'habitacion_adm'],
     serieAdmision: ['serie admision', 'serie admisión', 'serie_admision', 'serie'],
     fechaIngreso: ['fecha ingreso', 'fecha_ingreso', 'ingreso', 'fec_ingreso', 'ingreso_fecha', 'fec_ing', 'fecha_ing', 'fecha admision', 'fecha admisión', 'fecha_admision'],
-    obraSocial: ['obra social', 'obra_social', 'os', 'financiador', 'cobertura', 'grupo_gasto', 'gpe_gasto']
+    obraSocial: ['obra social', 'obra_social', 'os', 'financiador', 'cobertura', 'grupo_gasto', 'gpe_gasto'],
+    // Nuevas columnas de la query optimizada
+    tipoRegistroClinico: ['tipo_registro_clinico', 'tipo_registro', 'tipo_regist'],
+    fechaEscrituraEvolucion: ['fecha_escritura_evolucion', 'fecha_escritura', 'fecha_escritu'],
+    fuenteFechaClinica: ['fuente_fecha_clinica', 'fuente_fecha'],
+    fechaAltaMedica: ['fecha_alta_medica', 'fecha_alta_med'],
+    diasDesfaseAlta: ['dias_desfase_alta', 'dias_desfase'],
+    motivoAlta: ['motivo de alta', 'motivo_alta', 'motivo_de_alt'],
+    edad: ['edad'],
+    diasEstadia: ['dias de estadia', 'dias_estadia', 'dias_de_esta']
 };
 
 const parseDateDMY = (str) => {
@@ -207,13 +219,20 @@ const processAuditData = (processedRows, mapping) => {
                 fechaIngreso: mapping.fechaIngreso ? String(row[mapping.fechaIngreso] || '').trim() : '',
                 fechaAlta: mapping.fechaAlta ? String(row[mapping.fechaAlta] || '').trim() : '',
                 evoluciones: [],
-                rows: []
+                rows: [],
+                // Nuevos campos de la query optimizada
+                edad: mapping.edad ? String(row[mapping.edad] || '').trim() : '',
+                diasEstadia: mapping.diasEstadia ? String(row[mapping.diasEstadia] || '').trim() : '',
+                motivoAlta: mapping.motivoAlta ? String(row[mapping.motivoAlta] || '').trim() : '',
+                fechaAltaMedica: mapping.fechaAltaMedica ? String(row[mapping.fechaAltaMedica] || '').trim() : '',
+                diasDesfaseAlta: mapping.diasDesfaseAlta ? String(row[mapping.diasDesfaseAlta] || '').trim() : ''
             };
         }
 
         const patient = patientsMap[groupKey];
         patient.rows.push(row);
 
+        // Fecha canónica: Fecha_Clinica_Evolucion (ya resuelta por la query con cascada de 3 fuentes)
         const fechaEv = mapping.fechaEvolucion ? String(row[mapping.fechaEvolucion] || '').trim() : '';
         const textoEv = mapping.valorRespuestaMedica ? String(row[mapping.valorRespuestaMedica] || '').trim() : '';
         const valAlta = mapping.valorAlta ? String(row[mapping.valorAlta] || '').trim() : (row['Valor_Alta'] || row['Valor Alta'] || '');
@@ -222,7 +241,15 @@ const processAuditData = (processedRows, mapping) => {
             patient.valorAlta = valAlta;
         }
 
+        // Tipo de registro clínico (nuevo desde la query optimizada)
+        const tipoRegistro = mapping.tipoRegistroClinico ? String(row[mapping.tipoRegistroClinico] || '').trim().toUpperCase() : '';
+
         const isUCIFormat = (txt, r) => {
+            // Prioridad 1: Columna Tipo_Registro_Clinico de la query
+            if (tipoRegistro.includes('RESUMEN') && tipoRegistro.includes('PRONOSTICO')) {
+                return true;
+            }
+            // Prioridad 2: Heurística de texto (fallback para datos sin columna)
             let fullStr = String(txt || '');
             if (r && typeof r === 'object') {
                 Object.values(r).forEach(v => {
@@ -245,7 +272,11 @@ const processAuditData = (processedRows, mapping) => {
                 texto: textoEv,
                 isUCI: isUCI,
                 filaExcel: row._origIndex,
-                rowRef: row
+                rowRef: row,
+                // Trazabilidad de la query optimizada
+                tipoRegistro: tipoRegistro || null,
+                fechaEscritura: mapping.fechaEscrituraEvolucion ? String(row[mapping.fechaEscrituraEvolucion] || '').trim() : null,
+                fuenteFecha: mapping.fuenteFechaClinica ? String(row[mapping.fuenteFechaClinica] || '').trim() : null
             });
             if (isUCI) {
                 patient.hasUCI = true;
@@ -362,6 +393,9 @@ const processAuditData = (processedRows, mapping) => {
 };
 
 const isSurgicalDay = (day) => {
+    // Prioridad 1: Si el día fue marcado por cruce con Foja Quirúrgica real
+    if (day.hasFojaQuirurgica) return true;
+    // Prioridad 2: Heurística de texto (fallback para datos sin Foja)
     if (!day.valRespuesta) return false;
     const txt = day.valRespuesta.toLowerCase();
     return ['cirugia', 'cirugía', 'quirurg', 'quirúrg', 'quirofano', 'quirófano', 'operacion', 'operación'].some(kw => txt.includes(kw));
@@ -388,6 +422,21 @@ const getPatientTimelineDays = (pat) => {
     
     const gapSet = new Set(pat.gaps);
     
+    // Construir set de fechas de cirugía desde la Foja Quirúrgica real
+    const fojaDateSet = new Set();
+    const adData = hcLocalStore.getAdmissionData(pat.numeroAdmision);
+    if (adData && adData.fojas) {
+        adData.fojas.forEach(fq => {
+            if (fq.fecha_cirugia && String(fq.fecha_cirugia).toLowerCase() !== 'null') {
+                // Convertir ISO a DD/MM/YYYY para comparar con dateStr
+                const fqDate = new Date(fq.fecha_cirugia);
+                if (!isNaN(fqDate.getTime())) {
+                    fojaDateSet.add(formatDateDMY(fqDate));
+                }
+            }
+        });
+    }
+    
     let safety = 0;
     while (curr < limit && safety < 365) {
         safety++;
@@ -398,6 +447,7 @@ const getPatientTimelineDays = (pat) => {
         let detail = '';
         let similarity = 0;
         let valRespuesta = '';
+        let hasFojaQuirurgica = fojaDateSet.has(dateStr);
         
         let isUCI = false;
         if (gapSet.has(dateStr)) {
@@ -406,7 +456,8 @@ const getPatientTimelineDays = (pat) => {
         } else if (evolutionMap[dateStr]) {
             const ev = evolutionMap[dateStr];
             valRespuesta = ev.texto;
-            isUCI = ev.isUCI || (ev.texto && String(ev.texto).toUpperCase().includes('RESUMEN') && String(ev.texto).toUpperCase().includes('PRONOSTICO') && String(ev.texto).toUpperCase().includes('EVOLUCION') && String(ev.texto).toUpperCase().includes('CONSIGNAS'));
+            // Usar Tipo_Registro_Clinico si está disponible, sino heurística
+            isUCI = ev.isUCI || (ev.tipoRegistro && ev.tipoRegistro.includes('RESUMEN') && ev.tipoRegistro.includes('PRONOSTICO')) || (ev.texto && String(ev.texto).toUpperCase().includes('RESUMEN') && String(ev.texto).toUpperCase().includes('PRONOSTICO') && String(ev.texto).toUpperCase().includes('EVOLUCION') && String(ev.texto).toUpperCase().includes('CONSIGNAS'));
             if (ev.isDuplicated) {
                 status = 'DUPLICADO';
                 similarity = ev.similarity;
@@ -431,6 +482,11 @@ const getPatientTimelineDays = (pat) => {
                 detail = 'Sin evolución registrada';
             }
         }
+
+        // Enriquecer con información de Foja Quirúrgica
+        if (hasFojaQuirurgica) {
+            detail += detail ? ' | 🔵 Día con Foja Quirúrgica' : '🔵 Día con Foja Quirúrgica';
+        }
         
         days.push({
             dateStr,
@@ -438,7 +494,8 @@ const getPatientTimelineDays = (pat) => {
             detail,
             similarity,
             valRespuesta,
-            isUCI
+            isUCI,
+            hasFojaQuirurgica
         });
         
         curr.setDate(curr.getDate() + 1);
@@ -2784,7 +2841,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
 
                                                 {expandedPatients.has(pat.id) && (
                                                     <>
-                                                        {/* Fechas de Ingreso y Alta y Valor Alta */}
+                                                        {/* Fechas de Ingreso y Alta, Datos enriquecidos */}
                                                         <div style={{ 
                                                             background: '#F8FAFC', 
                                                             borderRadius: '8px', 
@@ -2798,11 +2855,34 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                                             <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
                                                                 <span>Fecha Ingreso: <strong>{pat.fechaIngreso || '—'}</strong></span>
                                                                 <span>Fecha Alta: <strong>{pat.fechaAlta || 'Activo / Sin Alta'}</strong></span>
-                                                                <span>Días de Internación: <strong>{timelineDays.length} días</strong></span>
+                                                                <span>Días de Internación: <strong>{pat.diasEstadia || timelineDays.length} días</strong></span>
+                                                                {pat.edad && !isNullOrEmpty(pat.edad) && (
+                                                                    <span>Edad: <strong>{pat.edad}</strong></span>
+                                                                )}
+                                                                {pat.motivoAlta && !isNullOrEmpty(pat.motivoAlta) && (
+                                                                    <span>Motivo Alta: <strong style={{ color: '#7C3AED' }}>{pat.motivoAlta}</strong></span>
+                                                                )}
                                                             </div>
                                                             {pat.valorAlta && (
                                                                 <div style={{ marginTop: '4px', paddingTop: '6px', borderTop: '1px solid #E2E8F0', color: '#B45309', fontWeight: 600 }}>
                                                                     📋 Valor / Protocolo de Alta: <span style={{ color: '#0F172A', fontWeight: 500 }}>{pat.valorAlta}</span>
+                                                                </div>
+                                                            )}
+                                                            {pat.fechaAltaMedica && !isNullOrEmpty(pat.fechaAltaMedica) && (
+                                                                <div style={{ display: 'flex', gap: '16px', alignItems: 'center', marginTop: '2px', paddingTop: '6px', borderTop: '1px solid #E2E8F0' }}>
+                                                                    <span style={{ color: '#0369A1', fontWeight: 600 }}>🏥 Alta Médica: <strong>{pat.fechaAltaMedica}</strong></span>
+                                                                    {pat.diasDesfaseAlta && !isNullOrEmpty(pat.diasDesfaseAlta) && pat.diasDesfaseAlta !== '0' && (
+                                                                        <span style={{ 
+                                                                            fontSize: '0.68rem', 
+                                                                            padding: '2px 6px', 
+                                                                            borderRadius: '4px', 
+                                                                            background: Number(pat.diasDesfaseAlta) > 0 ? '#FEF3C7' : '#DBEAFE',
+                                                                            color: Number(pat.diasDesfaseAlta) > 0 ? '#92400E' : '#1E40AF',
+                                                                            fontWeight: 600
+                                                                        }}>
+                                                                            Desfase: {pat.diasDesfaseAlta} día(s)
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                             )}
                                                         </div>

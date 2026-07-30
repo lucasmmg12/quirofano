@@ -281,7 +281,7 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     const handleSelectAllSelectable = () => {
         const selectableIds = sortedAltas
-            .filter(a => (!a.en_carrito_traspaso || a.carrito_traspaso_por === currentUser?.usuario) && (!(a._isFacturada && !a._cruzaMes)) && (!(a.traspaso_id && !a._cruzaMes && !a._isDevueltaFac)))
+            .filter(a => !a.en_carrito_traspaso && (!(a._isFacturada && !a._cruzaMes)) && (!(a.traspaso_id && !a._cruzaMes && !a._isDevueltaFac)))
             .map(a => a.id);
         setSelectedIds(new Set(selectableIds));
     };
@@ -345,6 +345,8 @@ export default function AltasPanel({ addToast, currentUser }) {
     const handlePrintTraspaso = async (traspaso) => {
         try {
             const items = await fetchTraspasoDetalle(traspaso.id);
+            // Ordenar alfabéticamente por paciente para la constancia
+            items.sort((a, b) => (a.paciente || '').localeCompare(b.paciente || '', 'es', { sensitivity: 'base' }));
             const now = new Date();
             const today = now.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
             const hora = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
@@ -1724,7 +1726,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                     <th className="cart__th" style={{ width: '30px', textAlign: 'center' }} title="Seleccioná fichas para enviar al Carrito de Traspaso">
                                         {!isReadOnly && (
                                             <input type="checkbox"
-                                                checked={selectedIds.size > 0 && sortedAltas.filter(a => (!a.en_carrito_traspaso || a.carrito_traspaso_por === currentUser?.usuario) && (!(a._isFacturada && !a._cruzaMes)) && (!(a.traspaso_id && !a._cruzaMes))).every(a => selectedIds.has(a.id))}
+                                                checked={selectedIds.size > 0 && sortedAltas.filter(a => !a.en_carrito_traspaso && (!(a._isFacturada && !a._cruzaMes)) && (!(a.traspaso_id && !a._cruzaMes))).every(a => selectedIds.has(a.id))}
                                                 onChange={e => {
                                                     if (e.target.checked) handleSelectAllSelectable();
                                                     else setSelectedIds(new Set());
@@ -1827,24 +1829,39 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             onMouseOver={e => { if (!isExpanded && !alta._isDevueltaFac && !alta._cruzaMes) e.currentTarget.style.background = 'var(--neutral-50)'; }}
                                             onMouseOut={e => { if (!isExpanded && !alta._isDevueltaFac && !alta._cruzaMes) e.currentTarget.style.background = ''; }}
                                         >
-                                            {/* Checkbox */}
+                                            {/* Checkbox / Cart status */}
                                             <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }} onClick={e => e.stopPropagation()}>
                                                 {(alta._isFacturada && !alta._cruzaMes) ? (
                                                     <Receipt size={14} style={{ color: '#059669', opacity: 0.7 }} title="Ya facturada" />
                                                 ) : (alta.traspaso_id && !alta._cruzaMes && !alta._isDevueltaFac) ? (
                                                     <PackageCheck size={14} style={{ color: '#059669', opacity: 0.7 }} title="Ya traspasada" />
-                                                ) : (!alta.en_carrito_traspaso || alta.carrito_traspaso_por === currentUser?.usuario) ? (
+                                                ) : alta.en_carrito_traspaso ? (
+                                                    <button
+                                                        onClick={() => handleQuitarDelCarrito(alta.id)}
+                                                        title={`En carrito${alta.carrito_traspaso_por ? ' de ' + alta.carrito_traspaso_por : ''} — Clic para quitar del carrito`}
+                                                        style={{
+                                                            background: '#EEF2FF',
+                                                            border: '1px solid #C7D2FE',
+                                                            borderRadius: '6px',
+                                                            cursor: 'pointer',
+                                                            padding: '2px 5px',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            transition: 'all 0.15s'
+                                                        }}
+                                                    >
+                                                        <ShoppingCart size={13} style={{ color: '#4F46E5' }} />
+                                                    </button>
+                                                ) : (
                                                     !isReadOnly && (
                                                         <input type="checkbox"
-                                                            checked={selectedIds.has(alta.id) || (alta.en_carrito_traspaso && alta.carrito_traspaso_por === currentUser?.usuario)}
-                                                            disabled={alta.en_carrito_traspaso && alta.carrito_traspaso_por === currentUser?.usuario}
+                                                            checked={selectedIds.has(alta.id)}
                                                             onChange={() => handleToggleSelect(alta.id)}
-                                                            title={alta.en_carrito_traspaso ? 'En tu carrito' : 'Seleccionar'}
-                                                            style={{ cursor: alta.en_carrito_traspaso ? 'not-allowed' : 'pointer', accentColor: '#6366F1' }}
+                                                            title="Seleccionar para enviar al carrito"
+                                                            style={{ cursor: 'pointer', accentColor: '#6366F1' }}
                                                         />
                                                     )
-                                                ) : (
-                                                    <ShoppingCart size={14} style={{ color: '#9CA3AF', opacity: 0.8 }} title={`En carrito de ${alta.carrito_traspaso_por}`} />
                                                 )}
                                             </td>
                                             {/* Chevron */}
