@@ -741,7 +741,7 @@ async function syncDeudas(db, fastSync = false) {
                 // 1. Obtener deuda anterior para el registro
                 const { data: pacienteViejo } = await supabase
                     .from('deudas_pacientes')
-                    .select('deuda_total')
+                    .select('deuda_total, categoria')
                     .eq('id', pid)
                     .single();
 
@@ -755,6 +755,17 @@ async function syncDeudas(db, fastSync = false) {
                 const nuevaDeudaTotal = (facturasActivas || []).reduce((s, f) => s + f.pendiente, 0);
                 const nuevaCantidad = (facturasActivas || []).length;
                 
+                if (nuevaDeudaTotal === 0 && pacienteViejo && (pacienteViejo.categoria === 'sin_gestionar' || pacienteViejo.categoria === 'sin_deuda_salus')) {
+                    // Borrar al paciente si pagó todo y nunca fue gestionado (basura)
+                    await supabase.from('deudas_pacientes').delete().eq('id', pid);
+                    continue;
+                }
+                
+                if (nuevaDeudaTotal === 0 && pacienteViejo && pacienteViejo.categoria === 'deuda_cancelada') {
+                    // Preservar deudas canceladas para comisiones (intocable)
+                    continue;
+                }
+
                 const updPaciente = {
                     deuda_total: nuevaDeudaTotal,
                     cantidad_facturas: nuevaCantidad,
