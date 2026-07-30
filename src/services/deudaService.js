@@ -206,13 +206,51 @@ export async function fetchPresupuestosPorNhc(nhc) {
 // ─── Seguimiento / Timeline ───
 
 export async function fetchSeguimiento(pacienteId) {
-    const { data, error } = await supabase
+    const { data: segData, error } = await supabase
         .from('deudas_seguimiento')
         .select('*')
-        .eq('paciente_id', pacienteId)
-        .order('created_at', { ascending: false });
+        .eq('paciente_id', pacienteId);
+    
     if (error) throw error;
-    return data || [];
+    
+    const historial = segData || [];
+
+    // Buscar teléfono del paciente
+    const { data: paciente } = await supabase
+        .from('deudas_pacientes')
+        .select('telefono')
+        .eq('id', pacienteId)
+        .single();
+    
+    if (paciente && paciente.telefono) {
+        // Buscar mensajes de WhatsApp para este teléfono
+        const { data: wspData } = await supabase
+            .from('whatsapp_messages')
+            .select('*')
+            .eq('phone', paciente.telefono);
+        
+        if (wspData && wspData.length > 0) {
+            for (const msg of wspData) {
+                historial.push({
+                    id: 'wsp_' + msg.id,
+                    paciente_id: pacienteId,
+                    tipo: 'whatsapp',
+                    descripcion: msg.direction === 'outgoing' 
+                        ? `[Msg Enviado]: ${msg.content || '(Multimedia)'}` 
+                        : `[Respuesta]: ${msg.content || '(Multimedia)'}`,
+                    usuario: msg.sender_name || (msg.direction === 'outgoing' ? 'Sistema / Bot' : 'Paciente'),
+                    monto: null,
+                    created_at: msg.created_at,
+                    importante: msg.direction === 'incoming'
+                });
+            }
+        }
+    }
+
+    // Ordenar de más nuevo a más viejo
+    historial.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    
+    return historial;
 }
 
 export async function addSeguimiento(pacienteId, { tipo, descripcion, monto, usuario }) {

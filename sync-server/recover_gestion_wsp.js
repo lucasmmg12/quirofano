@@ -20,7 +20,8 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const COMPROMISO_WORDS = [
     'pago', 'pagar', 'pagué', 'pague', 'transferencia', 'transferir', 
     'depósito', 'deposito', 'abonar', 'abono', 'listo', 'envié', 'envie',
-    'comprobante', 'mañana', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes'
+    'comprobante', 'mañana', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes',
+    'cuotas', 'cuota'
 ];
 
 function isCompromiso(text) {
@@ -32,11 +33,11 @@ function isCompromiso(text) {
 async function run() {
     console.log("Iniciando recuperación de estados a partir de WhatsApp...");
 
-    // Obtener todos los pacientes que están sin gestionar y tienen teléfono
+    // Obtener todos los pacientes que están sin gestionar, en gestion o comprometidos
     const { data: pacientes, error: errPacientes } = await supabase
         .from('deudas_pacientes')
         .select('id, telefono, nombre, categoria')
-        .eq('categoria', 'sin_gestionar')
+        .in('categoria', ['sin_gestionar', 'en_gestion', 'comprometido'])
         .not('telefono', 'is', null)
         .neq('telefono', '');
 
@@ -45,10 +46,10 @@ async function run() {
         return;
     }
 
-    console.log(`Analizando ${pacientes.length} pacientes 'sin_gestionar' con teléfono...`);
+    console.log(`Analizando ${pacientes.length} pacientes con teléfono...`);
 
     let recuperadosEnGestion = 0;
-    let recuperadosComprometido = 0;
+    let recuperadosCancelada = 0;
 
     for (const p of pacientes) {
         // Buscar mensajes de WhatsApp de este teléfono
@@ -59,11 +60,9 @@ async function run() {
             .order('created_at', { ascending: false });
 
         if (!mensajes || mensajes.length === 0) {
-            continue; // No hay historial, se queda sin gestionar
+            continue; // No hay historial
         }
 
-        // Si hay mensajes, ya hubo gestión.
-        // Verificamos si hay algún mensaje (especialmente del paciente) que demuestre compromiso.
         let esComprometido = false;
         let ultimoMensajePaciente = "";
 
@@ -79,17 +78,22 @@ async function run() {
             }
         }
 
-        const nuevaCategoria = esComprometido ? 'comprometido' : 'en_gestion';
+        const nuevaCategoria = esComprometido ? 'deuda_cancelada' : 'en_gestion';
         
+        // Si no cambió la categoría, no hacemos spam en el historial (a menos que pase a cancelada)
+        if (p.categoria === nuevaCategoria && nuevaCategoria === 'en_gestion') {
+            continue; 
+        }
+
         // Actualizamos el paciente
         await supabase
             .from('deudas_pacientes')
             .update({ categoria: nuevaCategoria, updated_at: new Date().toISOString() })
             .eq('id', p.id);
 
-        // Insertamos un registro en el historial para mostrarlo
+        // Insertamos un registro
         const notaRecuperacion = esComprometido
-            ? `🤖 [IA Recuperación]: Se detectó compromiso de pago en el historial de WhatsApp. El estado pasó a "Comprometido". (Último mensaje del paciente: "${ultimoMensajePaciente || 'Audio/Imagen'}")`
+            ? `🤖 [IA Recuperación]: Se detectaron palabras de pago/cuotas en el historial de WhatsApp. El estado pasó a "Deuda Cancelada". (Último mensaje del paciente: "${ultimoMensajePaciente || 'Audio/Imagen'}")`
             : `🤖 [IA Recuperación]: Se detectaron conversaciones previas por WhatsApp. El estado pasó a "En Gestión".`;
 
         await supabase
