@@ -450,9 +450,8 @@ export async function importarDeudas(registros, usuario, onProgress) {
     // ─── CONCILIACIÓN: Pacientes que ya no tienen deuda en Salus ───
     const { data: activosDb } = await supabase
         .from('deudas_pacientes')
-        .select('id, nhc')
-        .gt('deuda_total', 0)
-        .not('categoria', 'in', '("deuda_cancelada", "sin_deuda_salus")');
+        .select('id, nhc, categoria')
+        .neq('categoria', 'deuda_cancelada');
     
     let pacientesConciliados = 0;
     
@@ -461,26 +460,36 @@ export async function importarDeudas(registros, usuario, onProgress) {
         
         for (const pDb of activosDb) {
             if (!nhcsEnExcel.has(pDb.nhc)) {
-                await supabase
-                    .from('deudas_pacientes')
-                    .update({
-                        deuda_total: 0,
-                        categoria: 'sin_deuda_salus',
-                        deuda_cancelada_at: new Date().toISOString(),
-                        deuda_cancelada_por: 'Sistema (Conciliación)',
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq('id', pDb.id);
                 
-                await supabase
-                    .from('deudas_seguimiento')
-                    .insert({
-                        paciente_id: pDb.id,
-                        usuario: 'Sistema',
-                        descripcion: '✅ Deuda cancelada automáticamente al no registrarse saldo pendiente en la última importación de Salus.',
-                        tipo: 'nota',
-                        importante: true
-                    });
+                if (pDb.categoria === 'sin_gestionar' || pDb.categoria === 'sin_deuda_salus') {
+                    // Nadie lo gestionó nunca, o ya era un fantasma conciliado viejo. Lo borramos para no acumular basura.
+                    await supabase
+                        .from('deudas_pacientes')
+                        .delete()
+                        .eq('id', pDb.id);
+                } else {
+                    // Tuvo un cambio de estado previo (ej: en_gestion, comprometido), preservamos el historial
+                    await supabase
+                        .from('deudas_pacientes')
+                        .update({
+                            deuda_total: 0,
+                            categoria: 'sin_deuda_salus',
+                            deuda_cancelada_at: new Date().toISOString(),
+                            deuda_cancelada_por: 'Sistema (Conciliación)',
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', pDb.id);
+                    
+                    await supabase
+                        .from('deudas_seguimiento')
+                        .insert({
+                            paciente_id: pDb.id,
+                            usuario: 'Sistema',
+                            descripcion: '✅ Deuda cancelada automáticamente al no registrarse saldo pendiente en la última importación de Salus.',
+                            tipo: 'nota',
+                            importante: true
+                        });
+                }
                 
                 pacientesConciliados++;
             }
