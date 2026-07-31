@@ -95,6 +95,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     const [estadoDropdownId, setEstadoDropdownId] = useState(null);
     const [responsableDropdownId, setResponsableDropdownId] = useState(null);
     const [dropdownAnchor, setDropdownAnchor] = useState(null);
+    const [bulkResponsableDropdownAnchor, setBulkResponsableDropdownAnchor] = useState(null);
 
     // ── Selector de Mes (reemplaza inputs de fecha manuales) ──
     const nowRef = useRef(new Date());
@@ -851,6 +852,26 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         }
     };
 
+    const handleBulkResponsableChange = async (responsable) => {
+        if (selectedIds.size === 0) return;
+        setProcessing(true);
+        setBulkResponsableDropdownAnchor(null);
+        try {
+            const updates = Array.from(selectedIds).map(id => updateResponsableFac(id, responsable));
+            const results = await Promise.all(updates);
+            setAltas(prev => prev.map(a => {
+                const updated = results.find(r => r.id === a.id);
+                return updated ? { ...a, ...updated } : a;
+            }));
+            addToast?.(`Responsable asignado a ${selectedIds.size} fichas: ${responsable ? shortName(responsable) : 'Sin asignar'}`, 'success');
+            setSelectedIds(new Set()); // Deseleccionar después de asignar
+        } catch (err) {
+            addToast?.('Error asignando responsable masivamente: ' + err.message, 'error');
+        } finally {
+            setProcessing(false);
+        }
+    };
+
     // ── Expandir detalle de facturación ──
     const handleToggleExpand = async (alta) => {
         if (expandedId === alta.id) {
@@ -886,7 +907,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
 
     // Close dropdowns on outside click
     useEffect(() => {
-        const handler = () => { setEstadoDropdownId(null); setResponsableDropdownId(null); setDropdownAnchor(null); };
+        const handler = () => { setEstadoDropdownId(null); setResponsableDropdownId(null); setDropdownAnchor(null); setBulkResponsableDropdownAnchor(null); };
         window.addEventListener('click', handler);
         return () => window.removeEventListener('click', handler);
     }, []);
@@ -2304,6 +2325,45 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                             <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>
                                 {selectedIds.size} ficha{selectedIds.size !== 1 ? 's' : ''} seleccionada{selectedIds.size !== 1 ? 's' : ''}
                             </span>
+                            
+                            <div style={{ position: 'relative' }}>
+                                <button onClick={(e) => {
+                                    e.stopPropagation();
+                                    setBulkResponsableDropdownAnchor({ rect: e.currentTarget.getBoundingClientRect() });
+                                }}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        padding: '8px 20px', borderRadius: '8px',
+                                        background: '#fff', color: '#111827',
+                                        border: 'none', cursor: 'pointer',
+                                        fontSize: '0.82rem', fontWeight: 700,
+                                    }}>
+                                    <User size={16} /> Asignar Resp. <ChevronDown size={14} />
+                                </button>
+                                {bulkResponsableDropdownAnchor && createPortal(
+                                    <div onClick={e => e.stopPropagation()} style={{
+                                        position: 'fixed',
+                                        top: bulkResponsableDropdownAnchor.rect.top - 280 > 8 ? bulkResponsableDropdownAnchor.rect.top - 280 : bulkResponsableDropdownAnchor.rect.bottom + 4,
+                                        left: bulkResponsableDropdownAnchor.rect.left,
+                                        zIndex: 9999,
+                                        background: '#fff', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                                        border: '1px solid var(--neutral-200)', minWidth: '200px', maxHeight: '280px', overflow: 'auto',
+                                    }}>
+                                        <div onClick={() => handleBulkResponsableChange(null)}
+                                            style={{ ...dropdownItemStyle, color: 'var(--neutral-400)', fontStyle: 'italic' }}>
+                                            Sin asignar
+                                        </div>
+                                        {ANALISTAS_FAC.map(a => (
+                                            <div key={a} onClick={() => handleBulkResponsableChange(a)}
+                                                style={{ ...dropdownItemStyle }}>
+                                                {a}
+                                            </div>
+                                        ))}
+                                    </div>,
+                                    document.body
+                                )}
+                            </div>
+
                             <button onClick={handleEnviarAlCarritoDevolucion}
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: '6px',
