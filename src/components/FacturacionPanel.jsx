@@ -140,7 +140,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     const [chartFilterAnalista, setChartFilterAnalista] = useState(null);
 
     // ── Paginación ──
-    const PAGE_SIZE = 100;
+    const PAGE_SIZE = 50;
     const [currentPage, setCurrentPage] = useState(1);
 
     useEffect(() => {
@@ -714,10 +714,9 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     // ── Paginación: solo renderizar PAGE_SIZE filas ──
     const totalPages = Math.max(1, Math.ceil(filteredAltas.length / PAGE_SIZE));
     const paginatedAltas = useMemo(() => {
-        if (debouncedSearch || filterSearch) return filteredAltas;
         const start = (currentPage - 1) * PAGE_SIZE;
         return filteredAltas.slice(start, start + PAGE_SIZE);
-    }, [filteredAltas, currentPage, PAGE_SIZE, debouncedSearch, filterSearch]);
+    }, [filteredAltas, currentPage, PAGE_SIZE]);
     const paginationStart = (currentPage - 1) * PAGE_SIZE + 1;
     const paginationEnd = Math.min(currentPage * PAGE_SIZE, filteredAltas.length);
 
@@ -2249,7 +2248,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                         </div>
                         
                         {/* ── Paginación Inferior ── */}
-                        {totalPages > 1 && !debouncedSearch && !filterSearch && (
+                        {totalPages > 1 && (
                             <div style={{
                                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                                 padding: '16px 20px', background: '#fff', border: '1px solid var(--neutral-200)',
