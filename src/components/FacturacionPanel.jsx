@@ -1363,74 +1363,90 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                     const isExpanded = expandedAnalystMetric === analyst.name;
                                     return (
                                         <div key={i} style={{ 
-                                            border: `1px solid ${isExpanded ? 'var(--primary-color, #2563EB)' : 'var(--neutral-200, #E5E7EB)'}`, 
-                                            borderRadius: '8px', 
+                                            border: `1px solid ${isExpanded ? '#CBD5E1' : '#F1F5F9'}`, 
+                                            borderRadius: '12px', 
                                             overflow: 'hidden',
-                                            transition: 'all 0.2s'
+                                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                            background: '#fff',
+                                            boxShadow: isExpanded ? '0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01)' : '0 1px 3px rgba(0,0,0,0.02)',
+                                            marginBottom: '12px',
+                                            fontFamily: '"Inter", "Outfit", system-ui, sans-serif'
                                         }}>
                                             <div 
                                                 onClick={() => setExpandedAnalystMetric(isExpanded ? null : analyst.name)}
                                                 style={{ 
-                                                    padding: '12px 16px', background: isExpanded ? '#F0F9FF' : '#FAFAFA', 
-                                                    cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                                    padding: '16px 20px', 
+                                                    background: isExpanded ? '#F8FAFC' : '#fff', 
+                                                    cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                    borderBottom: isExpanded ? '1px solid #E2E8F0' : '1px solid transparent',
+                                                    transition: 'background 0.2s ease'
                                                 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                    <User size={18} color="var(--primary-color, #2563EB)" />
-                                                    <span style={{ fontWeight: 600, color: 'var(--neutral-700)' }}>{analyst.name}</span>
-                                                    <span style={{ fontSize: '0.8rem', background: 'var(--neutral-200, #E5E7EB)', padding: '2px 8px', borderRadius: '12px', color: 'var(--neutral-600)' }}>
+                                                    <div style={{ background: 'var(--primary-color, #2563EB)', padding: '6px', borderRadius: '8px', color: '#fff', display: 'flex' }}>
+                                                        <User size={16} />
+                                                    </div>
+                                                    <span style={{ fontWeight: 600, color: '#0F172A', letterSpacing: '-0.3px', fontSize: '0.95rem' }}>{analyst.name}</span>
+                                                    <span style={{ fontSize: '0.75rem', fontWeight: 600, background: '#E2E8F0', padding: '3px 10px', borderRadius: '16px', color: '#475569' }}>
                                                         {analyst.total} fichas
                                                     </span>
                                                 </div>
                                                 <div>
-                                                    {isExpanded ? <ChevronUp size={18} color="var(--neutral-400)" /> : <ChevronDown size={18} color="var(--neutral-400)" />}
+                                                    {isExpanded ? <ChevronUp size={20} color="#94A3B8" /> : <ChevronDown size={20} color="#94A3B8" />}
                                                 </div>
                                             </div>
                                             
-                                                <div style={{ padding: '20px', background: '#fff', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '24px' }}>
+                                            {isExpanded && (
+                                                <div style={{ padding: '24px', background: '#fff', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '32px' }}>
                                                     {/* Triage (Pie Chart) */}
-                                                    <div>
-                                                        <h4 style={{ fontSize: '0.85rem', color: 'var(--neutral-500)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'center' }}>Triage</h4>
-                                                        <div style={{ height: '180px' }}>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                                        <h4 style={{ fontSize: '0.75rem', color: '#64748B', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>Triage</h4>
+                                                        <div style={{ height: '170px', width: '100%', position: 'relative' }}>
                                                             <ResponsiveContainer width="100%" height="100%">
                                                                 <PieChart>
                                                                     <Pie
                                                                         data={[
-                                                                            { name: 'Rojas (Difícil)', value: analyst.triage.rojo, color: '#EF4444' },
-                                                                            { name: 'Amarillas (Media)', value: analyst.triage.amarillo, color: '#F59E0B' },
-                                                                            { name: 'Verdes (Fácil)', value: analyst.triage.verde, color: '#10B981' }
+                                                                            { name: 'Rojas', value: analyst.triage.rojo, color: '#EF4444' },
+                                                                            { name: 'Amarillas', value: analyst.triage.amarillo, color: '#F59E0B' },
+                                                                            { name: 'Verdes', value: analyst.triage.verde, color: '#10B981' }
                                                                         ].filter(d => d.value > 0)}
                                                                         dataKey="value"
                                                                         cx="50%" cy="50%"
-                                                                        innerRadius={45} outerRadius={75}
-                                                                        paddingAngle={2}
+                                                                        innerRadius={50} outerRadius={75}
+                                                                        paddingAngle={3}
+                                                                        cornerRadius={4}
+                                                                        stroke="none"
                                                                     >
                                                                         {[
-                                                                            { name: 'Rojas (Difícil)', value: analyst.triage.rojo, color: '#EF4444' },
-                                                                            { name: 'Amarillas (Media)', value: analyst.triage.amarillo, color: '#F59E0B' },
-                                                                            { name: 'Verdes (Fácil)', value: analyst.triage.verde, color: '#10B981' }
+                                                                            { name: 'Rojas', value: analyst.triage.rojo, color: '#EF4444' },
+                                                                            { name: 'Amarillas', value: analyst.triage.amarillo, color: '#F59E0B' },
+                                                                            { name: 'Verdes', value: analyst.triage.verde, color: '#10B981' }
                                                                         ].filter(d => d.value > 0).map((entry, index) => (
                                                                             <Cell key={`cell-${index}`} fill={entry.color} />
                                                                         ))}
                                                                     </Pie>
-                                                                    <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', fontSize: '0.8rem' }} />
+                                                                    <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', fontSize: '0.8rem', fontWeight: 500 }} />
                                                                 </PieChart>
                                                             </ResponsiveContainer>
+                                                            {/* Center text for Total */}
+                                                            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                                                                <span style={{ fontSize: '1.2rem', fontWeight: 700, color: '#0F172A' }}>{analyst.total}</span>
+                                                            </div>
                                                         </div>
-                                                        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', fontSize: '0.75rem', color: 'var(--neutral-600)' }}>
-                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#EF4444' }}></div> {analyst.triage.rojo}</span>
-                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#F59E0B' }}></div> {analyst.triage.amarillo}</span>
-                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#10B981' }}></div> {analyst.triage.verde}</span>
+                                                        <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', fontSize: '0.75rem', color: '#475569', fontWeight: 500, marginTop: '8px' }}>
+                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: 10, height: 10, borderRadius: '3px', background: '#EF4444' }}></div> {analyst.triage.rojo}</span>
+                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: 10, height: 10, borderRadius: '3px', background: '#F59E0B' }}></div> {analyst.triage.amarillo}</span>
+                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: 10, height: 10, borderRadius: '3px', background: '#10B981' }}></div> {analyst.triage.verde}</span>
                                                         </div>
                                                     </div>
 
                                                     {/* Especialidad */}
                                                     <div>
-                                                        <h4 style={{ fontSize: '0.85rem', color: 'var(--neutral-500)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Especialidades</h4>
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                        <h4 style={{ fontSize: '0.75rem', color: '#64748B', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>Especialidades</h4>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                                             {Object.entries(analyst.especialidades).sort((a,b)=>b[1]-a[1]).map(([esp, count], idx) => (
-                                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', position: 'relative', padding: '4px 6px', zIndex: 1 }}>
-                                                                    <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: `${(count/analyst.total)*100}%`, background: '#EFF6FF', zIndex: -1, borderRadius: '4px' }}></div>
-                                                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px', fontWeight: 500, color: '#1E3A8A' }} title={esp}>{esp}</span>
+                                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', position: 'relative', padding: '8px 10px', zIndex: 1, borderRadius: '6px', overflow: 'hidden' }}>
+                                                                    <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: `${(count/analyst.total)*100}%`, background: '#EFF6FF', zIndex: -1, transition: 'width 0.5s ease-out' }}></div>
+                                                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px', fontWeight: 600, color: '#1E3A8A' }} title={esp}>{esp}</span>
                                                                     <span style={{ fontWeight: 700, color: '#1E3A8A' }}>{count}</span>
                                                                 </div>
                                                             ))}
@@ -1439,12 +1455,12 @@ export default function FacturacionPanel({ addToast, currentUser }) {
 
                                                     {/* Procesos */}
                                                     <div>
-                                                        <h4 style={{ fontSize: '0.85rem', color: 'var(--neutral-500)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Top Procesos</h4>
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                        <h4 style={{ fontSize: '0.75rem', color: '#64748B', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>Top Procesos</h4>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                                             {Object.entries(analyst.procesos).sort((a,b)=>b[1]-a[1]).slice(0, 5).map(([proc, count], idx) => (
-                                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', position: 'relative', padding: '4px 6px', zIndex: 1 }}>
-                                                                    <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: `${(count/analyst.total)*100}%`, background: '#F5F3FF', zIndex: -1, borderRadius: '4px' }}></div>
-                                                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px', fontWeight: 500, color: '#4C1D95' }} title={proc}>{proc}</span>
+                                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', position: 'relative', padding: '8px 10px', zIndex: 1, borderRadius: '6px', overflow: 'hidden' }}>
+                                                                    <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: `${(count/analyst.total)*100}%`, background: '#F5F3FF', zIndex: -1, transition: 'width 0.5s ease-out' }}></div>
+                                                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px', fontWeight: 600, color: '#4C1D95' }} title={proc}>{proc}</span>
                                                                     <span style={{ fontWeight: 700, color: '#4C1D95' }}>{count}</span>
                                                                 </div>
                                                             ))}
@@ -1453,27 +1469,29 @@ export default function FacturacionPanel({ addToast, currentUser }) {
 
                                                     {/* Clientes */}
                                                     <div>
-                                                        <h4 style={{ fontSize: '0.85rem', color: 'var(--neutral-500)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Top Clientes</h4>
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                        <h4 style={{ fontSize: '0.75rem', color: '#64748B', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>Top Clientes</h4>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                                             {Object.entries(analyst.clientes).sort((a,b)=>b[1].count-a[1].count).slice(0, 5).map(([cli, data], idx) => {
                                                                 const isExpanded = expandedClienteByAnalyst[analyst.name] === cli;
                                                                 return (
                                                                     <div key={idx}>
                                                                         <div 
                                                                             onClick={() => setExpandedClienteByAnalyst(prev => ({ ...prev, [analyst.name]: isExpanded ? null : cli }))}
-                                                                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', position: 'relative', padding: '6px 8px', zIndex: 1, cursor: 'pointer', border: isExpanded ? '1px solid #A7F3D0' : '1px solid transparent', borderRadius: '4px' }}>
-                                                                            <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: `${(data.count/analyst.total)*100}%`, background: '#ECFDF5', zIndex: -1, borderRadius: '4px' }}></div>
-                                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px', fontWeight: 500, color: '#064E3B' }} title={cli}>
+                                                                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', position: 'relative', padding: '8px 10px', zIndex: 1, cursor: 'pointer', border: isExpanded ? '1px solid #A7F3D0' : '1px solid transparent', borderRadius: '6px', overflow: 'hidden' }}>
+                                                                            <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: `${(data.count/analyst.total)*100}%`, background: '#ECFDF5', zIndex: -1, transition: 'width 0.5s ease-out' }}></div>
+                                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px', fontWeight: 600, color: '#064E3B' }} title={cli}>
                                                                                 {isExpanded ? <ChevronUp size={14} color="#059669" /> : <ChevronDown size={14} color="#059669" />}
                                                                                 {cli}
                                                                             </span>
                                                                             <span style={{ fontWeight: 700, color: '#064E3B' }}>{data.count}</span>
                                                                         </div>
                                                                         {isExpanded && (
-                                                                            <div style={{ padding: '6px 8px 6px 24px', background: '#F8FAFC', borderRadius: '0 0 4px 4px', border: '1px solid #E2E8F0', borderTop: 'none', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                                            <div style={{ padding: '8px 10px 8px 30px', background: '#F8FAFC', borderRadius: '0 0 6px 6px', border: '1px solid #E2E8F0', borderTop: 'none', display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '-4px' }}>
                                                                                 {Object.entries(data.especialidades).sort((a,b)=>b[1]-a[1]).map(([esp, count], subIdx) => (
-                                                                                    <div key={subIdx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--neutral-600)' }}>
-                                                                                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>↳ {esp}</span>
+                                                                                    <div key={subIdx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#475569', alignItems: 'center' }}>
+                                                                                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                            <div style={{ width: 4, height: 4, borderRadius: '50%', background: '#94A3B8' }}></div> {esp}
+                                                                                        </span>
                                                                                         <span style={{ fontWeight: 600 }}>{count}</span>
                                                                                     </div>
                                                                                 ))}
