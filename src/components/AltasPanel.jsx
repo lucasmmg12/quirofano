@@ -452,8 +452,7 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     // ── Corte de Mes (Prolongadas) ──
     const handleCheckCorte = () => {
-        const prolongadas = sortedAltas.filter(r => !r.fecha_alta && r.estado !== 'Suspendida' && r.estado !== 'Alta Adm. Parcial');
-        setProlongadasCount(prolongadas.length);
+        setProlongadasCount(prolongadasAltas.length);
         setShowCorteModal(true);
     };
 
@@ -717,8 +716,22 @@ export default function AltasPanel({ addToast, currentUser }) {
 
         // Ocultar solo admisiones obsoletas de MISMA fecha (fusionadas)
         // Las de fecha diferente se muestran como filas independientes
-        return result.filter(a => !a._isObsoleteAdmission);
+        // Excluir también las fichas "cruza mes" (ingreso fuera del mes seleccionado)
+        return result.filter(a => !a._isObsoleteAdmission && !a._cruzaMes);
     }, [altas, criterios, selectedMonth]);
+
+    // ── Internaciones prolongadas (cruza mes, sin alta) — para banner y corte ──
+    const prolongadasAltas = useMemo(() => {
+        const [selY, selM] = selectedMonth.split('-').map(Number);
+        const lastDay = new Date(selY, selM, 0).getDate();
+        const mesStart = `${selectedMonth}-01`;
+        const mesEnd = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+        return altas.filter(a =>
+            a.fecha_ingreso && a.fecha_ingreso < mesStart &&
+            (!a.fecha_alta || a.fecha_alta >= mesStart) &&
+            a.estado !== 'Suspendida' && a.estado !== 'Alta Adm. Parcial'
+        );
+    }, [altas, selectedMonth]);
 
     // ── Check if current user is jcorrea (can edit responsable) ──
     const isJcorrea = useMemo(() => {
@@ -1673,7 +1686,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                     <div className="cart__table-wrapper" style={{ overflowX: 'auto', width: '100%' }}>
                         {/* Banner: Corte de Mes Automático */}
                         {(() => {
-                            const prolongadas = sortedAltas.filter(r => !r.fecha_alta && r.estado !== 'Suspendida' && r.estado !== 'Alta Adm. Parcial');
+                            const prolongadas = prolongadasAltas;
                             if (prolongadas.length === 0) return null;
                             return (
                                 <div className="animate-fade-in" style={{
