@@ -781,7 +781,8 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         // 2. Productividad por Analista (sobre todas)
         const analistaMap = {};
         filteredAltas.forEach(a => {
-            const resp = a.responsable_fac || 'Sin Asignar';
+            if (!a.responsable_fac) return; // Excluir Sin Asignar
+            const resp = a.responsable_fac;
             if (!analistaMap[resp]) analistaMap[resp] = { name: shortName(resp), Facturadas: 0, Pendientes: 0, Devueltas: 0, 'En proceso': 0 };
             
             const estado = a.estado_fac || 'Pendiente';
@@ -828,7 +829,8 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         const analystMap = {};
         
         filteredAltas.forEach(a => {
-            const resp = shortName(a.responsable_fac || 'Sin Asignar');
+            if (!a.responsable_fac) return; // Excluir Sin Asignar
+            const resp = shortName(a.responsable_fac);
             if (!analystMap[resp]) {
                 analystMap[resp] = {
                     name: resp,
@@ -1379,21 +1381,40 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                 </div>
                                             </div>
                                             
-                                            {isExpanded && (
                                                 <div style={{ padding: '20px', background: '#fff', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '24px' }}>
-                                                    {/* Triage */}
+                                                    {/* Triage (Pie Chart) */}
                                                     <div>
-                                                        <h4 style={{ fontSize: '0.85rem', color: 'var(--neutral-500)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Triage</h4>
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', background: '#FEF2F2', padding: '6px 10px', borderRadius: '6px', color: '#DC2626' }}>
-                                                                <span>🔴 Rojas (Difícil)</span> <span style={{ fontWeight: 700 }}>{analyst.triage.rojo}</span>
-                                                            </div>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', background: '#FFFBEB', padding: '6px 10px', borderRadius: '6px', color: '#D97706' }}>
-                                                                <span>🟡 Amarillas (Media)</span> <span style={{ fontWeight: 700 }}>{analyst.triage.amarillo}</span>
-                                                            </div>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', background: '#ECFDF5', padding: '6px 10px', borderRadius: '6px', color: '#059669' }}>
-                                                                <span>🟢 Verdes (Fácil)</span> <span style={{ fontWeight: 700 }}>{analyst.triage.verde}</span>
-                                                            </div>
+                                                        <h4 style={{ fontSize: '0.85rem', color: 'var(--neutral-500)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'center' }}>Triage</h4>
+                                                        <div style={{ height: '180px' }}>
+                                                            <ResponsiveContainer width="100%" height="100%">
+                                                                <PieChart>
+                                                                    <Pie
+                                                                        data={[
+                                                                            { name: 'Rojas (Difícil)', value: analyst.triage.rojo, color: '#EF4444' },
+                                                                            { name: 'Amarillas (Media)', value: analyst.triage.amarillo, color: '#F59E0B' },
+                                                                            { name: 'Verdes (Fácil)', value: analyst.triage.verde, color: '#10B981' }
+                                                                        ].filter(d => d.value > 0)}
+                                                                        dataKey="value"
+                                                                        cx="50%" cy="50%"
+                                                                        innerRadius={45} outerRadius={75}
+                                                                        paddingAngle={2}
+                                                                    >
+                                                                        {[
+                                                                            { name: 'Rojas (Difícil)', value: analyst.triage.rojo, color: '#EF4444' },
+                                                                            { name: 'Amarillas (Media)', value: analyst.triage.amarillo, color: '#F59E0B' },
+                                                                            { name: 'Verdes (Fácil)', value: analyst.triage.verde, color: '#10B981' }
+                                                                        ].filter(d => d.value > 0).map((entry, index) => (
+                                                                            <Cell key={`cell-${index}`} fill={entry.color} />
+                                                                        ))}
+                                                                    </Pie>
+                                                                    <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', fontSize: '0.8rem' }} />
+                                                                </PieChart>
+                                                            </ResponsiveContainer>
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', fontSize: '0.75rem', color: 'var(--neutral-600)' }}>
+                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#EF4444' }}></div> {analyst.triage.rojo}</span>
+                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#F59E0B' }}></div> {analyst.triage.amarillo}</span>
+                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#10B981' }}></div> {analyst.triage.verde}</span>
                                                         </div>
                                                     </div>
 
@@ -1402,9 +1423,10 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                         <h4 style={{ fontSize: '0.85rem', color: 'var(--neutral-500)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Especialidades</h4>
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                             {Object.entries(analyst.especialidades).sort((a,b)=>b[1]-a[1]).map(([esp, count], idx) => (
-                                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderBottom: '1px solid var(--neutral-100)', paddingBottom: '4px' }}>
-                                                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }} title={esp}>{esp}</span>
-                                                                    <span style={{ fontWeight: 600 }}>{count}</span>
+                                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', position: 'relative', padding: '4px 6px', zIndex: 1 }}>
+                                                                    <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: `${(count/analyst.total)*100}%`, background: '#EFF6FF', zIndex: -1, borderRadius: '4px' }}></div>
+                                                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px', fontWeight: 500, color: '#1E3A8A' }} title={esp}>{esp}</span>
+                                                                    <span style={{ fontWeight: 700, color: '#1E3A8A' }}>{count}</span>
                                                                 </div>
                                                             ))}
                                                         </div>
@@ -1415,9 +1437,10 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                         <h4 style={{ fontSize: '0.85rem', color: 'var(--neutral-500)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Top Procesos</h4>
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                             {Object.entries(analyst.procesos).sort((a,b)=>b[1]-a[1]).slice(0, 5).map(([proc, count], idx) => (
-                                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderBottom: '1px solid var(--neutral-100)', paddingBottom: '4px' }}>
-                                                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }} title={proc}>{proc}</span>
-                                                                    <span style={{ fontWeight: 600 }}>{count}</span>
+                                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', position: 'relative', padding: '4px 6px', zIndex: 1 }}>
+                                                                    <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: `${(count/analyst.total)*100}%`, background: '#F5F3FF', zIndex: -1, borderRadius: '4px' }}></div>
+                                                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px', fontWeight: 500, color: '#4C1D95' }} title={proc}>{proc}</span>
+                                                                    <span style={{ fontWeight: 700, color: '#4C1D95' }}>{count}</span>
                                                                 </div>
                                                             ))}
                                                         </div>
@@ -1428,9 +1451,10 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                         <h4 style={{ fontSize: '0.85rem', color: 'var(--neutral-500)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Top Clientes</h4>
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                             {Object.entries(analyst.clientes).sort((a,b)=>b[1]-a[1]).slice(0, 5).map(([cli, count], idx) => (
-                                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderBottom: '1px solid var(--neutral-100)', paddingBottom: '4px' }}>
-                                                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }} title={cli}>{cli}</span>
-                                                                    <span style={{ fontWeight: 600 }}>{count}</span>
+                                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', position: 'relative', padding: '4px 6px', zIndex: 1 }}>
+                                                                    <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: `${(count/analyst.total)*100}%`, background: '#ECFDF5', zIndex: -1, borderRadius: '4px' }}></div>
+                                                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px', fontWeight: 500, color: '#064E3B' }} title={cli}>{cli}</span>
+                                                                    <span style={{ fontWeight: 700, color: '#064E3B' }}>{count}</span>
                                                                 </div>
                                                             ))}
                                                         </div>
