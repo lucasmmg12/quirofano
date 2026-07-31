@@ -1901,10 +1901,15 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                                 </span>
                                                                 {!isReadOnly && <ChevronDown size={12} />}
                                                             </button>
-                                                            {!isReadOnly && responsableDropdownId === alta.id && (
-                                                                <div style={{
-                                                                    position: 'absolute', top: '100%', left: 0, zIndex: 50,
-                                                                    background: '#fff', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                                                            {!isReadOnly && responsableDropdownId === alta.id && dropdownAnchor && dropdownAnchor.type === 'responsable' && createPortal(
+                                                                <div onClick={e => e.stopPropagation()} style={{
+                                                                    position: 'fixed',
+                                                                    top: (dropdownAnchor.rect.bottom + 280 > window.innerHeight)
+                                                                        ? Math.max(8, dropdownAnchor.rect.top - 280)
+                                                                        : dropdownAnchor.rect.bottom + 4,
+                                                                    left: dropdownAnchor.rect.left,
+                                                                    zIndex: 9999,
+                                                                    background: '#fff', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
                                                                     border: '1px solid var(--neutral-200)', minWidth: '220px', maxHeight: '280px', overflow: 'auto',
                                                                 }}>
                                                                     <div onClick={() => handleResponsableChange(alta.id, null)}
@@ -1921,7 +1926,8 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                                             {a}
                                                                         </div>
                                                                     ))}
-                                                                </div>
+                                                                </div>,
+                                                                document.body
                                                             )}
                                                         </div>
                                                     </td>
@@ -1950,10 +1956,15 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                                         {estadoConfig.icon} {estadoConfig.label}
                                                                         {!isReadOnly && <ChevronDown size={11} />}
                                                                     </button>
-                                                                    {!isReadOnly && estadoDropdownId === alta.id && (
-                                                                        <div style={{
-                                                                            position: 'absolute', top: '100%', right: 0, zIndex: 50,
-                                                                            background: '#fff', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                                                                    {!isReadOnly && estadoDropdownId === alta.id && dropdownAnchor && dropdownAnchor.type === 'estado' && createPortal(
+                                                                        <div onClick={e => e.stopPropagation()} style={{
+                                                                            position: 'fixed',
+                                                                            top: (dropdownAnchor.rect.bottom + 200 > window.innerHeight)
+                                                                                ? Math.max(8, dropdownAnchor.rect.top - 200)
+                                                                                : dropdownAnchor.rect.bottom + 4,
+                                                                            left: Math.min(dropdownAnchor.rect.left, window.innerWidth - 170),
+                                                                            zIndex: 9999,
+                                                                            background: '#fff', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
                                                                             border: '1px solid var(--neutral-200)', minWidth: '160px', overflow: 'hidden',
                                                                         }}>
                                                                             {Object.entries(FACTURACION_ESTADOS).map(([k, v]) => (
@@ -1967,7 +1978,8 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                                                     <span>{v.icon}</span> {v.label}
                                                                                 </div>
                                                                             ))}
-                                                                        </div>
+                                                                        </div>,
+                                                                        document.body
                                                                     )}
                                                                 </>
                                                             )}
