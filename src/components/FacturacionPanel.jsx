@@ -114,6 +114,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
     }, [selectedMonth]);
 
     const [expandedAnalystMetric, setExpandedAnalystMetric] = useState(null);
+    const [expandedClienteByAnalyst, setExpandedClienteByAnalyst] = useState({});
 
     // Generar lista de meses (desde Abril 2026 hasta mes actual)
     const monthOptions = useMemo(() => {
@@ -864,7 +865,11 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             
             // Cliente
             const cli = a.cliente || 'Sin Cliente';
-            stats.clientes[cli] = (stats.clientes[cli] || 0) + 1;
+            if (!stats.clientes[cli]) {
+                stats.clientes[cli] = { count: 0, especialidades: {} };
+            }
+            stats.clientes[cli].count += 1;
+            stats.clientes[cli].especialidades[esp] = (stats.clientes[cli].especialidades[esp] || 0) + 1;
         });
 
         return Object.values(analystMap).sort((a, b) => b.total - a.total);
@@ -1450,13 +1455,33 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                     <div>
                                                         <h4 style={{ fontSize: '0.85rem', color: 'var(--neutral-500)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Top Clientes</h4>
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                            {Object.entries(analyst.clientes).sort((a,b)=>b[1]-a[1]).slice(0, 5).map(([cli, count], idx) => (
-                                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', position: 'relative', padding: '4px 6px', zIndex: 1 }}>
-                                                                    <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: `${(count/analyst.total)*100}%`, background: '#ECFDF5', zIndex: -1, borderRadius: '4px' }}></div>
-                                                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px', fontWeight: 500, color: '#064E3B' }} title={cli}>{cli}</span>
-                                                                    <span style={{ fontWeight: 700, color: '#064E3B' }}>{count}</span>
-                                                                </div>
-                                                            ))}
+                                                            {Object.entries(analyst.clientes).sort((a,b)=>b[1].count-a[1].count).slice(0, 5).map(([cli, data], idx) => {
+                                                                const isExpanded = expandedClienteByAnalyst[analyst.name] === cli;
+                                                                return (
+                                                                    <div key={idx}>
+                                                                        <div 
+                                                                            onClick={() => setExpandedClienteByAnalyst(prev => ({ ...prev, [analyst.name]: isExpanded ? null : cli }))}
+                                                                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', position: 'relative', padding: '6px 8px', zIndex: 1, cursor: 'pointer', border: isExpanded ? '1px solid #A7F3D0' : '1px solid transparent', borderRadius: '4px' }}>
+                                                                            <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: `${(data.count/analyst.total)*100}%`, background: '#ECFDF5', zIndex: -1, borderRadius: '4px' }}></div>
+                                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px', fontWeight: 500, color: '#064E3B' }} title={cli}>
+                                                                                {isExpanded ? <ChevronUp size={14} color="#059669" /> : <ChevronDown size={14} color="#059669" />}
+                                                                                {cli}
+                                                                            </span>
+                                                                            <span style={{ fontWeight: 700, color: '#064E3B' }}>{data.count}</span>
+                                                                        </div>
+                                                                        {isExpanded && (
+                                                                            <div style={{ padding: '6px 8px 6px 24px', background: '#F8FAFC', borderRadius: '0 0 4px 4px', border: '1px solid #E2E8F0', borderTop: 'none', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                                                {Object.entries(data.especialidades).sort((a,b)=>b[1]-a[1]).map(([esp, count], subIdx) => (
+                                                                                    <div key={subIdx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--neutral-600)' }}>
+                                                                                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>↳ {esp}</span>
+                                                                                        <span style={{ fontWeight: 600 }}>{count}</span>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })}
                                                         </div>
                                                     </div>
                                                 </div>
