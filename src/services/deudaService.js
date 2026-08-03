@@ -805,12 +805,31 @@ export async function createPlanPago(pacienteId, { montoOriginal, tipoInteres, t
     return plan;
 }
 
-export async function marcarCuotaPagada(cuotaId, { fechaPago, comprobante }) {
+export async function marcarCuotaPagada(cuotaId, { fechaPago, comprobante, usuario }) {
+    // 1. Obtener info de la cuota y plan para el registro de seguimiento
+    const { data: cuota } = await supabase
+        .from('deudas_cuotas')
+        .select('*, plan:deudas_planes_pago(paciente_id, cantidad_cuotas)')
+        .eq('id', cuotaId)
+        .single();
+
+    // 2. Marcar cuota como pagada
     const { error } = await supabase
         .from('deudas_cuotas')
         .update({ pagada: true, fecha_pago: fechaPago || new Date().toISOString().split('T')[0], comprobante: comprobante || null })
         .eq('id', cuotaId);
     if (error) throw error;
+
+    // 3. Registrar en seguimiento si tenemos paciente_id
+    if (cuota?.plan?.paciente_id) {
+        const desc = `Pago cuota ${cuota.numero_cuota}/${cuota.plan.cantidad_cuotas} del plan de pago.${comprobante ? ' Comprobante: ' + comprobante : ''}`;
+        await addSeguimiento(cuota.plan.paciente_id, {
+            tipo: 'pago',
+            descripcion: desc,
+            monto: cuota.monto,
+            usuario: usuario || 'Sistema',
+        });
+    }
 }
 
 export async function cancelarPlan(planId) {

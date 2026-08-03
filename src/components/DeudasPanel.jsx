@@ -84,6 +84,17 @@ export default function DeudasPanel({ addToast, currentUser }) {
         notas: '',
     });
 
+    // ─── Modal Ingresar Pago Virtual ───
+    const [showModalPago, setShowModalPago] = useState(false);
+    const [modalPagoForm, setModalPagoForm] = useState({
+        monto: '',
+        fecha: new Date().toISOString().split('T')[0],
+        medioPago: 'Transferencia Bancaria',
+        comprobante: '',
+        observaciones: '',
+        cuotaId: '',
+    });
+
     // ─── Chat ───
     const [chatOpen, setChatOpen] = useState(false);
 
@@ -458,14 +469,78 @@ export default function DeudasPanel({ addToast, currentUser }) {
 
     const handleMarcarCuota = useCallback(async (cuotaId) => {
         try {
-            await marcarCuotaPagada(cuotaId, { fechaPago: null, comprobante: null });
+            await marcarCuotaPagada(cuotaId, { fechaPago: null, comprobante: null, usuario: empleadoNombre });
             const planesData = await fetchPlanesPago(selectedDeudor.id);
             setPlanes(planesData);
+            const segs = await fetchSeguimiento(selectedDeudor.id);
+            setSeguimiento(segs);
             addToast?.('Cuota marcada como pagada', 'success');
         } catch (err) {
             addToast?.('Error al marcar cuota', 'error');
         }
-    }, [selectedDeudor, addToast]);
+    }, [selectedDeudor, empleadoNombre, addToast]);
+
+    const handleIngresarPagoModal = useCallback(async () => {
+        if (!selectedDeudor || !modalPagoForm.monto || isNaN(modalPagoForm.monto) || Number(modalPagoForm.monto) <= 0) {
+            addToast?.('Debe ingresar un monto válido', 'warning');
+            return;
+        }
+
+        const montoNum = Number(modalPagoForm.monto);
+        const medioText = modalPagoForm.medioPago ? ` [${modalPagoForm.medioPago}]` : '';
+        const compText = modalPagoForm.comprobante ? ` Ref: ${modalPagoForm.comprobante}` : '';
+        const obsText = modalPagoForm.observaciones ? ` — ${modalPagoForm.observaciones}` : '';
+        const descCompleta = `Pago Cobrado Virtual${medioText}${compText}${obsText}`;
+
+        try {
+            // 1. Agregar nota de pago en seguimiento
+            await addSeguimiento(selectedDeudor.id, {
+                tipo: 'pago',
+                descripcion: descCompleta,
+                monto: montoNum,
+                usuario: empleadoNombre,
+            });
+
+            // 2. Si se seleccionó una cuota, marcarla pagada
+            if (modalPagoForm.cuotaId) {
+                await marcarCuotaPagada(modalPagoForm.cuotaId, {
+                    fechaPago: modalPagoForm.fecha,
+                    comprobante: modalPagoForm.comprobante || modalPagoForm.medioPago,
+                    usuario: empleadoNombre,
+                });
+            }
+
+            // 3. Recargar tracking y planes
+            const segs = await fetchSeguimiento(selectedDeudor.id);
+            setSeguimiento(segs);
+            const planesData = await fetchPlanesPago(selectedDeudor.id);
+            setPlanes(planesData);
+
+            // 4. Calcular si se saldó la deuda total y consultar para pasar a Deuda Cancelada
+            const pagadoAcumulado = segs.filter(s => s.tipo === 'pago' && s.monto).reduce((sum, s) => sum + Number(s.monto), 0);
+            const totalSalus = Number(selectedDeudor.deuda_total) || 0;
+
+            if (pagadoAcumulado >= totalSalus && selectedDeudor.categoria !== 'deuda_cancelada') {
+                if (window.confirm(`¡Atención! Con este pago, el paciente ha cubierto la deuda total (${formatMoney(pagadoAcumulado)} de ${formatMoney(totalSalus)}).\n\n¿Desea cambiar la categoría a "Deuda Cancelada"?`)) {
+                    await handleChangeCategoria('deuda_cancelada');
+                }
+            }
+
+            setShowModalPago(false);
+            setModalPagoForm({
+                monto: '',
+                fecha: new Date().toISOString().split('T')[0],
+                medioPago: 'Transferencia Bancaria',
+                comprobante: '',
+                observaciones: '',
+                cuotaId: '',
+            });
+            addToast?.(`Pago de ${formatMoney(montoNum)} registrado con éxito`, 'success');
+        } catch (err) {
+            console.error('Error al registrar pago:', err);
+            addToast?.('Error al ingresar el pago', 'error');
+        }
+    }, [selectedDeudor, modalPagoForm, empleadoNombre, addToast, handleChangeCategoria]);
 
     const handleCancelarPlan = useCallback(async (planId) => {
         if (!confirm('¿Cancelar este plan de pago?')) return;
@@ -1336,6 +1411,15 @@ export default function DeudasPanel({ addToast, currentUser }) {
     function renderDetail() {
         const cat = CATEGORIAS_DEUDOR[selectedDeudor.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
 
+        // ─── Cálculos virtuales de cobro ───
+        const totalPagadoVirtual = seguimiento
+            .filter(s => s.tipo === 'pago' && s.monto)
+            .reduce((sum, s) => sum + Number(s.monto), 0);
+
+        const activePlan = planes.find(p => p.estado === 'activo');
+        const totalDeudaSalus = Number(selectedDeudor.deuda_total) || 0;
+        const saldoPendienteReal = Math.max(0, totalDeudaSalus - totalPagadoVirtual);
+
         return (
             <div style={{ padding: '20px 28px' }}>
                 {/* Back button */}
@@ -1356,7 +1440,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                             <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: '#0D3B66' }}>
                                 {selectedDeudor.nombre}
                             </h2>
-                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '6px', flexWrap: 'wrap' }}>
                                 <span style={{ fontSize: '0.82rem', color: '#64748B' }}>NHC: <strong>{selectedDeudor.nhc}</strong></span>
                                 <span style={{
                                     padding: '2px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700,
@@ -1384,15 +1468,74 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                         )}
                                     </>);
                                 })()}
+
+                                {/* ─── BADGES VIRTUALES (Pagado + Plan Vigente + Ingresar Pago) ─── */}
+                                {totalPagadoVirtual > 0 && (
+                                    <span style={{
+                                        padding: '3px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700,
+                                        background: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0',
+                                        display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                    }}>
+                                        💵 Pagado: {formatMoney(totalPagadoVirtual)}
+                                    </span>
+                                )}
+
+                                {activePlan && (
+                                    <span style={{
+                                        padding: '3px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700,
+                                        background: '#F3E8FF', color: '#6B21A8', border: '1px solid #E9D5FF',
+                                        display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                    }}>
+                                        📋 Plan Vigente: {activePlan.cantidad_cuotas} cuotas ({formatMoney(activePlan.monto_cuota)}/mes)
+                                    </span>
+                                )}
+
+                                {/* BOTÓN RÁPIDO: INGRESAR PAGO */}
+                                <button
+                                    onClick={() => {
+                                        setModalPagoForm({
+                                            monto: '',
+                                            fecha: new Date().toISOString().split('T')[0],
+                                            medioPago: 'Transferencia Bancaria',
+                                            comprobante: '',
+                                            observaciones: '',
+                                            cuotaId: '',
+                                        });
+                                        setShowModalPago(true);
+                                    }}
+                                    style={{
+                                        padding: '4px 12px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 800,
+                                        background: 'linear-gradient(135deg, #10B981, #059669)', color: '#fff',
+                                        border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                        boxShadow: '0 2px 6px rgba(16,185,129,0.3)', transition: 'all 0.15s',
+                                    }}
+                                    onMouseOver={e => e.currentTarget.style.transform = 'translateY(-1px)'}
+                                    onMouseOut={e => e.currentTarget.style.transform = 'none'}
+                                >
+                                    <Plus size={12} /> Ingresar Pago
+                                </button>
                             </div>
                         </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#D97706', letterSpacing: '-1px' }}>
-                            {formatMoney(selectedDeudor.deuda_total)}
-                        </div>
-                        <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
-                            Deuda Total
+
+                    <div style={{ textAlign: 'right', display: 'flex', gap: '16px', alignItems: 'center' }}>
+                        {totalPagadoVirtual > 0 && (
+                            <div style={{ textAlign: 'right', paddingRight: '14px', borderRight: '1px solid #E2E8F0' }}>
+                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#10B981' }}>
+                                    {formatMoney(totalPagadoVirtual)}
+                                </div>
+                                <div style={{ fontSize: '0.68rem', color: '#059669', fontWeight: 600 }}>
+                                    Cobrado Virtual
+                                </div>
+                            </div>
+                        )}
+                        <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '1.8rem', fontWeight: 900, color: saldoPendienteReal === 0 ? '#10B981' : '#D97706', letterSpacing: '-1px' }}>
+                                {formatMoney(saldoPendienteReal)}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
+                                {totalPagadoVirtual > 0 ? `Saldo Pendiente (SALUS: ${formatMoney(totalDeudaSalus)})` : 'Deuda Total'}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2371,6 +2514,207 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         }}
                         addToast={addToast}
                     />
+                )}
+
+                {/* ─── MODAL INGRESAR PAGO VIRTUAL ─── */}
+                {showModalPago && (
+                    <div style={{
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        zIndex: 9999, padding: '20px'
+                    }}>
+                        <div style={{
+                            background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '480px',
+                            boxShadow: '0 20px 40px rgba(0,0,0,0.2)', overflow: 'hidden',
+                            animation: 'fadeIn 0.2s ease-out'
+                        }}>
+                            {/* Header Modal */}
+                            <div style={{
+                                padding: '16px 20px', background: 'linear-gradient(135deg, #10B981, #059669)',
+                                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <div style={{
+                                        width: '32px', height: '32px', borderRadius: '8px',
+                                        background: 'rgba(255,255,255,0.2)', display: 'flex',
+                                        alignItems: 'center', justifyContent: 'center'
+                                    }}>
+                                        <DollarSign size={18} />
+                                    </div>
+                                    <div>
+                                        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>Ingresar Pago Virtual</h3>
+                                        <span style={{ fontSize: '0.72rem', opacity: 0.9 }}>{selectedDeudor.nombre} (NHC: {selectedDeudor.nhc})</span>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setShowModalPago(false)}
+                                    style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', opacity: 0.8 }}
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            {/* Body Modal */}
+                            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                <div>
+                                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: '4px' }}>
+                                        Monto del Pago ($) <span style={{ color: '#EF4444' }}>*</span>
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={modalPagoForm.monto}
+                                        onChange={e => setModalPagoForm(p => ({ ...p, monto: e.target.value }))}
+                                        placeholder="Ej: 50000"
+                                        autoFocus
+                                        style={{
+                                            width: '100%', padding: '10px 14px', borderRadius: '10px',
+                                            border: '2px solid #10B981', fontSize: '1.2rem', fontWeight: 800,
+                                            color: '#065F46', outline: 'none', boxSizing: 'border-box'
+                                        }}
+                                    />
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                    <div>
+                                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                                            Fecha de Pago
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={modalPagoForm.fecha}
+                                            onChange={e => setModalPagoForm(p => ({ ...p, fecha: e.target.value }))}
+                                            style={{
+                                                width: '100%', padding: '8px 12px', borderRadius: '8px',
+                                                border: '1px solid #CBD5E1', fontSize: '0.8rem', fontWeight: 600,
+                                                color: '#1E293B', boxSizing: 'border-box'
+                                            }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                                            Medio de Pago
+                                        </label>
+                                        <select
+                                            value={modalPagoForm.medioPago}
+                                            onChange={e => setModalPagoForm(p => ({ ...p, medioPago: e.target.value }))}
+                                            style={{
+                                                width: '100%', padding: '8px 12px', borderRadius: '8px',
+                                                border: '1px solid #CBD5E1', fontSize: '0.8rem', fontWeight: 600,
+                                                color: '#1E293B', boxSizing: 'border-box', background: '#fff'
+                                            }}
+                                        >
+                                            <option value="Transferencia Bancaria">Transferencia Bancaria</option>
+                                            <option value="Efectivo">Efectivo</option>
+                                            <option value="Tarjeta de Débito">Tarjeta de Débito</option>
+                                            <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
+                                            <option value="Depósito Bancario">Depósito Bancario</option>
+                                            <option value="Cheque">Cheque</option>
+                                            <option value="Otro">Otro</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Si hay plan activo con cuotas impagas */}
+                                {activePlan && activePlan.cuotas?.some(c => !c.pagada) && (
+                                    <div>
+                                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6B21A8', display: 'block', marginBottom: '4px' }}>
+                                            📋 Aplicar a Cuota de Plan de Pago
+                                        </label>
+                                        <select
+                                            value={modalPagoForm.cuotaId}
+                                            onChange={e => {
+                                                const selectedCuotaId = e.target.value;
+                                                const selectedCuota = activePlan.cuotas.find(c => c.id === selectedCuotaId);
+                                                setModalPagoForm(p => ({
+                                                    ...p,
+                                                    cuotaId: selectedCuotaId,
+                                                    monto: selectedCuota ? String(selectedCuota.monto) : p.monto
+                                                }));
+                                            }}
+                                            style={{
+                                                width: '100%', padding: '8px 12px', borderRadius: '8px',
+                                                border: '1px solid #E9D5FF', fontSize: '0.8rem', fontWeight: 600,
+                                                color: '#6B21A8', background: '#F8F5FF', boxSizing: 'border-box'
+                                            }}
+                                        >
+                                            <option value="">-- Sin vincular a cuota específica --</option>
+                                            {activePlan.cuotas.filter(c => !c.pagada).map(c => (
+                                                <option key={c.id} value={c.id}>
+                                                    Cuota {c.numero_cuota}/{activePlan.cantidad_cuotas} — {formatMoney(c.monto)} (Vence: {new Date(c.fecha_vencimiento).toLocaleDateString('es-AR')})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                                        Nº Comprobante / Referencia
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={modalPagoForm.comprobante}
+                                        onChange={e => setModalPagoForm(p => ({ ...p, comprobante: e.target.value }))}
+                                        placeholder="Ej: TRANSF-99482 o Recibo N° 451"
+                                        style={{
+                                            width: '100%', padding: '8px 12px', borderRadius: '8px',
+                                            border: '1px solid #CBD5E1', fontSize: '0.8rem',
+                                            color: '#1E293B', boxSizing: 'border-box'
+                                        }}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                                        Observaciones / Notas
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={modalPagoForm.observaciones}
+                                        onChange={e => setModalPagoForm(p => ({ ...p, observaciones: e.target.value }))}
+                                        placeholder="Ej: Entrega a cuenta realizada en administración"
+                                        style={{
+                                            width: '100%', padding: '8px 12px', borderRadius: '8px',
+                                            border: '1px solid #CBD5E1', fontSize: '0.8rem',
+                                            color: '#1E293B', boxSizing: 'border-box'
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Footer Modal */}
+                            <div style={{
+                                padding: '14px 20px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0',
+                                display: 'flex', justify: 'flex-end', gap: '10px'
+                            }}>
+                                <button
+                                    onClick={() => setShowModalPago(false)}
+                                    style={{
+                                        padding: '8px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                        background: '#fff', color: '#475569', fontSize: '0.8rem', fontWeight: 600,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={handleIngresarPagoModal}
+                                    disabled={!modalPagoForm.monto || Number(modalPagoForm.monto) <= 0}
+                                    style={{
+                                        padding: '8px 20px', borderRadius: '8px', border: 'none',
+                                        background: (modalPagoForm.monto && Number(modalPagoForm.monto) > 0)
+                                            ? 'linear-gradient(135deg, #10B981, #059669)' : '#CBD5E1',
+                                        color: '#fff', fontSize: '0.8rem', fontWeight: 800,
+                                        cursor: (modalPagoForm.monto && Number(modalPagoForm.monto) > 0) ? 'pointer' : 'not-allowed',
+                                        boxShadow: '0 2px 8px rgba(16,185,129,0.3)'
+                                    }}
+                                >
+                                    Confirmar Pago
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 )}
 
                 <style>{`
