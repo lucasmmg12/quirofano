@@ -13,7 +13,6 @@ export const CATEGORIAS_DEUDOR = {
     incobrable:            { label: 'Incobrable',                color: '#EF4444', bg: '#FEE2E2', icon: '🔴' },
     descuento_liquidacion: { label: 'Descuento por Liquidación', color: '#0D9488', bg: '#CCFBF1', icon: '🏷️' },
     deuda_cancelada:       { label: 'Deuda Cancelada',           color: '#6366F1', bg: '#E0E7FF', icon: '🚫' },
-    sin_deuda_salus:       { label: 'Sin Deuda en Salus',       color: '#059669', bg: '#D1FAE5', icon: '✅' },
 };
 
 export const MIN_DEUDA = 50000;
@@ -397,7 +396,7 @@ export async function importarDeudas(registros, usuario, onProgress) {
 
             let reactivado = false;
             // Reactivar paciente si estaba cancelado o sin deuda y ahora trae deuda nueva
-            if (['deuda_cancelada', 'sin_deuda_salus'].includes(existente.categoria) && deudaTotal > 0) {
+            if (existente.categoria === 'deuda_cancelada' && deudaTotal > 0) {
                 updateData.categoria = 'sin_gestionar';
                 updateData.deuda_cancelada_at = null;
                 updateData.deuda_cancelada_por = null;
@@ -498,36 +497,11 @@ export async function importarDeudas(registros, usuario, onProgress) {
         
         for (const pDb of activosDb) {
             if (!nhcsEnExcel.has(pDb.nhc)) {
-                
-                if (pDb.categoria === 'sin_gestionar' || pDb.categoria === 'sin_deuda_salus') {
-                    // Nadie lo gestionó nunca, o ya era un fantasma conciliado viejo. Lo borramos para no acumular basura.
-                    await supabase
-                        .from('deudas_pacientes')
-                        .delete()
-                        .eq('id', pDb.id);
-                } else {
-                    // Tuvo un cambio de estado previo (ej: en_gestion, comprometido), preservamos el historial
-                    await supabase
-                        .from('deudas_pacientes')
-                        .update({
-                            deuda_total: 0,
-                            categoria: 'sin_deuda_salus',
-                            deuda_cancelada_at: new Date().toISOString(),
-                            deuda_cancelada_por: 'Sistema (Conciliación)',
-                            updated_at: new Date().toISOString()
-                        })
-                        .eq('id', pDb.id);
-                    
-                    await supabase
-                        .from('deudas_seguimiento')
-                        .insert({
-                            paciente_id: pDb.id,
-                            usuario: 'Sistema',
-                            descripcion: '✅ Deuda cancelada automáticamente al no registrarse saldo pendiente en la última importación de Salus.',
-                            tipo: 'nota',
-                            importante: true
-                        });
-                }
+                // No está en el Excel → ya no tiene deuda en SALUS → borrar
+                await supabase
+                    .from('deudas_pacientes')
+                    .delete()
+                    .eq('id', pDb.id);
                 
                 pacientesConciliados++;
             }
@@ -583,7 +557,7 @@ export async function fetchMetricasDeudas(filtros = {}) {
     const total = all.length;
 
     // Categorías que descuentan de la deuda activa
-    const CATEGORIAS_DESCUENTO = ['sin_deuda_salus', 'descuento_liquidacion', 'deuda_cancelada'];
+    const CATEGORIAS_DESCUENTO = ['descuento_liquidacion', 'deuda_cancelada'];
 
     const deudaBruta = all.reduce((s, p) => s + Number(p.deuda_total), 0);
     const deudaDescontada = all

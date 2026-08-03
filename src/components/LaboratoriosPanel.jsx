@@ -228,7 +228,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
             if (error) throw error;
             
             const debtMap = {};
-            const CATEGORIAS_DESCUENTO = ['sin_deuda_salus', 'descuento_liquidacion', 'deuda_cancelada'];
+            const CATEGORIAS_DESCUENTO = ['descuento_liquidacion', 'deuda_cancelada'];
             
             (data || []).forEach(dp => {
                 if (dp.dni && dp.deuda_total > 0 && !CATEGORIAS_DESCUENTO.includes(dp.categoria)) {

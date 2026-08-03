@@ -71,7 +71,7 @@ export async function fetchDashboardKPIs() {
             .from('deudas_pacientes')
             .select('deuda_total')
             .gte('deuda_total', 50000)
-            .not('categoria', 'in', '("sin_deuda_salus","deuda_cancelada","descuento_liquidacion")');
+            .not('categoria', 'in', '("deuda_cancelada","descuento_liquidacion")');
         if (data) {
             results.deudores_activos = data.length;
             results.deuda_total = data.reduce((s, d) => s + Number(d.deuda_total), 0);

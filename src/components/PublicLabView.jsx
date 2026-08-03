@@ -78,7 +78,7 @@ export default function PublicLabView({ labName }) {
 
                     if (deudasPacientes && deudasPacientes.length > 0) {
                         const debtMap = {};
-                        const CATEGORIAS_DESCUENTO = ['sin_deuda_salus', 'descuento_liquidacion', 'deuda_cancelada'];
+                        const CATEGORIAS_DESCUENTO = ['descuento_liquidacion', 'deuda_cancelada'];
                         deudasPacientes.forEach(dp => {
                             if (dp.dni && dp.deuda_total > 0 && !CATEGORIAS_DESCUENTO.includes(dp.categoria)) {
                                 debtMap[dp.dni] = {

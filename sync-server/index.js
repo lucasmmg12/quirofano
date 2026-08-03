@@ -623,7 +623,7 @@ async function syncDeudas(db, fastSync = false) {
             };
             
             let reactivado = false;
-            if (['deuda_cancelada', 'sin_deuda_salus'].includes(existente.categoria) && deudaTotal > 0) {
+            if (existente.categoria === 'deuda_cancelada' && deudaTotal > 0) {
                 upd.categoria = 'sin_gestionar';
                 upd.deuda_cancelada_at = null;
                 upd.deuda_cancelada_por = null;
@@ -755,45 +755,29 @@ async function syncDeudas(db, fastSync = false) {
                 const nuevaDeudaTotal = (facturasActivas || []).reduce((s, f) => s + f.pendiente, 0);
                 const nuevaCantidad = (facturasActivas || []).length;
                 
-                if (nuevaDeudaTotal === 0 && pacienteViejo && (pacienteViejo.categoria === 'sin_gestionar' || pacienteViejo.categoria === 'sin_deuda_salus')) {
-                    // Borrar al paciente si pagó todo y nunca fue gestionado (basura)
+                if (nuevaDeudaTotal === 0 && pacienteViejo && pacienteViejo.categoria !== 'deuda_cancelada') {
+                    // Borrar al paciente si ya no tiene deuda en SALUS (excepto canceladas)
                     await supabase.from('deudas_pacientes').delete().eq('id', pid);
                     continue;
                 }
                 
-                if (nuevaDeudaTotal === 0 && pacienteViejo && pacienteViejo.categoria === 'deuda_cancelada') {
-                    // Preservar deudas canceladas para comisiones (intocable)
-                    continue;
-                }
-
+                // Si aún queda deuda parcial, actualizar montos y registrar reducción
                 const updPaciente = {
                     deuda_total: nuevaDeudaTotal,
                     cantidad_facturas: nuevaCantidad,
                     updated_at: new Date().toISOString()
                 };
                 
-                // 3. Registrar el cambio en seguimiento
                 const viejaDeuda = pacienteViejo?.deuda_total || 0;
                 if (viejaDeuda > nuevaDeudaTotal) {
                     const reduccion = viejaDeuda - nuevaDeudaTotal;
                     const formateado = reduccion.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-                    
-                    if (nuevaDeudaTotal === 0) {
-                        updPaciente.categoria = 'sin_deuda_salus';
-                        await supabase.from('deudas_seguimiento').insert({
-                            paciente_id: pid,
-                            usuario: 'Sistema',
-                            descripcion: `✅ Deuda SALDADA en SALUS. Reducción automática de $${formateado}.`,
-                            tipo: 'cambio_categoria',
-                        });
-                    } else {
-                        await supabase.from('deudas_seguimiento').insert({
-                            paciente_id: pid,
-                            usuario: 'Sistema',
-                            descripcion: `📉 Reducción parcial en SALUS. Se descontaron $${formateado} de facturas pagadas.`,
-                            tipo: 'nota',
-                        });
-                    }
+                    await supabase.from('deudas_seguimiento').insert({
+                        paciente_id: pid,
+                        usuario: 'Sistema',
+                        descripcion: `📉 Reducción parcial en SALUS. Se descontaron $${formateado} de facturas pagadas.`,
+                        tipo: 'nota',
+                    });
                 }
                 
                 await supabase.from('deudas_pacientes').update(updPaciente).eq('id', pid);
