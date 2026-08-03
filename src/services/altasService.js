@@ -101,6 +101,34 @@ export async function fetchHistorialInternaciones(numeroDocumento) {
 }
 
 /**
+ * Genera un número de admisión único con sufijo -P1, -P2, etc. para la continuación/prórroga de una admisión
+ */
+export async function generateNextNumeroAdmision(baseNum) {
+    if (!baseNum) return null;
+    const cleanBase = baseNum.replace(/-P\d*$/i, '');
+
+    const { data: existing } = await supabase
+        .from('altas_administrativas')
+        .select('numero_admision')
+        .ilike('numero_admision', `${cleanBase}%`);
+
+    let maxP = 0;
+    if (existing && existing.length > 0) {
+        existing.forEach(row => {
+            const numStr = row.numero_admision || '';
+            const match = numStr.match(/-P(\d+)$/i);
+            if (match) {
+                const val = parseInt(match[1], 10);
+                if (val > maxP) maxP = val;
+            } else if (numStr.toLowerCase().endsWith('-p')) {
+                if (maxP < 1) maxP = 1;
+            }
+        });
+    }
+    return `${cleanBase}-P${maxP + 1}`;
+}
+
+/**
  * Actualiza el estado de un alta
  */
 export async function updateAltaEstado(id, estado, operador = 'operador', selectedMonth = null) {
@@ -131,9 +159,12 @@ export async function updateAltaEstado(id, estado, operador = 'operador', select
         const nextM = m === 12 ? 1 : m + 1;
         const nextMonthStart = `${nextY}-${String(nextM).padStart(2, '0')}-01T00:00:00.000Z`;
 
+        const newNumeroAdmision = await generateNextNumeroAdmision(current.numero_admision);
+
         const { id: oldId, created_at, ...rest } = current;
         duplicateRecord = {
             ...rest,
+            numero_admision: newNumeroAdmision,
             fecha_ingreso: nextMonthStart,
             estado: estado === 'Prórroga' ? 'Prórroga' : null, // Prórroga -> Prórroga, Alta Parcial -> Vacío
             estado_fac: 'Pendiente',
@@ -835,10 +866,13 @@ export async function ejecutarCorteDeMesProlongadas(fromDate, toDate) {
     const nextMonthStart = `${nextY}-${String(nextM).padStart(2, '0')}-01T00:00:00.000Z`;
 
     // Preparar nuevos registros para el mes siguiente
-    const nuevosRegistros = prolongadas.map(p => {
+    const nuevosRegistros = [];
+    for (const p of prolongadas) {
+        const newNumeroAdmision = await generateNextNumeroAdmision(p.numero_admision);
         const { id, created_at, ...rest } = p;
-        return {
+        nuevosRegistros.push({
             ...rest,
+            numero_admision: newNumeroAdmision,
             fecha_ingreso: nextMonthStart,
             estado: 'Prórroga',
             estado_fac: 'Pendiente',
@@ -849,8 +883,8 @@ export async function ejecutarCorteDeMesProlongadas(fromDate, toDate) {
             traspaso_id: null,
             traspasada_at: null,
             traspasada_por: null
-        };
-    });
+        });
+    }
 
     // Ejecutar transacciones
     // a. Actualizar viejos a "Alta Adm. Parcial"
