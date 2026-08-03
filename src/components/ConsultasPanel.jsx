@@ -74,6 +74,13 @@ export default function ConsultasPanel() {
     const [recibidasSaved, setRecibidasSaved] = useState({});
     const recibidasTimers = useRef({});
 
+    // Daily recibidas (per date + OS category)
+    const [recibidasDiarias, setRecibidasDiarias] = useState({});
+    const [recibidasDiariasEdits, setRecibidasDiariasEdits] = useState({});
+    const [recibidasDiariasSaving, setRecibidasDiariasSaving] = useState({});
+    const [recibidasDiariasSaved, setRecibidasDiariasSaved] = useState({});
+    const recibidasDiariasTimers = useRef({});
+
     // Close dropdown on click outside
     useEffect(() => {
         const handleClickOutside = (e) => {
@@ -172,17 +179,83 @@ export default function ConsultasPanel() {
         }, 1000);
     }, [saveRecibida]);
 
+    // ─── RECIBIDAS DIARIAS (per day + OS) ───
+    const fetchRecibidasDiarias = useCallback(async () => {
+        try {
+            const { data: rows, error } = await supabase
+                .from('consultas_guardia_recibidas_diarias')
+                .select('fecha, os_categoria, recibidas')
+                .eq('mes_periodo', mes);
+            if (!error && rows) {
+                const map = {};
+                const edits = {};
+                rows.forEach(r => {
+                    const key = `${r.fecha}_${r.os_categoria}`;
+                    map[key] = r.recibidas;
+                    edits[key] = String(r.recibidas);
+                });
+                setRecibidasDiarias(map);
+                setRecibidasDiariasEdits(edits);
+            } else {
+                setRecibidasDiarias({});
+                setRecibidasDiariasEdits({});
+            }
+        } catch (err) {
+            console.error('Error fetching recibidas diarias:', err);
+        }
+    }, [mes]);
+
+    const saveRecibidaDiaria = useCallback(async (fecha, osCat, value) => {
+        const key = `${fecha}_${osCat}`;
+        setRecibidasDiariasSaving(prev => ({ ...prev, [key]: true }));
+        try {
+            const numVal = value === '' ? 0 : parseInt(value, 10);
+            if (isNaN(numVal)) return;
+            const { error } = await supabase
+                .from('consultas_guardia_recibidas_diarias')
+                .upsert({
+                    mes_periodo: mes,
+                    fecha,
+                    os_categoria: osCat,
+                    recibidas: numVal,
+                    updated_at: new Date().toISOString(),
+                }, { onConflict: 'fecha,os_categoria' });
+            if (!error) {
+                setRecibidasDiariasSaved(prev => ({ ...prev, [key]: true }));
+                setTimeout(() => setRecibidasDiariasSaved(prev => ({ ...prev, [key]: false })), 1500);
+                setRecibidasDiarias(prev => ({ ...prev, [key]: numVal }));
+            }
+        } catch (err) {
+            console.error('Error saving recibida diaria:', err);
+        } finally {
+            setRecibidasDiariasSaving(prev => ({ ...prev, [key]: false }));
+        }
+    }, [mes]);
+
+    const handleRecibidaDiariaChange = useCallback((fecha, osCat, value) => {
+        const key = `${fecha}_${osCat}`;
+        setRecibidasDiariasEdits(prev => ({ ...prev, [key]: value }));
+        if (recibidasDiariasTimers.current[key]) clearTimeout(recibidasDiariasTimers.current[key]);
+        recibidasDiariasTimers.current[key] = setTimeout(() => {
+            saveRecibidaDiaria(fecha, osCat, value);
+        }, 1000);
+    }, [saveRecibidaDiaria]);
+
     useEffect(() => {
         setRecibidasData({});
         setRecibidasEdits({});
+        setRecibidasDiarias({});
+        setRecibidasDiariasEdits({});
         fetchData();
         fetchRecibidas();
-    }, [mes, fetchData, fetchRecibidas]);
+        fetchRecibidasDiarias();
+    }, [mes, fetchData, fetchRecibidas, fetchRecibidasDiarias]);
 
     useEffect(() => {
         return () => {
             // eslint-disable-next-line react-hooks/exhaustive-deps
             Object.values(recibidasTimers.current).forEach(clearTimeout);
+            Object.values(recibidasDiariasTimers.current).forEach(clearTimeout);
         };
     }, []);
 
@@ -846,7 +919,11 @@ export default function ConsultasPanel() {
                         const colField = matrizColumnas;
                         const getColVal = (r) => {
                             if (colField === 'especialidad') return normalizeEsp(r);
-                            if (colField === 'agenda') return r.agenda?.trim() || 'OTRO';
+                            if (colField === 'agenda') {
+                                // Agrupar (NEO) como NEONATOLOGIA y separar RESIDENCIA de gineco
+                                if (isResidencia(r)) return 'RESIDENCIA';
+                                return r.agrupacion_agenda?.trim() || r.agenda?.trim() || 'OTRO';
+                            }
                             if (colField === 'tipo_visita') return r.tipo_visita?.trim() || 'OTRO';
                             return r.grupo_agenda?.trim() || 'OTRO';
                         };
@@ -1175,7 +1252,8 @@ export default function ConsultasPanel() {
                                                         {col.length > 14 ? col.substring(0, 12) + '…' : col}
                                                     </th>
                                                 ))}
-                                                <th style={{ padding: '8px 10px', color: '#FDE68A', fontWeight: 800, textAlign: 'center', minWidth: '50px', borderLeft: '2px solid rgba(255,255,255,0.2)' }}>TOTAL</th>
+                                                <th style={{ padding: '8px 10px', color: '#A5F3FC', fontWeight: 700, textAlign: 'center', minWidth: '60px', borderLeft: '2px solid rgba(255,255,255,0.2)', fontSize: '0.6rem' }}>RECIBIDO</th>
+                                                <th style={{ padding: '8px 10px', color: '#FDE68A', fontWeight: 800, textAlign: 'center', minWidth: '50px', borderLeft: '1px solid rgba(255,255,255,0.15)' }}>TOTAL</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -1220,10 +1298,41 @@ export default function ConsultasPanel() {
                                                                 </td>
                                                             );
                                                         })}
+                                                        {/* RECIBIDO editable */}
+                                                        {(() => {
+                                                            const recKey = `${row.dateKey}_${row.os}`;
+                                                            const isSaving = recibidasDiariasSaving[recKey];
+                                                            const isSaved = recibidasDiariasSaved[recKey];
+                                                            return (
+                                                                <td style={{
+                                                                    padding: '1px 3px', textAlign: 'center',
+                                                                    background: '#F0FDFA', borderLeft: '2px solid #E2E8F0',
+                                                                    minWidth: '55px', position: 'relative',
+                                                                }}>
+                                                                    <input
+                                                                        type="number"
+                                                                        value={recibidasDiariasEdits[recKey] ?? ''}
+                                                                        onChange={e => handleRecibidaDiariaChange(row.dateKey, row.os, e.target.value)}
+                                                                        placeholder="-"
+                                                                        style={{
+                                                                            width: '42px', padding: '2px 3px', border: '1px solid #D1FAE5',
+                                                                            borderRadius: '4px', textAlign: 'center', fontSize: '0.7rem',
+                                                                            fontWeight: 600, background: isSaved ? '#D1FAE5' : '#fff',
+                                                                            color: '#0F766E', outline: 'none',
+                                                                            transition: 'background 0.3s',
+                                                                        }}
+                                                                        onFocus={e => { e.target.style.borderColor = '#14B8A6'; e.target.style.boxShadow = '0 0 0 2px #14B8A620'; }}
+                                                                        onBlur={e => { e.target.style.borderColor = '#D1FAE5'; e.target.style.boxShadow = 'none'; }}
+                                                                    />
+                                                                    {isSaving && <Loader size={8} style={{ position: 'absolute', top: 2, right: 2, color: '#14B8A6', animation: 'spin 1s linear infinite' }} />}
+                                                                    {isSaved && <Check size={8} style={{ position: 'absolute', top: 2, right: 2, color: '#16A34A' }} />}
+                                                                </td>
+                                                            );
+                                                        })()}
                                                         <td style={{
                                                             padding: '3px 10px', textAlign: 'center', fontWeight: 700,
                                                             color: row.total > 0 ? osS.color : '#E2E8F0',
-                                                            background: '#F8FAFC', borderLeft: '2px solid #E2E8F0',
+                                                            background: '#F8FAFC', borderLeft: '1px solid #E2E8F0',
                                                         }}>
                                                             {row.total || ''}
                                                         </td>
@@ -1257,7 +1366,11 @@ export default function ConsultasPanel() {
                                                                 {t.cols[col] || ''}
                                                             </td>
                                                         ))}
-                                                        <td style={{ padding: '5px 10px', textAlign: 'center', fontWeight: 900, color: osS.color, fontSize: '0.78rem', borderLeft: '2px solid #CBD5E1' }}>
+                                                        {/* RECIBIDO total per OS */}
+                                                        <td style={{ padding: '5px 6px', textAlign: 'center', fontWeight: 800, color: '#0F766E', background: '#F0FDFA', borderLeft: '2px solid #CBD5E1', fontSize: '0.72rem' }}>
+                                                            {dateKeys.reduce((sum, dk) => sum + (recibidasDiarias[`${dk}_${os}`] || 0), 0) || ''}
+                                                        </td>
+                                                        <td style={{ padding: '5px 10px', textAlign: 'center', fontWeight: 900, color: osS.color, fontSize: '0.78rem', borderLeft: '1px solid #CBD5E1' }}>
                                                             {t.total}
                                                         </td>
                                                     </tr>
@@ -1282,7 +1395,10 @@ export default function ConsultasPanel() {
                                                                 {colTotals[col] || 0}
                                                             </td>
                                                         ))}
-                                                        <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 900, color: '#4F46E5', fontSize: '0.78rem', borderLeft: '2px solid #CBD5E1' }}>
+                                                        <td style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 900, color: '#0F766E', background: '#F0FDFA', borderLeft: '2px solid #CBD5E1', fontSize: '0.72rem' }}>
+                                                            {OS_ORDER.reduce((sum, os) => dateKeys.reduce((s, dk) => s + (recibidasDiarias[`${dk}_${os}`] || 0), sum), 0) || ''}
+                                                        </td>
+                                                        <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 900, color: '#4F46E5', fontSize: '0.78rem', borderLeft: '1px solid #CBD5E1' }}>
                                                             {grandTotal}
                                                         </td>
                                                     </tr>
@@ -1334,7 +1450,8 @@ export default function ConsultasPanel() {
                                                                 </td>
                                                             );
                                                         })}
-                                                        <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 900, color: '#7C3AED', fontSize: '0.78rem', borderLeft: '2px solid #CBD5E1' }}>
+                                                        <td style={{ padding: '6px 6px', textAlign: 'center', background: '#F0FDFA', borderLeft: '2px solid #CBD5E1' }}></td>
+                                                        <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 900, color: '#7C3AED', fontSize: '0.78rem', borderLeft: '1px solid #CBD5E1' }}>
                                                             {visibleCols.reduce((sum, col) => sum + (recibidasData[col] || 0), 0)}
                                                         </td>
                                                     </tr>
@@ -1368,13 +1485,16 @@ export default function ConsultasPanel() {
                                                             const recTot = visibleCols.reduce((sum, col) => sum + (recibidasData[col] || 0), 0);
                                                             const diffTot = sysTot - recTot;
                                                             return (
+                                                                <>
+                                                                <td style={{ padding: '6px 6px', textAlign: 'center', background: '#F0FDFA', borderLeft: '2px solid #CBD5E1' }}></td>
                                                                 <td style={{
                                                                     padding: '6px 10px', textAlign: 'center', fontWeight: 900,
                                                                     color: diffTot === 0 ? '#16A34A' : diffTot > 0 ? '#DC2626' : '#2563EB',
-                                                                    fontSize: '0.78rem', borderLeft: '2px solid #CBD5E1'
+                                                                    fontSize: '0.78rem', borderLeft: '1px solid #CBD5E1'
                                                                 }}>
                                                                     {diffTot === 0 ? '✔ OK' : diffTot > 0 ? `+${diffTot}` : diffTot}
                                                                 </td>
+                                                                </>
                                                             );
                                                         })()}
                                                     </tr>
