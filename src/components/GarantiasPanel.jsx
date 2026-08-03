@@ -153,6 +153,7 @@ export default function GarantiasPanel({ addToast, currentUser, garantiasData = 
                     <option value="Archivada">Archivada</option>
                     <option value="Separada para Deuda">Separada para Deuda</option>
                     <option value="Gestión Judicial">Gestión Judicial</option>
+                    <option value="Entregado a Paciente">Entregado a Paciente</option>
                     <option value="Destruida">Destruida</option>
                 </select>
                 <button 
@@ -205,12 +206,14 @@ export default function GarantiasPanel({ addToast, currentUser, garantiasData = 
                                                 g.garantia_estado === 'Activa' ? '#dcfce7' : 
                                                 g.garantia_estado === 'Archivada' ? '#f3f4f6' : 
                                                 g.garantia_estado === 'Gestión Judicial' ? '#fef08a' : 
-                                                g.garantia_estado === 'Destruida' ? '#fee2e2' : '#fef9c3',
+                                                g.garantia_estado === 'Destruida' ? '#fee2e2' : 
+                                                g.garantia_estado === 'Entregado a Paciente' ? '#dbeafe' : '#fef9c3',
                                             color: 
                                                 g.garantia_estado === 'Activa' ? '#166534' : 
                                                 g.garantia_estado === 'Archivada' ? '#374151' : 
                                                 g.garantia_estado === 'Gestión Judicial' ? '#854d0e' : 
-                                                g.garantia_estado === 'Destruida' ? '#991b1b' : '#854d0e'
+                                                g.garantia_estado === 'Destruida' ? '#991b1b' : 
+                                                g.garantia_estado === 'Entregado a Paciente' ? '#1e40af' : '#854d0e'
                                         }}>
                                             {g.garantia_estado || 'Activa'}
                                         </span>
@@ -236,6 +239,7 @@ export default function GarantiasPanel({ addToast, currentUser, garantiasData = 
                                                 <option value="Archivada">Archivada</option>
                                                 <option value="Separada para Deuda">Separada para Deuda</option>
                                                 <option value="Gestión Judicial">Gestión Judicial</option>
+                                                <option value="Entregado a Paciente">Entregado a Paciente</option>
                                                 <option value="Destruida">Destruida</option>
                                             </select>
 
