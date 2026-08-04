@@ -22,7 +22,7 @@ export default function KPICard({
             style={{
                 backgroundColor: '#ffffff',
                 borderRadius: '0.75rem', // rounded-xl
-                padding: '1.25rem', // p-5
+                padding: '0.875rem 1rem', // slightly smaller padding
                 boxShadow: '0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03)',
                 border: '1px solid rgba(0,0,0,0.05)',
                 display: 'flex',
@@ -34,9 +34,9 @@ export default function KPICard({
             }}
             className={onClick ? "hover:-translate-y-1 hover:shadow-md transition-all duration-200" : ""}
         >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                 <h3 style={{ 
-                    fontSize: '0.875rem', 
+                    fontSize: '0.75rem', 
                     fontWeight: 600, 
                     color: '#6B7280', // neutral-500
                     margin: 0,
@@ -46,7 +46,7 @@ export default function KPICard({
                     {title}
                 </h3>
                 <div style={{ 
-                    fontSize: '1.875rem', // text-3xl
+                    fontSize: '1.5rem', // text-2xl
                     fontWeight: 700, 
                     color: '#111827', // gray-900
                     lineHeight: 1
@@ -55,12 +55,13 @@ export default function KPICard({
                 </div>
                 {trendText && (
                     <div style={{ 
-                        fontSize: '0.75rem', 
+                        fontSize: '0.7rem', 
                         fontWeight: 500,
                         display: 'flex',
                         alignItems: 'center',
                         gap: '4px',
-                        color: trendDirection === 'up' ? '#10B981' : trendDirection === 'down' ? '#EF4444' : '#6B7280'
+                        color: trendDirection === 'up' ? '#10B981' : trendDirection === 'down' ? '#EF4444' : '#6B7280',
+                        marginTop: '0.25rem'
                     }}>
                         {trendDirection === 'up' && <span>↑</span>}
                         {trendDirection === 'down' && <span>↓</span>}
@@ -72,14 +73,14 @@ export default function KPICard({
             {Icon && (
                 <div style={{
                     backgroundColor: `${color}15`, // Fondo semitransparente del color
-                    padding: '0.75rem',
-                    borderRadius: '0.75rem',
+                    padding: '0.6rem',
+                    borderRadius: '0.6rem',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     color: color
                 }}>
-                    <Icon size={24} strokeWidth={2} />
+                    <Icon size={20} strokeWidth={2.2} />
                 </div>
             )}
         </div>

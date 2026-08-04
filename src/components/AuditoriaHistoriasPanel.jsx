@@ -1419,31 +1419,31 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                 /* KPI Cards style */
                 .kpi-card {
                     flex: 1;
-                    min-width: 190px;
-                    padding: 18px;
-                    border-radius: 16px;
+                    min-width: 140px;
+                    padding: 12px 14px;
+                    border-radius: 12px;
                     background: #ffffff;
                     border: 1px solid rgba(0, 0, 0, 0.06);
-                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
                     cursor: pointer;
-                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
-                    min-height: 125px;
+                    min-height: 90px;
                     position: relative;
                     overflow: hidden;
                 }
                 .kpi-card:hover {
-                    transform: translateY(-4px);
-                    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.06);
+                    transform: translateY(-2px);
+                    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.04);
                 }
                 .kpi-card--active {
                     background: #ffffff;
-                    box-shadow: 0 12px 24px rgba(30, 95, 166, 0.08) !important;
+                    box-shadow: 0 8px 16px rgba(30, 95, 166, 0.06) !important;
                 }
                 .kpi-card__title {
-                    font-size: 0.75rem;
+                    font-size: 0.68rem;
                     font-weight: 700;
                     color: #64748b;
                     text-transform: uppercase;
@@ -1453,40 +1453,40 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                     display: flex;
                     align-items: flex-end;
                     justify-content: space-between;
-                    margin-top: 10px;
+                    margin-top: 8px;
                 }
                 .kpi-card__value {
-                    font-size: 2rem;
+                    font-size: 1.5rem;
                     font-weight: 800;
                     color: #0f172a;
                     line-height: 1;
                 }
                 .kpi-card__icon-wrap {
-                    width: 44px;
-                    height: 44px;
-                    border-radius: 12px;
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 8px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     transition: transform 0.2s;
                 }
                 .kpi-card:hover .kpi-card__icon-wrap {
-                    transform: scale(1.08);
+                    transform: scale(1.05);
                 }
                 .kpi-card__desc {
-                    font-size: 0.72rem;
+                    font-size: 0.65rem;
                     color: #94a3b8;
-                    margin-top: 6px;
+                    margin-top: 4px;
                 }
                 
-                .kpi-card--all.kpi-card--active { border-bottom: 4px solid #1e5fa6; }
-                .kpi-card--ok.kpi-card--active { border-bottom: 4px solid #10b981; }
+                .kpi-card--all.kpi-card--active { border-bottom: 3px solid #1e5fa6; }
+                .kpi-card--ok.kpi-card--active { border-bottom: 3px solid #10b981; }
                 .kpi-card--observados {
-                    flex: 1.6;
-                    min-width: 320px;
+                    flex: 1.5;
+                    min-width: 250px;
                 }
-                .kpi-card--observados.kpi-card--active { border-bottom: 4px solid #ef4444; }
-                .kpi-card--alta.kpi-card--active { border-bottom: 4px solid #f59e0b; }
+                .kpi-card--observados.kpi-card--active { border-bottom: 3px solid #ef4444; }
+                .kpi-card--alta.kpi-card--active { border-bottom: 3px solid #f59e0b; }
                 
                 /* Segmented bar and legends for Observados */
                 .observaciones-bar-container {
