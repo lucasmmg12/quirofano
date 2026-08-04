@@ -544,6 +544,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' }); // { key, direction: 'asc'|'desc' }
     const [kpiFilter, setKpiFilter] = useState('all');
     const [selectedMonthFilter, setSelectedMonthFilter] = useState('all');
+    const [selectedObraSocialFilter, setSelectedObraSocialFilter] = useState('all');
     const [showStats, setShowStats] = useState(false);
     const [activeTab, setActiveTab] = useState('resumen'); // 'resumen' | 'distribucion' | 'tendencias' | 'avanzado'
 
@@ -706,6 +707,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
             setColumnFilters({});
             setKpiFilter('all');
             setSelectedMonthFilter('all');
+            setSelectedObraSocialFilter('all');
             setSortConfig({ key: null, direction: 'asc' });
             setPatientRiskFilter('all');
             setPatientSearch('');
@@ -714,7 +716,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
     };
 
     // =============================================
-    // LÓGICA DE FILTRADO GLOBAL POR MES
+    // LÓGICA DE FILTRADO GLOBAL POR MES Y OBRA SOCIAL
     // =============================================
     const availableMonths = useMemo(() => {
         const unique = [];
@@ -726,19 +728,34 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
         return unique;
     }, [groupedPatients]);
 
+    const availableObrasSociales = useMemo(() => {
+        const unique = new Set();
+        groupedPatients.forEach(pat => {
+            if (pat.obraSocial && pat.obraSocial.trim() !== '' && pat.obraSocial !== 'Sin Obra Social') {
+                unique.add(pat.obraSocial.trim());
+            }
+        });
+        return Array.from(unique).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    }, [groupedPatients]);
+
     const { filteredOriginalRows, filteredGroupedPatientsByMonth } = useMemo(() => {
-        if (selectedMonthFilter === 'all') {
-            return { filteredOriginalRows: originalRows, filteredGroupedPatientsByMonth: groupedPatients };
+        let filteredGroups = groupedPatients;
+
+        if (selectedMonthFilter !== 'all') {
+            filteredGroups = filteredGroups.filter(pat => pat.mesAdmision === selectedMonthFilter);
+        }
+
+        if (selectedObraSocialFilter !== 'all') {
+            filteredGroups = filteredGroups.filter(pat => pat.obraSocial === selectedObraSocialFilter);
         }
         
-        const filteredGroups = groupedPatients.filter(pat => pat.mesAdmision === selectedMonthFilter);
         const filteredRows = [];
         filteredGroups.forEach(pat => {
             filteredRows.push(...pat.rows);
         });
         
         return { filteredOriginalRows: filteredRows, filteredGroupedPatientsByMonth: filteredGroups };
-    }, [originalRows, groupedPatients, selectedMonthFilter]);
+    }, [originalRows, groupedPatients, selectedMonthFilter, selectedObraSocialFilter]);
 
     // =============================================
     // LÓGICA DE FILTRADO Y MÉTRIQUES
@@ -1030,7 +1047,8 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                 p.paciente.toLowerCase().includes(q) || 
                 p.numeroAdmision.toLowerCase().includes(q) ||
                 p.medico.toLowerCase().includes(q) ||
-                p.especialidad.toLowerCase().includes(q)
+                p.especialidad.toLowerCase().includes(q) ||
+                (p.obraSocial && p.obraSocial.toLowerCase().includes(q))
             );
         }
 
@@ -1108,6 +1126,8 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
         setColumnFilters({});
         setSearchTerm('');
         setKpiFilter('all');
+        setSelectedMonthFilter('all');
+        setSelectedObraSocialFilter('all');
         setSortConfig({ key: null, direction: 'asc' });
         setCurrentPage(1);
     };
@@ -1177,13 +1197,13 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
     };
 
     const handleExportPdf = async () => {
-        if (originalRows.length === 0) {
+        if (filteredOriginalRows.length === 0) {
             addToast?.('No hay registros para generar el PDF', 'error');
             return;
         }
         try {
             const { exportAuditorReportPdf } = await import('../utils/auditoriaReportPdf');
-            exportAuditorReportPdf(originalRows, kpis, columnMapping, groupedPatients);
+            exportAuditorReportPdf(filteredOriginalRows, kpis, columnMapping, filteredGroupedPatientsByMonth);
             addToast?.('Reporte PDF Clínico generado correctamente', 'success');
         } catch (err) {
             console.error(err);
@@ -1727,6 +1747,32 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                 <option value="all">📅 Todos los Meses</option>
                                 {availableMonths.map(m => (
                                     <option key={m} value={m}>{m}</option>
+                                ))}
+                            </select>
+                        )}
+                        {availableObrasSociales.length > 0 && (
+                            <select
+                                value={selectedObraSocialFilter}
+                                onChange={(e) => {
+                                    setSelectedObraSocialFilter(e.target.value);
+                                    setPatientPage(1);
+                                    setCurrentPage(1);
+                                }}
+                                style={{
+                                    padding: '8px 14px', borderRadius: '10px',
+                                    background: '#fff', color: 'var(--primary-700)',
+                                    border: '1px solid rgba(30, 95, 166, 0.25)',
+                                    fontSize: '0.85rem', fontWeight: 700,
+                                    cursor: 'pointer', outline: 'none',
+                                    appearance: 'none',
+                                    minWidth: '170px'
+                                }}
+                                onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
+                                onMouseOut={e => e.currentTarget.style.background = '#fff'}
+                            >
+                                <option value="all">🏥 Todas las Obras Sociales</option>
+                                {availableObrasSociales.map(os => (
+                                    <option key={os} value={os}>{os}</option>
                                 ))}
                             </select>
                         )}
@@ -2467,7 +2513,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                 </div>
 
                                 {/* Indicador de filtros de columna activos */}
-                                {(activeFiltersCount > 0 || searchTerm || kpiFilter !== 'all') && (
+                                {(activeFiltersCount > 0 || searchTerm || kpiFilter !== 'all' || selectedMonthFilter !== 'all' || selectedObraSocialFilter !== 'all') && (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <span style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', fontWeight: 600 }}>
                                             Filtrado activo ({totalFiltered} registros de {originalRows.length})
@@ -2692,7 +2738,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
                                     <input
                                         type="text"
-                                        placeholder="Buscar por paciente, admisión, médico o especialidad..."
+                                        placeholder="Buscar por paciente, admisión, médico, especialidad u obra social..."
                                         value={patientSearch}
                                         onChange={e => { setPatientSearch(e.target.value); setPatientPage(1); }}
                                         style={{
