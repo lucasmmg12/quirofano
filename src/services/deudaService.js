@@ -839,3 +839,85 @@ export async function cancelarPlan(planId) {
         .eq('id', planId);
     if (error) throw error;
 }
+
+// ─── Certificados de Libre Deuda ───
+export async function fetchCertificadosLibreDeuda(search = '') {
+    let q = supabase
+        .from('libre_de_deuda_certificados')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (search && search.trim()) {
+        const t = search.trim();
+        q = q.or(`paciente_nombre.ilike.%${t}%,paciente_dni.ilike.%${t}%,codigo.ilike.%${t}%,nhc.ilike.%${t}%`);
+    }
+
+    const { data, error } = await q;
+    if (error) {
+        console.error('[deudaService] fetchCertificadosLibreDeuda error:', error);
+        throw error;
+    }
+    return data || [];
+}
+
+export async function createCertificadoLibreDeuda(certData) {
+    const year = new Date().getFullYear();
+    const { count } = await supabase
+        .from('libre_de_deuda_certificados')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', `${year}-01-01T00:00:00.000Z`);
+
+    const seq = (count || 0) + 1;
+    const codigo = `LDD-${year}-${String(seq).padStart(4, '0')}`;
+
+    const record = {
+        codigo,
+        paciente_nombre: certData.pacienteNombre,
+        paciente_dni: certData.pacienteDni || null,
+        n_internacion: certData.nInternacion || null,
+        garante_nombre: certData.garanteNombre || null,
+        asesor_nombre: certData.asesorNombre || 'Asesor Administrativo',
+        fecha_texto: certData.fechaTexto || null,
+        fecha_emision: certData.fechaEmision || new Date().toISOString(),
+        nhc: certData.nhc || certData.nInternacion || null,
+        id_paciente: certData.idPaciente || null,
+        observaciones: certData.observaciones || null,
+    };
+
+    const { data, error } = await supabase
+        .from('libre_de_deuda_certificados')
+        .insert(record)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[deudaService] createCertificadoLibreDeuda error:', error);
+        throw error;
+    }
+
+    if (certData.pacienteDeudasId || certData.nhc) {
+        try {
+            let pId = certData.pacienteDeudasId;
+            if (!pId && certData.nhc) {
+                const { data: p } = await supabase
+                    .from('deudas_pacientes')
+                    .select('id')
+                    .eq('nhc', certData.nhc)
+                    .maybeSingle();
+                if (p) pId = p.id;
+            }
+            if (pId) {
+                await addSeguimiento(pId, {
+                    tipo: 'cambio_categoria',
+                    descripcion: `📜 Emitido Certificado de Libre Deuda N° ${codigo}. Asesor: ${certData.asesorNombre || 'Administración'}`,
+                    usuario: certData.asesorNombre || 'Sistema',
+                });
+            }
+        } catch (e) {
+            console.warn('Could not attach seguimiento note:', e);
+        }
+    }
+
+    return data;
+}
+

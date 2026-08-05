@@ -236,7 +236,40 @@ export async function fetchPacienteDetalle(paciente) {
         })()
     );
 
+    // 7. Certificados de Libre Deuda — por DNI, NHC o nombre
+    queries.push(
+        (async () => {
+            let data = [];
+            if (dni) {
+                const { data: byDni } = await supabase
+                    .from('libre_de_deuda_certificados')
+                    .select('*')
+                    .eq('paciente_dni', dni)
+                    .order('created_at', { ascending: false });
+                data = byDni || [];
+            }
+            if (data.length === 0 && nhc) {
+                const { data: byNhc } = await supabase
+                    .from('libre_de_deuda_certificados')
+                    .select('*')
+                    .eq('nhc', nhc)
+                    .order('created_at', { ascending: false });
+                data = byNhc || [];
+            }
+            if (data.length === 0 && nombre) {
+                const { data: byName } = await supabase
+                    .from('libre_de_deuda_certificados')
+                    .select('*')
+                    .ilike('paciente_nombre', `%${nombre.split(' ').slice(0, 2).join('%')}%`)
+                    .order('created_at', { ascending: false });
+                data = byName || [];
+            }
+            return { key: 'certificadosLibreDeuda', data };
+        })()
+    );
+
     // Execute all in parallel
+
     const results = await Promise.allSettled(queries);
     const detalle = {};
     for (const result of results) {

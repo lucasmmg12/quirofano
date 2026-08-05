@@ -27,13 +27,17 @@ import { subscribeToAllIncoming } from '../services/chatService';
 import ChatWindow from './ChatWindow';
 import * as XLSX from 'xlsx';
 import { SkeletonTablePanel } from './SkeletonLoader';
+import LibreDeDeudaSubmodulo from './LibreDeDeudaSubmodulo';
 
-const VIEWS = { LIST: 'list', DETAIL: 'detail' };
+const VIEWS = { LIST: 'list', DETAIL: 'detail', LIBRE_DEUDA: 'libre_deuda' };
 
 export default function DeudasPanel({ addToast, currentUser }) {
     // ─── State principal ───
     const [view, setView] = useState(VIEWS.LIST);
+    const [activeSubmodule, setActiveSubmodule] = useState('gestion'); // 'gestion' | 'libre_deuda'
+    const [libreDeudaPatient, setLibreDeudaPatient] = useState(null);
     const [deudores, setDeudores] = useState([]);
+
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [catFilter, setCatFilter] = useState(null);
@@ -629,6 +633,21 @@ export default function DeudasPanel({ addToast, currentUser }) {
     // RENDER
     // ═══════════════════════════════════════
 
+    if (view === VIEWS.LIBRE_DEUDA || activeSubmodule === 'libre_deuda') {
+        return (
+            <LibreDeDeudaSubmodulo
+                addToast={addToast}
+                currentUser={currentUser}
+                initialPatient={libreDeudaPatient}
+                onBackToList={() => {
+                    setView(VIEWS.LIST);
+                    setActiveSubmodule('gestion');
+                    setLibreDeudaPatient(null);
+                }}
+            />
+        );
+    }
+
     if (view === VIEWS.DETAIL && selectedDeudor) {
         return renderDetail();
     }
@@ -639,12 +658,41 @@ export default function DeudasPanel({ addToast, currentUser }) {
     function renderList() {
         return (
             <div style={{ padding: '20px 28px' }}>
+                {/* NAVEGACIÓN SUBMÓDULOS DEUDAS */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', borderBottom: '2px solid #E2E8F0', paddingBottom: '8px' }}>
+                    <button
+                        onClick={() => { setActiveSubmodule('gestion'); setView(VIEWS.LIST); }}
+                        style={{
+                            padding: '8px 16px', borderRadius: '10px', border: 'none',
+                            background: activeSubmodule === 'gestion' ? '#0D3B66' : 'transparent',
+                            color: activeSubmodule === 'gestion' ? '#fff' : '#64748B',
+                            fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.15s'
+                        }}
+                    >
+                        <DollarSign size={16} /> Gestión de Deudas
+                    </button>
+                    <button
+                        onClick={() => { setActiveSubmodule('libre_deuda'); setView(VIEWS.LIBRE_DEUDA); }}
+                        style={{
+                            padding: '8px 16px', borderRadius: '10px', border: 'none',
+                            background: activeSubmodule === 'libre_deuda' ? '#0D3B66' : 'transparent',
+                            color: activeSubmodule === 'libre_deuda' ? '#fff' : '#64748B',
+                            fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.15s'
+                        }}
+                    >
+                        <FileText size={16} /> Libre de Deuda
+                    </button>
+                </div>
+
                 {/* HEADER */}
                 <div style={st.header}>
                     <div style={st.headerLeft}>
                         <div style={{ ...st.iconBadge, background: 'linear-gradient(135deg, #F59E0B, #D97706)' }}>
                             <img src="/logosanatorio.png" alt="SA" style={{ width: 22, height: 22, objectFit: 'contain' }} />
                         </div>
+
                         <div>
                             <h2 style={st.headerTitle}>Gestión de Deudas</h2>
                             <span style={st.headerSub}>Seguimiento de cobros · Deudas ≥ ${MIN_DEUDA.toLocaleString('es-AR')} · Fuente: SALUS</span>
@@ -1514,6 +1562,26 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                 >
                                     <Plus size={12} /> Ingresar Pago
                                 </button>
+
+                                {/* BOTÓN RÁPIDO: EMITIR LIBRE DE DEUDA */}
+                                <button
+                                    onClick={() => {
+                                        setLibreDeudaPatient(selectedDeudor);
+                                        setActiveSubmodule('libre_deuda');
+                                        setView(VIEWS.LIBRE_DEUDA);
+                                    }}
+                                    style={{
+                                        padding: '4px 12px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 800,
+                                        background: 'linear-gradient(135deg, #2563EB, #1D4ED8)', color: '#fff',
+                                        border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                        boxShadow: '0 2px 6px rgba(37,99,235,0.3)', transition: 'all 0.15s',
+                                    }}
+                                    onMouseOver={e => e.currentTarget.style.transform = 'translateY(-1px)'}
+                                    onMouseOut={e => e.currentTarget.style.transform = 'none'}
+                                >
+                                    <FileText size={12} /> Emitir Libre de Deuda
+                                </button>
+
                             </div>
                         </div>
                     </div>

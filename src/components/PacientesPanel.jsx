@@ -895,6 +895,36 @@ export default function PacientesPanel({ addToast, currentUser }) {
                             </table>
                         ) : <EmptyState label="presupuestos" />}
                     </DetailSection>
+
+                    {/* 📜 Certificados de Libre Deuda */}
+                    <DetailSection
+                        icon={CheckCircle} title="Certificados de Libre Deuda" color="#059669" bg="#ECFDF5"
+                        count={detalle.certificadosLibreDeuda?.length || 0}
+                    >
+                        {detalle.certificadosLibreDeuda?.length > 0 ? (
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '1px solid var(--neutral-100)' }}>
+                                        {['Código', 'Fecha Emisión', 'Internación N.º', 'Garante', 'Asesor Firmante'].map(h => (
+                                            <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: 'var(--neutral-500)', fontSize: '0.68rem', textTransform: 'uppercase' }}>{h}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {detalle.certificadosLibreDeuda.map((cert, i) => (
+                                        <tr key={i} style={{ borderBottom: '1px solid var(--neutral-50)' }}>
+                                            <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 800, color: '#059669' }}>{cert.codigo}</td>
+                                            <td style={{ padding: '8px 10px', fontWeight: 600 }}>{formatDate(cert.created_at)}</td>
+                                            <td style={{ padding: '8px 10px', color: 'var(--neutral-600)' }}>{cert.n_internacion || cert.nhc || '—'}</td>
+                                            <td style={{ padding: '8px 10px', color: 'var(--neutral-500)' }}>{cert.garante_nombre || '—'}</td>
+                                            <td style={{ padding: '8px 10px', color: 'var(--neutral-600)', fontWeight: 600 }}>{cert.asesor_nombre}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        ) : <EmptyState label="certificados de libre deuda emitidos" />}
+                    </DetailSection>
+
                 </div>
             )}
 
