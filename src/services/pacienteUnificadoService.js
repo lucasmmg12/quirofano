@@ -257,10 +257,11 @@ export async function fetchPacienteDetalle(paciente) {
                 data = byNhc || [];
             }
             if (data.length === 0 && nombre) {
+                const nombreStr = String(nombre);
                 const { data: byName } = await supabase
                     .from('libre_de_deuda_certificados')
                     .select('*')
-                    .ilike('paciente_nombre', `%${nombre.split(' ').slice(0, 2).join('%')}%`)
+                    .ilike('paciente_nombre', `%${nombreStr.split(' ').slice(0, 2).join('%')}%`)
                     .order('created_at', { ascending: false });
                 data = byName || [];
             }

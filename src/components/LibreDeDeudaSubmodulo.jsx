@@ -14,6 +14,9 @@ import { searchPacientes } from '../services/pacienteUnificadoService';
 import { createCertificadoLibreDeuda, fetchCertificadosLibreDeuda } from '../services/deudaService';
 
 export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPatient, onBackToList }) {
+    // ─── Helper de cadena segura ───
+    const toStr = (val) => (val !== null && val !== undefined ? String(val) : '');
+
     // ─── Estado del Formulario ───
     const today = new Date();
     const meses = [
@@ -30,7 +33,7 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
     const [nInternacion, setNInternacion] = useState('');
     const [incluirGarante, setIncluirGarante] = useState(true);
     const [garanteNombre, setGaranteNombre] = useState('');
-    const [asesorNombre, setAsesorNombre] = useState(currentUser?.nombre || 'Asesor Administrativo');
+    const [asesorNombre, setAsesorNombre] = useState(toStr(currentUser?.nombre) || 'Asesor Administrativo');
     const [observaciones, setObservaciones] = useState('');
 
     // Referencias de selección / vinculación
@@ -59,7 +62,7 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
     const loadHistorial = useCallback(async (query = '') => {
         setLoadingHistorial(true);
         try {
-            const data = await fetchCertificadosLibreDeuda(query);
+            const data = await fetchCertificadosLibreDeuda(toStr(query));
             setCertificadosHistorial(data);
         } catch (err) {
             console.error('Error al cargar historial de certificados:', err);
@@ -75,16 +78,16 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
     // Pre-cargar datos si viene de la vista de detalle de un deudor o paciente
     useEffect(() => {
         if (initialPatient) {
-            setPacienteNombre(initialPatient.nombre || '');
-            setPacienteDni(initialPatient.dni || '');
-            setNInternacion(initialPatient.n_admision || initialPatient.nhc || '');
+            setPacienteNombre(toStr(initialPatient.nombre));
+            setPacienteDni(toStr(initialPatient.dni));
+            setNInternacion(toStr(initialPatient.n_admision || initialPatient.nhc));
             if (initialPatient.garante || initialPatient.responsable) {
-                setGaranteNombre(initialPatient.garante || initialPatient.responsable || '');
+                setGaranteNombre(toStr(initialPatient.garante || initialPatient.responsable));
                 setIncluirGarante(true);
             }
             setSelectedPatientId(initialPatient.id_paciente || null);
             setSelectedDeudasId(initialPatient.id || null);
-            setSelectedNhc(initialPatient.nhc || null);
+            setSelectedNhc(initialPatient.nhc ? toStr(initialPatient.nhc) : null);
         }
     }, [initialPatient]);
 
@@ -101,8 +104,9 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
 
     // Ejecutar búsqueda de paciente
     const handleSearchInput = async (val) => {
-        setSearchQuery(val);
-        if (!val || val.trim().length < 2) {
+        const strVal = toStr(val);
+        setSearchQuery(strVal);
+        if (!strVal || strVal.trim().length < 2) {
             setSearchResults([]);
             setShowDropdown(false);
             return;
@@ -112,7 +116,7 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
         setShowDropdown(true);
 
         try {
-            const { data } = await searchPacientes(val, { pageSize: 10 });
+            const { data } = await searchPacientes(strVal, { pageSize: 10 });
             setSearchResults(data || []);
         } catch (err) {
             console.error('Error buscando pacientes:', err);
@@ -124,11 +128,11 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
 
     // Seleccionar paciente del desplegable
     const handleSelectPatient = (pac) => {
-        setPacienteNombre(pac.nombre || '');
-        setPacienteDni(pac.dni || '');
-        setNInternacion(pac.nhc || pac.id_paciente || '');
+        setPacienteNombre(toStr(pac.nombre));
+        setPacienteDni(toStr(pac.dni));
+        setNInternacion(toStr(pac.nhc || pac.id_paciente));
         setSelectedPatientId(pac.id_paciente || null);
-        setSelectedNhc(pac.nhc || null);
+        setSelectedNhc(pac.nhc ? toStr(pac.nhc) : null);
         setShowDropdown(false);
         setSearchQuery('');
         addToast?.(`Datos de ${pac.nombre} autocompletados`, 'info');
@@ -150,11 +154,16 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
 
     // Formatear texto completo del certificado
     const getCertText = () => {
+        const name = toStr(pacienteNombre).trim();
+        const dni = toStr(pacienteDni).trim();
+        const intern = toStr(nInternacion).trim();
+        const garante = toStr(garanteNombre).trim();
+
         const fechaTexto = `San Juan, ${dia} de ${mes} de 20${anio}`;
-        const p1 = `Por medio de la presente, quien suscribe, en mi carácter de Asesor Administrativo del Sanatorio Argentino S.R.L., deja constancia que el/la paciente ${pacienteNombre.trim() || '________________________'}, DNI ${pacienteDni.trim() || '________________'}, internado/a bajo la Internación N.º ${nInternacion.trim() || '________'}, no registra obligaciones de pago pendientes con esta Institución al día de la fecha.`;
+        const p1 = `Por medio de la presente, quien suscribe, en mi carácter de Asesor Administrativo del Sanatorio Argentino S.R.L., deja constancia que el/la paciente ${name || '________________________'}, DNI ${dni || '________________'}, internado/a bajo la Internación N.º ${intern || '________'}, no registra obligaciones de pago pendientes con esta Institución al día de la fecha.`;
         
-        const p2 = incluirGarante && garanteNombre.trim()
-            ? `Asimismo, se deja expresa constancia de que, habiéndose cancelado la totalidad de las obligaciones económicas derivadas de la mencionada internación, la garantía suscripta oportunamente por el/la Sr./Sra. ${garanteNombre.trim()}, en carácter de garante, queda sin efecto y sin valor obligacional alguno respecto de la presente internación, no manteniendo responsabilidad pendiente frente al Sanatorio Argentino S.R.L. por dicho concepto.`
+        const p2 = incluirGarante && garante
+            ? `Asimismo, se deja expresa constancia de que, habiéndose cancelado la totalidad de las obligaciones económicas derivadas de la mencionada internación, la garantía suscripta oportunamente por el/la Sr./Sra. ${garante}, en carácter de garante, queda sin efecto y sin valor obligacional alguno respecto de la presente internación, no manteniendo responsabilidad pendiente frente al Sanatorio Argentino S.R.L. por dicho concepto.`
             : incluirGarante
                 ? `Asimismo, se deja expresa constancia de que, habiéndose cancelado la totalidad de las obligaciones económicas derivadas de la mencionada internación, la garantía suscripta oportunamente por el/la Sr./Sra. __________________________, en carácter de garante, queda sin efecto y sin valor obligacional alguno respecto de la presente internación, no manteniendo responsabilidad pendiente frente al Sanatorio Argentino S.R.L. por dicho concepto.`
                 : '';
@@ -166,7 +175,8 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
 
     // Emitir e Imprimir Certificado
     const handleEmitirEImprimir = async () => {
-        if (!pacienteNombre.trim()) {
+        const name = toStr(pacienteNombre).trim();
+        if (!name) {
             addToast?.('Por favor ingresa el nombre del paciente', 'error');
             return;
         }
@@ -175,16 +185,16 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
         try {
             const { fechaTexto } = getCertText();
             const certData = {
-                pacienteNombre: pacienteNombre.trim(),
-                pacienteDni: pacienteDni.trim(),
-                nInternacion: nInternacion.trim(),
-                garanteNombre: incluirGarante ? garanteNombre.trim() : null,
-                asesorNombre: asesorNombre.trim() || 'Asesor Administrativo',
+                pacienteNombre: name,
+                pacienteDni: toStr(pacienteDni).trim(),
+                nInternacion: toStr(nInternacion).trim(),
+                garanteNombre: incluirGarante ? toStr(garanteNombre).trim() : null,
+                asesorNombre: toStr(asesorNombre).trim() || 'Asesor Administrativo',
                 fechaTexto,
-                nhc: selectedNhc || nInternacion.trim(),
+                nhc: selectedNhc || toStr(nInternacion).trim(),
                 idPaciente: selectedPatientId,
                 pacienteDeudasId: selectedDeudasId,
-                observaciones: observaciones.trim(),
+                observaciones: toStr(observaciones).trim(),
             };
 
             const created = await createCertificadoLibreDeuda(certData);
@@ -207,7 +217,7 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
     // Copiar texto al portapapeles
     const handleCopyText = () => {
         const { fechaTexto, p1, p2, p3 } = getCertText();
-        const fullText = `SANATORIO ARGENTINO S.R.L.\nDesde 1974\n\nCERTIFICADO DE LIBRE DEUDA\n\n${fechaTexto}\n\n${p1}\n\n${p2 ? p2 + '\n\n' : ''}${p3}\n\n___________________________________\n${asesorNombre}\nAsesor Administrativo\nSanatorio Argentino S.R.L.`;
+        const fullText = `SANATORIO ARGENTINO S.R.L.\nDesde 1974\n\nCERTIFICADO DE LIBRE DEUDA\n\n${fechaTexto}\n\n${p1}\n\n${p2 ? p2 + '\n\n' : ''}${p3}\n\n___________________________________\n${toStr(asesorNombre).trim() || 'Asesor Administrativo'}\nAsesor Administrativo\nSanatorio Argentino S.R.L.`;
         
         navigator.clipboard.writeText(fullText);
         addToast?.('Texto del certificado copiado al portapapeles', 'info');

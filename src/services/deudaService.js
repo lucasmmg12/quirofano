@@ -847,9 +847,9 @@ export async function fetchCertificadosLibreDeuda(search = '') {
         .select('*')
         .order('created_at', { ascending: false });
 
-    if (search && search.trim()) {
-        const t = search.trim();
-        q = q.or(`paciente_nombre.ilike.%${t}%,paciente_dni.ilike.%${t}%,codigo.ilike.%${t}%,nhc.ilike.%${t}%`);
+    const searchStr = search != null ? String(search).trim() : '';
+    if (searchStr) {
+        q = q.or(`paciente_nombre.ilike.%${searchStr}%,paciente_dni.ilike.%${searchStr}%,codigo.ilike.%${searchStr}%,nhc.ilike.%${searchStr}%`);
     }
 
     const { data, error } = await q;
