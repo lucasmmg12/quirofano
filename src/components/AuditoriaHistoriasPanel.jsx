@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { 
     Upload, FileSpreadsheet, Search, RefreshCw, X, Download, 
@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import { hcLocalStore } from '../store/hcLocalStore';
 import { processHCExcelFile } from '../utils/parseHCExcel';
+import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
 
 // Normalizar celdas vacías, NULL de texto, etc.
 const isNullOrEmpty = (val) => {
@@ -182,7 +183,7 @@ const calculateTextSimilarity = (txt1, txt2) => {
     return intersection / union;
 };
 
-const processAuditData = (processedRows, mapping) => {
+const processAuditData = (processedRows, mapping, criterios) => {
     const patientsMap = {};
 
     processedRows.forEach(row => {
@@ -371,8 +372,11 @@ const processAuditData = (processedRows, mapping) => {
             });
         }
 
+        const asignacion = criterios ? matchAsignacion(criterios, pat.obraSocial, pat.especialidad, null) : null;
+
         return {
             ...pat,
+            asignadoA: asignacion?.responsable || null,
             gaps,
             alertas,
 
@@ -504,6 +508,12 @@ const getPatientTimelineDays = (pat) => {
 };
 
 export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
+    const [criteriosAsignacion, setCriteriosAsignacion] = useState([]);
+
+    useEffect(() => {
+        fetchAsignaciones().then(data => setCriteriosAsignacion(data)).catch(err => console.error('Error cargando asignaciones:', err));
+    }, []);
+
     // Archivo y Datos
     const [fileName, setFileName] = useState('');
     const [hcLoadedCount, setHcLoadedCount] = useState(0);
@@ -658,7 +668,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                         };
                     });
 
-                    const auditedGrouped = processAuditData(processed, mapping);
+                    const auditedGrouped = processAuditData(processed, mapping, criteriosAsignacion);
                     setGroupedPatients(auditedGrouped);
                     setOriginalRows(processed);
                     setCurrentPage(1);
@@ -2845,6 +2855,22 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                                                     </span>
                                                                 );
                                                             })()}
+                                                            {pat.asignadoA && (
+                                                                <span style={{ 
+                                                                    fontSize: '0.7rem', 
+                                                                    padding: '2px 8px', 
+                                                                    borderRadius: '6px', 
+                                                                    fontWeight: 700,
+                                                                    color: '#065F46',
+                                                                    background: '#D1FAE5',
+                                                                    border: `1px solid #A7F3D0`,
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px'
+                                                                }}>
+                                                                    👤 {pat.asignadoA}
+                                                                </span>
+                                                            )}
                                                         </h3>
                                                         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '4px', fontSize: '0.75rem', color: 'var(--neutral-500)' }}>
                                                             <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

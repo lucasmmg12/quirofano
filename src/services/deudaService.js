@@ -870,6 +870,8 @@ export async function createCertificadoLibreDeuda(certData) {
     const seq = (count || 0) + 1;
     const codigo = `LDD-${year}-${String(seq).padStart(4, '0')}`;
 
+    const isUUID = (id) => typeof id === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id);
+
     const record = {
         codigo,
         paciente_nombre: certData.pacienteNombre,
@@ -880,7 +882,7 @@ export async function createCertificadoLibreDeuda(certData) {
         fecha_texto: certData.fechaTexto || null,
         fecha_emision: certData.fechaEmision || new Date().toISOString(),
         nhc: certData.nhc || certData.nInternacion || null,
-        id_paciente: certData.idPaciente || null,
+        id_paciente: isUUID(certData.idPaciente) ? certData.idPaciente : null,
         observaciones: certData.observaciones || null,
     };
 
