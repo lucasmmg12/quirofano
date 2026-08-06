@@ -688,14 +688,16 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
                         visibility: visible;
                     }
                     .printable-certificate-area {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
+                        position: fixed !important;
+                        left: 0 !important;
+                        top: 0 !important;
                         width: 100% !important;
                         padding: 0 !important;
                         margin: 0 !important;
                         box-shadow: none !important;
                         border: none !important;
+                        background: white !important;
+                        transform: none !important;
                         min-height: auto !important;
                     }
                 }
