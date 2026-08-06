@@ -152,6 +152,30 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
         addToast?.('Formulario listo para ingreso manual', 'info');
     };
 
+    // Re-imprimir desde el historial
+    const handleReprint = (cert) => {
+        setPacienteNombre(toStr(cert.paciente_nombre));
+        setPacienteDni(toStr(cert.paciente_dni));
+        setNInternacion(toStr(cert.n_internacion || cert.nhc));
+        setAsesorNombre(toStr(cert.asesor_nombre) || 'Asesor Administrativo');
+        setGaranteNombre(toStr(cert.garante_nombre));
+        setIncluirGarante(!!cert.garante_nombre);
+        
+        const match = cert.fecha_texto?.match(/San Juan, (\d+) de ([a-z]+) de 20(\d+)/i);
+        if (match) {
+            setDia(match[1]);
+            setMes(match[2].toLowerCase());
+            setAnio(match[3]);
+        }
+        
+        setLastIssuedCert(cert);
+        addToast?.('Datos cargados para re-impresión', 'info');
+        
+        setTimeout(() => {
+            window.print();
+        }, 500);
+    };
+
     // Formatear texto completo del certificado
     const getCertText = () => {
         const name = toStr(pacienteNombre).trim();
@@ -608,6 +632,7 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
                                             <th style={{ padding: '8px' }}>Internación</th>
                                             <th style={{ padding: '8px' }}>Asesor</th>
                                             <th style={{ padding: '8px' }}>Fecha</th>
+                                            <th style={{ padding: '8px', textAlign: 'center' }}>Acción</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -625,6 +650,18 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
                                                 <td style={{ padding: '8px', color: '#94A3B8', fontSize: '0.75rem' }}>
                                                     {new Date(c.created_at).toLocaleDateString('es-AR')}
                                                 </td>
+                                                <td style={{ padding: '8px', textAlign: 'center' }}>
+                                                    <button
+                                                        onClick={() => handleReprint(c)}
+                                                        style={{
+                                                            padding: '4px 8px', borderRadius: '6px', border: '1px solid #BFDBFE',
+                                                            background: '#EFF6FF', color: '#2563EB', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
+                                                            display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                                        }}
+                                                    >
+                                                        <Printer size={12} /> Imprimir
+                                                    </button>
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -640,6 +677,10 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
             {/* Estilos CSS específicos de Impresión A4 */}
             <style>{`
                 @media print {
+                    @page {
+                        size: A4 portrait !important;
+                        margin: 15mm !important;
+                    }
                     body * {
                         visibility: hidden;
                     }
@@ -651,9 +692,11 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
                         left: 0;
                         top: 0;
                         width: 100% !important;
-                        padding: 20mm !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
                         box-shadow: none !important;
                         border: none !important;
+                        min-height: auto !important;
                     }
                 }
             `}</style>
