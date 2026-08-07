@@ -1073,7 +1073,8 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                 p.numeroAdmision.toLowerCase().includes(q) ||
                 p.medico.toLowerCase().includes(q) ||
                 p.especialidad.toLowerCase().includes(q) ||
-                (p.obraSocial && p.obraSocial.toLowerCase().includes(q))
+                (p.obraSocial && p.obraSocial.toLowerCase().includes(q)) ||
+                (p.asignadoA && p.asignadoA.toLowerCase().includes(q))
             );
         }
 
@@ -2763,7 +2764,7 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
                                     <input
                                         type="text"
-                                        placeholder="Buscar por paciente, admisión, médico, especialidad u obra social..."
+                                        placeholder="Buscar por paciente, admisión, médico, especialidad, obra social o responsable..."
                                         value={patientSearch}
                                         onChange={e => { setPatientSearch(e.target.value); setPatientPage(1); }}
                                         style={{
