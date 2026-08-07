@@ -148,7 +148,19 @@ export default function BetoPanel({ addToast }) {
         try { const d = await listRAGConversations(); setConversations(d.conversations || []); } catch(e) { console.error(e); }
     }
     async function loadFiles(folder) {
-        try { const d = await listRAGFiles(folder !== undefined ? folder : currentFolder); setFileItems(d.items || []); setTotalFiles(d.total_files || 0); } catch(e) { console.error(e); }
+        try { 
+            const d = await listRAGFiles(folder !== undefined ? folder : currentFolder); 
+            const items = d.items || [];
+            items.sort((a, b) => {
+                if (a.type === 'folder' && b.type !== 'folder') return -1;
+                if (b.type === 'folder' && a.type !== 'folder') return 1;
+                const dateA = new Date(a.created_at || a.metadata?.created_at || 0).getTime();
+                const dateB = new Date(b.created_at || b.metadata?.created_at || 0).getTime();
+                return dateB - dateA;
+            });
+            setFileItems(items); 
+            setTotalFiles(d.total_files || 0); 
+        } catch(e) { console.error(e); }
     }
     async function loadLearningStats() { const d = await fetchLearningStats(); if (d) setLearningStats(d); }
     async function loadRules() { setRulesLoading(true); try { const d = await listRAGRules(); setRules(d.rules || []); } catch(e){} setRulesLoading(false); }
@@ -946,7 +958,10 @@ export default function BetoPanel({ addToast }) {
                         <span>{FILE_ICONS[item.file_type] || '📄'}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: '0.75rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-                            <div style={{ fontSize: '0.65rem', color: 'var(--neutral-400)' }}>{item.total_chunks} chunks · {formatFileSize(item.file_size)}</div>
+                            <div style={{ fontSize: '0.65rem', color: 'var(--neutral-400)' }}>
+                                {item.total_chunks} chunks · {formatFileSize(item.file_size)}
+                                {(item.created_at || item.metadata?.created_at) && ` · Cargado el ${new Date(item.created_at || item.metadata?.created_at).toLocaleDateString('es-AR')}`}
+                            </div>
                         </div>
                         <button className="rag-conv-delete" style={{ opacity: 1 }} onClick={() => downloadRAGFile(item.storage_path || `${item.folder}/${item.name}`.replace(/^\//, ''))}><Download size={11} /></button>
                         <button className="rag-conv-delete" style={{ opacity: 1 }} onClick={() => { setConfirmAction({ title: 'Eliminar Archivo', message: `¿Estás seguro de que querés eliminar "${item.name}"?`, onConfirm: () => deleteRAGFile(item.storage_path || `${item.folder}/${item.name}`.replace(/^\//, '')).then(() => loadFiles()) }); }}><Trash2 size={11} /></button>
