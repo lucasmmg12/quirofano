@@ -484,8 +484,8 @@ export default function TurnoKiosco() {
                             </div>
                         )}
 
-                        <div style={{ marginTop: '20px', padding: '12px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '12px', textAlign: 'center' }}>
-                            <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#EF4444' }}>
+                        <div style={{ marginTop: '20px', padding: '16px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '12px', textAlign: 'center' }}>
+                            <span style={{ fontSize: '1.5rem', fontWeight: 700, color: '#EF4444' }}>
                                 ⚠️ Es requisito obligatorio presentar DNI de paciente para cualquier tipo de gestión.
                             </span>
                         </div>
@@ -823,7 +823,7 @@ const styles = {
         boxSizing: 'border-box',
     },
     selectTitle: {
-        fontSize: '1.6rem', fontWeight: 800, color: '#0D3B66',
+        fontSize: '2rem', fontWeight: 800, color: '#0D3B66',
         textAlign: 'center', margin: '8px 0 18px',
         lineHeight: 1.3,
     },
@@ -866,7 +866,7 @@ const styles = {
         flexShrink: 0,
     },
     tramiteLabel: {
-        fontSize: '2rem', fontWeight: 800, color: '#0D3B66',
+        fontSize: '2.4rem', fontWeight: 800, color: '#0D3B66',
         lineHeight: 1.3, flex: 1,
     },
     subBadge: {
@@ -949,7 +949,7 @@ const styles = {
         flexShrink: 0,
     },
     subLabel: {
-        fontSize: '1.85rem', fontWeight: 800, color: '#0D3B66',
+        fontSize: '2.2rem', fontWeight: 800, color: '#0D3B66',
         lineHeight: 1.3, flex: 1,
     },
     // ── Ticket step ──
