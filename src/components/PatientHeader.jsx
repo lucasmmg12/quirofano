@@ -299,6 +299,20 @@ export default function PatientHeader({ patientData, setPatientData, hiddenField
                                     {filteredOS.length === 0 ? (
                                         <div className="os-combobox__no-results">
                                             Sin resultados para "{osSearch}"
+                                            {osSearch.trim() && (
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => handleSelectOS(osSearch.toUpperCase().trim())}
+                                                    style={{ 
+                                                        marginTop: '8px', width: '100%', padding: '6px', 
+                                                        background: '#EEF2FF', color: '#4338CA', 
+                                                        border: '1px solid #C7D2FE', borderRadius: '4px',
+                                                        fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem'
+                                                    }}
+                                                >
+                                                    Usar "{osSearch.toUpperCase().trim()}" de todos modos
+                                                </button>
+                                            )}
                                         </div>
                                     ) : (
                                         filteredOS.map(os => (
