@@ -43,7 +43,7 @@ async function getSchemaContext(): Promise<string> {
                 'altas_administrativas', 'altas_traspasos', 'altas_asignacion',
                 'whatsapp_messages', 'whatsapp_templates',
                 'consultas_guardia', 'consultas_imports',
-                'garantias_rendiciones'
+                'garantias_rendiciones', 'pedidos_modulos'
             ];
             const filtered = columns.filter((c: any) => relevantTables.includes(c.table_name));
             schemaCache = formatSchemaFromColumns(filtered);
@@ -251,6 +251,12 @@ Cada biopsia tiene una "acción" que se determina cruzando Obra Social + Laborat
 - \`especialidad\` (text) — Patrón de especialidad
 - \`proceso\` (text) — Tipo de proceso
 - \`responsable\` (text) — Responsable asignado
+
+### \`pedidos_modulos\` (Módulos/Combos de prácticas médicas para carrito)
+- \`id\` (uuid PK)
+- \`nombre\` (text) — Nombre del módulo, ej: "Cirugía Hernia"
+- \`items\` (jsonb) — Array con los códigos del nomenclador que incluye
+- \`created_at\` (timestamptz)
 
 ### \`admqui_usuarios\` (Usuarios del sistema)
 - \`id\` (uuid PK)
