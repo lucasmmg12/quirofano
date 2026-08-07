@@ -420,6 +420,8 @@ function App({ currentUser, onLogout }) {
                     updated.displayName = `Solicito autorización de prórroga por ${value} días desde fecha indicada`;
                 } else if (item.customField === 'roman') {
                     updated.displayName = `Solicito autorización de complejidad de anestesia ${value}`;
+                } else if (item.customField === 'text') {
+                    updated.displayName = value ? `${item.name} - ${value.toUpperCase()}` : item.name;
                 }
             }
 

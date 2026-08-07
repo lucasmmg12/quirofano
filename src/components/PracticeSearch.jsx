@@ -1,15 +1,31 @@
 import { useState, useRef, useEffect } from 'react';
-import { Search, Plus, X } from 'lucide-react';
+import { Search, Plus, X, Settings, PackageOpen } from 'lucide-react';
 import { PRACTICES, CATEGORIES } from '../data/nomenclador';
 import { filterPractices } from '../utils/searchUtils';
+import ModulosPedidosManager from './ModulosPedidosManager';
+import { supabase } from '../lib/supabase';
 
 export default function PracticeSearch({ onAddToCart }) {
     const [query, setQuery] = useState('');
     const [activeCategory, setActiveCategory] = useState('all');
     const [showResults, setShowResults] = useState(false);
     const [selectedIndex, setSelectedIndex] = useState(-1);
+    const [modulos, setModulos] = useState([]);
+    const [showManager, setShowManager] = useState(false);
+    
     const inputRef = useRef(null);
     const resultsRef = useRef(null);
+
+    const loadModulos = async () => {
+        try {
+            const { data } = await supabase.from('pedidos_modulos').select('*').order('created_at', { ascending: true });
+            if (data) setModulos(data);
+        } catch (e) { console.error(e); }
+    };
+
+    useEffect(() => {
+        loadModulos();
+    }, []);
 
     const filteredPractices = filterPractices(query, PRACTICES, activeCategory);
     const showDropdown = showResults && (query.length > 0 || activeCategory !== 'all');
@@ -80,17 +96,46 @@ export default function PracticeSearch({ onAddToCart }) {
         return colors[categoryId] || '#64748B';
     };
 
+    const handleAddModule = (mod) => {
+        const items = mod.items.map(code => PRACTICES.find(p => p.code === code)).filter(Boolean);
+        items.forEach(item => onAddToCart(item));
+    };
+
     return (
         <div className="practice-search animate-fade-in">
-            <div className="practice-search__header">
-                <h3 className="practice-search__title">
+            <div className="practice-search__header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 className="practice-search__title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Search size={18} />
                     Buscar Prácticas
                 </h3>
-                <span className="practice-search__count">
-                    {PRACTICES.length} prácticas disponibles
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span className="practice-search__count">
+                        {PRACTICES.length} prácticas disponibles
+                    </span>
+                    <button 
+                        onClick={() => setShowManager(true)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', background: '#EEF2FF', color: '#4F46E5', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                        <Settings size={14} /> Módulos
+                    </button>
+                </div>
             </div>
+
+            {modulos.length > 0 && (
+                <div style={{ padding: '0 16px 12px 16px', display: 'flex', gap: '8px', overflowX: 'auto' }}>
+                    <span style={{ fontSize: '0.8rem', color: '#64748B', fontWeight: 600, alignSelf: 'center', marginRight: '4px' }}>Módulos:</span>
+                    {modulos.map(mod => (
+                        <button
+                            key={mod.id}
+                            onClick={() => handleAddModule(mod)}
+                            style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#166534', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                            title={`Añadir ${mod.items.length} prácticas`}
+                        >
+                            <PackageOpen size={14} /> {mod.nombre}
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {/* Category Filter Chips */}
             <div className="practice-search__categories">
@@ -182,6 +227,12 @@ export default function PracticeSearch({ onAddToCart }) {
                     )}
                 </div>
             )}
+            
+            <ModulosPedidosManager 
+                isOpen={showManager} 
+                onClose={() => setShowManager(false)} 
+                onModuleAdded={loadModulos} 
+            />
         </div>
     );
 }

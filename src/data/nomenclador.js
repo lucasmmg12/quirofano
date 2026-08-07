@@ -82,7 +82,7 @@ export const PRACTICES = [
 
     // === RADIOLOGÍA ===
     { code: '340907', name: 'Radioscopía', category: 'radiologia' },
-    { code: '340905', name: 'Radiografía en Internado', category: 'radiologia' },
+    { code: '340905', name: 'Radiografía en Internado', category: 'radiologia', customField: 'text', customLabel: 'Especifique tipo' },
     { code: '340103', name: 'Radioscopía con circuito cerrado de TV', category: 'radiologia' },
     { code: '340110', name: 'Densitometría ósea total', category: 'radiologia' },
     { code: '340201', name: 'Radiografía de cráneo, cara, senos paranasales', category: 'radiologia' },
@@ -126,7 +126,7 @@ export const PRACTICES = [
     { code: '180205', name: 'Ecografía obstétrica 4D o 5D', category: 'ecografia' },
     { code: '180206', name: 'Scan morfológico fetal', category: 'ecografia' },
     { code: '180206B', name: 'Diferencia scan morfológico fetal', category: 'ecografia' },
-    { code: '180207', name: 'Ecografía en habitación', category: 'ecografia' },
+    { code: '180207', name: 'Ecografía en habitación', category: 'ecografia', customField: 'text', customLabel: 'Especifique tipo' },
     { code: '180130', name: 'Eco Doppler pulsado color cardiopatías', category: 'ecografia' },
     { code: '180132', name: 'Ecodoppler Portal', category: 'ecografia' },
     { code: '180134', name: 'Eco Doppler color de miembros', category: 'ecografia' },
