@@ -1318,15 +1318,25 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                         { label: 'Notas (Cirugía)', value: surgery.notas },
                                         { label: 'Operador', value: surgery.operador },
                                         { label: 'Creado', value: surgery.created_at ? new Date(surgery.created_at).toLocaleDateString('es-AR') : null },
-                                    ].map(({ label, value }) => (
-                                        <div key={label} style={{
-                                            display: 'flex', justifyContent: 'space-between',
-                                            padding: '5px 0', borderBottom: '1px solid var(--neutral-100)',
-                                        }}>
-                                            <span style={{ color: 'var(--neutral-400)', fontWeight: 500 }}>{label}</span>
-                                            <span style={{ fontWeight: 600, color: 'var(--neutral-700)' }}>{value || '—'}</span>
-                                        </div>
-                                    ))}
+                                    ].map(({ label, value }) => {
+                                        const isNotaPaciente = label === 'Notas (Paciente)';
+                                        return (
+                                            <div key={label} style={{
+                                                display: 'flex', justifyContent: 'space-between',
+                                                padding: '5px 0', borderBottom: '1px solid var(--neutral-100)',
+                                            }}>
+                                                <span style={{ 
+                                                    color: isNotaPaciente ? '#EF4444' : 'var(--neutral-400)', 
+                                                    fontWeight: isNotaPaciente ? 700 : 500 
+                                                }}>{label}</span>
+                                                <span style={{ 
+                                                    fontWeight: isNotaPaciente ? 800 : 600, 
+                                                    color: isNotaPaciente ? '#EF4444' : 'var(--neutral-700)',
+                                                    textAlign: 'right', marginLeft: '10px'
+                                                }}>{value || '—'}</span>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                                 {/* Event history */}
                                 {surgery.surgery_events?.length > 0 && (
