@@ -300,21 +300,36 @@ const processAuditData = (processedRows, mapping, criterios) => {
         // Reasignación Inteligente de Guardia Nocturna (00:00 a 05:59 AM)
         pat.evoluciones.forEach(ev => {
             if (ev.fechaObj) {
-                const hours = ev.fechaObj.getHours();
-                if (hours >= 0 && hours < 6) {
+                let realHours = ev.fechaObj.getHours();
+                let realMinutes = ev.fechaObj.getMinutes();
+                
+                if (ev.fechaEscritura) {
+                    const escObj = parseDateDMY(ev.fechaEscritura);
+                    if (escObj) {
+                        realHours = escObj.getHours();
+                        realMinutes = escObj.getMinutes();
+                    }
+                }
+
+                // Evitar falsos positivos si la fecha viene sin hora (exactamente 00:00:00)
+                const isDateWithoutTime = realHours === 0 && realMinutes === 0 && ev.fechaObj.getSeconds() === 0;
+
+                if (realHours >= 0 && realHours < 6 && !isDateWithoutTime) {
                     const prevDay = new Date(ev.fechaObj);
                     prevDay.setDate(prevDay.getDate() - 1);
                     ev.fechaObjEfectiva = prevDay;
                     ev.fechaStrEfectiva = formatDateDMY(prevDay);
                     ev.isMadrugada = true;
-                    ev.horaCargaStr = `${String(ev.fechaObj.getHours()).padStart(2, '0')}:${String(ev.fechaObj.getMinutes()).padStart(2, '0')} hs`;
+                    ev.horaCargaStr = `${String(realHours).padStart(2, '0')}:${String(realMinutes).padStart(2, '0')} hs`;
                 } else {
                     ev.fechaObjEfectiva = ev.fechaObj;
                     ev.fechaStrEfectiva = formatDateDMY(ev.fechaObj);
+                    ev.isMadrugada = false;
                 }
             } else {
                 ev.fechaObjEfectiva = null;
                 ev.fechaStrEfectiva = ev.fechaStr;
+                ev.isMadrugada = false;
             }
         });
 
