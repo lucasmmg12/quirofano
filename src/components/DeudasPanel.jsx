@@ -434,6 +434,17 @@ export default function DeudasPanel({ addToast, currentUser }) {
                 monto: noteType === 'pago' ? Number(montoPago) : undefined,
                 usuario: empleadoNombre,
             });
+            
+            // Si es un pago, descontar de la deuda general
+            if (noteType === 'pago' && montoPago) {
+                const montoNum = Number(montoPago);
+                const deudaRestante = Math.max(0, Number(selectedDeudor.deuda_total) - montoNum);
+                await updateDeudor(selectedDeudor.id, { deuda_total: deudaRestante });
+                
+                setSelectedDeudor(prev => ({ ...prev, deuda_total: deudaRestante }));
+                setDeudores(prev => prev.map(d => d.id === selectedDeudor.id ? { ...d, deuda_total: deudaRestante } : d));
+            }
+
             setNewNote('');
             setMontoPago('');
             const segs = await fetchSeguimiento(selectedDeudor.id);
@@ -505,6 +516,13 @@ export default function DeudasPanel({ addToast, currentUser }) {
                 usuario: empleadoNombre,
             });
 
+            // 1.5. Descontar de la deuda total y actualizar localmente
+            const deudaRestante = Math.max(0, Number(selectedDeudor.deuda_total) - montoNum);
+            await updateDeudor(selectedDeudor.id, { deuda_total: deudaRestante });
+            
+            setSelectedDeudor(prev => ({ ...prev, deuda_total: deudaRestante }));
+            setDeudores(prev => prev.map(d => d.id === selectedDeudor.id ? { ...d, deuda_total: deudaRestante } : d));
+
             // 2. Si se seleccionó una cuota, marcarla pagada
             if (modalPagoForm.cuotaId) {
                 await marcarCuotaPagada(modalPagoForm.cuotaId, {
@@ -521,11 +539,8 @@ export default function DeudasPanel({ addToast, currentUser }) {
             setPlanes(planesData);
 
             // 4. Calcular si se saldó la deuda total y consultar para pasar a Deuda Cancelada
-            const pagadoAcumulado = segs.filter(s => s.tipo === 'pago' && s.monto).reduce((sum, s) => sum + Number(s.monto), 0);
-            const totalSalus = Number(selectedDeudor.deuda_total) || 0;
-
-            if (pagadoAcumulado >= totalSalus && selectedDeudor.categoria !== 'deuda_cancelada') {
-                if (window.confirm(`¡Atención! Con este pago, el paciente ha cubierto la deuda total (${formatMoney(pagadoAcumulado)} de ${formatMoney(totalSalus)}).\n\n¿Desea cambiar la categoría a "Deuda Cancelada"?`)) {
+            if (deudaRestante <= 0 && selectedDeudor.categoria !== 'deuda_cancelada') {
+                if (window.confirm(`¡Atención! Con este pago, el paciente ha saldado la totalidad de la deuda.\n\n¿Desea cambiar la categoría a "Deuda Cancelada"?`)) {
                     await handleChangeCategoria('deuda_cancelada');
                 }
             }
