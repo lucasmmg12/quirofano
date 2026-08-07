@@ -270,8 +270,8 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                 if (a.usuario_facturo && !a.responsable_fac) {
                     updates.responsable_fac = a.usuario_facturo;
                 }
-                // Si SALUS marcó facturada=true y estado aún es Pendiente, actualizar
-                if (a.facturada && (!a.estado_fac || a.estado_fac === 'Pendiente')) {
+                // Si SALUS marcó facturada=true, el estado final debe ser Facturada
+                if (a.facturada && a.estado_fac !== 'Facturada') {
                     updates.estado_fac = 'Facturada';
                 }
                 return Object.keys(updates).length > 0 ? { ...a, ...updates } : a;
@@ -606,21 +606,36 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                 : null;
             const siblingAdmissionNumbers = siblingAdmissions ? siblingAdmissions.map(a => a.numero_admision) : null;
 
+            let computed_fecha_ingreso = alta.fecha_ingreso;
+            if (siblingAdmissions && siblingAdmissions.length > 0) {
+                for (const sib of siblingAdmissions) {
+                    if (!facturada && sib.facturada) facturada = sib.facturada;
+                    if (!responsable_fac && sib.responsable_fac) responsable_fac = sib.responsable_fac;
+                    if ((!estado_fac || estado_fac === 'Pendiente') && sib.estado_fac && sib.estado_fac !== 'Pendiente') {
+                        estado_fac = sib.estado_fac;
+                    }
+                    if (sib.fecha_ingreso && (!computed_fecha_ingreso || sib.fecha_ingreso < computed_fecha_ingreso)) {
+                        computed_fecha_ingreso = sib.fecha_ingreso;
+                    }
+                }
+            }
+
             // Detectar "Cruza Mes": internación que trasciende el mes seleccionado
             const [selY, selM] = selectedMonth.split('-').map(Number);
             const mesStart = `${selectedMonth}-01`;
-            const cruzaMes = alta.fecha_ingreso && alta.fecha_ingreso < mesStart && (!alta.fecha_alta || alta.fecha_alta >= mesStart);
+            const cruzaMes = computed_fecha_ingreso && computed_fecha_ingreso < mesStart && (!alta.fecha_alta || alta.fecha_alta >= mesStart);
             const prevMonth = selM === 1 ? 12 : selM - 1;
             const prevYear = selM === 1 ? selY - 1 : selY;
             const lastDayPrevMonth = new Date(prevYear, prevMonth, 0).getDate();
             const fechaCierreSugerida = cruzaMes ? `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(lastDayPrevMonth).padStart(2, '0')}` : null;
 
-            if (facturada && estado_fac === 'Devuelta') {
+            if (facturada && estado_fac !== 'Facturada') {
                 estado_fac = 'Facturada';
             }
 
             return {
                 ...alta, _responsableAdm: respAdm, _isSuspendida: isSuspendida,
+                fecha_ingreso: computed_fecha_ingreso,
                 _isDuplicate: isDuplicate, _duplicateAdmissions: duplicateAdmissions,
                 _isLatestAdmission: isLatestAdmission, _isObsoleteAdmission: isObsoleteAdmission,
                 _duplicateCount: isDuplicate ? dupInfo.count : 0,
