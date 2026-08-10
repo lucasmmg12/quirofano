@@ -156,7 +156,7 @@ export default function ActivosPanel({ currentUser, addToast }) {
                 </div>
             ) : (
                 <div style={{ 
-                    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', 
+                    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', 
                     gap: '20px' 
                 }}>
                     {paginatedEquipos.map(equipo => {

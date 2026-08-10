@@ -241,7 +241,7 @@ function App({ currentUser, onLogout }) {
         let isVisible = true;
 
         if (selectedModules.length === 1 && selectedModules[0] !== 'config') {
-            isVisible = selectedModules.includes(activeView) || ALWAYS_VISIBLE.includes(activeView);
+            isVisible = selectedModules.includes(activeView);
         } else {
             if (['config', 'manual', 'actividad_usuarios'].includes(activeView)) isVisible = true;
             else if (ALWAYS_VISIBLE.includes(activeView)) isVisible = true;
