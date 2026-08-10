@@ -1,22 +1,29 @@
 import { useState, useEffect } from 'react';
 import { 
-    Shield, MapPin, Activity, Calendar, Wrench, Download, AlertTriangle 
+    Shield, MapPin, Activity, Calendar, Wrench, Download, AlertTriangle, Image as ImageIcon, CheckCircle 
 } from 'lucide-react';
-import { fetchEquipoById, fetchIntervenciones } from '../services/activosService';
+import { fetchEquipoById, registrarIntervencion } from '../services/activosService';
 
 export default function EquipoAuditoriaView({ equipoId }) {
     const [equipo, setEquipo] = useState(null);
-    const [intervenciones, setIntervenciones] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    
+    // Form state
+    const [form, setForm] = useState({
+        tipo_tarea: 'Mantenimiento Preventivo', responsable: '', fecha_intervencion: new Date().toISOString().split('T')[0],
+        proximo_mantenimiento: '', estado_post: '', notas: ''
+    });
+    const [file, setFile] = useState(null);
+    const [saving, setSaving] = useState(false);
+    const [success, setSuccess] = useState(false);
 
     useEffect(() => {
         async function loadData() {
             try {
                 const eq = await fetchEquipoById(equipoId);
-                const intervs = await fetchIntervenciones(equipoId);
                 setEquipo(eq);
-                setIntervenciones(intervs || []);
+                setForm(prev => ({ ...prev, estado_post: eq.estado_operativo }));
             } catch (err) {
                 console.error(err);
                 setError('No se pudo cargar la información del equipo. Es posible que el enlace no sea válido.');
@@ -28,6 +35,24 @@ export default function EquipoAuditoriaView({ equipoId }) {
             loadData();
         }
     }, [equipoId]);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setSaving(true);
+        try {
+            await registrarIntervencion({
+                equipo_id: equipo.id,
+                ...form,
+                created_by: 'QR Publico'
+            }, file);
+            setSuccess(true);
+        } catch (err) {
+            console.error(err);
+            alert('Error al registrar la intervención: ' + err.message);
+        } finally {
+            setSaving(false);
+        }
+    };
 
     if (loading) {
         return <div style={{ display: 'flex', justifyContent: 'center', padding: '60px', color: '#64748b' }}>Cargando información del equipo...</div>;
@@ -43,29 +68,38 @@ export default function EquipoAuditoriaView({ equipoId }) {
         );
     }
 
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'Operativo': return { bg: '#dcfce7', text: '#16a34a' };
-            case 'Fuera de Servicio': return { bg: '#fee2e2', text: '#dc2626' };
-            case 'En Mantenimiento': return { bg: '#ffedd5', text: '#ea580c' };
-            case 'En Calibración': return { bg: '#e0e7ff', text: '#4f46e5' };
-            default: return { bg: '#f1f5f9', text: '#64748b' };
-        }
+    if (success) {
+        return (
+            <div style={{ padding: '60px 20px', textAlign: 'center', fontFamily: "'Inter', sans-serif" }}>
+                <CheckCircle size={64} color="#10b981" style={{ marginBottom: '16px' }} />
+                <h2 style={{ color: '#0f172a', margin: '0 0 12px' }}>¡Registro Exitoso!</h2>
+                <p style={{ color: '#64748b', marginBottom: '24px' }}>La intervención técnica se ha guardado correctamente.</p>
+                <button 
+                    onClick={() => { setSuccess(false); setFile(null); setForm(prev => ({...prev, notas: ''})); }}
+                    style={{ padding: '12px 24px', borderRadius: '8px', background: '#3b82f6', color: 'white', border: 'none', fontWeight: 600, cursor: 'pointer' }}
+                >
+                    Registrar otra intervención
+                </button>
+            </div>
+        );
+    }
+
+    const inputStyle = {
+        width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', 
+        fontSize: '0.9rem', marginBottom: '16px', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit'
     };
-    
-    const colors = getStatusColor(equipo.estado_operativo);
 
     return (
         <div style={{ 
-            fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
+            fontFamily: "'Inter', sans-serif",
             maxWidth: '600px', margin: '0 auto', background: '#f8fafc', minHeight: '100vh',
             paddingBottom: '40px'
         }}>
             {/* Header */}
             <div style={{ background: 'linear-gradient(135deg, #1e4078, #2563eb)', color: 'white', padding: '32px 24px', borderBottomLeftRadius: '24px', borderBottomRightRadius: '24px', boxShadow: '0 10px 25px -5px rgba(37,99,235,0.3)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                    <Shield size={28} />
-                    <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800 }}>Trazabilidad Oficial</h1>
+                    <Wrench size={28} />
+                    <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800 }}>Registro Técnico</h1>
                 </div>
                 
                 <h2 style={{ margin: '0 0 4px', fontSize: '1.6rem', fontWeight: 700 }}>{equipo.nombre}</h2>
@@ -80,82 +114,66 @@ export default function EquipoAuditoriaView({ equipoId }) {
                     }}>
                         <MapPin size={14} /> {equipo.activos_sedes?.nombre}
                     </span>
-                    <span style={{ 
-                        background: colors.bg, color: colors.text, padding: '6px 12px', borderRadius: '20px', 
-                        fontSize: '0.85rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                    }}>
-                        <Activity size={14} /> {equipo.estado_operativo}
-                    </span>
                 </div>
             </div>
 
-            {/* Timeline */}
+            {/* Formulario */}
             <div style={{ padding: '32px 24px' }}>
-                <h3 style={{ margin: '0 0 24px', fontSize: '1.1rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Wrench size={20} color="#64748b" /> Historial de Intervenciones
-                </h3>
+                <div style={{ background: 'white', padding: '24px', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)' }}>
+                    <h3 style={{ margin: '0 0 20px', fontSize: '1.2rem', color: '#1e293b' }}>Nueva Intervención</h3>
+                    
+                    <form onSubmit={handleSubmit}>
+                        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Tipo de Tarea *</label>
+                        <select required style={inputStyle} value={form.tipo_tarea} onChange={e => setForm({...form, tipo_tarea: e.target.value})}>
+                            <option value="Mantenimiento Preventivo">Mantenimiento Preventivo</option>
+                            <option value="Mantenimiento Correctivo">Mantenimiento Correctivo</option>
+                            <option value="Calibración">Calibración</option>
+                        </select>
 
-                {intervenciones.length === 0 ? (
-                    <div style={{ background: 'white', padding: '24px', borderRadius: '12px', textAlign: 'center', color: '#64748b', border: '1px solid #e2e8f0' }}>
-                        No hay intervenciones registradas.
-                    </div>
-                ) : (
-                    <div style={{ position: 'relative', paddingLeft: '16px' }}>
-                        {/* Línea vertical */}
-                        <div style={{ position: 'absolute', left: '7px', top: '10px', bottom: '10px', width: '2px', background: '#cbd5e1' }} />
-                        
-                        {intervenciones.map((intv, idx) => (
-                            <div key={intv.id} style={{ position: 'relative', marginBottom: '24px', background: 'white', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-                                {/* Punto de la línea */}
-                                <div style={{ position: 'absolute', left: '-13px', top: '24px', width: '10px', height: '10px', borderRadius: '50%', background: '#3b82f6', border: '2px solid white', boxShadow: '0 0 0 2px #3b82f6' }} />
-                                
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                                    <h4 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a' }}>{intv.tipo_tarea}</h4>
-                                    <span style={{ fontSize: '0.8rem', color: '#64748b', background: '#f1f5f9', padding: '4px 8px', borderRadius: '12px', fontWeight: 600 }}>
-                                        {intv.fecha_intervencion.split('-').reverse().join('/')}
-                                    </span>
-                                </div>
-                                
-                                <p style={{ margin: '0 0 12px', fontSize: '0.9rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <strong>Técnico:</strong> {intv.responsable}
-                                </p>
+                        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Estado Final del Equipo *</label>
+                        <select required style={inputStyle} value={form.estado_post} onChange={e => setForm({...form, estado_post: e.target.value})}>
+                            <option value="Operativo">Operativo (Quedó OK)</option>
+                            <option value="En Revisión">En Revisión (En progreso)</option>
+                            <option value="Fuera de Servicio (Taller)">Fuera de Servicio (Taller)</option>
+                        </select>
 
-                                {intv.notas && (
-                                    <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', borderLeft: '3px solid #cbd5e1', marginBottom: '12px' }}>
-                                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#475569', lineHeight: 1.5 }}>
-                                            {intv.notas}
-                                        </p>
-                                    </div>
-                                )}
+                        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Responsable / Técnico *</label>
+                        <input required type="text" placeholder="Ej. Juan Pérez - Empresa X" style={inputStyle} value={form.responsable} onChange={e => setForm({...form, responsable: e.target.value})} />
 
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '12px' }}>
-                                    {intv.estado_post && (
-                                        <div style={{ fontSize: '0.8rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <strong>Estado final:</strong> {intv.estado_post}
-                                        </div>
-                                    )}
-                                    {intv.proximo_mantenimiento && (
-                                        <div style={{ fontSize: '0.8rem', color: '#ea580c', display: 'flex', alignItems: 'center', gap: '4px', background: '#ffedd5', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
-                                            <Calendar size={12} /> Próx: {intv.proximo_mantenimiento.split('-').reverse().join('/')}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {intv.doc_url && (
-                                    <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
-                                        <a href={intv.doc_url} target="_blank" rel="noreferrer" style={{
-                                            display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem',
-                                            color: '#2563eb', textDecoration: 'none', fontWeight: 600
-                                        }}>
-                                            <Download size={16} /> Ver Certificado / Adjunto
-                                        </a>
-                                    </div>
-                                )}
+                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                            <div style={{ flex: '1 1 120px' }}>
+                                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Fecha *</label>
+                                <input required type="date" style={inputStyle} value={form.fecha_intervencion} onChange={e => setForm({...form, fecha_intervencion: e.target.value})} />
                             </div>
-                        ))}
-                    </div>
-                )}
+                            <div style={{ flex: '1 1 120px' }}>
+                                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Próx. Mantenimiento</label>
+                                <input type="date" style={inputStyle} value={form.proximo_mantenimiento} onChange={e => setForm({...form, proximo_mantenimiento: e.target.value})} />
+                            </div>
+                        </div>
+
+                        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Notas Técnicas</label>
+                        <textarea rows="3" placeholder="Detalles de la intervención..." style={{...inputStyle, resize: 'vertical'}} value={form.notas} onChange={e => setForm({...form, notas: e.target.value})}></textarea>
+
+                        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Adjuntar Certificado / Foto (Opcional)</label>
+                        <div style={{ border: '2px dashed #cbd5e1', borderRadius: '8px', padding: '16px', textAlign: 'center', marginBottom: '24px', background: '#f8fafc' }}>
+                            <input type="file" id="file-upload-qr" style={{ display: 'none' }} accept="image/*,.pdf" onChange={e => setFile(e.target.files[0])} />
+                            <label htmlFor="file-upload-qr" style={{ cursor: 'pointer', display: 'block' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#0f172a', fontWeight: 600 }}>
+                                    <ImageIcon size={20} color="#3b82f6" /> {file ? file.name : 'Seleccionar Archivo'}
+                                </div>
+                                {!file && <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#64748b' }}>Toca aquí para adjuntar o tomar foto</p>}
+                            </label>
+                        </div>
+
+                        <button type="submit" disabled={saving} style={{ 
+                            width: '100%', padding: '14px', borderRadius: '12px', background: '#2563eb', color: 'white', 
+                            border: 'none', fontWeight: 700, fontSize: '1rem', cursor: saving ? 'not-allowed' : 'pointer', 
+                            opacity: saving ? 0.7 : 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px'
+                        }}>
+                            {saving ? 'Registrando...' : 'Registrar Intervención'}
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
     );

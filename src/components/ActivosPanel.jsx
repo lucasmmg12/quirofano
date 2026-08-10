@@ -76,7 +76,7 @@ export default function ActivosPanel({ currentUser, addToast }) {
     };
 
     return (
-        <div className="content animate-fade-in" style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+        <div className="content animate-fade-in" style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', fontFamily: "'Inter', sans-serif" }}>
             
             {/* Header & Controls */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
@@ -159,12 +159,14 @@ export default function ActivosPanel({ currentUser, addToast }) {
                     display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', 
                     gap: '20px' 
                 }}>
-                    {paginatedEquipos.map(equipo => {
+                    {paginatedEquipos.map((equipo, index) => {
                         const colors = getStatusColor(equipo.estado_operativo);
+                        const cardBg = index % 2 === 0 ? 'white' : '#f0f9ff';
                         return (
-                            <div key={equipo.id} style={{
-                                background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0',
-                                overflow: 'hidden', display: 'flex', flexDirection: 'column',
+                            <div key={equipo.id} style={{ 
+                                background: cardBg, borderRadius: '16px', border: '1px solid #e2e8f0',
+                                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', overflow: 'hidden',
+                                display: 'flex', flexDirection: 'column',
                                 transition: 'box-shadow 0.2s',
                                 ':hover': { boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)' }
                             }}>
@@ -544,20 +546,24 @@ function QRModal({ equipo, onClose }) {
 
                 {/* Etiqueta imprimible oculta en pantalla */}
                 <div className="print-area print-only">
-                    <div className="print-page">
-                        <div className="print-patient-name" style={{ marginBottom: '4mm' }}>Sanatorio Argentino</div>
-                        <div className="print-os-line" style={{ justifyContent: 'center', fontSize: '12pt', paddingBottom: '4mm', borderBottom: '2px solid #000', marginBottom: '8mm' }}>
-                            GESTIÓN DE ACTIVOS CMMS
+                    <div className="print-page" style={{ padding: '10mm', fontFamily: "'Inter', sans-serif", border: '2px solid #1e4078', borderRadius: '4mm' }}>
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4mm', marginBottom: '6mm', borderBottom: '3px solid #2563eb', paddingBottom: '4mm' }}>
+                            <img src="/logosanatorio.png" alt="Sanatorio Argentino" style={{ height: '14mm', objectFit: 'contain' }} />
+                            <div style={{ textAlign: 'left', color: '#1e4078' }}>
+                                <div style={{ fontSize: '14pt', fontWeight: 800, lineHeight: 1 }}>SANATORIO ARGENTINO</div>
+                                <div style={{ fontSize: '9pt', fontWeight: 600, opacity: 0.8 }}>GESTIÓN DE ACTIVOS CMMS</div>
+                            </div>
                         </div>
                         
                         <div style={{ textAlign: 'center' }}>
-                            <h2 style={{ fontSize: '18pt', margin: '0 0 2mm' }}>{equipo.nombre}</h2>
-                            <h3 style={{ fontSize: '14pt', margin: '0 0 10mm', color: '#444' }}>{equipo.marca} {equipo.modelo ? `- ${equipo.modelo}` : ''}</h3>
+                            <h2 style={{ fontSize: '16pt', margin: '0 0 2mm', color: '#0f172a', fontWeight: 800 }}>{equipo.nombre}</h2>
+                            <h3 style={{ fontSize: '12pt', margin: '0 0 8mm', color: '#475569', fontWeight: 600 }}>{equipo.marca} {equipo.modelo ? `- ${equipo.modelo}` : ''}</h3>
                             
-                            <QRCodeSVG value={qrUrl} size={250} level="H" />
+                            <QRCodeSVG value={qrUrl} size={220} level="H" />
                             
-                            <p style={{ marginTop: '10mm', fontSize: '12pt', color: '#666' }}>
-                                Escanee el código para acceder al historial técnico.
+                            <p style={{ marginTop: '8mm', fontSize: '11pt', color: '#2563eb', fontWeight: 700 }}>
+                                Escanee el código para registrar una intervención técnica.
                             </p>
                         </div>
                     </div>
