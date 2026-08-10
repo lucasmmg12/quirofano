@@ -321,11 +321,7 @@ export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
 
         if (toDate) query = query.lte('fecha_ingreso', toDate);
         if (fromDate) {
-            if (toDate) {
-                query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},and(fecha_alta.is.null,fecha_ingreso.lte.${toDate})`);
-            } else {
-                query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},fecha_alta.is.null`);
-            }
+            query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate}`);
         }
         if (search) {
             const sanitized = search
