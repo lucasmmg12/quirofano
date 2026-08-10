@@ -312,7 +312,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
 
                 {/* ─── Items finales ─── */}
                 {[
-                    ...(currentUser?.usuario === 'lmarinero' ? [{ id: 'activos', label: 'Gestión de Activos', icon: Wrench }] : []),
+                    { id: 'activos', label: 'Gestión de Activos', icon: Wrench },
                     { id: 'beto_analytics', label: 'Simon Analytics', icon: Brain },
                     ...(currentUser?.usuario === 'lmarinero' ? [{ id: 'actividad_usuarios', label: 'Actividad Usuarios', icon: Activity }] : []),
                     { id: 'manual', label: 'Manual del Sistema', icon: BookMarked },
