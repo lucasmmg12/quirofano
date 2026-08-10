@@ -14,6 +14,8 @@ export default function ActivosPanel({ currentUser, addToast }) {
     // Filtros
     const [searchTerm, setSearchTerm] = useState('');
     const [filterSede, setFilterSede] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const pageSize = 50;
 
     // Modals
     const [showAltaModal, setShowAltaModal] = useState(false);
@@ -48,6 +50,15 @@ export default function ActivosPanel({ currentUser, addToast }) {
             return matchSearch && matchSede;
         });
     }, [equipos, searchTerm, filterSede]);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, filterSede]);
+
+    const paginatedEquipos = useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return filteredEquipos.slice(start, start + pageSize);
+    }, [filteredEquipos, currentPage, pageSize]);
 
     const getStatusColor = (status) => {
         switch (status) {
@@ -143,7 +154,7 @@ export default function ActivosPanel({ currentUser, addToast }) {
                     display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', 
                     gap: '20px' 
                 }}>
-                    {filteredEquipos.map(equipo => {
+                    {paginatedEquipos.map(equipo => {
                         const colors = getStatusColor(equipo.estado_operativo);
                         return (
                             <div key={equipo.id} style={{
@@ -198,6 +209,29 @@ export default function ActivosPanel({ currentUser, addToast }) {
                             </div>
                         );
                     })}
+                </div>
+            )}
+
+            {/* Controles de Paginación */}
+            {!loading && filteredEquipos.length > pageSize && (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px', marginTop: '24px' }}>
+                    <button 
+                        disabled={currentPage === 1}
+                        onClick={() => setCurrentPage(prev => prev - 1)}
+                        style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: currentPage === 1 ? '#f8fafc' : 'white', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', fontWeight: 600, color: '#475569' }}
+                    >
+                        Anterior
+                    </button>
+                    <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 500 }}>
+                        Página {currentPage} de {Math.ceil(filteredEquipos.length / pageSize)}
+                    </span>
+                    <button 
+                        disabled={currentPage >= Math.ceil(filteredEquipos.length / pageSize)}
+                        onClick={() => setCurrentPage(prev => prev + 1)}
+                        style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: currentPage >= Math.ceil(filteredEquipos.length / pageSize) ? '#f8fafc' : 'white', cursor: currentPage >= Math.ceil(filteredEquipos.length / pageSize) ? 'not-allowed' : 'pointer', fontWeight: 600, color: '#475569' }}
+                    >
+                        Siguiente
+                    </button>
                 </div>
             )}
 
