@@ -543,6 +543,10 @@ a {
   color: var(--neutral-700);
 }
 
+.print-only {
+  display: none !important;
+}
+
 /* ===== PRINT STYLES ===== */
 @media print {
   body * {
@@ -559,6 +563,7 @@ a {
     left: 0;
     top: 0;
     width: 100%;
+    display: block !important;
   }
 
   .print-page {

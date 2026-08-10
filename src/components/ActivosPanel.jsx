@@ -460,6 +460,27 @@ function QRModal({ equipo, onClose }) {
                 >
                     Imprimir Etiqueta
                 </button>
+
+                {/* Etiqueta imprimible oculta en pantalla */}
+                <div className="print-area print-only">
+                    <div className="print-page">
+                        <div className="print-patient-name" style={{ marginBottom: '4mm' }}>Sanatorio Argentino</div>
+                        <div className="print-os-line" style={{ justifyContent: 'center', fontSize: '12pt', paddingBottom: '4mm', borderBottom: '2px solid #000', marginBottom: '8mm' }}>
+                            GESTIÓN DE ACTIVOS CMMS
+                        </div>
+                        
+                        <div style={{ textAlign: 'center' }}>
+                            <h2 style={{ fontSize: '18pt', margin: '0 0 2mm' }}>{equipo.nombre}</h2>
+                            <h3 style={{ fontSize: '14pt', margin: '0 0 10mm', color: '#444' }}>{equipo.marca} {equipo.modelo ? `- ${equipo.modelo}` : ''}</h3>
+                            
+                            <QRCodeSVG value={qrUrl} size={250} level="H" />
+                            
+                            <p style={{ marginTop: '10mm', fontSize: '12pt', color: '#666' }}>
+                                Escanee el código para acceder al historial técnico.
+                            </p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     );
