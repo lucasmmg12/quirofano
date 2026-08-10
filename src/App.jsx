@@ -56,6 +56,8 @@ import WelcomeOnboarding from './components/WelcomeOnboarding.jsx';
 import UserActivityPanel from './components/UserActivityPanel.jsx';
 import ModuleOnboarding from './components/ModuleOnboarding.jsx';
 import FrojoCelebration from './components/FrojoCelebration.jsx';
+import ActivosPanel from './components/ActivosPanel.jsx';
+import EquipoAuditoriaView from './components/EquipoAuditoriaView.jsx';
 import { startSession, endSession, trackModuleChange } from './lib/activityTracker';
 import { supabase } from './lib/supabase';
 import './App.css';
@@ -82,6 +84,12 @@ function AppRoot() {
     // Public route for guarantees
     if (path === '/recepcion/garantias') {
         return <PublicRecepcionView />;
+    }
+
+    // Public route for Equipment CMMS QR audit
+    if (path.startsWith('/recepcion/equipo/')) {
+        const equipoId = path.split('/recepcion/equipo/')[1];
+        return <EquipoAuditoriaView equipoId={equipoId} />;
     }
 
     // Lab Portal routes (authenticated) — /lab/aguero, /lab/cedap, /lab/cuyo
@@ -147,6 +155,7 @@ const VIEW_LABELS = {
     documentos: 'Documentos',
     pacientes: 'Pacientes',
     actividad_usuarios: 'Actividad de Usuarios',
+    activos: 'Gestión de Activos',
 };
 
 function App({ currentUser, onLogout }) {
@@ -738,6 +747,10 @@ function App({ currentUser, onLogout }) {
                             }}
                         />
                     </div>
+                )}
+
+                {activeView === 'activos' && (
+                    <ActivosPanel currentUser={currentUser} addToast={addToast} />
                 )}
 
                 {activeView === 'historial' && (

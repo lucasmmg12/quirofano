@@ -3,7 +3,7 @@ import {
     ClipboardList, History, BookOpen, Settings, PanelLeftClose, PanelLeft,
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
     ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain, Users, PackageCheck, Microscope,
-    Activity, FileSpreadsheet, BookMarked, FolderOpen, Receipt, FileCheck, Shield,
+    Activity, FileSpreadsheet, BookMarked, FolderOpen, Receipt, FileCheck, Shield, Wrench,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '', onOpenBeto, currentUser, selectedModules }) {
@@ -303,6 +303,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
 
                 {/* ─── Items finales ─── */}
                 {[
+                    ...(currentUser?.usuario === 'lmarinero' ? [{ id: 'activos', label: 'Gestión de Activos', icon: Wrench }] : []),
                     { id: 'beto_analytics', label: 'Simon Analytics', icon: Brain },
                     ...(currentUser?.usuario === 'lmarinero' ? [{ id: 'actividad_usuarios', label: 'Actividad Usuarios', icon: Activity }] : []),
                     { id: 'manual', label: 'Manual del Sistema', icon: BookMarked },
