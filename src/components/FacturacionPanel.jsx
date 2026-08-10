@@ -2304,6 +2304,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                                                         'Parcial':      { label: 'Parcial', color: '#0EA5E9', bg: '#F0F9FF', icon: '✂️' },
                                                                                         'Facturada': { label: 'Facturada', color: '#10B981', bg: '#ECFDF5', icon: '✅' },
                                                                                         'Devuelta': { label: 'Devuelta', color: '#EF4444', bg: '#FEF2F2', icon: '🔙' },
+                                                                                        'Suspendida': { label: 'Suspendida', color: '#64748B', bg: '#F8FAFC', icon: '🛑' },
                                                                                     };
                                                                                     const sibCfg = sib.estado_fac ? (sibEstados[sib.estado_fac] || sibEstados['Pendiente']) : (sib.estado ? { label: sib.estado, color: '#6B7280', bg: '#F3F4F6', icon: '📋' } : null);
                                                                                     return (
