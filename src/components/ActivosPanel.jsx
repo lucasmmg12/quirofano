@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
     Search, Plus, QrCode, Wrench, Shield, CheckCircle, AlertTriangle, 
-    X, AlertCircle, RefreshCw, Upload, Image as ImageIcon, MapPin
+    X, AlertCircle, RefreshCw, Upload, Image as ImageIcon, MapPin, Pencil
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { fetchSedes, fetchEquipos, crearEquipo, registrarIntervencion } from '../services/activosService';
+import { fetchSedes, fetchEquipos, crearEquipo, actualizarEquipo, registrarIntervencion } from '../services/activosService';
 
 export default function ActivosPanel({ currentUser, addToast }) {
     const [equipos, setEquipos] = useState([]);
@@ -19,6 +19,7 @@ export default function ActivosPanel({ currentUser, addToast }) {
 
     // Modals
     const [showAltaModal, setShowAltaModal] = useState(false);
+    const [editEquipo, setEditEquipo] = useState(null);
     const [showQRModal, setShowQRModal] = useState(null); // equipo id
     const [showIntervencionModal, setShowIntervencionModal] = useState(null); // equipo id
 
@@ -205,6 +206,18 @@ export default function ActivosPanel({ currentUser, addToast }) {
                                     >
                                         <QrCode size={16} /> QR
                                     </button>
+                                    <button 
+                                        onClick={() => setEditEquipo(equipo)}
+                                        style={{ 
+                                            background: 'white', border: '1px solid #cbd5e1', 
+                                            borderRadius: '6px', padding: '8px 12px', fontSize: '0.8rem', fontWeight: 600,
+                                            color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px',
+                                            cursor: 'pointer'
+                                        }}
+                                        title="Editar equipo"
+                                    >
+                                        <Pencil size={16} />
+                                    </button>
                                 </div>
                             </div>
                         );
@@ -235,13 +248,14 @@ export default function ActivosPanel({ currentUser, addToast }) {
                 </div>
             )}
 
-            {/* Modal Alta Equipo */}
-            {showAltaModal && (
+            {/* Modal Alta/Edición Equipo */}
+            {(showAltaModal || editEquipo) && (
                 <AltaEquipoModal 
                     sedes={sedes} 
                     currentUser={currentUser}
-                    onClose={() => setShowAltaModal(false)} 
-                    onSuccess={() => { setShowAltaModal(false); loadData(); }}
+                    equipoToEdit={editEquipo}
+                    onClose={() => { setShowAltaModal(false); setEditEquipo(null); }} 
+                    onSuccess={() => { setShowAltaModal(false); setEditEquipo(null); loadData(); }}
                     addToast={addToast}
                 />
             )}
@@ -269,10 +283,17 @@ export default function ActivosPanel({ currentUser, addToast }) {
 }
 
 // ---------------------------
-// Alta Equipo Modal
+// Alta / Edición Equipo Modal
 // ---------------------------
-function AltaEquipoModal({ sedes, currentUser, onClose, onSuccess, addToast }) {
-    const [form, setForm] = useState({
+function AltaEquipoModal({ sedes, currentUser, equipoToEdit, onClose, onSuccess, addToast }) {
+    const [form, setForm] = useState(equipoToEdit ? {
+        nombre: equipoToEdit.nombre || '', 
+        marca: equipoToEdit.marca || '', 
+        modelo: equipoToEdit.modelo || '', 
+        sede_id: equipoToEdit.sede_id || '', 
+        estado_operativo: equipoToEdit.estado_operativo || 'Operativo', 
+        observaciones: equipoToEdit.observaciones || ''
+    } : {
         nombre: '', marca: '', modelo: '', sede_id: '', estado_operativo: 'Operativo', observaciones: ''
     });
     const [saving, setSaving] = useState(false);
@@ -281,14 +302,19 @@ function AltaEquipoModal({ sedes, currentUser, onClose, onSuccess, addToast }) {
         e.preventDefault();
         setSaving(true);
         try {
-            await crearEquipo({
-                ...form,
-                created_by: currentUser.usuario || currentUser.nombre
-            });
-            addToast?.('Equipo dado de alta con éxito', 'success');
+            if (equipoToEdit) {
+                await actualizarEquipo(equipoToEdit.id, { ...form });
+                addToast('Equipo actualizado con éxito', 'success');
+            } else {
+                await crearEquipo({
+                    ...form,
+                    created_by: currentUser.id || currentUser.nombre
+                });
+                addToast('Equipo registrado con éxito', 'success');
+            }
             onSuccess();
-        } catch (err) {
-            addToast?.('Error al crear equipo: ' + err.message, 'error');
+        } catch (error) {
+            addToast('Error al guardar el equipo', 'error');
         } finally {
             setSaving(false);
         }
@@ -303,7 +329,7 @@ function AltaEquipoModal({ sedes, currentUser, onClose, onSuccess, addToast }) {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ background: 'white', borderRadius: '16px', width: '100%', maxWidth: '500px', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }} className="animate-fade-in">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                    <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#1e293b' }}>Alta de Nuevo Equipo</h3>
+                    <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#1e293b' }}>{equipoToEdit ? 'Editar Equipo' : 'Alta de Nuevo Equipo'}</h3>
                     <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}><X size={20} /></button>
                 </div>
                 
@@ -338,10 +364,12 @@ function AltaEquipoModal({ sedes, currentUser, onClose, onSuccess, addToast }) {
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Observaciones</label>
                     <textarea rows={3} style={{...inputStyle, resize: 'none'}} value={form.observaciones} onChange={e => setForm({...form, observaciones: e.target.value})} />
 
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
-                        <button type="button" onClick={onClose} style={{ padding: '10px 16px', borderRadius: '8px', background: '#f1f5f9', color: '#475569', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
-                        <button type="submit" disabled={saving} style={{ padding: '10px 16px', borderRadius: '8px', background: '#2563eb', color: 'white', border: 'none', fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
-                            {saving ? 'Guardando...' : 'Registrar Equipo'}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
+                        <button type="button" onClick={onClose} style={{ padding: '10px 16px', borderRadius: '8px', background: '#f1f5f9', color: '#475569', border: 'none', fontWeight: 600, cursor: 'pointer' }}>
+                            Cancelar
+                        </button>
+                        <button type="submit" disabled={saving} style={{ padding: '10px 16px', borderRadius: '8px', background: '#0ea5e9', color: 'white', border: 'none', fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.7 : 1 }}>
+                            {saving ? 'Guardando...' : (equipoToEdit ? 'Guardar Cambios' : 'Registrar Equipo')}
                         </button>
                     </div>
                 </form>

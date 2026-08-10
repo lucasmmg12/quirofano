@@ -60,6 +60,25 @@ export async function crearEquipo(equipoData) {
     return data;
 }
 
+export async function actualizarEquipo(id, equipoData) {
+    const { data, error } = await supabase
+        .from('activos_equipos')
+        .update({
+            nombre: equipoData.nombre,
+            marca: equipoData.marca,
+            modelo: equipoData.modelo,
+            sede_id: equipoData.sede_id,
+            estado_operativo: equipoData.estado_operativo,
+            observaciones: equipoData.observaciones
+        })
+        .eq('id', id)
+        .select()
+        .single();
+    
+    if (error) throw new Error(error.message);
+    return data;
+}
+
 export async function actualizarEstadoEquipo(equipoId, estado) {
     const { error } = await supabase
         .from('activos_equipos')
