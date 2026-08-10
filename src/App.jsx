@@ -234,6 +234,31 @@ function App({ currentUser, onLogout }) {
         trackModuleChange(view, VIEW_LABELS[view] || view);
     }, []);
 
+    // Enforce module access control on activeView
+    useEffect(() => {
+        if (!selectedModules || selectedModules.length === 0) return;
+        const ALWAYS_VISIBLE = ['inicio'];
+        let isVisible = true;
+
+        if (selectedModules.length === 1 && selectedModules[0] !== 'config') {
+            isVisible = selectedModules.includes(activeView) || ALWAYS_VISIBLE.includes(activeView);
+        } else {
+            if (['config', 'manual', 'actividad_usuarios'].includes(activeView)) isVisible = true;
+            else if (ALWAYS_VISIBLE.includes(activeView)) isVisible = true;
+            else isVisible = selectedModules.includes(activeView);
+        }
+
+        if (activeView === 'activos' && !['lmarinero', 'soribarale'].includes(currentUser?.usuario)) {
+            isVisible = false;
+        }
+
+        if (!isVisible) {
+            const firstAvailable = selectedModules[0] || 'inicio';
+            setActiveView(firstAvailable);
+        }
+    }, [selectedModules, activeView, currentUser, setActiveView]);
+
+
     // Patient data
     const [patientData, setPatientData] = useState({
         nombre: '',
