@@ -265,6 +265,27 @@ Cada biopsia tiene una "acción" que se determina cruzando Obra Social + Laborat
 - \`iniciales\` (text)
 - \`activo\` (boolean)
 
+### \`activos\` (Equipamiento médico y mantenimiento)
+- \`id\` (uuid PK)
+- \`codigo_qr\` (text UNIQUE) — UUID corto del QR
+- \`nombre\` (text)
+- \`marca\` (text)
+- \`modelo\` (text)
+- \`nro_serie\` (text)
+- \`sede\` (text)
+- \`servicio\` (text)
+- \`estado\` (text) — Operativo, En Mantenimiento, Baja
+- \`frecuencia_mantenimiento\` (integer) — Días
+- \`proximo_mantenimiento\` (date)
+
+### \`activos_movimientos\` (Historial de activos)
+- \`id\` (uuid PK)
+- \`activo_id\` (uuid FK)
+- \`tipo\` (text) — MANTENIMIENTO, TRASLADO, ALTA, BAJA
+- \`descripcion\` (text)
+- \`usuario\` (text)
+- \`fecha\` (timestamptz)
+
 ### \`consultas_guardia\` (Consultas de guardia ambulatorias — ~5800 por mes)
 - \`id\` (bigint PK)
 - \`import_id\` (uuid FK → consultas_imports)
@@ -329,6 +350,7 @@ Sistema integral de administración del Sanatorio Argentino. Módulos del menú 
 11. **🔬 Laboratorios** — Biopsias de anatomía patológica por laboratorio
 12. **📊 Consultas Guardia** — Estadísticas de consultas ambulatorias de guardia. Datos por especialidad, obra social, día/semana. ~5800 consultas/mes. Tabla: consultas_guardia.
 13. **🔍 Auditoría H.C.** — Auditoría de Historias Clínicas (auditoría de planillas Excel, detección de fecha de alta, resaltado de celdas vacías de alta y remoción de columnas __EMPTY). NOTA: Este módulo procesa las planillas temporalmente en memoria, no tiene tablas en la base de datos.
+14. **🛠️ Activos** — Gestión de inventario de equipos (monitores, mesas de anestesia), estados de mantenimiento, e historiales. Impresión de etiquetas QR para escaneo público.
 
 ## CÓMO BUSCAR DATOS
 - Usá la tool \`query_database\` para CUALQUIER consulta de datos. Generá SQL SELECT válido.

@@ -925,6 +925,23 @@ export async function generateManualPDF() {
             ], yn4);
         }
 
+        // ── SECCIÓN 4.20: GESTIÓN DE ACTIVOS Y MANTENIMIENTO ───────────────────────
+        {
+            let yn4 = addPage(doc, counters);
+            tocEntries.push({ titulo: '   4.20  Gestión de Activos y Mantenimiento', page: counters.page });
+            yn4 = subTitle(doc, '4.20  Gestión de Activos y Mantenimiento (ActivosPanel)', yn4);
+            yn4 = para(doc, 'El módulo de Gestión de Activos permite llevar un inventario detallado de todos los equipos del Sanatorio (monitores, mesas de anestesia, bombas, etc.), administrar mantenimientos preventivos/correctivos, y generar etiquetas QR para acceso rápido al historial de cada equipo.', yn4 + 1);
+            yn4 = bulletList(doc, [
+                'Inventario completo de equipos con marca, modelo, número de serie y sede.',
+                'Estados operativos: Operativo, En Mantenimiento, Baja.',
+                'Generación e impresión de Etiquetas QR en formato A5 oficial para pegar en los equipos.',
+                'Al escanear el QR con un celular, se abre una vista pública con el manual y el historial de mantenimiento.',
+                'Historial de movimientos y mantenimientos por equipo.',
+                'Visualización de manuales PDF asociados al equipo.',
+                'Paginación de a 50 equipos para optimizar el rendimiento visual.',
+            ], yn4);
+        }
+
         // ── SECCIÓN 5: INTEGRACIONES EXTERNAS ────────────────────────────────
         {
             let y2 = addPage(doc, counters);

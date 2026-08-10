@@ -10,10 +10,19 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const isFrojo = currentUser?.usuario === 'frojo';
 
     // Module visibility: null/empty = show all, array = only show listed + always-visible
-    const ALWAYS_VISIBLE = ['inicio', 'config', 'manual', 'actividad_usuarios', 'activos'];
+    const ALWAYS_VISIBLE = ['inicio'];
     const isModuleVisible = (id) => {
         if (!selectedModules || selectedModules.length === 0) return true;
         if (ALWAYS_VISIBLE.includes(id)) return true;
+        
+        // Hide config and manual for users strictly limited to a single specific module (e.g., Soraya with 'activos')
+        if (selectedModules.length === 1 && selectedModules[0] !== 'config') {
+            return selectedModules.includes(id);
+        }
+        
+        // Normal users always see config, manual, and actividad_usuarios
+        if (['config', 'manual', 'actividad_usuarios'].includes(id)) return true;
+        
         return selectedModules.includes(id);
     };
     const [pedidosOpen, setPedidosOpen] = useState(false);
