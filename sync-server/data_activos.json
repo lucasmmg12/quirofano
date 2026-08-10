@@ -1,0 +1,149 @@
+[
+  {
+    "sede_id": "san-luis",
+    "nombre": "CONTADOR HEMATOLOGICO",
+    "marca": "MINDRAY",
+    "modelo": "BC 780",
+    "observaciones": "Mantenimiento a cargo de: GEMATEC, ROBERTO ZANETTI"
+  },
+  {
+    "sede_id": "san-luis",
+    "nombre": "AUTOANALIZADOR QUIMICA CLINICA",
+    "marca": "MINDRAY",
+    "modelo": "BS 360",
+    "observaciones": ""
+  },
+  {
+    "sede_id": "san-luis",
+    "nombre": "AUTOANALIZADOR HEMOCULTIVOS",
+    "marca": "TDR",
+    "modelo": "X 030",
+    "observaciones": "Nº de serie: X030170605003"
+  },
+  {
+    "sede_id": "san-luis",
+    "nombre": "AUTOANALIZADOR HEMOCULTIVOS",
+    "marca": "TDR",
+    "modelo": "X 030",
+    "observaciones": "Nº de serie: X030201021013, Fab. 21/10/2020"
+  },
+  {
+    "sede_id": "san-luis",
+    "nombre": "ANALIZADOR DE GASES EN SANGRE",
+    "marca": "RADIOMETER",
+    "modelo": "ABL 90 FLEX",
+    "observaciones": "Nº de serie: R0893N001"
+  },
+  {
+    "sede_id": "san-luis",
+    "nombre": "ANALIZADOR MULTIPARAMETRICO DE GASES EN SANGRE",
+    "marca": "ROCHE",
+    "modelo": "COBAS B221",
+    "observaciones": "Nº SERIE 28697"
+  },
+  {
+    "sede_id": "san-luis",
+    "nombre": "AUTOCLAVE",
+    "marca": "",
+    "modelo": "",
+    "observaciones": ""
+  },
+  {
+    "sede_id": "san-luis",
+    "nombre": "EXTRACTOR AUTOMATIZADO DE ACIDOS NUCLEICOS",
+    "marca": "RBC Bioscience",
+    "modelo": "MagCore Plus II",
+    "observaciones": ""
+  },
+  {
+    "sede_id": "san-luis",
+    "nombre": "TERMOCICLADOR",
+    "marca": "ANATOLIA",
+    "modelo": "MONTANIA 4896",
+    "observaciones": ""
+  },
+  {
+    "sede_id": "san-luis",
+    "nombre": "CABINA DE SEGURIDAD BIOLOGICA",
+    "marca": "BIOBASE",
+    "modelo": "BSC-1300-IIB2-X",
+    "observaciones": "Clase II B2, Nº serie: BSC-13B1901006"
+  },
+  {
+    "sede_id": "san-luis",
+    "nombre": "ANALIZADOR DE ENSAYOS INMUNOQUIICOS",
+    "marca": "ROCHE",
+    "modelo": "COBAS E 411",
+    "observaciones": "Nº 65P7-10"
+  },
+  {
+    "sede_id": "san-luis",
+    "nombre": "Analizador por inmunoensayo de fluorescencia",
+    "marca": "ICHROMA",
+    "modelo": "II",
+    "observaciones": "IR2RG234958"
+  },
+  {
+    "sede_id": "san-luis",
+    "nombre": "COBAS h 232",
+    "marca": "ROCHE",
+    "modelo": "COBAS h 232",
+    "observaciones": ""
+  },
+  {
+    "sede_id": "san-luis",
+    "nombre": "Coagulómetro automatizado",
+    "marca": "Sysmex",
+    "modelo": "CA600 series",
+    "observaciones": ""
+  },
+  {
+    "sede_id": "perez-navas",
+    "nombre": "ANALIZADOR AUTOMATICO PARA HEMATOLOGIA",
+    "marca": "MINDRAY",
+    "modelo": "BC 760",
+    "observaciones": ""
+  },
+  {
+    "sede_id": "perez-navas",
+    "nombre": "AUTOANALIZADOR QUIMICA CLINICA",
+    "marca": "MINDRAY",
+    "modelo": "BS380",
+    "observaciones": ""
+  },
+  {
+    "sede_id": "perez-navas",
+    "nombre": "SISTEMA AUTOMATICO DE ELECTROFORESIS DE PROTEINAS",
+    "marca": "",
+    "modelo": "MINI LITE",
+    "observaciones": ""
+  },
+  {
+    "sede_id": "perez-navas",
+    "nombre": "ANALIZADOR DE ELECTROLITOS",
+    "marca": "DIESTRO",
+    "modelo": "103AP",
+    "observaciones": ""
+  },
+  {
+    "sede_id": "perez-navas",
+    "nombre": "ANALIZADOR DE INMUNOENSAYOS",
+    "marca": "ARCHITECT",
+    "modelo": "i1000SR",
+    "observaciones": ""
+  },
+  {
+    "sede_id": "perez-navas",
+    "nombre": "ANALIZADOR CLINICO PARA ELISA",
+    "marca": "ALEGRIA",
+    "modelo": "",
+    "observaciones": ""
+  },
+  {
+    "sede_id": "perez-navas",
+    "nombre": "Analizador de electroquimioluminiscencia",
+    "marca": "COBAS",
+    "modelo": "E 411",
+    "observaciones": ""
+  }
+]
