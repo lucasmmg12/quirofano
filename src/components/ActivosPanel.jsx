@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
     Search, Plus, QrCode, Wrench, Shield, CheckCircle, AlertTriangle, 
-    X, AlertCircle, RefreshCw, Upload, Image as ImageIcon, MapPin, Pencil
+    X, AlertCircle, RefreshCw, Upload, Image as ImageIcon, MapPin, Pencil, History
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { fetchSedes, fetchEquipos, crearEquipo, actualizarEquipo, registrarIntervencion } from '../services/activosService';
+import { fetchSedes, fetchEquipos, crearEquipo, actualizarEquipo, registrarIntervencion, fetchIntervenciones } from '../services/activosService';
 
 export default function ActivosPanel({ currentUser, addToast }) {
     const [equipos, setEquipos] = useState([]);
@@ -22,6 +22,7 @@ export default function ActivosPanel({ currentUser, addToast }) {
     const [editEquipo, setEditEquipo] = useState(null);
     const [showQRModal, setShowQRModal] = useState(null); // equipo id
     const [showIntervencionModal, setShowIntervencionModal] = useState(null); // equipo id
+    const [showHistorialModal, setShowHistorialModal] = useState(null); // equipo id
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -64,8 +65,11 @@ export default function ActivosPanel({ currentUser, addToast }) {
     const getStatusColor = (status) => {
         switch (status) {
             case 'Operativo': return { bg: '#dcfce7', text: '#16a34a' };
+            case 'Operativo (Quedó OK)': return { bg: '#dcfce7', text: '#16a34a' };
             case 'Fuera de Servicio': return { bg: '#fee2e2', text: '#dc2626' };
+            case 'Fuera de Servicio (Taller)': return { bg: '#fee2e2', text: '#dc2626' };
             case 'En Mantenimiento': return { bg: '#ffedd5', text: '#ea580c' };
+            case 'En Revisión': return { bg: '#ffedd5', text: '#ea580c' };
             case 'En Calibración': return { bg: '#e0e7ff', text: '#4f46e5' };
             default: return { bg: '#f1f5f9', text: '#64748b' };
         }
@@ -184,6 +188,18 @@ export default function ActivosPanel({ currentUser, addToast }) {
                                 </div>
                                 <div style={{ background: '#f8fafc', padding: '12px 20px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                                     <button 
+                                        onClick={() => setShowHistorialModal(equipo)}
+                                        style={{ 
+                                            background: 'white', border: '1px solid #cbd5e1', 
+                                            borderRadius: '6px', padding: '8px 12px', fontSize: '0.8rem', fontWeight: 600,
+                                            color: '#0ea5e9', display: 'flex', alignItems: 'center', gap: '6px',
+                                            cursor: 'pointer'
+                                        }}
+                                        title="Ver historial de intervenciones"
+                                    >
+                                        <History size={16} /> Historial
+                                    </button>
+                                    <button 
                                         onClick={() => setShowIntervencionModal(equipo)}
                                         style={{ 
                                             flex: 1, background: 'white', border: '1px solid #cbd5e1', 
@@ -278,6 +294,10 @@ export default function ActivosPanel({ currentUser, addToast }) {
                     addToast={addToast}
                 />
             )}
+            
+            {showHistorialModal && (
+                <HistorialModal equipo={showHistorialModal} onClose={() => setShowHistorialModal(null)} />
+            )}
         </div>
     );
 }
@@ -357,8 +377,8 @@ function AltaEquipoModal({ sedes, currentUser, equipoToEdit, onClose, onSuccess,
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Estado Inicial *</label>
                     <select required style={inputStyle} value={form.estado_operativo} onChange={e => setForm({...form, estado_operativo: e.target.value})}>
                         <option value="Operativo">Operativo</option>
-                        <option value="En Calibración">En Calibración / Pruebas</option>
-                        <option value="Fuera de Servicio">Fuera de Servicio</option>
+                        <option value="En Revisión">En Revisión</option>
+                        <option value="Fuera de Servicio (Taller)">Fuera de Servicio (Taller)</option>
                     </select>
 
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Observaciones</label>
@@ -383,7 +403,7 @@ function AltaEquipoModal({ sedes, currentUser, equipoToEdit, onClose, onSuccess,
 // ---------------------------
 function IntervencionModal({ equipo, currentUser, onClose, onSuccess, addToast }) {
     const [form, setForm] = useState({
-        tipo_tarea: 'Preventivo', responsable: currentUser.nombre || '', fecha_intervencion: new Date().toISOString().split('T')[0],
+        tipo_tarea: 'Mantenimiento Preventivo', responsable: currentUser.nombre || '', fecha_intervencion: new Date().toISOString().split('T')[0],
         proximo_mantenimiento: '', estado_post: equipo.estado_operativo, notas: ''
     });
     const [file, setFile] = useState(null);
@@ -430,18 +450,17 @@ function IntervencionModal({ equipo, currentUser, onClose, onSuccess, addToast }
                         <div style={{ flex: '1 1 200px' }}>
                             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Tipo de Tarea *</label>
                             <select required style={inputStyle} value={form.tipo_tarea} onChange={e => setForm({...form, tipo_tarea: e.target.value})}>
-                                <option value="Preventivo">Mantenimiento Preventivo</option>
-                                <option value="Correctivo">Reparación / Correctivo</option>
-                                <option value="Auditoría">Auditoría / Control</option>
+                                <option value="Mantenimiento Preventivo">Mantenimiento Preventivo</option>
+                                <option value="Mantenimiento Correctivo">Mantenimiento Correctivo</option>
                                 <option value="Calibración">Calibración</option>
                             </select>
                         </div>
                         <div style={{ flex: '1 1 200px' }}>
                             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Estado Final *</label>
                             <select required style={inputStyle} value={form.estado_post} onChange={e => setForm({...form, estado_post: e.target.value})}>
-                                <option value="Operativo">Operativo (Solucionado)</option>
-                                <option value="En Mantenimiento">Sigue en Mantenimiento</option>
-                                <option value="Fuera de Servicio">Fuera de Servicio (Inoperable)</option>
+                                <option value="Operativo">Operativo (Quedó OK)</option>
+                                <option value="En Revisión">En Revisión (En progreso)</option>
+                                <option value="Fuera de Servicio (Taller)">Fuera de Servicio (Taller)</option>
                             </select>
                         </div>
                     </div>
@@ -542,6 +561,75 @@ function QRModal({ equipo, onClose }) {
                             </p>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ---------------------------
+// Modal Historial de Equipo
+// ---------------------------
+function HistorialModal({ equipo, onClose }) {
+    const [historial, setHistorial] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchHistory = async () => {
+            try {
+                const data = await fetchIntervenciones(equipo.id);
+                setHistorial(data || []);
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchHistory();
+    }, [equipo.id]);
+
+    return (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: 'white', borderRadius: '16px', width: '90%', maxWidth: '600px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }} className="animate-fade-in">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                    <div>
+                        <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#1e293b' }}>Historial del Equipo</h3>
+                        <p style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>{equipo.nombre} ({equipo.marca})</p>
+                    </div>
+                    <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}><X size={20} /></button>
+                </div>
+                
+                <div style={{ flex: 1, overflowY: 'auto', paddingRight: '4px' }}>
+                    {loading ? (
+                        <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>Cargando historial...</div>
+                    ) : historial.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '40px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                            <p style={{ margin: 0, color: '#64748b' }}>No hay registros de mantenimiento para este equipo.</p>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {historial.map(item => (
+                                <div key={item.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: 'white' }}>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', gap: '8px' }}>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0ea5e9', background: '#e0f2fe', padding: '4px 8px', borderRadius: '4px' }}>{item.tipo_tarea}</span>
+                                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>{new Date(item.fecha_intervencion).toLocaleDateString('es-AR')}</span>
+                                        </div>
+                                        {item.estado_post && (
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px' }}>Estado: {item.estado_post}</span>
+                                        )}
+                                    </div>
+                                    <p style={{ margin: '0 0 8px', fontSize: '0.9rem', color: '#1e293b' }}><strong>Técnico:</strong> {item.responsable}</p>
+                                    {item.notas && <p style={{ margin: '0 0 12px', fontSize: '0.9rem', color: '#475569', background: '#f8fafc', padding: '8px', borderRadius: '6px' }}>{item.notas}</p>}
+                                    {item.doc_url && (
+                                        <a href={item.doc_url} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#2563eb', textDecoration: 'none', fontWeight: 600, border: '1px solid #bfdbfe', padding: '6px 12px', borderRadius: '6px', background: '#eff6ff' }}>
+                                            <ImageIcon size={14} /> Ver Registro Adjunto
+                                        </a>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
