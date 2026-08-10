@@ -277,6 +277,7 @@ export const FACTURACION_ESTADOS = {
     'Falta biopsia':{ label: 'Falta biopsia',color: '#D946EF', bg: '#FDF4FF', icon: '🔬' },
     'Alta prox. mes':{label: 'Alta prox. mes',color:'#6366F1', bg: '#EEF2FF', icon: '⏭️' },
     'Hc incompleta':{ label: 'Hc incompleta',color: '#F97316', bg: '#FFF7ED', icon: '📄' },
+    'Sin alta adm': { label: 'Sin alta adm', color: '#8B5CF6', bg: '#F5F3FF', icon: '⛔' },
     'Parcial':      { label: 'Parcial',      color: '#0EA5E9', bg: '#F0F9FF', icon: '✂️' },
     'Facturada':    { label: 'Facturada',    color: '#10B981', bg: '#ECFDF5', icon: '✅' },
     'Devuelta':     { label: 'Devuelta',     color: '#EF4444', bg: '#FEF2F2', icon: '⚠️' },
