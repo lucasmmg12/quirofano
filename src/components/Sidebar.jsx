@@ -10,7 +10,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const isFrojo = currentUser?.usuario === 'frojo';
 
     // Module visibility: null/empty = show all, array = only show listed + always-visible
-    const ALWAYS_VISIBLE = ['inicio', 'config', 'manual', 'actividad_usuarios'];
+    const ALWAYS_VISIBLE = ['inicio', 'config', 'manual', 'actividad_usuarios', 'activos'];
     const isModuleVisible = (id) => {
         if (!selectedModules || selectedModules.length === 0) return true;
         if (ALWAYS_VISIBLE.includes(id)) return true;
