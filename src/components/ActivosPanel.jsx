@@ -112,7 +112,7 @@ export default function ActivosPanel({ currentUser, addToast }) {
 
             {/* Filters */}
             <div style={{ 
-                display: 'flex', gap: '16px', marginBottom: '24px', background: 'white', 
+                display: 'flex', flexWrap: 'wrap', gap: '16px', marginBottom: '24px', background: 'white', 
                 padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' 
             }}>
                 <div style={{ flex: 1, position: 'relative' }}>
@@ -182,7 +182,7 @@ export default function ActivosPanel({ currentUser, addToast }) {
                                         {equipo.marca} {equipo.modelo ? `- ${equipo.modelo}` : ''}
                                     </p>
                                 </div>
-                                <div style={{ background: '#f8fafc', padding: '12px 20px', display: 'flex', gap: '8px' }}>
+                                <div style={{ background: '#f8fafc', padding: '12px 20px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                                     <button 
                                         onClick={() => setShowIntervencionModal(equipo)}
                                         style={{ 
@@ -343,12 +343,12 @@ function AltaEquipoModal({ sedes, currentUser, equipoToEdit, onClose, onSuccess,
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Nombre del Equipo *</label>
                     <input required type="text" placeholder="Ej. Monitor Multiparamétrico" style={inputStyle} value={form.nombre} onChange={e => setForm({...form, nombre: e.target.value})} />
 
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                        <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                        <div style={{ flex: '1 1 200px' }}>
                             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Marca</label>
                             <input type="text" placeholder="Ej. Mindray" style={inputStyle} value={form.marca} onChange={e => setForm({...form, marca: e.target.value})} />
                         </div>
-                        <div style={{ flex: 1 }}>
+                        <div style={{ flex: '1 1 200px' }}>
                             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Modelo</label>
                             <input type="text" placeholder="Ej. uMEC10" style={inputStyle} value={form.modelo} onChange={e => setForm({...form, modelo: e.target.value})} />
                         </div>
@@ -426,8 +426,8 @@ function IntervencionModal({ equipo, currentUser, onClose, onSuccess, addToast }
                 </div>
 
                 <form onSubmit={handleSubmit}>
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                        <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                        <div style={{ flex: '1 1 200px' }}>
                             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Tipo de Tarea *</label>
                             <select required style={inputStyle} value={form.tipo_tarea} onChange={e => setForm({...form, tipo_tarea: e.target.value})}>
                                 <option value="Preventivo">Mantenimiento Preventivo</option>
@@ -436,7 +436,7 @@ function IntervencionModal({ equipo, currentUser, onClose, onSuccess, addToast }
                                 <option value="Calibración">Calibración</option>
                             </select>
                         </div>
-                        <div style={{ flex: 1 }}>
+                        <div style={{ flex: '1 1 200px' }}>
                             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Estado Final *</label>
                             <select required style={inputStyle} value={form.estado_post} onChange={e => setForm({...form, estado_post: e.target.value})}>
                                 <option value="Operativo">Operativo (Solucionado)</option>
@@ -449,12 +449,12 @@ function IntervencionModal({ equipo, currentUser, onClose, onSuccess, addToast }
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Responsable / Técnico *</label>
                     <input required type="text" style={inputStyle} value={form.responsable} onChange={e => setForm({...form, responsable: e.target.value})} />
 
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                        <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                        <div style={{ flex: '1 1 200px' }}>
                             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Fecha Actual *</label>
                             <input required type="date" style={inputStyle} value={form.fecha_intervencion} onChange={e => setForm({...form, fecha_intervencion: e.target.value})} />
                         </div>
-                        <div style={{ flex: 1 }}>
+                        <div style={{ flex: '1 1 200px' }}>
                             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Próx. Mantenimiento</label>
                             <input type="date" style={inputStyle} value={form.proximo_mantenimiento} onChange={e => setForm({...form, proximo_mantenimiento: e.target.value})} />
                         </div>
@@ -481,9 +481,9 @@ function IntervencionModal({ equipo, currentUser, onClose, onSuccess, addToast }
                         )}
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                        <button type="button" onClick={onClose} style={{ padding: '10px 16px', borderRadius: '8px', background: '#f1f5f9', color: '#475569', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
-                        <button type="submit" disabled={saving} style={{ padding: '10px 16px', borderRadius: '8px', background: '#2563eb', color: 'white', border: 'none', fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '12px' }}>
+                        <button type="button" onClick={onClose} style={{ flex: '1 1 auto', padding: '10px 16px', borderRadius: '8px', background: '#f1f5f9', color: '#475569', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
+                        <button type="submit" disabled={saving} style={{ flex: '1 1 auto', padding: '10px 16px', borderRadius: '8px', background: '#2563eb', color: 'white', border: 'none', fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
                             {saving ? 'Guardando...' : 'Guardar Intervención'}
                         </button>
                     </div>
@@ -501,7 +501,7 @@ function QRModal({ equipo, onClose }) {
 
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ background: 'white', borderRadius: '16px', width: '320px', padding: '32px 24px', textAlign: 'center', position: 'relative' }} className="animate-fade-in">
+            <div style={{ background: 'white', borderRadius: '16px', width: '90%', maxWidth: '320px', padding: '32px 24px', textAlign: 'center', position: 'relative' }} className="animate-fade-in">
                 <button onClick={onClose} style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}><X size={20} /></button>
                 
                 <Shield size={32} color="#3b82f6" style={{ marginBottom: '12px' }} />
