@@ -607,18 +607,10 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             const siblingAdmissionNumbers = siblingAdmissions ? siblingAdmissions.map(a => a.numero_admision) : null;
 
             let computed_fecha_ingreso = alta.fecha_ingreso;
-            if (siblingAdmissions && siblingAdmissions.length > 0) {
-                for (const sib of siblingAdmissions) {
-                    if (!facturada && sib.facturada) facturada = sib.facturada;
-                    if (!responsable_fac && sib.responsable_fac) responsable_fac = sib.responsable_fac;
-                    if ((!estado_fac || estado_fac === 'Pendiente') && sib.estado_fac && sib.estado_fac !== 'Pendiente') {
-                        estado_fac = sib.estado_fac;
-                    }
-                    if (sib.fecha_ingreso && (!computed_fecha_ingreso || sib.fecha_ingreso < computed_fecha_ingreso)) {
-                        computed_fecha_ingreso = sib.fecha_ingreso;
-                    }
-                }
-            }
+            // Hemos eliminado la lógica que absorbía estado de facturación, responsable 
+            // y fecha de ingreso de internaciones hermanas (de fechas diferentes),
+            // ya que causaba que internaciones nuevas (ej: agosto) heredaran erróneamente
+            // el estado facturado y la fecha de ingreso de internaciones pasadas (ej: abril).
 
             // Detectar "Cruza Mes": internación que trasciende el mes seleccionado
             const [selY, selM] = selectedMonth.split('-').map(Number);
