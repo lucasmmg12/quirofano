@@ -274,6 +274,10 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
     // Filtro por mes (default: null = todos los meses)
     const [selectedMonth, setSelectedMonth] = useState(null);
 
+    // Pagination state (pestaña Pendientes)
+    const [pageSize, setPageSize] = useState(50);   // 10 | 50 | 100 | 'all'
+    const [currentPage, setCurrentPage] = useState(0);
+
     // Carrito state
     const [carrito, setCarrito] = useState([]);
     const [carritoLoading, setCarritoLoading] = useState(false);
@@ -426,6 +430,15 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
             return matchSearch && matchFilter && matchLab && matchOS && matchColFilters;
         });
     }, [records, searchTerm, filterModulo, filterLaboratorio, filterObraSocial, columnFilters]);
+
+    // ─── Pagination slice ───
+    const pagedRecords = useMemo(() => {
+        if (pageSize === 'all') return filteredRecords;
+        const start = currentPage * pageSize;
+        return filteredRecords.slice(start, start + pageSize);
+    }, [filteredRecords, pageSize, currentPage]);
+
+    const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(filteredRecords.length / pageSize));
 
     const carritoFiltrado = useMemo(() => {
         let items = carrito;
@@ -1295,7 +1308,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                                         <tr><td colSpan={11} style={{ padding: '32px', textAlign: 'center', color: 'var(--neutral-400)' }}>
                                             Ningún registro coincide con los filtros.
                                         </td></tr>
-                                    ) : filteredRecords.map(r => {
+                                    ) : pagedRecords.map(r => {
                                         const estadoAccion = getEstadoFacturacion(r.cliente, r.laboratorio);
                                         const isExpanded = expandedRow === r.id_visita;
                                         const isEntregado = !!r.constancia_id;
@@ -1512,9 +1525,49 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
                             </table>
                         </div>
 
-                        <div style={{ padding: '12px 20px', background: '#F8FAFC', borderTop: '1px solid var(--neutral-100)', fontSize: '0.75rem', color: 'var(--neutral-400)', display: 'flex', justifyContent: 'space-between' }}>
-                            <span>Mostrando {filteredRecords.length} registro/s</span>
-                            <span>Actualizado desde SALUS</span>
+                        <div style={{ padding: '10px 20px', background: '#F8FAFC', borderTop: '1px solid var(--neutral-100)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--neutral-400)' }}>
+                            <span>
+                                {pageSize === 'all'
+                                    ? `${filteredRecords.length} registro/s`
+                                    : `${currentPage * pageSize + 1}–${Math.min((currentPage + 1) * pageSize, filteredRecords.length)} de ${filteredRecords.length}`
+                                }
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {[10, 50, 100, 'all'].map(s => (
+                                    <button key={s} onClick={() => { setPageSize(s); setCurrentPage(0); }} style={{
+                                        padding: '3px 10px', borderRadius: '6px', cursor: 'pointer',
+                                        fontWeight: pageSize === s ? 700 : 500, fontSize: '0.75rem',
+                                        background: pageSize === s ? '#184D87' : '#F1F5F9',
+                                        color: pageSize === s ? '#fff' : '#475569',
+                                        border: '1px solid ' + (pageSize === s ? '#184D87' : '#CBD5E1'),
+                                    }}>{s === 'all' ? 'Todo' : s}</button>
+                                ))}
+                                <div style={{ width: '1px', height: '18px', background: '#E5E7EB', margin: '0 4px' }} />
+                                <button
+                                    disabled={currentPage === 0}
+                                    onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                                    style={{
+                                        padding: '3px 10px', borderRadius: '6px', cursor: currentPage === 0 ? 'default' : 'pointer',
+                                        fontWeight: 600, fontSize: '0.75rem',
+                                        background: currentPage === 0 ? '#F1F5F9' : '#fff',
+                                        color: currentPage === 0 ? '#CBD5E1' : '#374151',
+                                        border: '1px solid #CBD5E1',
+                                    }}>‹ Ant</button>
+                                <span style={{ fontWeight: 600, color: '#374151', minWidth: '70px', textAlign: 'center' }}>
+                                    {pageSize === 'all' ? '1 / 1' : `${currentPage + 1} / ${totalPages}`}
+                                </span>
+                                <button
+                                    disabled={currentPage >= totalPages - 1 || pageSize === 'all'}
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+                                    style={{
+                                        padding: '3px 10px', borderRadius: '6px',
+                                        cursor: (currentPage >= totalPages - 1 || pageSize === 'all') ? 'default' : 'pointer',
+                                        fontWeight: 600, fontSize: '0.75rem',
+                                        background: (currentPage >= totalPages - 1 || pageSize === 'all') ? '#F1F5F9' : '#fff',
+                                        color: (currentPage >= totalPages - 1 || pageSize === 'all') ? '#CBD5E1' : '#374151',
+                                        border: '1px solid #CBD5E1',
+                                    }}>Sig ›</button>
+                            </div>
                         </div>
                     </>
                 )}

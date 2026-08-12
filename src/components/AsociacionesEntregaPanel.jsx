@@ -155,6 +155,10 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     const [openFilterCol, setOpenFilterCol] = useState(null);
     const [filterDropdownSearch, setFilterDropdownSearch] = useState('');
 
+    // Pagination state
+    const [pageSize, setPageSize] = useState(50);   // 10 | 50 | 100 | 'all'
+    const [currentPage, setCurrentPage] = useState(0);
+
     // Close filter dropdown on outside click
     useEffect(() => {
         if (!openFilterCol) return;
@@ -693,6 +697,22 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
 
     const activeFilterCount = Object.values(columnFilters).filter(v => Array.isArray(v) && v.length > 0).length;
 
+    // ─── Pagination slice ───
+    // Reset to page 0 whenever the filtered result set changes
+    const pagedPendientes = useMemo(() => {
+        if (pageSize === 'all') return filteredPendientes;
+        const start = currentPage * pageSize;
+        return filteredPendientes.slice(start, start + pageSize);
+    }, [filteredPendientes, pageSize, currentPage]);
+
+    const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(filteredPendientes.length / pageSize));
+
+    // When filters change, go back to first page
+    const handleFiltersOrSearchChange = (setter) => (...args) => {
+        setter(...args);
+        setCurrentPage(0);
+    };
+
     const FilterableHeader = ({ label, colKey, width }) => {
         const isOpen = openFilterCol === colKey;
         const selected = columnFilters[colKey] || [];
@@ -1133,7 +1153,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                     )}
                                 </thead>
                                 <tbody>
-                                    {filteredPendientes.map(c => {
+                                    {pagedPendientes.map(c => {
                                         const color = ASOCIACION_COLORS[c.asociacion] || '#6B7280';
                                         const isExcluded = !!(c.constancia_id || c.en_carrito);
                                         const rowOpacity = isExcluded ? 0.4 : 1;
@@ -1200,6 +1220,59 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                     })}
                                 </tbody>
                             </table>
+                        </div>
+                    )}
+
+                    {/* ─── Barra de Paginación ─── */}
+                    {filteredPendientes.length > 0 && (
+                        <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '10px 16px', borderTop: '1px solid #E5E7EB',
+                            background: '#F9FAFB', borderRadius: '0 0 10px 10px',
+                            fontSize: '0.78rem', color: '#6B7280',
+                        }}>
+                            <span>
+                                {pageSize === 'all'
+                                    ? `${filteredPendientes.length} registros`
+                                    : `${currentPage * pageSize + 1}–${Math.min((currentPage + 1) * pageSize, filteredPendientes.length)} de ${filteredPendientes.length}`
+                                }
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {[10, 50, 100, 'all'].map(s => (
+                                    <button key={s} onClick={() => { setPageSize(s); setCurrentPage(0); }} style={{
+                                        padding: '3px 10px', borderRadius: '6px', cursor: 'pointer',
+                                        fontWeight: pageSize === s ? 700 : 500, fontSize: '0.75rem',
+                                        background: pageSize === s ? '#1D4ED8' : '#F1F5F9',
+                                        color: pageSize === s ? '#fff' : '#475569',
+                                        border: '1px solid ' + (pageSize === s ? '#1D4ED8' : '#CBD5E1'),
+                                    }}>{s === 'all' ? 'Todo' : s}</button>
+                                ))}
+                                <div style={{ width: '1px', height: '18px', background: '#E5E7EB', margin: '0 4px' }} />
+                                <button
+                                    disabled={currentPage === 0}
+                                    onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                                    style={{
+                                        padding: '3px 10px', borderRadius: '6px', cursor: currentPage === 0 ? 'default' : 'pointer',
+                                        fontWeight: 600, fontSize: '0.75rem',
+                                        background: currentPage === 0 ? '#F1F5F9' : '#fff',
+                                        color: currentPage === 0 ? '#CBD5E1' : '#374151',
+                                        border: '1px solid #CBD5E1',
+                                    }}>‹ Ant</button>
+                                <span style={{ fontWeight: 600, color: '#374151', minWidth: '70px', textAlign: 'center' }}>
+                                    {pageSize === 'all' ? '1 / 1' : `${currentPage + 1} / ${totalPages}`}
+                                </span>
+                                <button
+                                    disabled={currentPage >= totalPages - 1 || pageSize === 'all'}
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+                                    style={{
+                                        padding: '3px 10px', borderRadius: '6px',
+                                        cursor: (currentPage >= totalPages - 1 || pageSize === 'all') ? 'default' : 'pointer',
+                                        fontWeight: 600, fontSize: '0.75rem',
+                                        background: (currentPage >= totalPages - 1 || pageSize === 'all') ? '#F1F5F9' : '#fff',
+                                        color: (currentPage >= totalPages - 1 || pageSize === 'all') ? '#CBD5E1' : '#374151',
+                                        border: '1px solid #CBD5E1',
+                                    }}>Sig ›</button>
+                            </div>
                         </div>
                     )}
 
