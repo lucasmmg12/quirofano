@@ -156,7 +156,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     const [filterDropdownSearch, setFilterDropdownSearch] = useState('');
 
     // Pagination state
-    const [pageSize, setPageSize] = useState(50);   // 10 | 50 | 100 | 'all'
+    const [pageSize, setPageSize] = useState(10);   // 10 | 50 | 100 | 'all'
     const [currentPage, setCurrentPage] = useState(0);
 
     // Close filter dropdown on outside click

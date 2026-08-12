@@ -275,7 +275,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
     const [selectedMonth, setSelectedMonth] = useState(null);
 
     // Pagination state (pestaña Pendientes)
-    const [pageSize, setPageSize] = useState(50);   // 10 | 50 | 100 | 'all'
+    const [pageSize, setPageSize] = useState(10);   // 10 | 50 | 100 | 'all'
     const [currentPage, setCurrentPage] = useState(0);
 
     // Carrito state
