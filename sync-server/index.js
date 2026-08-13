@@ -1767,11 +1767,13 @@ async function syncAsociacionesCirugias(db) {
     }
 
     // Deduplicar (último gana por key: fecha+nombre_paciente+cirugia)
+    const makeKey = (f, n, c) => `${f}|${(n || '').replace(/\s+/g, ' ').trim()}|${(c || '').replace(/\s+/g, ' ').trim()}`;
+
     // IMPORTANTE: usar nombre_paciente en vez de dni porque dni puede ser NULL
     // y en PostgreSQL NULL != NULL en constraints UNIQUE
     const deduped = new Map();
     for (const row of records) {
-        const key = `${row.fecha_realizacion}|${row.nombre_paciente}|${row.nombre_cirugia}`;
+        const key = makeKey(row.fecha_realizacion, row.nombre_paciente, row.nombre_cirugia);
         deduped.set(key, row);
     }
     const uniqueRecords = [...deduped.values()];
@@ -1791,7 +1793,7 @@ async function syncAsociacionesCirugias(db) {
 
         if (existing) {
             for (const row of existing) {
-                const key = `${row.fecha_realizacion}|${row.nombre_paciente}|${row.nombre_cirugia}`;
+                const key = makeKey(row.fecha_realizacion, row.nombre_paciente, row.nombre_cirugia);
                 const preserved = {};
                 for (const f of FIELDS_TO_PRESERVE) {
                     if (row[f] != null) preserved[f] = row[f];
@@ -1808,7 +1810,7 @@ async function syncAsociacionesCirugias(db) {
 
     for (let i = 0; i < uniqueRecords.length; i += BATCH) {
         const batch = uniqueRecords.slice(i, i + BATCH).map(row => {
-            const key = `${row.fecha_realizacion}|${row.nombre_paciente}|${row.nombre_cirugia}`;
+            const key = makeKey(row.fecha_realizacion, row.nombre_paciente, row.nombre_cirugia);
             const preserved = existingMap.get(key);
             return preserved ? { ...row, ...preserved } : row;
         });
