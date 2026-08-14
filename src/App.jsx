@@ -171,7 +171,14 @@ function App({ currentUser, onLogout }) {
     });
     // Beto widget open state (controlled from sidebar avatar)
     const [betoWidgetOpen, setBetoWidgetOpen] = useState(false);
-    const [activeView, setActiveViewRaw] = useState(() => localStorage.getItem('active_view') || 'inicio');
+    const [activeView, setActiveViewRaw] = useState(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const paramView = urlParams.get('view');
+        if (paramView && VIEW_LABELS[paramView]) return paramView;
+        const hashView = window.location.hash.replace('#', '');
+        if (hashView && VIEW_LABELS[hashView]) return hashView;
+        return localStorage.getItem('active_view') || 'inicio';
+    });
     // Dark mode
     const [darkMode, setDarkMode] = useState(() => localStorage.getItem('dark_mode') === 'true');
     // View transition key — bumps on view change to trigger CSS animation
