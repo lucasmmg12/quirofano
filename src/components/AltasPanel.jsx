@@ -116,15 +116,39 @@ export default function AltasPanel({ addToast, currentUser }) {
         return months;
     }, []);
 
-    const [filterEstado, setFilterEstado] = useState('all');
-    const [searchTerm, setSearchTerm] = useState('');
-    const [debouncedSearch, setDebouncedSearch] = useState('');
+    // ── Restaurar Filtros guardados desde sessionStorage ──
+    const savedAltasFilters = useMemo(() => {
+        try {
+            const item = sessionStorage.getItem('admqui_altas_filters');
+            return item ? JSON.parse(item) : {};
+        } catch (e) {
+            return {};
+        }
+    }, []);
+
+    const [filterEstado, setFilterEstado] = useState(() => savedAltasFilters.filterEstado || 'all');
+    const [filterResponsable, setFilterResponsable] = useState(() => savedAltasFilters.filterResponsable || 'all');
+    const [searchTerm, setSearchTerm] = useState(() => savedAltasFilters.searchTerm || '');
+    const [debouncedSearch, setDebouncedSearch] = useState(() => savedAltasFilters.searchTerm || '');
     const [historialSearch, setHistorialSearch] = useState('');
     const [debouncedHistorialSearch, setDebouncedHistorialSearch] = useState('');
 
-    // ── Paginación ──
-    const PAGE_SIZE = 50;
+    // ── Paginación Configurable ──
+    const [pageSize, setPageSize] = useState(() => savedAltasFilters.pageSize || 50);
     const [currentPage, setCurrentPage] = useState(1);
+
+    // Guardar filtros en sessionStorage ante cualquier cambio
+    useEffect(() => {
+        try {
+            sessionStorage.setItem('admqui_altas_filters', JSON.stringify({
+                selectedMonth,
+                filterEstado,
+                filterResponsable,
+                searchTerm,
+                pageSize
+            }));
+        } catch (e) {}
+    }, [selectedMonth, filterEstado, filterResponsable, searchTerm, pageSize]);
     
     // Debounce search term (500ms)
     useEffect(() => {
@@ -760,11 +784,21 @@ export default function AltasPanel({ addToast, currentUser }) {
     }, [allProcessedAltas]);
     const total = localStats._total || 0;
 
-    // Aplicar filtro de pill (estado) — frontend
+    // Aplicar filtro de pill (estado) y filtro de responsable — frontend
     const preFilteredAltas = useMemo(() => {
-        if (!filterEstado || filterEstado === 'all') return allProcessedAltas;
-        return allProcessedAltas.filter(a => a._effectiveEstado === filterEstado);
-    }, [allProcessedAltas, filterEstado]);
+        let result = allProcessedAltas;
+        if (filterEstado && filterEstado !== 'all') {
+            result = result.filter(a => a._effectiveEstado === filterEstado);
+        }
+        if (filterResponsable && filterResponsable !== 'all') {
+            if (filterResponsable === 'unassigned') {
+                result = result.filter(a => !a._responsable || a._responsable === '—' || a._responsable.trim() === '');
+            } else {
+                result = result.filter(a => (a._responsable || '').trim().toUpperCase() === filterResponsable.trim().toUpperCase());
+            }
+        }
+        return result;
+    }, [allProcessedAltas, filterEstado, filterResponsable]);
 
     // Extraer valores únicos por columna — desde preFilteredAltas (SIN filtros de columna)
     // para que los dropdowns no se reduzcan al aplicar filtros
@@ -819,15 +853,15 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     const activeFilterCount = Object.keys(columnFilters).length;
 
-    // ── Paginación: solo renderizar PAGE_SIZE filas ──
-    const totalPages = Math.max(1, Math.ceil(sortedAltas.length / PAGE_SIZE));
+    // ── Paginación dinámicas con pageSize ──
+    const totalPages = Math.max(1, Math.ceil(sortedAltas.length / pageSize));
     const paginatedAltas = useMemo(() => {
         if (debouncedSearch) return sortedAltas;
-        const start = (currentPage - 1) * PAGE_SIZE;
-        return sortedAltas.slice(start, start + PAGE_SIZE);
-    }, [sortedAltas, currentPage, PAGE_SIZE, debouncedSearch]);
-    const paginationStart = (currentPage - 1) * PAGE_SIZE + 1;
-    const paginationEnd = Math.min(currentPage * PAGE_SIZE, sortedAltas.length);
+        const start = (currentPage - 1) * pageSize;
+        return sortedAltas.slice(start, start + pageSize);
+    }, [sortedAltas, currentPage, pageSize, debouncedSearch]);
+    const paginationStart = (currentPage - 1) * pageSize + 1;
+    const paginationEnd = Math.min(currentPage * pageSize, sortedAltas.length);
 
     // Generar números de página para la barra
     const getPageNumbers = () => {
@@ -1633,7 +1667,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                 </button>
             </div>
 
-            {/* ── Barra de búsqueda ── */}
+            {/* ── Barra de búsqueda y Filtros Rápidos ── */}
             <div style={{
                 display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap',
                 padding: '10px 14px', borderRadius: '12px',
@@ -1656,17 +1690,46 @@ export default function AltasPanel({ addToast, currentUser }) {
                         onBlur={e => e.currentTarget.style.borderColor = 'var(--neutral-200)'}
                     />
                 </div>
-                {(searchTerm || filterEstado !== 'all') && (
+
+                {/* Filtro por Responsable */}
+                <select
+                    value={filterResponsable}
+                    onChange={e => setFilterResponsable(e.target.value)}
+                    style={{
+                        padding: '7px 12px',
+                        borderRadius: '8px',
+                        border: filterResponsable !== 'all' ? '1.5px solid #6366F1' : '1px solid var(--neutral-200)',
+                        background: filterResponsable !== 'all' ? '#EEF2FF' : '#fff',
+                        color: filterResponsable !== 'all' ? '#4338CA' : 'var(--neutral-700)',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        outline: 'none',
+                        cursor: 'pointer'
+                    }}
+                >
+                    <option value="all">👤 Todos los Responsables</option>
+                    <option value="unassigned">⚠️ Vacíos / Sin Asignar</option>
+                    {allResponsables.map(r => (
+                        <option key={r} value={r}>{r}</option>
+                    ))}
+                </select>
+
+                {(searchTerm || filterEstado !== 'all' || filterResponsable !== 'all' || activeFilterCount > 0) && (
                     <button
-                        onClick={() => { setSearchTerm(''); setFilterEstado('all'); }}
+                        onClick={() => { 
+                            setSearchTerm(''); 
+                            setFilterEstado('all'); 
+                            setFilterResponsable('all');
+                            clearAllColumnFilters();
+                        }}
                         style={{
                             display: 'inline-flex', alignItems: 'center', gap: '4px',
-                            padding: '5px 10px', borderRadius: '6px',
+                            padding: '6px 12px', borderRadius: '6px',
                             background: '#FEE2E2', color: '#DC2626',
-                            border: 'none', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600,
+                            border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
                         }}
                     >
-                        <X size={12} /> Limpiar
+                        <X size={12} /> Limpiar Filtros
                     </button>
                 )}
             </div>
@@ -2356,11 +2419,26 @@ export default function AltasPanel({ addToast, currentUser }) {
                         </table>
                     </div>
 
-                    {/* ── Barra de Paginación ── */}
-                    {sortedAltas.length > PAGE_SIZE && !debouncedSearch && (
-                        <div className="pagination-bar">
-                            <div className="pagination-bar__info">
-                                Mostrando <strong>{paginationStart}–{paginationEnd}</strong> de <strong>{sortedAltas.length}</strong> registros
+                    {/* ── Barra de Paginación Configurable ── */}
+                    {sortedAltas.length > 0 && (
+                        <div className="pagination-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                            <div className="pagination-bar__info" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--neutral-600)' }}>
+                                    <span>Filas por página:</span>
+                                    <select
+                                        value={pageSize}
+                                        onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                                        style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--neutral-300)', fontSize: '0.78rem', background: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                                    >
+                                        <option value={10}>10</option>
+                                        <option value={25}>25</option>
+                                        <option value={50}>50</option>
+                                        <option value={100}>100</option>
+                                    </select>
+                                </div>
+                                <span>
+                                    Mostrando <strong>{paginationStart}–{paginationEnd}</strong> de <strong>{sortedAltas.length}</strong> registros
+                                </span>
                             </div>
                             <div className="pagination-bar__controls">
                                 <button

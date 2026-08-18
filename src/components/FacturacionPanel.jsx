@@ -134,18 +134,41 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         return months;
     }, []);
 
-    const [searchTerm, setSearchTerm] = useState('');
-    const [debouncedSearch, setDebouncedSearch] = useState('');
+    // ── Restaurar Filtros guardados desde sessionStorage ──
+    const savedFacFilters = useMemo(() => {
+        try {
+            const item = sessionStorage.getItem('admqui_facturacion_filters');
+            return item ? JSON.parse(item) : {};
+        } catch (e) {
+            return {};
+        }
+    }, []);
+
+    const [filterEstado, setFilterEstado] = useState(() => savedFacFilters.filterEstado || 'all');
+    const [filterResponsable, setFilterResponsable] = useState(() => savedFacFilters.filterResponsable || 'all');
+    const [searchTerm, setSearchTerm] = useState(() => savedFacFilters.searchTerm || '');
+    const [debouncedSearch, setDebouncedSearch] = useState(() => savedFacFilters.searchTerm || '');
     const [historialSearch, setHistorialSearch] = useState('');
     const [debouncedHistorialSearch, setDebouncedHistorialSearch] = useState('');
-    const [filterEstado, setFilterEstado] = useState('all');
-    const [filterResponsable, setFilterResponsable] = useState('all');
     const [sortConfig, setSortConfig] = useState({ key: 'fecha_ingreso', direction: 'desc' });
     const [chartFilterAnalista, setChartFilterAnalista] = useState(null);
 
-    // ── Paginación ──
-    const PAGE_SIZE = 50;
+    // ── Paginación Configurable ──
+    const [pageSize, setPageSize] = useState(() => savedFacFilters.pageSize || 50);
     const [currentPage, setCurrentPage] = useState(1);
+
+    // Guardar filtros en sessionStorage ante cualquier cambio
+    useEffect(() => {
+        try {
+            sessionStorage.setItem('admqui_facturacion_filters', JSON.stringify({
+                selectedMonth,
+                filterEstado,
+                filterResponsable,
+                searchTerm,
+                pageSize
+            }));
+        } catch (e) {}
+    }, [selectedMonth, filterEstado, filterResponsable, searchTerm, pageSize]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -154,7 +177,6 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         }, 500);
         return () => clearTimeout(timer);
     }, [searchTerm, historialSearch]);
-
 
     const [columnFilters, setColumnFilters] = useState({});
     const [activeFilterCol, setActiveFilterCol] = useState(null);
@@ -722,14 +744,14 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         return result;
     }, [preFilteredAltas, columnFilters, sortConfig, debouncedSearch]);
 
-    // ── Paginación: solo renderizar PAGE_SIZE filas ──
-    const totalPages = Math.max(1, Math.ceil(filteredAltas.length / PAGE_SIZE));
+    // ── Paginación dinámicas con pageSize ──
+    const totalPages = Math.max(1, Math.ceil(filteredAltas.length / pageSize));
     const paginatedAltas = useMemo(() => {
-        const start = (currentPage - 1) * PAGE_SIZE;
-        return filteredAltas.slice(start, start + PAGE_SIZE);
-    }, [filteredAltas, currentPage, PAGE_SIZE]);
-    const paginationStart = (currentPage - 1) * PAGE_SIZE + 1;
-    const paginationEnd = Math.min(currentPage * PAGE_SIZE, filteredAltas.length);
+        const start = (currentPage - 1) * pageSize;
+        return filteredAltas.slice(start, start + pageSize);
+    }, [filteredAltas, currentPage, pageSize]);
+    const paginationStart = (currentPage - 1) * pageSize + 1;
+    const paginationEnd = Math.min(currentPage * pageSize, filteredAltas.length);
 
     // Generar números de página para la barra
     const getPageNumbers = () => {
@@ -1887,8 +1909,24 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                     ) : filteredAltas.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--neutral-400)' }}>
                             <Receipt size={48} strokeWidth={1.2} />
-                            <h3 style={{ margin: '12px 0 4px' }}>Sin fichas</h3>
-                            <p style={{ fontSize: '0.85rem' }}>No hay altas traspasadas en el rango seleccionado.</p>
+                            <h3 style={{ margin: '12px 0 4px', fontSize: '1rem', fontWeight: 700, color: 'var(--neutral-600)' }}>Sin resultados</h3>
+                            <p style={{ fontSize: '0.85rem', margin: '4px 0 12px' }}>No hay altas traspasadas que coincidan con la búsqueda o filtros seleccionados.</p>
+                            <button
+                                onClick={() => {
+                                    setSearchTerm('');
+                                    setFilterEstado('all');
+                                    setFilterResponsable('all');
+                                    setColumnFilters({});
+                                }}
+                                style={{
+                                    padding: '8px 18px', borderRadius: '8px',
+                                    background: '#6366F1', color: '#fff', border: 'none',
+                                    fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+                                    boxShadow: '0 2px 6px rgba(99,102,241,0.3)',
+                                }}
+                            >
+                                🔄 Limpiar Todos los Filtros
+                            </button>
                         </div>
                     ) : (
                         <>
@@ -2485,15 +2523,30 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                             </table>
                         </div>
                         
-                        {/* ── Paginación Inferior ── */}
-                        {totalPages > 1 && (
+                        {/* ── Paginación Inferior Configurable ── */}
+                        {filteredAltas.length > 0 && (
                             <div style={{
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                padding: '16px 20px', background: '#fff', border: '1px solid var(--neutral-200)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px',
+                                padding: '14px 20px', background: '#fff', border: '1px solid var(--neutral-200)',
                                 borderTop: 'none', borderRadius: '0 0 12px 12px'
                             }}>
-                                <div style={{ fontSize: '0.8rem', color: 'var(--neutral-500)' }}>
-                                    Mostrando <span style={{ fontWeight: 600, color: 'var(--neutral-800)' }}>{paginationStart}</span> a <span style={{ fontWeight: 600, color: 'var(--neutral-800)' }}>{paginationEnd}</span> de <span style={{ fontWeight: 600, color: 'var(--neutral-800)' }}>{filteredAltas.length}</span> fichas
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.8rem', color: 'var(--neutral-500)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span>Filas por página:</span>
+                                        <select
+                                            value={pageSize}
+                                            onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                                            style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--neutral-300)', fontSize: '0.78rem', background: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                                        >
+                                            <option value={10}>10</option>
+                                            <option value={25}>25</option>
+                                            <option value={50}>50</option>
+                                            <option value={100}>100</option>
+                                        </select>
+                                    </div>
+                                    <span>
+                                        Mostrando <span style={{ fontWeight: 600, color: 'var(--neutral-800)' }}>{paginationStart}</span> a <span style={{ fontWeight: 600, color: 'var(--neutral-800)' }}>{paginationEnd}</span> de <span style={{ fontWeight: 600, color: 'var(--neutral-800)' }}>{filteredAltas.length}</span> fichas
+                                    </span>
                                 </div>
                                 <div style={{ display: 'flex', gap: '4px' }}>
                                     <button

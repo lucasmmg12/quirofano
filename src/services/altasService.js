@@ -347,32 +347,30 @@ export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
         from += PAGE_SIZE;
     }
 
-    // Traer admisiones hermanas (duplicados de la misma internación) para los pacientes en la lista
-    // así Facturación puede realizar la fusión completa con datos clínicos/altas
-    if (allData.length > 0) {
-        const patientNames = [...new Set(allData.map(r => r.paciente).filter(Boolean))];
-        const existingIds = new Set(allData.map(r => r.id));
-        const BATCH_SIZE = 50;
-
-        for (let i = 0; i < patientNames.length; i += BATCH_SIZE) {
-            const batchNames = patientNames.slice(i, i + BATCH_SIZE);
-            const { data: siblings } = await supabase
-                .from('altas_administrativas')
-                .select('*')
-                .in('paciente', batchNames);
-
-            if (siblings && siblings.length > 0) {
-                for (const s of siblings) {
-                    if (!existingIds.has(s.id)) {
-                        if (!(s.numero_admision?.toUpperCase().startsWith('A') && s.especialidad?.toUpperCase() === 'CHEQUEO')) {
-                            allData.push(s);
-                            existingIds.add(s.id);
-                        }
-                    }
+    // Deduplicación estricta por numero_admision para evitar filas duplicadas o pisadas (autosalud)
+    // Facturación recibe únicamente los registros traspasados/despachados en el carrito o suspendidos
+    const mapByAdmision = new Map();
+    for (const row of allData) {
+        const key = (row.numero_admision || row.id).trim().toUpperCase();
+        if (!mapByAdmision.has(key)) {
+            mapByAdmision.set(key, row);
+        } else {
+            const existing = mapByAdmision.get(key);
+            // Dar prioridad al registro que posee traspaso_id activo o estado_fac procesado/facturado
+            const existingScore = (existing.traspaso_id ? 10 : 0) + (existing.estado_fac === 'Facturada' ? 5 : 0);
+            const newScore = (row.traspaso_id ? 10 : 0) + (row.estado_fac === 'Facturada' ? 5 : 0);
+            if (newScore > existingScore) {
+                mapByAdmision.set(key, row);
+            } else if (newScore === existingScore) {
+                const existingDate = new Date(existing.created_at || existing.fecha_ingreso || 0);
+                const newDate = new Date(row.created_at || row.fecha_ingreso || 0);
+                if (newDate > existingDate) {
+                    mapByAdmision.set(key, row);
                 }
             }
         }
     }
+    allData = Array.from(mapByAdmision.values());
 
     if (search) {
         const s = search.toLowerCase().trim();
