@@ -50,6 +50,7 @@ export async function crearEquipo(equipoData) {
             modelo: equipoData.modelo,
             sede_id: equipoData.sede_id,
             estado_operativo: equipoData.estado_operativo || 'Operativo',
+            proximo_mantenimiento: equipoData.proximo_mantenimiento || null,
             observaciones: equipoData.observaciones,
             created_by: equipoData.created_by
         }])
@@ -69,6 +70,7 @@ export async function actualizarEquipo(id, equipoData) {
             modelo: equipoData.modelo,
             sede_id: equipoData.sede_id,
             estado_operativo: equipoData.estado_operativo,
+            proximo_mantenimiento: equipoData.proximo_mantenimiento || null,
             observaciones: equipoData.observaciones
         })
         .eq('id', id)
@@ -79,10 +81,14 @@ export async function actualizarEquipo(id, equipoData) {
     return data;
 }
 
-export async function actualizarEstadoEquipo(equipoId, estado) {
+export async function actualizarEstadoEquipo(equipoId, estado, proximoMantenimiento = undefined) {
+    const payload = { estado_operativo: estado };
+    if (proximoMantenimiento !== undefined) {
+        payload.proximo_mantenimiento = proximoMantenimiento || null;
+    }
     const { error } = await supabase
         .from('activos_equipos')
-        .update({ estado_operativo: estado })
+        .update(payload)
         .eq('id', equipoId);
     
     if (error) throw new Error(error.message);
@@ -133,7 +139,7 @@ export async function registrarIntervencion(intervencionData, file = null) {
             tipo_tarea: intervencionData.tipo_tarea,
             responsable: intervencionData.responsable,
             fecha_intervencion: intervencionData.fecha_intervencion || new Date().toISOString(),
-            proximo_mantenimiento: intervencionData.proximo_mantenimiento,
+            proximo_mantenimiento: intervencionData.proximo_mantenimiento || null,
             estado_post: intervencionData.estado_post,
             notas: intervencionData.notas,
             doc_url: doc_url,
@@ -144,9 +150,13 @@ export async function registrarIntervencion(intervencionData, file = null) {
     
     if (error) throw new Error(error.message);
     
-    // Actualizar el estado del equipo
-    if (intervencionData.estado_post) {
-        await actualizarEstadoEquipo(intervencionData.equipo_id, intervencionData.estado_post);
+    // Actualizar el estado y próximo mantenimiento del equipo
+    if (intervencionData.estado_post || intervencionData.proximo_mantenimiento) {
+        await actualizarEstadoEquipo(
+            intervencionData.equipo_id, 
+            intervencionData.estado_post, 
+            intervencionData.proximo_mantenimiento
+        );
     }
     
     return data;

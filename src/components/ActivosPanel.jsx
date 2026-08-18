@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
     Search, Plus, QrCode, Wrench, Shield, CheckCircle, AlertTriangle, 
-    X, AlertCircle, RefreshCw, Upload, Image as ImageIcon, MapPin, Pencil, History
+    X, AlertCircle, RefreshCw, Upload, Image as ImageIcon, MapPin, Pencil, History, Clock, Filter
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { fetchSedes, fetchEquipos, crearEquipo, actualizarEquipo, registrarIntervencion, fetchIntervenciones } from '../services/activosService';
@@ -14,15 +14,16 @@ export default function ActivosPanel({ currentUser, addToast }) {
     // Filtros
     const [searchTerm, setSearchTerm] = useState('');
     const [filterSede, setFilterSede] = useState('');
+    const [filterAlert30Days, setFilterAlert30Days] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const pageSize = 50;
 
     // Modals
     const [showAltaModal, setShowAltaModal] = useState(false);
     const [editEquipo, setEditEquipo] = useState(null);
-    const [showQRModal, setShowQRModal] = useState(null); // equipo id
-    const [showIntervencionModal, setShowIntervencionModal] = useState(null); // equipo id
-    const [showHistorialModal, setShowHistorialModal] = useState(null); // equipo id
+    const [showQRModal, setShowQRModal] = useState(null); // equipo
+    const [showIntervencionModal, setShowIntervencionModal] = useState(null); // equipo
+    const [showHistorialModal, setShowHistorialModal] = useState(null); // equipo
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -45,17 +46,55 @@ export default function ActivosPanel({ currentUser, addToast }) {
         loadData();
     }, [loadData]);
 
+    const getDaysUntilMaintenance = (dateStr) => {
+        if (!dateStr) return null;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const target = new Date(dateStr + 'T00:00:00');
+        return Math.ceil((target - today) / (1000 * 60 * 60 * 24));
+    };
+
+    // Estadísticas
+    const stats = useMemo(() => {
+        let total = equipos.length;
+        let operativos = 0;
+        let mantenimiento = 0;
+        let alertas30d = 0;
+
+        equipos.forEach(e => {
+            if (e.estado_operativo === 'Operativo' || e.estado_operativo === 'Operativo (Quedó OK)') {
+                operativos++;
+            } else {
+                mantenimiento++;
+            }
+
+            const days = getDaysUntilMaintenance(e.proximo_mantenimiento);
+            if (days !== null && days <= 30) {
+                alertas30d++;
+            }
+        });
+
+        return { total, operativos, mantenimiento, alertas30d };
+    }, [equipos]);
+
     const filteredEquipos = useMemo(() => {
         return equipos.filter(e => {
             const matchSearch = (e.nombre + ' ' + (e.modelo || '') + ' ' + (e.marca || '')).toLowerCase().includes(searchTerm.toLowerCase());
             const matchSede = filterSede ? e.sede_id === filterSede : true;
-            return matchSearch && matchSede;
+            
+            let matchAlert = true;
+            if (filterAlert30Days) {
+                const days = getDaysUntilMaintenance(e.proximo_mantenimiento);
+                matchAlert = days !== null && days <= 30;
+            }
+
+            return matchSearch && matchSede && matchAlert;
         });
-    }, [equipos, searchTerm, filterSede]);
+    }, [equipos, searchTerm, filterSede, filterAlert30Days]);
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, filterSede]);
+    }, [searchTerm, filterSede, filterAlert30Days]);
 
     const paginatedEquipos = useMemo(() => {
         const start = (currentPage - 1) * pageSize;
@@ -85,7 +124,7 @@ export default function ActivosPanel({ currentUser, addToast }) {
                         <Shield size={24} color="#3b82f6" /> Inventario de Activos Médicos
                     </h2>
                     <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>
-                        Gestión de equipamiento, trazabilidad y control de mantenimientos.
+                        Gestión de equipamiento, trazabilidad y control de mantenimientos preventivos.
                     </p>
                 </div>
                 
@@ -113,6 +152,68 @@ export default function ActivosPanel({ currentUser, addToast }) {
                     </button>
                 </div>
             </div>
+
+            {/* Tarjetas de Estadísticas e Alertas */}
+            <div style={{ 
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                gap: '16px', marginBottom: '24px' 
+            }}>
+                <div style={{ background: 'white', padding: '16px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Total Equipos</span>
+                    <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>{stats.total}</div>
+                </div>
+
+                <div style={{ background: 'white', padding: '16px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                    <span style={{ fontSize: '0.8rem', color: '#16a34a', fontWeight: 600 }}>Operativos</span>
+                    <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#15803d', marginTop: '4px' }}>{stats.operativos}</div>
+                </div>
+
+                <div style={{ background: 'white', padding: '16px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                    <span style={{ fontSize: '0.8rem', color: '#ea580c', fontWeight: 600 }}>En Revisión / Taller</span>
+                    <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#c2410c', marginTop: '4px' }}>{stats.mantenimiento}</div>
+                </div>
+
+                {/* Tarjeta Alerta Mantenimiento a 30 Días */}
+                <div 
+                    onClick={() => setFilterAlert30Days(!filterAlert30Days)}
+                    style={{ 
+                        background: filterAlert30Days ? '#fff7ed' : 'white', 
+                        padding: '16px 20px', borderRadius: '12px', 
+                        border: filterAlert30Days ? '2px solid #fdba74' : '1px solid #e2e8f0', 
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                        cursor: 'pointer', transition: 'all 0.2s'
+                    }}
+                >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.8rem', color: '#c2410c', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Clock size={16} color="#ea580c" /> Vencimiento 30 Días
+                        </span>
+                        {stats.alertas30d > 0 && (
+                            <span style={{ background: '#ea580c', color: 'white', fontSize: '0.75rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px' }}>
+                                !
+                            </span>
+                        )}
+                    </div>
+                    <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#9a3412', marginTop: '4px' }}>
+                        {stats.alertas30d} {stats.alertas30d === 1 ? 'equipo' : 'equipos'}
+                    </div>
+                </div>
+            </div>
+
+            {/* Banner recordatorio de filtro de alertas activo */}
+            {filterAlert30Days && (
+                <div style={{ background: '#fff7ed', border: '1px solid #fdba74', color: '#c2410c', padding: '12px 16px', borderRadius: '10px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem', fontWeight: 600 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <AlertTriangle size={18} /> Mostrando únicamente equipos con mantenimiento vencido o con vencimiento en los próximos 30 días.
+                    </div>
+                    <button 
+                        onClick={() => setFilterAlert30Days(false)} 
+                        style={{ background: 'none', border: 'none', color: '#9a3412', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
+                    >
+                        Quitar filtro
+                    </button>
+                </div>
+            )}
 
             {/* Filters */}
             <div style={{ 
@@ -143,6 +244,20 @@ export default function ActivosPanel({ currentUser, addToast }) {
                     <option value="">Todas las Sedes</option>
                     {sedes.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                 </select>
+
+                <button
+                    onClick={() => setFilterAlert30Days(!filterAlert30Days)}
+                    style={{
+                        padding: '10px 16px', borderRadius: '8px',
+                        border: filterAlert30Days ? '2px solid #ea580c' : '1px solid #cbd5e1',
+                        background: filterAlert30Days ? '#fff7ed' : 'white',
+                        color: filterAlert30Days ? '#c2410c' : '#475569',
+                        fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: '6px'
+                    }}
+                >
+                    <Clock size={16} /> Ver Vencimientos (30 días)
+                </button>
             </div>
 
             {/* Grid de Equipos */}
@@ -162,13 +277,14 @@ export default function ActivosPanel({ currentUser, addToast }) {
                     {paginatedEquipos.map((equipo, index) => {
                         const colors = getStatusColor(equipo.estado_operativo);
                         const cardBg = index % 2 === 0 ? 'white' : '#f0f9ff';
+                        const days = getDaysUntilMaintenance(equipo.proximo_mantenimiento);
+
                         return (
                             <div key={equipo.id} style={{ 
                                 background: cardBg, borderRadius: '16px', border: '1px solid #e2e8f0',
                                 boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', overflow: 'hidden',
                                 display: 'flex', flexDirection: 'column',
-                                transition: 'box-shadow 0.2s',
-                                ':hover': { boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)' }
+                                transition: 'box-shadow 0.2s'
                             }}>
                                 <div style={{ padding: '20px', borderBottom: '1px solid #f1f5f9', flex: 1 }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
@@ -183,11 +299,32 @@ export default function ActivosPanel({ currentUser, addToast }) {
                                             <MapPin size={12} /> {equipo.activos_sedes?.nombre || 'Sede desc.'}
                                         </span>
                                     </div>
+
                                     <h3 style={{ margin: '0 0 4px', fontSize: '1.1rem', color: '#1e293b' }}>{equipo.nombre}</h3>
-                                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
+                                    <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: '#64748b' }}>
                                         {equipo.marca} {equipo.modelo ? `- ${equipo.modelo}` : ''}
                                     </p>
+
+                                    {/* Tag de Alerta de Próximo Mantenimiento */}
+                                    {days !== null && (
+                                        <div style={{ 
+                                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                            padding: '4px 10px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700,
+                                            background: days < 0 ? '#fef2f2' : days <= 30 ? '#fff7ed' : '#f0fdf4',
+                                            color: days < 0 ? '#dc2626' : days <= 30 ? '#ea580c' : '#16a34a',
+                                            border: `1px solid ${days < 0 ? '#fca5a5' : days <= 30 ? '#fdba74' : '#86efac'}`
+                                        }}>
+                                            <Clock size={12} />
+                                            {days < 0 
+                                                ? `Vencido hace ${Math.abs(days)}d (${new Date(equipo.proximo_mantenimiento + 'T00:00:00').toLocaleDateString('es-AR')})` 
+                                                : days <= 30 
+                                                    ? `Próx: ${days}d (${new Date(equipo.proximo_mantenimiento + 'T00:00:00').toLocaleDateString('es-AR')})`
+                                                    : `Próx: ${new Date(equipo.proximo_mantenimiento + 'T00:00:00').toLocaleDateString('es-AR')}`
+                                            }
+                                        </div>
+                                    )}
                                 </div>
+
                                 <div style={{ background: '#f8fafc', padding: '12px 20px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                                     <button 
                                         onClick={() => setShowHistorialModal(equipo)}
@@ -314,9 +451,10 @@ function AltaEquipoModal({ sedes, currentUser, equipoToEdit, onClose, onSuccess,
         modelo: equipoToEdit.modelo || '', 
         sede_id: equipoToEdit.sede_id || '', 
         estado_operativo: equipoToEdit.estado_operativo || 'Operativo', 
+        proximo_mantenimiento: equipoToEdit.proximo_mantenimiento || '',
         observaciones: equipoToEdit.observaciones || ''
     } : {
-        nombre: '', marca: '', modelo: '', sede_id: '', estado_operativo: 'Operativo', observaciones: ''
+        nombre: '', marca: '', modelo: '', sede_id: '', estado_operativo: 'Operativo', proximo_mantenimiento: '', observaciones: ''
     });
     const [saving, setSaving] = useState(false);
 
@@ -363,25 +501,33 @@ function AltaEquipoModal({ sedes, currentUser, equipoToEdit, onClose, onSuccess,
                     </select>
 
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Nombre del Equipo *</label>
-                    <input required type="text" placeholder="Ej. Monitor Multiparamétrico" style={inputStyle} value={form.nombre} onChange={e => setForm({...form, nombre: e.target.value})} />
+                    <input required type="text" placeholder="Ej. Cabina de Seguridad Biológica" style={inputStyle} value={form.nombre} onChange={e => setForm({...form, nombre: e.target.value})} />
 
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
                         <div style={{ flex: '1 1 200px' }}>
                             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Marca</label>
-                            <input type="text" placeholder="Ej. Mindray" style={inputStyle} value={form.marca} onChange={e => setForm({...form, marca: e.target.value})} />
+                            <input type="text" placeholder="Ej. Biobase" style={inputStyle} value={form.marca} onChange={e => setForm({...form, marca: e.target.value})} />
                         </div>
                         <div style={{ flex: '1 1 200px' }}>
                             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Modelo</label>
-                            <input type="text" placeholder="Ej. uMEC10" style={inputStyle} value={form.modelo} onChange={e => setForm({...form, modelo: e.target.value})} />
+                            <input type="text" placeholder="Ej. BSC-1300IIA2-x" style={inputStyle} value={form.modelo} onChange={e => setForm({...form, modelo: e.target.value})} />
                         </div>
                     </div>
 
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Estado Inicial *</label>
-                    <select required style={inputStyle} value={form.estado_operativo} onChange={e => setForm({...form, estado_operativo: e.target.value})}>
-                        <option value="Operativo">Operativo</option>
-                        <option value="En Revisión">En Revisión</option>
-                        <option value="Fuera de Servicio (Taller)">Fuera de Servicio (Taller)</option>
-                    </select>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                        <div style={{ flex: '1 1 200px' }}>
+                            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Estado Inicial *</label>
+                            <select required style={inputStyle} value={form.estado_operativo} onChange={e => setForm({...form, estado_operativo: e.target.value})}>
+                                <option value="Operativo">Operativo</option>
+                                <option value="En Revisión">En Revisión</option>
+                                <option value="Fuera de Servicio (Taller)">Fuera de Servicio (Taller)</option>
+                            </select>
+                        </div>
+                        <div style={{ flex: '1 1 200px' }}>
+                            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Próx. Mantenimiento</label>
+                            <input type="date" style={inputStyle} value={form.proximo_mantenimiento} onChange={e => setForm({...form, proximo_mantenimiento: e.target.value})} />
+                        </div>
+                    </div>
 
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Observaciones</label>
                     <textarea rows={3} style={{...inputStyle, resize: 'none'}} value={form.observaciones} onChange={e => setForm({...form, observaciones: e.target.value})} />
@@ -405,11 +551,24 @@ function AltaEquipoModal({ sedes, currentUser, equipoToEdit, onClose, onSuccess,
 // ---------------------------
 function IntervencionModal({ equipo, currentUser, onClose, onSuccess, addToast }) {
     const [form, setForm] = useState({
-        tipo_tarea: 'Mantenimiento Preventivo', responsable: currentUser.nombre || '', fecha_intervencion: new Date().toISOString().split('T')[0],
-        proximo_mantenimiento: '', estado_post: equipo.estado_operativo, notas: ''
+        tipo_tarea: 'Mantenimiento Preventivo', 
+        responsable: currentUser.nombre || '', 
+        fecha_intervencion: new Date().toISOString().split('T')[0],
+        proximo_mantenimiento: equipo.proximo_mantenimiento || '', 
+        estado_post: equipo.estado_operativo, 
+        notas: ''
     });
     const [file, setFile] = useState(null);
     const [saving, setSaving] = useState(false);
+
+    const addMonthsToDate = (months) => {
+        const base = form.fecha_intervencion ? new Date(form.fecha_intervencion + 'T00:00:00') : new Date();
+        base.setMonth(base.getMonth() + months);
+        const yyyy = base.getFullYear();
+        const mm = String(base.getMonth() + 1).padStart(2, '0');
+        const dd = String(base.getDate()).padStart(2, '0');
+        setForm(prev => ({ ...prev, proximo_mantenimiento: `${yyyy}-${mm}-${dd}` }));
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -455,6 +614,7 @@ function IntervencionModal({ equipo, currentUser, onClose, onSuccess, addToast }
                                 <option value="Mantenimiento Preventivo">Mantenimiento Preventivo</option>
                                 <option value="Mantenimiento Correctivo">Mantenimiento Correctivo</option>
                                 <option value="Calibración">Calibración</option>
+                                <option value="Auditoría / Inspección">Auditoría / Inspección</option>
                             </select>
                         </div>
                         <div style={{ flex: '1 1 200px' }}>
@@ -478,6 +638,19 @@ function IntervencionModal({ equipo, currentUser, onClose, onSuccess, addToast }
                         <div style={{ flex: '1 1 200px' }}>
                             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Próx. Mantenimiento</label>
                             <input type="date" style={inputStyle} value={form.proximo_mantenimiento} onChange={e => setForm({...form, proximo_mantenimiento: e.target.value})} />
+                        </div>
+                    </div>
+
+                    {/* Presets rápidos de fecha */}
+                    <div style={{ marginBottom: '16px', background: '#f8fafc', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '6px' }}>
+                            Programar Vencimiento en:
+                        </span>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            <button type="button" onClick={() => addMonthsToDate(1)} style={{ padding: '4px 10px', borderRadius: '6px', background: 'white', border: '1px solid #cbd5e1', fontSize: '0.75rem', fontWeight: 600, color: '#334155', cursor: 'pointer' }}>+1 Mes</button>
+                            <button type="button" onClick={() => addMonthsToDate(3)} style={{ padding: '4px 10px', borderRadius: '6px', background: 'white', border: '1px solid #cbd5e1', fontSize: '0.75rem', fontWeight: 600, color: '#334155', cursor: 'pointer' }}>+3 Meses</button>
+                            <button type="button" onClick={() => addMonthsToDate(6)} style={{ padding: '4px 10px', borderRadius: '6px', background: 'white', border: '1px solid #cbd5e1', fontSize: '0.75rem', fontWeight: 600, color: '#334155', cursor: 'pointer' }}>+6 Meses</button>
+                            <button type="button" onClick={() => addMonthsToDate(12)} style={{ padding: '4px 10px', borderRadius: '6px', background: 'white', border: '1px solid #cbd5e1', fontSize: '0.75rem', fontWeight: 600, color: '#334155', cursor: 'pointer' }}>+1 Año</button>
                         </div>
                     </div>
 
@@ -534,7 +707,7 @@ function QRModal({ equipo, onClose }) {
                 </div>
                 
                 <p style={{ margin: '0 0 16px', fontSize: '0.8rem', color: '#94a3b8' }}>
-                    Escanea este código con cualquier celular para acceder al historial de auditoría del equipo.
+                    Escanea este código con cualquier celular para acceder al historial de auditoría y registrar mantenimientos.
                 </p>
 
                 <button 
@@ -563,7 +736,7 @@ function QRModal({ equipo, onClose }) {
                             <QRCodeSVG value={qrUrl} size={220} level="H" />
                             
                             <p style={{ marginTop: '8mm', fontSize: '11pt', color: '#2563eb', fontWeight: 700 }}>
-                                Escanee el código para registrar una intervención técnica.
+                                Escanee el código para registrar una intervención técnica o consultar el historial.
                             </p>
                         </div>
                     </div>
@@ -619,7 +792,7 @@ function HistorialModal({ equipo, onClose }) {
                                     <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', gap: '8px' }}>
                                         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
                                             <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0ea5e9', background: '#e0f2fe', padding: '4px 8px', borderRadius: '4px' }}>{item.tipo_tarea}</span>
-                                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>{new Date(item.fecha_intervencion).toLocaleDateString('es-AR')}</span>
+                                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>{new Date(item.fecha_intervencion + 'T00:00:00').toLocaleDateString('es-AR')}</span>
                                         </div>
                                         {item.estado_post && (
                                             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px' }}>Estado: {item.estado_post}</span>
