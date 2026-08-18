@@ -29,6 +29,12 @@ const CERT_INITIAL = {
     vigencia: '72', unidadVigencia: 'hs', fecha: getTodayISO(),
 };
 
+const CERT_PACIENTE_INITIAL = {
+    nombrePaciente: '', dniPaciente: '', servicioTerapia: 'Piso / Sala General',
+    diagnostico: '', observaciones: '',
+    vigencia: '72', unidadVigencia: 'hs', fecha: getTodayISO(),
+};
+
 const OXI_INITIAL = {
     requerimientoDiario: '', dosis: '', horas: '',
     periodo: '', diagnostico: '',
@@ -78,9 +84,29 @@ export default function PedidosMarcela({ addToast }) {
 
     // ── Special form states ──
     const [certData, setCertData] = useState(CERT_INITIAL);
+    const [subCertTab, setSubCertTab] = useState('acompanante'); // 'acompanante' | 'paciente'
+    const [certPacienteData, setCertPacienteData] = useState(CERT_PACIENTE_INITIAL);
     const [oxiData, setOxiData] = useState(OXI_INITIAL);
     const [domData, setDomData] = useState(DOM_INITIAL);
     const [specialPrint, setSpecialPrint] = useState(null); // { type, data }
+
+    // Sincronizar datos del paciente del encabezado con los formularios de certificado
+    useEffect(() => {
+        if (patientData.nombre) {
+            setCertData(p => ({
+                ...p,
+                nombrePaciente: p.nombrePaciente || patientData.nombre,
+                dniPaciente: p.dniPaciente || patientData.afiliado || '',
+                diagnostico: p.diagnostico || patientData.diagnostico || '',
+            }));
+            setCertPacienteData(p => ({
+                ...p,
+                nombrePaciente: p.nombrePaciente || patientData.nombre,
+                dniPaciente: p.dniPaciente || patientData.afiliado || '',
+                diagnostico: p.diagnostico || patientData.diagnostico || '',
+            }));
+        }
+    }, [patientData.nombre, patientData.afiliado, patientData.diagnostico]);
 
     // ── Derived ──
     const specialCategories = ['certificado', 'oxigenoterapia', 'domiciliaria'];
@@ -164,7 +190,7 @@ export default function PedidosMarcela({ addToast }) {
     // SPECIAL FORM HANDLERS
     // ══════════════════════════════════════════════
 
-    // --- Certificate ---
+    // --- Certificate: Acompañante ---
     const generateCertText = () => {
         const c = certData;
         const unidad = c.unidadVigencia === 'dias' ? 'días' : 'hs';
@@ -174,6 +200,20 @@ export default function PedidosMarcela({ addToast }) {
     const handlePrintCert = () => {
         if (!certData.nombrePaciente) { addToast?.('Completá al menos el nombre del paciente', 'error'); return; }
         setSpecialPrint({ type: 'certificado', data: { ...certData, text: generateCertText() } });
+        setTimeout(() => window.print(), 100);
+    };
+
+    // --- Certificate: Paciente Internado (Diagnóstico / Enfermedad) ---
+    const generateCertPacienteText = () => {
+        const c = certPacienteData;
+        const unidad = c.unidadVigencia === 'dias' ? 'días' : 'hs';
+        const obsStr = c.observaciones ? ` Detalle adicional: ${c.observaciones}.` : '';
+        return `Certifico que el/la paciente ${c.nombrePaciente || '________'}, DNI ${c.dniPaciente || '________'} se encuentra internado/a en el servicio de ${c.servicioTerapia} de Sanatorio Argentino, cursando cuadro diagnóstico de ${c.diagnostico || '________'} por el período de ${c.vigencia || '72'} ${unidad}.${obsStr} Se expide el presente certificado para ser presentado ante quien corresponda.`;
+    };
+
+    const handlePrintCertPaciente = () => {
+        if (!certPacienteData.nombrePaciente) { addToast?.('Completá al menos el nombre del paciente', 'error'); return; }
+        setSpecialPrint({ type: 'certificado_paciente', data: { ...certPacienteData, text: generateCertPacienteText() } });
         setTimeout(() => window.print(), 100);
     };
 
@@ -427,110 +467,246 @@ export default function PedidosMarcela({ addToast }) {
                             background: '#FFFBEB', border: '1.5px solid #FDE68A',
                             borderRadius: 'var(--radius-lg)', padding: '24px', marginTop: '12px',
                         }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                                <ShieldCheck size={20} style={{ color: '#D97706' }} />
-                                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#92400E' }}>
-                                    Certificado de Internación
-                                </h4>
+                            {/* Selector de Tipo de Certificado */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <ShieldCheck size={20} style={{ color: '#D97706' }} />
+                                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#92400E' }}>
+                                        Emisión de Certificados de Internación
+                                    </h4>
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', background: '#FEF3C7', padding: '4px', borderRadius: '10px' }}>
+                                    <button
+                                        onClick={() => setSubCertTab('acompanante')}
+                                        style={{
+                                            padding: '6px 14px', borderRadius: '8px', border: 'none',
+                                            background: subCertTab === 'acompanante' ? '#D97706' : 'transparent',
+                                            color: subCertTab === 'acompanante' ? '#fff' : '#92400E',
+                                            fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                                            transition: 'all 0.15s',
+                                            boxShadow: subCertTab === 'acompanante' ? '0 1px 4px rgba(217, 119, 6, 0.3)' : 'none',
+                                        }}
+                                    >
+                                        🛡️ Para Acompañante / Cuidador
+                                    </button>
+                                    <button
+                                        onClick={() => setSubCertTab('paciente')}
+                                        style={{
+                                            padding: '6px 14px', borderRadius: '8px', border: 'none',
+                                            background: subCertTab === 'paciente' ? '#D97706' : 'transparent',
+                                            color: subCertTab === 'paciente' ? '#fff' : '#92400E',
+                                            fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                                            transition: 'all 0.15s',
+                                            boxShadow: subCertTab === 'paciente' ? '0 1px 4px rgba(217, 119, 6, 0.3)' : 'none',
+                                        }}
+                                    >
+                                        👤 Para Paciente Internado (Enfermedad / Diagnóstico)
+                                    </button>
+                                </div>
                             </div>
 
-                            {/* Live preview */}
-                            <div style={{
-                                background: '#fff', border: '1px solid #FDE68A',
-                                borderRadius: 'var(--radius-md)', padding: '14px 16px',
-                                fontSize: '0.82rem', lineHeight: '1.6', color: 'var(--neutral-600)',
-                                marginBottom: '20px', fontStyle: 'italic',
-                            }}>
-                                {generateCertText()}
-                            </div>
+                            {/* ── SUB-TAB 1: CERTIFICADO DE ACOMPAÑANTE / CUIDADOR ── */}
+                            {subCertTab === 'acompanante' && (
+                                <div className="animate-fade-in">
+                                    {/* Live preview */}
+                                    <div style={{
+                                        background: '#fff', border: '1px solid #FDE68A',
+                                        borderRadius: 'var(--radius-md)', padding: '14px 16px',
+                                        fontSize: '0.82rem', lineHeight: '1.6', color: 'var(--neutral-600)',
+                                        marginBottom: '20px', fontStyle: 'italic',
+                                    }}>
+                                        {generateCertText()}
+                                    </div>
 
-                            <div style={{
-                                display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-                                gap: '16px',
-                            }}>
-                                <div style={fieldGroupStyle}>
-                                    <label style={labelStyle}><User size={13} /> Nombre del Paciente</label>
-                                    <input type="text" placeholder="Ej: MALDONADO HERNANDEZ, FRANCISCO JOSE"
-                                        value={certData.nombrePaciente}
-                                        onChange={e => setCertData(p => ({ ...p, nombrePaciente: e.target.value.toUpperCase() }))}
-                                        style={inputStyle} {...focusBorder('#F59E0B')} />
-                                </div>
-                                <div style={fieldGroupStyle}>
-                                    <label style={labelStyle}><CreditCard size={13} /> DNI Paciente</label>
-                                    <input type="text" placeholder="Ej: 07808684"
-                                        value={certData.dniPaciente}
-                                        onChange={e => setCertData(p => ({ ...p, dniPaciente: e.target.value }))}
-                                        style={inputStyle} {...focusBorder('#F59E0B')} />
-                                </div>
-                                <div style={fieldGroupStyle}>
-                                    <label style={labelStyle}><Heart size={13} /> Tipo de Terapia</label>
-                                    <select value={certData.tipoTerapia}
-                                        onChange={e => setCertData(p => ({ ...p, tipoTerapia: e.target.value }))}
-                                        style={selectStyle}>
-                                        <option value="intensiva">Intensiva</option>
-                                        <option value="intermedia">Intermedia</option>
-                                        <option value="intensiva/intermedia">Intensiva/Intermedia</option>
-                                    </select>
-                                </div>
-                                <div style={fieldGroupStyle}>
-                                    <label style={labelStyle}><Stethoscope size={13} /> Diagnóstico</label>
-                                    <input type="text" placeholder="Ej: INSUFICIENCIA RESPIRATORIA"
-                                        value={certData.diagnostico}
-                                        onChange={e => setCertData(p => ({ ...p, diagnostico: e.target.value.toUpperCase() }))}
-                                        style={inputStyle} {...focusBorder('#F59E0B')} />
-                                </div>
-                                <div style={fieldGroupStyle}>
-                                    <label style={labelStyle}><User size={13} /> Nombre del Cuidador/a</label>
-                                    <input type="text" placeholder="Ej: PEREZ, MARIA"
-                                        value={certData.nombreCuidador}
-                                        onChange={e => setCertData(p => ({ ...p, nombreCuidador: e.target.value.toUpperCase() }))}
-                                        style={inputStyle} {...focusBorder('#F59E0B')} />
-                                </div>
-                                <div style={fieldGroupStyle}>
-                                    <label style={labelStyle}><CreditCard size={13} /> DNI Cuidador/a</label>
-                                    <input type="text" placeholder="Ej: 30567890"
-                                        value={certData.dniCuidador}
-                                        onChange={e => setCertData(p => ({ ...p, dniCuidador: e.target.value }))}
-                                        style={inputStyle} {...focusBorder('#F59E0B')} />
-                                </div>
-                                <div style={fieldGroupStyle}>
-                                    <label style={labelStyle}>Vigencia</label>
-                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                        <input type="number" value={certData.vigencia}
-                                            onChange={e => setCertData(p => ({ ...p, vigencia: e.target.value }))}
-                                            style={{ ...inputStyle, maxWidth: '100px' }} {...focusBorder('#F59E0B')} />
-                                        <select value={certData.unidadVigencia}
-                                            onChange={e => setCertData(p => ({ ...p, unidadVigencia: e.target.value }))}
-                                            style={{ ...selectStyle, maxWidth: '100px' }}>
-                                            <option value="hs">Horas</option>
-                                            <option value="dias">Días</option>
-                                        </select>
+                                    <div style={{
+                                        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                                        gap: '16px',
+                                    }}>
+                                        <div style={fieldGroupStyle}>
+                                            <label style={labelStyle}><User size={13} /> Nombre del Paciente</label>
+                                            <input type="text" placeholder="Ej: MALDONADO HERNANDEZ, FRANCISCO JOSE"
+                                                value={certData.nombrePaciente}
+                                                onChange={e => setCertData(p => ({ ...p, nombrePaciente: e.target.value.toUpperCase() }))}
+                                                style={inputStyle} {...focusBorder('#F59E0B')} />
+                                        </div>
+                                        <div style={fieldGroupStyle}>
+                                            <label style={labelStyle}><CreditCard size={13} /> DNI Paciente</label>
+                                            <input type="text" placeholder="Ej: 07808684"
+                                                value={certData.dniPaciente}
+                                                onChange={e => setCertData(p => ({ ...p, dniPaciente: e.target.value }))}
+                                                style={inputStyle} {...focusBorder('#F59E0B')} />
+                                        </div>
+                                        <div style={fieldGroupStyle}>
+                                            <label style={labelStyle}><Heart size={13} /> Tipo de Terapia</label>
+                                            <select value={certData.tipoTerapia}
+                                                onChange={e => setCertData(p => ({ ...p, tipoTerapia: e.target.value }))}
+                                                style={selectStyle}>
+                                                <option value="intensiva">Intensiva</option>
+                                                <option value="intermedia">Intermedia</option>
+                                                <option value="intensiva/intermedia">Intensiva/Intermedia</option>
+                                            </select>
+                                        </div>
+                                        <div style={fieldGroupStyle}>
+                                            <label style={labelStyle}><Stethoscope size={13} /> Diagnóstico</label>
+                                            <input type="text" placeholder="Ej: INSUFICIENCIA RESPIRATORIA"
+                                                value={certData.diagnostico}
+                                                onChange={e => setCertData(p => ({ ...p, diagnostico: e.target.value.toUpperCase() }))}
+                                                style={inputStyle} {...focusBorder('#F59E0B')} />
+                                        </div>
+                                        <div style={fieldGroupStyle}>
+                                            <label style={labelStyle}><User size={13} /> Nombre del Cuidador/a</label>
+                                            <input type="text" placeholder="Ej: PEREZ, MARIA"
+                                                value={certData.nombreCuidador}
+                                                onChange={e => setCertData(p => ({ ...p, nombreCuidador: e.target.value.toUpperCase() }))}
+                                                style={inputStyle} {...focusBorder('#F59E0B')} />
+                                        </div>
+                                        <div style={fieldGroupStyle}>
+                                            <label style={labelStyle}><CreditCard size={13} /> DNI Cuidador/a</label>
+                                            <input type="text" placeholder="Ej: 30567890"
+                                                value={certData.dniCuidador}
+                                                onChange={e => setCertData(p => ({ ...p, dniCuidador: e.target.value }))}
+                                                style={inputStyle} {...focusBorder('#F59E0B')} />
+                                        </div>
+                                        <div style={fieldGroupStyle}>
+                                            <label style={labelStyle}>Vigencia</label>
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                <input type="number" value={certData.vigencia}
+                                                    onChange={e => setCertData(p => ({ ...p, vigencia: e.target.value }))}
+                                                    style={{ ...inputStyle, maxWidth: '100px' }} {...focusBorder('#F59E0B')} />
+                                                <select value={certData.unidadVigencia}
+                                                    onChange={e => setCertData(p => ({ ...p, unidadVigencia: e.target.value }))}
+                                                    style={{ ...selectStyle, maxWidth: '100px' }}>
+                                                    <option value="hs">Horas</option>
+                                                    <option value="dias">Días</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div style={fieldGroupStyle}>
+                                            <label style={labelStyle}>Fecha</label>
+                                            <input type="date" value={certData.fecha}
+                                                onChange={e => setCertData(p => ({ ...p, fecha: e.target.value }))}
+                                                style={inputStyle} {...focusBorder('#F59E0B')} />
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'flex-end' }}>
+                                        <button onClick={() => setCertData(CERT_INITIAL)} style={{
+                                            padding: '10px 20px', borderRadius: 'var(--radius-md)',
+                                            border: '1.5px solid var(--neutral-200)', background: '#fff',
+                                            fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', color: 'var(--neutral-500)',
+                                        }}>Limpiar</button>
+                                        <button onClick={handlePrintCert} style={{
+                                            display: 'flex', alignItems: 'center', gap: '6px',
+                                            padding: '10px 24px', borderRadius: 'var(--radius-md)',
+                                            background: '#D97706', color: '#fff', fontSize: '0.85rem', fontWeight: 700,
+                                            border: 'none', cursor: 'pointer', boxShadow: '0 2px 8px #D9770640',
+                                        }}
+                                            onMouseOver={e => e.currentTarget.style.background = '#B45309'}
+                                            onMouseOut={e => e.currentTarget.style.background = '#D97706'}
+                                        ><Printer size={16} /> Imprimir Certificado de Acompañante</button>
                                     </div>
                                 </div>
-                                <div style={fieldGroupStyle}>
-                                    <label style={labelStyle}>Fecha</label>
-                                    <input type="date" value={certData.fecha}
-                                        onChange={e => setCertData(p => ({ ...p, fecha: e.target.value }))}
-                                        style={inputStyle} {...focusBorder('#F59E0B')} />
-                                </div>
-                            </div>
+                            )}
 
-                            <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'flex-end' }}>
-                                <button onClick={() => setCertData(CERT_INITIAL)} style={{
-                                    padding: '10px 20px', borderRadius: 'var(--radius-md)',
-                                    border: '1.5px solid var(--neutral-200)', background: '#fff',
-                                    fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', color: 'var(--neutral-500)',
-                                }}>Limpiar</button>
-                                <button onClick={handlePrintCert} style={{
-                                    display: 'flex', alignItems: 'center', gap: '6px',
-                                    padding: '10px 24px', borderRadius: 'var(--radius-md)',
-                                    background: '#D97706', color: '#fff', fontSize: '0.85rem', fontWeight: 700,
-                                    border: 'none', cursor: 'pointer', boxShadow: '0 2px 8px #D9770640',
-                                }}
-                                    onMouseOver={e => e.currentTarget.style.background = '#B45309'}
-                                    onMouseOut={e => e.currentTarget.style.background = '#D97706'}
-                                ><Printer size={16} /> Imprimir Certificado</button>
-                            </div>
+                            {/* ── SUB-TAB 2: CERTIFICADO PARA EL PACIENTE INTERNADO ── */}
+                            {subCertTab === 'paciente' && (
+                                <div className="animate-fade-in">
+                                    {/* Live preview */}
+                                    <div style={{
+                                        background: '#fff', border: '1px solid #FDE68A',
+                                        borderRadius: 'var(--radius-md)', padding: '14px 16px',
+                                        fontSize: '0.82rem', lineHeight: '1.6', color: 'var(--neutral-600)',
+                                        marginBottom: '20px', fontStyle: 'italic',
+                                    }}>
+                                        {generateCertPacienteText()}
+                                    </div>
+
+                                    <div style={{
+                                        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                                        gap: '16px',
+                                    }}>
+                                        <div style={fieldGroupStyle}>
+                                            <label style={labelStyle}><User size={13} /> Nombre del Paciente</label>
+                                            <input type="text" placeholder="Ej: MALDONADO HERNANDEZ, FRANCISCO JOSE"
+                                                value={certPacienteData.nombrePaciente}
+                                                onChange={e => setCertPacienteData(p => ({ ...p, nombrePaciente: e.target.value.toUpperCase() }))}
+                                                style={inputStyle} {...focusBorder('#F59E0B')} />
+                                        </div>
+                                        <div style={fieldGroupStyle}>
+                                            <label style={labelStyle}><CreditCard size={13} /> DNI Paciente</label>
+                                            <input type="text" placeholder="Ej: 07808684"
+                                                value={certPacienteData.dniPaciente}
+                                                onChange={e => setCertPacienteData(p => ({ ...p, dniPaciente: e.target.value }))}
+                                                style={inputStyle} {...focusBorder('#F59E0B')} />
+                                        </div>
+                                        <div style={fieldGroupStyle}>
+                                            <label style={labelStyle}><Heart size={13} /> Servicio / Sector de Internación</label>
+                                            <select value={certPacienteData.servicioTerapia}
+                                                onChange={e => setCertPacienteData(p => ({ ...p, servicioTerapia: e.target.value }))}
+                                                style={selectStyle}>
+                                                <option value="Piso / Sala General">Piso / Sala General</option>
+                                                <option value="Terapia Intensiva (UTI)">Terapia Intensiva (UTI)</option>
+                                                <option value="Terapia Intermedia">Terapia Intermedia</option>
+                                                <option value="Unidad de Cuidados Coronarios (UCO)">Unidad de Cuidados Coronarios (UCO)</option>
+                                                <option value="Neonatología">Neonatología</option>
+                                                <option value="Pediatría">Pediatría</option>
+                                                <option value="Servicio de Urgencias / Guardia">Servicio de Urgencias / Guardia</option>
+                                            </select>
+                                        </div>
+                                        <div style={fieldGroupStyle}>
+                                            <label style={labelStyle}><Stethoscope size={13} /> Diagnóstico / Enfermedad</label>
+                                            <input type="text" placeholder="Ej: INSUFICIENCIA RESPIRATORIA AGUDA / NEUMONÍA"
+                                                value={certPacienteData.diagnostico}
+                                                onChange={e => setCertPacienteData(p => ({ ...p, diagnostico: e.target.value.toUpperCase() }))}
+                                                style={inputStyle} {...focusBorder('#F59E0B')} />
+                                        </div>
+                                        <div style={fieldGroupStyle}>
+                                            <label style={labelStyle}>Detalle / Indicación Adicional (Opcional)</label>
+                                            <input type="text" placeholder="Ej: requiere guardar reposo absoluto"
+                                                value={certPacienteData.observaciones}
+                                                onChange={e => setCertPacienteData(p => ({ ...p, observaciones: e.target.value }))}
+                                                style={inputStyle} {...focusBorder('#F59E0B')} />
+                                        </div>
+                                        <div style={fieldGroupStyle}>
+                                            <label style={labelStyle}>Vigencia</label>
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                <input type="number" value={certPacienteData.vigencia}
+                                                    onChange={e => setCertPacienteData(p => ({ ...p, vigencia: e.target.value }))}
+                                                    style={{ ...inputStyle, maxWidth: '100px' }} {...focusBorder('#F59E0B')} />
+                                                <select value={certPacienteData.unidadVigencia}
+                                                    onChange={e => setCertPacienteData(p => ({ ...p, unidadVigencia: e.target.value }))}
+                                                    style={{ ...selectStyle, maxWidth: '100px' }}>
+                                                    <option value="hs">Horas</option>
+                                                    <option value="dias">Días</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div style={fieldGroupStyle}>
+                                            <label style={labelStyle}>Fecha</label>
+                                            <input type="date" value={certPacienteData.fecha}
+                                                onChange={e => setCertPacienteData(p => ({ ...p, fecha: e.target.value }))}
+                                                style={inputStyle} {...focusBorder('#F59E0B')} />
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'flex-end' }}>
+                                        <button onClick={() => setCertPacienteData(CERT_PACIENTE_INITIAL)} style={{
+                                            padding: '10px 20px', borderRadius: 'var(--radius-md)',
+                                            border: '1.5px solid var(--neutral-200)', background: '#fff',
+                                            fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', color: 'var(--neutral-500)',
+                                        }}>Limpiar</button>
+                                        <button onClick={handlePrintCertPaciente} style={{
+                                            display: 'flex', alignItems: 'center', gap: '6px',
+                                            padding: '10px 24px', borderRadius: 'var(--radius-md)',
+                                            background: '#D97706', color: '#fff', fontSize: '0.85rem', fontWeight: 700,
+                                            border: 'none', cursor: 'pointer', boxShadow: '0 2px 8px #D9770640',
+                                        }}
+                                            onMouseOver={e => e.currentTarget.style.background = '#B45309'}
+                                            onMouseOut={e => e.currentTarget.style.background = '#D97706'}
+                                        ><Printer size={16} /> Imprimir Certificado de Paciente</button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -629,6 +805,25 @@ export default function PedidosMarcela({ addToast }) {
                         <div className="print-bottom-section">
                             <div className="print-date-block">
                                 <span className="print-date-value">{formatDate(certData.fecha)}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Special Print: Certificado de Paciente Internado ── */}
+            {specialPrint?.type === 'certificado_paciente' && (
+                <div className="print-area">
+                    <div className="print-page">
+                        <div className="print-patient-name">{certPacienteData.nombrePaciente}</div>
+                        <div className="print-fields" style={{ marginTop: '6mm' }}>
+                            <p style={{ fontSize: '10pt', lineHeight: '2', textAlign: 'justify' }}>
+                                {specialPrint.data.text}
+                            </p>
+                        </div>
+                        <div className="print-bottom-section">
+                            <div className="print-date-block">
+                                <span className="print-date-value">{formatDate(certPacienteData.fecha)}</span>
                             </div>
                         </div>
                     </div>
