@@ -4,6 +4,7 @@ import App from './App.jsx'
 import RecepcionView from './components/RecepcionView.jsx'
 import TurnoKiosco from './components/TurnoKiosco.jsx'
 import './index.css'
+import './simon-redesign.css'
 
 // ─── Global Error Boundary ───────────────────────────────────────────
 // Prevents white screen of death by catching any React rendering error

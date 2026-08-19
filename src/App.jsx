@@ -997,7 +997,7 @@ function App({ currentUser, onLogout }) {
                 )}
 
                 {activeView === 'beto_analytics' && (
-                    <BetoAnalyticsPanel addToast={addToast} />
+                    <BetoPanel addToast={addToast} />
                 )}
 
                 {activeView === 'laboratorios' && (
