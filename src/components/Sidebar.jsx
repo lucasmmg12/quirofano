@@ -29,6 +29,14 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const [mensajeriaOpen, setMensajeriaOpen] = useState(false);
     const [altasOpen, setAltasOpen] = useState(false);
     const [cirugiasOpen, setCirugiasOpen] = useState(false);
+    const [simonOpen, setSimonOpen] = useState(false);
+
+    // Sub-items dentro de "Simon IA"
+    const simonSubItems = [
+        { id: 'beto', label: 'Chat & Documentos', icon: Brain },
+        { id: 'beto_rules', label: 'Reglas de Simon', icon: Shield },
+        { id: 'beto_analytics', label: 'Simon Analytics', icon: BarChart3 },
+    ].filter(i => isModuleVisible(i.id));
 
     // Sub-items dentro de "Altas Adm"
     const altasSubItems = [
@@ -67,6 +75,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const isMensajeriaActive = mensajeriaSubItems.some(i => activeView === i.id);
     const isAltasActive = altasSubItems.some(i => activeView === i.id);
     const isCirugiasActive = cirugiasSubItems.some(i => activeView === i.id);
+    const isSimonActive = simonSubItems.some(i => activeView === i.id);
 
     // ── Smooth Accordion component ──
     function AccordionContent({ isOpen, children }) {
@@ -310,10 +319,19 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     subItems: cirugiasSubItems,
                 })}
 
+                {/* ─── Simon IA (grupo colapsable) ─── */}
+                {renderGroup({
+                    label: 'Simon IA',
+                    icon: Brain,
+                    isOpen: simonOpen,
+                    setOpen: setSimonOpen,
+                    isGroupActive: isSimonActive,
+                    subItems: simonSubItems,
+                })}
+
                 {/* ─── Items finales ─── */}
                 {[
                     ...(['lmarinero', 'soribarale'].includes(currentUser?.usuario) ? [{ id: 'activos', label: 'Gestión de Activos', icon: Wrench }] : []),
-                    { id: 'beto', label: 'Simon IA', icon: Brain },
                     ...(currentUser?.usuario === 'lmarinero' ? [{ id: 'actividad_usuarios', label: 'Actividad Usuarios', icon: Activity }] : []),
                     { id: 'manual', label: 'Manual del Sistema', icon: BookMarked },
                     { id: 'config', label: 'Configuración', icon: Settings },

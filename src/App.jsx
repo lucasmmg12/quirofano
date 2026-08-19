@@ -147,6 +147,7 @@ const VIEW_LABELS = {
     consultas: 'Consultas',
     auditoria_historias: 'Auditoría de Historias',
     beto: 'Simon IA',
+    beto_rules: 'Reglas de Simon',
     asociaciones_entrega: 'Asociaciones Entrega',
     laboratorios: 'Laboratorios',
     pedidos_marcela: 'Pedidos Especiales',
@@ -250,7 +251,7 @@ function App({ currentUser, onLogout }) {
         if (selectedModules.length === 1 && selectedModules[0] !== 'config') {
             isVisible = selectedModules.includes(activeView);
         } else {
-            if (['config', 'manual', 'actividad_usuarios', 'beto', 'simon', 'beto_analytics'].includes(activeView)) isVisible = true;
+            if (['config', 'manual', 'actividad_usuarios', 'beto', 'simon', 'beto_rules', 'beto_analytics'].includes(activeView)) isVisible = true;
             else if (ALWAYS_VISIBLE.includes(activeView)) isVisible = true;
             else isVisible = selectedModules.includes(activeView);
         }
@@ -980,8 +981,8 @@ function App({ currentUser, onLogout }) {
                     <AuditoriaPDFPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
-                {activeView === 'beto' && (
-                    <BetoPanel addToast={addToast} />
+                {(activeView === 'beto' || activeView === 'beto_rules' || activeView === 'beto_analytics') && (
+                    <BetoPanel activeView={activeView} addToast={addToast} />
                 )}
 
                 {activeView === 'config' && (
@@ -994,10 +995,6 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'asociaciones_entrega' && (
                     <AsociacionesEntregaPanel addToast={addToast} currentUser={currentUser} />
-                )}
-
-                {activeView === 'beto_analytics' && (
-                    <BetoPanel addToast={addToast} />
                 )}
 
                 {activeView === 'laboratorios' && (
