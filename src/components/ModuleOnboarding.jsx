@@ -69,7 +69,7 @@ const MODULE_GROUPS = [
         label: 'Analytics',
         description: 'Reportes y análisis',
         items: [
-            { id: 'beto_analytics', label: 'Simon Analytics', icon: Brain, hint: 'Si revisás analytics del asistente IA' },
+            { id: 'beto', label: 'Simon IA', icon: Brain, hint: 'Asistente documental con IA, reglas y gestor de archivos' },
         ],
     },
 ];
