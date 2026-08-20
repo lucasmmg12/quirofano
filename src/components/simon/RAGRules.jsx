@@ -8,7 +8,7 @@ import {
     Mic, MicOff, Send, Trash2, Loader2, BookOpen,
     Tag, Clock, AlertCircle, CheckCircle, Plus,
     Shield, Sparkles, Volume2, X, Pencil, Save, RotateCcw,
-    Building2, UserCheck, Layers, Filter, Check, Eye, ToggleLeft, ToggleRight
+    Building2, UserCheck, Layers, Filter, Check, Eye, ToggleLeft, ToggleRight, Mail
 } from 'lucide-react'
 import { listRAGFiles } from '../../api/ragClient'
 
@@ -36,6 +36,7 @@ const DEFAULT_DOCTORS = [
 
 export default function RAGRules() {
     const [rules, setRules] = useState([])
+    const [activeTab, setActiveTab] = useState('rules')
     const [ruleText, setRuleText] = useState('')
     const [selectedOS, setSelectedOS] = useState('General / Sin Obra Social Especifica')
     const [selectedMedico, setSelectedMedico] = useState('General / Todos los Médicos')
@@ -346,7 +347,10 @@ export default function RAGRules() {
     }
 
     // Filter & Group Rules
-    const filteredRules = rules.filter(r => {
+    const inboxRules = rules.filter(r => (r.author || '').includes('Ingestión Automática') && r.status === 'pending_validation');
+    const generalRules = rules.filter(r => !((r.author || '').includes('Ingestión Automática') && r.status === 'pending_validation'));
+
+    const filteredRules = generalRules.filter(r => {
         if (!searchFilter.trim()) return true;
         const q = searchFilter.toLowerCase();
         return (
@@ -400,6 +404,39 @@ export default function RAGRules() {
                 </span>
             </div>
 
+            {/* Tabs */}
+            <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', borderBottom: '2px solid #e2e8f0', paddingBottom: '0' }}>
+                <button
+                    onClick={() => setActiveTab('rules')}
+                    style={{
+                        background: 'none', border: 'none', padding: '12px 20px', cursor: 'pointer',
+                        fontSize: '14px', fontWeight: 600, color: activeTab === 'rules' ? '#2563eb' : '#64748b',
+                        borderBottom: activeTab === 'rules' ? '2px solid #2563eb' : '2px solid transparent',
+                        marginBottom: '-2px', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s'
+                    }}
+                >
+                    <BookOpen size={16} /> Gestión General de Reglas
+                </button>
+                <button
+                    onClick={() => setActiveTab('inbox')}
+                    style={{
+                        background: 'none', border: 'none', padding: '12px 20px', cursor: 'pointer',
+                        fontSize: '14px', fontWeight: 600, color: activeTab === 'inbox' ? '#2563eb' : '#64748b',
+                        borderBottom: activeTab === 'inbox' ? '2px solid #2563eb' : '2px solid transparent',
+                        marginBottom: '-2px', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s'
+                    }}
+                >
+                    <Mail size={16} /> Bandeja de Entrada (Correos)
+                    {inboxRules.length > 0 && (
+                        <span style={{ background: '#ef4444', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', marginLeft: '4px', boxShadow: '0 2px 4px rgba(239, 68, 68, 0.3)' }}>
+                            {inboxRules.length} Nuevos
+                        </span>
+                    )}
+                </button>
+            </div>
+
+            {activeTab === 'rules' && (
+                <>
             {/* Input & Form Area */}
             <div className="rag-rules-input-area" style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', marginBottom: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
                 <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -713,6 +750,112 @@ export default function RAGRules() {
                     })
                 )}
             </div>
+            </>
+            )}
+
+            {activeTab === 'inbox' && (
+                <div className="rag-rules-inbox" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {inboxRules.length === 0 ? (
+                        <div style={{ padding: '60px 40px', textAlign: 'center', color: '#64748b', background: 'white', borderRadius: '16px', border: '1px dashed #cbd5e1' }}>
+                            <CheckCircle size={48} color="#10b981" style={{ marginBottom: '16px', opacity: 0.8 }} />
+                            <h3 style={{ margin: '0 0 8px 0', color: '#0f172a', fontSize: '18px' }}>Bandeja al día</h3>
+                            <p style={{ margin: 0, fontSize: '14px' }}>No hay correos pendientes de revisión en este momento.</p>
+                        </div>
+                    ) : (
+                        inboxRules.map(rule => (
+                            <div key={rule.id} style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '24px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <div style={{ background: '#eff6ff', padding: '10px', borderRadius: '50%', color: '#2563eb' }}>
+                                            <Mail size={22} />
+                                        </div>
+                                        <div>
+                                            <h4 style={{ margin: 0, fontSize: '16px', color: '#0f172a', fontWeight: 700 }}>{rule.title || 'Correo sin asunto'}</h4>
+                                            <span style={{ fontSize: '12px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                                                <Clock size={12} /> Recibido: {formatDate(rule.created_at)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <span className="badge" style={{ background: '#fef3c7', color: '#d97706', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 700 }}>
+                                        Pendiente
+                                    </span>
+                                </div>
+
+                                {editingRuleId === rule.id ? (
+                                    <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '10px', border: '1px solid #cbd5e1', marginTop: '20px' }}>
+                                        <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '8px', display: 'block' }}>Contenido de la regla (editable)</label>
+                                        <textarea
+                                            ref={editTextareaRef}
+                                            value={editText}
+                                            onChange={(e) => setEditText(e.target.value)}
+                                            rows={6}
+                                            style={{ width: '100%', padding: '14px', border: '1.5px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', outline: 'none', resize: 'vertical', fontFamily: 'inherit', marginBottom: '20px', lineHeight: 1.5 }}
+                                        />
+                                        
+                                        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '20px' }}>
+                                            <div style={{ flex: 1, minWidth: '200px' }}>
+                                                <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <Building2 size={14} color="#2563eb" /> Obra Social
+                                                </label>
+                                                <select value={editOS} onChange={(e) => setEditOS(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '13px', fontWeight: 500 }}>
+                                                    {osList.map((os, i) => <option key={i} value={os}>{os}</option>)}
+                                                </select>
+                                            </div>
+                                            <div style={{ flex: 1, minWidth: '200px' }}>
+                                                <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <UserCheck size={14} color="#059669" /> Médico / Especialidad
+                                                </label>
+                                                <select value={editMedico} onChange={(e) => setEditMedico(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '13px', fontWeight: 500 }}>
+                                                    {DEFAULT_DOCTORS.map((doc, i) => <option key={i} value={doc}>{doc}</option>)}
+                                                </select>
+                                            </div>
+                                            <div style={{ flex: 1, minWidth: '180px' }}>
+                                                <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <Tag size={14} color="#d97706" /> Categoría
+                                                </label>
+                                                <select value={editCategory} onChange={(e) => setEditCategory(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '13px', fontWeight: 500 }}>
+                                                    <option value="obra_social">Obra Social</option>
+                                                    <option value="precios">Precios y Cobros</option>
+                                                    <option value="protocolo">Protocolo Médico</option>
+                                                    <option value="administrativo">Administrativo</option>
+                                                    <option value="medico">Médico / Especialidad</option>
+                                                    <option value="general">General</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                                            <button onClick={() => { handleSaveEdit(rule.id); setTimeout(() => handleApproveRule(rule.id), 500); }} disabled={isSavingEdit} style={{ background: '#10b981', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 4px rgba(16,185,129,0.3)' }}>
+                                                {isSavingEdit ? <Loader2 size={16} className="rag-spin" /> : <CheckCircle size={16} />} 
+                                                Aprobar e Integrar
+                                            </button>
+                                            <button onClick={cancelEditing} style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
+                                                Cancelar
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div style={{ marginTop: '16px' }}>
+                                        <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '10px', border: '1px solid #e2e8f0', color: '#334155', fontSize: '14px', whiteSpace: 'pre-wrap', lineHeight: 1.6, maxHeight: '300px', overflowY: 'auto' }}>
+                                            {rule.processed_text || rule.text || rule.original_text}
+                                        </div>
+                                        
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '20px', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
+                                            <button onClick={() => startEditing(rule)} style={{ background: '#2563eb', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <Pencil size={15} /> Revisar y Aprobar
+                                            </button>
+                                            <button onClick={() => handleDeleteRule(rule.id)} style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <Trash2 size={15} /> Descartar Correo
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))
+                    )}
+                </div>
+            )}
+
         </div>
     )
 }
