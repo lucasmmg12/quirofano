@@ -103,6 +103,20 @@ function renderMarkdown(text) {
     return html;
 }
 
+// Sanitizer for Spanish question texts to clean up encoding glitches (\uFFFD / replacement chars)
+function sanitizeQuestionText(str) {
+    if (!str) return '';
+    let cleaned = str.replace(/[\uFFFD\u00BF]/g, '¿').trim();
+    cleaned = cleaned.replace(/^¿+/, '¿');
+    if (cleaned.startsWith('¿') && cleaned.length > 1) {
+        cleaned = '¿' + cleaned.charAt(1).toUpperCase() + cleaned.slice(2);
+    } else if (!cleaned.startsWith('¿') && cleaned.endsWith('?')) {
+        cleaned = '¿' + cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    }
+    cleaned = cleaned.replace(/\s+/g, ' ');
+    return cleaned;
+}
+
 export default function RAGPanel() {
     // State
     const [activeTab, setActiveTab] = useState('chat') // 'chat' | 'documents'
@@ -882,46 +896,65 @@ export default function RAGPanel() {
                 <div className="rag-messages">
                     {messages.length === 0 && !isLoading ? (
                         <div className="rag-welcome">
-                            <div className="rag-welcome-icon" style={{ background: '#eff6ff', padding: '16px', borderRadius: '16px' }}>
-                                <Brain size={48} color="#3b82f6" />
-                            </div>
-                            <h3>Simon</h3>
-                            <p>Preguntá lo que necesites sobre los documentos cargados. Las respuestas incluyen citación de fuentes.</p>
-                            <div className="simon-guide-box" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '18px 22px', margin: '16px 0', textAlign: 'left', maxWidth: '640px', width: '100%', boxSizing: 'border-box' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', color: '#1e293b', fontWeight: 600, fontSize: '14px' }}>
-                                    <Lightbulb size={18} color="#3b82f6" />
-                                    <span>¿Cómo formular tu consulta para obtener mejores respuestas?</span>
+                            <div className="simon-welcome-hero">
+                                <div className="simon-welcome-avatar-glow">
+                                    <Brain size={40} color="#ffffff" />
                                 </div>
-                                <ul style={{ margin: 0, paddingLeft: '20px', color: '#475569', fontSize: '13px', lineHeight: '1.6' }}>
-                                    <li style={{ marginBottom: '6px' }}>
-                                        <strong>Especificá la Obra Social / Convenio:</strong> Ej. <em>"¿Qué prácticas bioquímicas avala la obra social OSDE?"</em> o <em>"Criterios de internación en Medisalud"</em>.
-                                    </li>
-                                    <li style={{ marginBottom: '6px' }}>
-                                        <strong>Indicá el código o nombre del procedimiento:</strong> Ej. <em>"¿Cuál es el total del bisturí armónico en código 042?"</em> o <em>"Requisitos para ablación endocárdica"</em>.
+                                <div className="simon-welcome-titles">
+                                    <h3>Simon IA</h3>
+                                    <span className="simon-welcome-badge">Asistente Institucional RAG</span>
+                                </div>
+                            </div>
+
+                            <p className="simon-welcome-desc">
+                                Consultá normativas, aranceles, convenios y expedientes del Sanatorio Argentino en tiempo real.
+                            </p>
+
+                            <div className="simon-guide-box">
+                                <div className="simon-guide-box-header">
+                                    <Lightbulb size={16} color="#2563eb" />
+                                    <span>¿Cómo formular tu consulta para mejores respuestas?</span>
+                                </div>
+                                <ul className="simon-guide-list">
+                                    <li>
+                                        <strong>Obra Social / Convenio:</strong> Ej. <em>"¿Qué prácticas bioquímicas avala OSDE?"</em>
                                     </li>
                                     <li>
-                                        <strong>Preguntá sobre requisitos, aranceles o normas internas:</strong> Simon buscará en la documentación cargada del Sanatorio y te responderá indicando la fuente.
+                                        <strong>Procedimientos y Aranceles:</strong> Ej. <em>"¿Cuál es el costo del bisturí armónico en código 042?"</em>
+                                    </li>
+                                    <li>
+                                        <strong>Criterios de Internación:</strong> Ej. <em>"¿Cuáles son las reglas de internación en Medisalud?"</em>
                                     </li>
                                 </ul>
                             </div>
 
-                            {suggestions.top_queries.length > 0 && (
-                                <div className="sg-prechat" style={{ marginTop: '8px', maxWidth: '640px', width: '100%' }}>
-                                    <div className="sg-section">
-                                        <div className="sg-section-title" style={{ justifyContent: 'center', marginBottom: '8px' }}><Sparkles size={13} /> Preguntas frecuentes de ejemplo</div>
-                                        <div className="sg-chips" style={{ justifyContent: 'center' }}>
-                                            {suggestions.top_queries.slice(0, 6).map((q, i) => (
-                                                <button key={i} className="sg-chip query"
-                                                    onClick={() => { setInputValue(q.text); }}
-                                                >
-                                                    <MessageSquare size={12} />
-                                                    {q.text.length > 60 ? q.text.slice(0, 57) + '...' : q.text}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
+                            <div className="sg-prechat">
+                                <div className="sg-section-title">
+                                    <Sparkles size={14} color="#2563eb" />
+                                    <span>Ejemplos de preguntas frecuentes</span>
                                 </div>
-                            )}
+                                <div className="sg-chips">
+                                    {(() => {
+                                        const defaultExamples = [
+                                            '¿Qué prácticas bioquímicas avala la obra social OSDE?',
+                                            '¿Cuál es el total del bisturí armónico en código 042?',
+                                            '¿Cuáles son los criterios de internación en Medisalud?',
+                                            '¿Qué información hay disponible sobre la cobertura de ROISA?',
+                                            '¿Requisitos para procedimiento de ablación endocárdica?'
+                                        ];
+                                        const queryList = (suggestions.top_queries && suggestions.top_queries.length > 0)
+                                            ? suggestions.top_queries.slice(0, 5).map(q => sanitizeQuestionText(q.text))
+                                            : defaultExamples;
+                                            
+                                        return queryList.map((qText, i) => (
+                                            <button key={i} className="sg-chip query" onClick={() => setInputValue(qText)}>
+                                                <MessageSquare size={13} className="sg-chip-icon" />
+                                                <span>{qText}</span>
+                                            </button>
+                                        ));
+                                    })()}
+                                </div>
+                            </div>
                         </div>
                     ) : (
                         messages.map((msg, i) => (
@@ -1148,24 +1181,7 @@ export default function RAGPanel() {
                 )}
 
                 <div className="rag-input-area">
-                    <div className="rag-quick-actions" style={{ display: 'flex', gap: '8px', marginBottom: '12px', overflowX: 'auto', paddingBottom: '4px' }}>
-                        <button 
-                            className="rag-quick-action-btn"
-                            onClick={() => setInputValue('Genera un mapa conceptual sobre las reglas de este documento. IMPORTANTE: Envuelve el código del diagrama EXCLUSIVAMENTE dentro de un bloque markdown tipo mermaid (empezando con ```mermaid y terminando con ```). Usa saltos de línea para cada nodo.')}
-                            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px 12px', borderRadius: '16px', background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#475569', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                        >
-                            ⚡ Mapa Conceptual
-                        </button>
-                        <button 
-                            className="rag-quick-action-btn"
-                            onClick={() => setInputValue('Escribe un resumen estructurado con viñetas sobre los puntos más importantes.')}
-                            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px 12px', borderRadius: '16px', background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#475569', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                        >
-                            📝 Resumen Estructurado
-                        </button>
-                    </div>
-
-                    <div className="rag-input-wrapper" style={{ position: 'relative' }}>
+                    <div className="rag-input-wrapper">
                         <textarea
                             ref={chatInputRef}
                             className="rag-input"
@@ -1180,28 +1196,15 @@ export default function RAGPanel() {
                             }}
                             onBlur={() => setTimeout(() => setShowAutocomplete(false), 200)}
                             onFocus={() => { if (inputValue.trim().length >= 2) setShowAutocomplete(true); }}
-                            placeholder="Escribí tu pregunta sobre los documentos..."
+                            placeholder="Escribí tu pregunta sobre normativas, obras sociales o procedimientos..."
                             rows={1}
                             disabled={isLoading}
-                            style={{
-                                color: '#0f172a',
-                                backgroundColor: 'transparent',
-                                fontSize: '14px',
-                                fontWeight: 500,
-                                lineHeight: '1.5',
-                                caretColor: '#3b82f6',
-                                width: '100%',
-                                outline: 'none',
-                                border: 'none',
-                                resize: 'none',
-                                maxHeight: '220px',
-                                overflowY: 'auto'
-                            }}
                         />
                         <button
                             className="rag-send-btn"
                             onClick={handleSend}
                             disabled={!inputValue.trim() || isLoading || !backendOnline}
+                            title="Enviar pregunta (Enter)"
                         >
                             {isLoading ? <Loader2 size={18} className="rag-spin" /> : <Send size={18} />}
                         </button>
@@ -1231,7 +1234,7 @@ export default function RAGPanel() {
                         })()}
                     </div>
                     <div className="rag-input-hint">
-                        Respuestas basadas exclusivamente en documentos cargados · Enter para enviar
+                        💡 Respuestas basadas en documentación oficial del Sanatorio Argentino · Presioná <strong>Enter</strong> para enviar
                     </div>
                 </div>
             </div>
