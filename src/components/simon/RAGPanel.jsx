@@ -275,6 +275,11 @@ export default function RAGPanel() {
         }
     }, [messages])
 
+    // Auto-start Simon sequence on component mount
+    useEffect(() => {
+        startSimon()
+    }, [])
+
     // Load suggestions for Smart Guidance Layer
     useEffect(() => {
         fetchSuggestions().then(data => setSuggestions(data)).catch(() => {})
@@ -741,86 +746,76 @@ export default function RAGPanel() {
     }
 
     if (bootPhase !== 'done') {
+        const progressPercent = bootPhase === 'idle' || bootPhase === 'waking'
+            ? 35
+            : (bootPhase === 'connecting' ? 65 : (bootPhase === 'loading' ? 88 : 100));
+
         return (
-            <div className="simon-welcome">
-                <div className="simon-welcome-card">
-                    <div className="simon-avatar-container">
-                        <img src="/simonminutes.webp" alt="Simon" className="simon-avatar" onError={(e) => { e.target.style.display = 'none'; }} />
-                        <div className="simon-avatar-glow" />
+            <div className="simon-futuristic-loader">
+                <div className="simon-loader-card">
+                    <div className="simon-neural-core">
+                        <div className="simon-core-glow" />
+                        <Brain size={44} className="simon-core-brain" />
+                        <Sparkles size={20} className="simon-core-sparkle" />
                     </div>
-                    <h1 className="simon-name">Simon</h1>
-                    <p className="simon-subtitle">Asistente IA Documental</p>
-                    <p className="simon-desc">
-                        Consultá documentos del Sanatorio Argentino con inteligencia artificial.
-                        Respuestas precisas con citación de fuentes.
-                    </p>
+                    
+                    <h1 className="simon-loader-title">Simon IA</h1>
+                    <p className="simon-loader-subtitle">Núcleo Neural de Inteligencia Artificial Documental</p>
+                    <p className="simon-loader-institution">Sanatorio Argentino</p>
 
-                    {bootPhase === 'idle' && (
-                        <>
-                            <button className="simon-start-btn" onClick={startSimon}>
-                                <Brain size={18} />
-                                Iniciar charla con Simon
-                            </button>
-                            <div className="simon-sleep-info">
-                                <Clock size={13} />
-                                <span>
-                                    Simon se apaga tras <strong>15 min</strong> de inactividad y
-                                    demora entre <strong>30 y 60 seg</strong> en volver a encenderse
-                                </span>
-                            </div>
-                        </>
-                    )}
-
-                    {bootPhase !== 'idle' && bootPhase !== 'error' && (
-                        <div className="simon-boot">
-                            <div className="simon-boot-phases">
-                                <div className={`simon-boot-phase ${bootPhase === 'waking' ? 'active' : (bootPhase !== 'waking' ? 'done' : '')}`}>
-                                    <div className="simon-boot-dot" />
-                                    <span>Despertando servidor...</span>
-                                    {bootPhase === 'waking' && <Loader2 size={12} className="rag-spin" />}
-                                    {bootPhase !== 'waking' && <CheckCircle size={12} />}
-                                </div>
-                                <div className={`simon-boot-phase ${bootPhase === 'connecting' ? 'active' : (['loading', 'ready', 'done'].includes(bootPhase) ? 'done' : '')}`}>
-                                    <div className="simon-boot-dot" />
-                                    <span>Conectando IA...</span>
-                                    {bootPhase === 'connecting' && <Loader2 size={12} className="rag-spin" />}
-                                    {['loading', 'ready', 'done'].includes(bootPhase) && <CheckCircle size={12} />}
-                                </div>
-                                <div className={`simon-boot-phase ${bootPhase === 'loading' ? 'active' : (['ready', 'done'].includes(bootPhase) ? 'done' : '')}`}>
-                                    <div className="simon-boot-dot" />
-                                    <span>Cargando documentos...</span>
-                                    {bootPhase === 'loading' && <Loader2 size={12} className="rag-spin" />}
-                                    {['ready', 'done'].includes(bootPhase) && <CheckCircle size={12} />}
-                                </div>
-                                <div className={`simon-boot-phase ${bootPhase === 'ready' ? 'active done' : ''}`}>
-                                    <div className="simon-boot-dot" />
-                                    <span>¡Simon está listo!</span>
-                                    {bootPhase === 'ready' && <Sparkles size={12} />}
-                                </div>
-                            </div>
-                            <div className="simon-boot-timer">
-                                <Clock size={11} />
-                                {bootTimer}s
-                            </div>
+                    <div className="simon-progress-container">
+                        <div className="simon-progress-track">
+                            <div
+                                className="simon-progress-fill"
+                                style={{ width: `${progressPercent}%` }}
+                            />
                         </div>
-                    )}
+                        <div className="simon-progress-status">
+                            {(bootPhase === 'idle' || bootPhase === 'waking') && (
+                                <span className="simon-status-step">
+                                    <Loader2 size={14} className="rag-spin" color="#2563eb" />
+                                    <span>Inicializando motor neural RAG V3.2...</span>
+                                </span>
+                            )}
+                            {bootPhase === 'connecting' && (
+                                <span className="simon-status-step">
+                                    <Loader2 size={14} className="rag-spin" color="#2563eb" />
+                                    <span>Sincronizando normativas de Obras Sociales...</span>
+                                </span>
+                            )}
+                            {bootPhase === 'loading' && (
+                                <span className="simon-status-step">
+                                    <Loader2 size={14} className="rag-spin" color="#2563eb" />
+                                    <span>Cargando base de conocimiento clínica...</span>
+                                </span>
+                            )}
+                            {bootPhase === 'ready' && (
+                                <span className="simon-status-step ready" style={{ color: '#10b981', fontWeight: 600 }}>
+                                    <CheckCircle size={14} />
+                                    <span>¡Simon IA listo para consultar!</span>
+                                </span>
+                            )}
+                            {bootPhase === 'error' && (
+                                <span className="simon-status-step error" style={{ color: '#ef4444' }}>
+                                    <AlertCircle size={14} />
+                                    <span>Reintentando conexión con servidor RAG...</span>
+                                </span>
+                            )}
+                        </div>
+                    </div>
 
                     {bootPhase === 'error' && (
-                        <div className="simon-boot-error">
-                            <AlertCircle size={18} />
-                            <div>
-                                <strong>No se pudo conectar con Simon</strong>
-                                <p>El servidor puede estar en mantenimiento. Intentá de nuevo en unos minutos.</p>
-                            </div>
-                            <button className="simon-retry-btn" onClick={() => { setBootPhase('idle'); setSessionStarted(false); }}>
-                                Reintentar
-                            </button>
-                        </div>
+                        <button className="simon-retry-btn-modern" onClick={startSimon}>
+                            <Sparkles size={14} />
+                            Reintentar Conexión
+                        </button>
                     )}
-                </div>
 
-                <div className="simon-welcome-footer">
-                    Sanatorio Argentino · Powered by GPT-4o + RAG Pipeline V3.2
+                    <div className="simon-loader-footer">
+                        <span>SANATORIO ARGENTINO</span>
+                        <span className="dot">•</span>
+                        <span>GROW LABS INTELLIGENCE</span>
+                    </div>
                 </div>
             </div>
         )
