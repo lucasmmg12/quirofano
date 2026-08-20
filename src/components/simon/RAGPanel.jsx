@@ -209,7 +209,7 @@ export default function RAGPanel() {
 
     // File Manager Search & Grouping State
     const [fileSearchQuery, setFileSearchQuery] = useState('');
-    const [groupByOS, setGroupByOS] = useState(false);
+    const [groupByOS, setGroupByOS] = useState(true);
     const [collapsedGroups, setCollapsedGroups] = useState({});
 
     // Document Previewer state
@@ -1390,11 +1390,11 @@ export default function RAGPanel() {
                                 return (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                                         {Object.entries(osGroups).map(([groupName, items]) => {
-                                            const isCollapsed = collapsedGroups[groupName];
+                                            const isCollapsed = collapsedGroups[groupName] !== false;
                                             return (
                                                 <div key={groupName} style={{ background: 'white', borderRadius: '12px', border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
                                                     <div
-                                                        onClick={() => setCollapsedGroups(prev => ({ ...prev, [groupName]: !prev[groupName] }))}
+                                                        onClick={() => setCollapsedGroups(prev => ({ ...prev, [groupName]: prev[groupName] === false ? true : false }))}
                                                         style={{
                                                             padding: '12px 20px',
                                                             background: '#f8fafc',
