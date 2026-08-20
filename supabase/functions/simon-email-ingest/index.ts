@@ -85,7 +85,7 @@ serve(async (req) => {
         }
 
         // 2. Buscar últimos correos en la bandeja (Filtrados por remitente)
-        const query = `from:lucasmmarinero@gmail.com`
+        const query = `from:lucasmmarinero@gmail.com OR from:malbarracin@sanatorioargentino.com.ar`
         const searchUrl = `https://gmail.googleapis.com/gmail/v1/users/${TARGET_MAILBOX}/messages?q=${encodeURIComponent(query)}&maxResults=10`
         
         const searchResp = await fetch(searchUrl, {
