@@ -855,45 +855,19 @@ export default function RAGPanel() {
                 </div>
             )}
 
-            <div className="rag-main-area" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+            <div className="rag-main-area" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
                 <div className="rag-chat-area" style={{ display: activeTab === 'chat' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
-                <div className="rag-status-bar">
-                    <button
-                        className="rag-sidebar-toggle"
-                        onClick={() => setShowSidebar(!showSidebar)}
-                        title={showSidebar ? 'Ocultar panel' : 'Mostrar panel'}
-                    >
-                        <ChevronRight size={16} style={{ transform: showSidebar ? 'rotate(180deg)' : 'none' }} />
-                    </button>
-                    <div className="rag-status-info">
-                        <Brain size={18} color="#3b82f6" />
-                        <span className="rag-status-title">Simon</span>
-                    </div>
-                    <div className="rag-status-indicators">
-                        <span className={`rag-status-dot ${backendOnline ? 'online' : 'offline'}`} />
-                        <span className="rag-status-label">
-                            {backendOnline === null ? 'Verificando...' : backendOnline ? 'Backend Online' : 'Backend Offline'}
-                        </span>
-                        <span className="badge info" style={{ marginLeft: 8 }}>
-                            {totalFiles} docs
-                        </span>
-                        {learningStats && learningStats.learned_chunks > 0 && (
-                            <span className="badge positive" style={{ marginLeft: 4 }} title="Q&A aprendidos del historial">
-                                <GraduationCap size={10} style={{ marginRight: 3 }} />
-                                {learningStats.learned_chunks} aprendidos
-                            </span>
-                        )}
-                        <button
-                            className="rag-help-trigger"
-                            onClick={() => setShowHelp(true)}
-                            title="¿Cómo funciona?"
-                        >
-                            <HelpCircle size={15} />
-                        </button>
-                    </div>
-                </div>
 
                 <div className="rag-messages">
+                    {!showSidebar && (
+                        <button
+                            className="rag-sidebar-toggle-floating"
+                            onClick={() => setShowSidebar(true)}
+                            title="Mostrar panel lateral"
+                        >
+                            <ChevronRight size={16} />
+                        </button>
+                    )}
                     {messages.length === 0 && !isLoading ? (
                         <div className="rag-welcome">
                             <div className="simon-welcome-hero">
@@ -926,34 +900,6 @@ export default function RAGPanel() {
                                         <strong>Criterios de Internación:</strong> Ej. <em>"¿Cuáles son las reglas de internación en Medisalud?"</em>
                                     </li>
                                 </ul>
-                            </div>
-
-                            <div className="sg-prechat">
-                                <div className="sg-section-title">
-                                    <Sparkles size={14} color="#2563eb" />
-                                    <span>Ejemplos de preguntas frecuentes</span>
-                                </div>
-                                <div className="sg-chips">
-                                    {(() => {
-                                        const defaultExamples = [
-                                            '¿Qué prácticas bioquímicas avala la obra social OSDE?',
-                                            '¿Cuál es el total del bisturí armónico en código 042?',
-                                            '¿Cuáles son los criterios de internación en Medisalud?',
-                                            '¿Qué información hay disponible sobre la cobertura de ROISA?',
-                                            '¿Requisitos para procedimiento de ablación endocárdica?'
-                                        ];
-                                        const queryList = (suggestions.top_queries && suggestions.top_queries.length > 0)
-                                            ? suggestions.top_queries.slice(0, 5).map(q => sanitizeQuestionText(q.text))
-                                            : defaultExamples;
-                                            
-                                        return queryList.map((qText, i) => (
-                                            <button key={i} className="sg-chip query" onClick={() => setInputValue(qText)}>
-                                                <MessageSquare size={13} className="sg-chip-icon" />
-                                                <span>{qText}</span>
-                                            </button>
-                                        ));
-                                    })()}
-                                </div>
                             </div>
                         </div>
                     ) : (
