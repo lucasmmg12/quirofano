@@ -157,6 +157,9 @@ export default function RAGPanel() {
     // Custom confirm modal state
     const [confirmAction, setConfirmAction] = useState(null)
 
+    // Feedback State
+    const [feedbackState, setFeedbackState] = useState({})
+
     // User identification (scoped per logged in user)
     const currentUser = sessionStorage.getItem('username') || localStorage.getItem('username') || 'usuario_actual';
 
@@ -168,6 +171,41 @@ export default function RAGPanel() {
         proposedText: '',
         isSending: false,
     });
+
+    async function handleFeedback(assistantMsgIndex, isCorrect) {
+        const key = `${activeConversation}-${assistantMsgIndex}`
+        setFeedbackState(prev => ({ ...prev, [key]: 'loading' }))
+
+        try {
+            await submitFeedback(activeConversation, assistantMsgIndex, isCorrect)
+            setFeedbackState(prev => ({ ...prev, [key]: isCorrect ? 'correct' : 'incorrect' }))
+
+            if (!isCorrect) {
+                let userQuestionText = '';
+                for (let idx = messages.length - 1; idx >= 0; idx--) {
+                    if (messages[idx]?.role === 'user') {
+                        userQuestionText = messages[idx].content;
+                        break;
+                    }
+                }
+                setCorrectionModal({
+                    isOpen: true,
+                    userQuestion: userQuestionText || 'Consulta sobre normativas del Sanatorio',
+                    assistantIndex: assistantMsgIndex,
+                    proposedText: '',
+                    isSending: false,
+                });
+            }
+        } catch (e) {
+            console.error('Feedback error:', e)
+            setFeedbackState(prev => {
+                const next = { ...prev }
+                delete next[key]
+                return next
+            })
+            setError('Error al enviar feedback')
+        }
+    }
 
     // File Manager Search & Grouping State
     const [fileSearchQuery, setFileSearchQuery] = useState('');

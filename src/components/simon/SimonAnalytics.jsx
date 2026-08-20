@@ -44,14 +44,55 @@ export default function SimonAnalytics() {
     const [isSubmittingQuickRule, setIsSubmittingQuickRule] = useState(false)
     const [quickRuleSuccess, setQuickRuleSuccess] = useState(null)
 
-    // Pending User Proposals State
+    // Pending User Proposals & Pagination State
     const [pendingRules, setPendingRules] = useState([])
     const [isLoadingPendingRules, setIsLoadingPendingRules] = useState(false)
+    const [feedbackPage, setFeedbackPage] = useState(1)
+    const [auditPage, setAuditPage] = useState(1)
+    const [truthInputs, setTruthInputs] = useState({})
+    const [truthCategories, setTruthCategories] = useState({})
+    const [savingTruthId, setSavingTruthId] = useState(null)
+
+    const ITEMS_PER_PAGE = 5
 
     useEffect(() => {
         loadAnalytics()
         loadPendingRules()
     }, [period])
+
+    async function handleSaveTruthAsRule(questionText, itemId) {
+        const truthText = (truthInputs[itemId] || '').trim()
+        if (!truthText || truthText.length < 5) {
+            alert('Por favor ingresá la respuesta o regla verdadera antes de guardar.')
+            return
+        }
+        const category = truthCategories[itemId] || 'general'
+        setSavingTruthId(itemId)
+        try {
+            const rulePayload = {
+                text: `[Regla Oficial - Corrección de Feedback]\nPregunta original: "${questionText || 'Consulta'}"\nRespuesta Oficial / Verdad:\n${truthText}`,
+                title: `Regla: ${(questionText || 'Corrección').slice(0, 45)}...`,
+                category: category,
+                is_active: true,
+                status: 'active',
+                author: 'Administrador Sanatorio'
+            }
+            const resp = await fetch(`${RAG_API_BASE}/rules`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(rulePayload)
+            })
+            if (!resp.ok) throw new Error('Error al guardar la regla oficial')
+            alert('✅ ¡Respuesta verdadera guardada e incorporada como Regla Activa en Simon!')
+            setTruthInputs(prev => ({ ...prev, [itemId]: '' }))
+            // If item has a rule id, dismiss it
+            handleDeletePendingRule(itemId)
+            loadPendingRules()
+        } catch (e) {
+            alert(e.message || 'Error al guardar regla')
+        }
+        setSavingTruthId(null)
+    }
 
     async function loadPendingRules() {
         setIsLoadingPendingRules(true)
@@ -761,112 +802,170 @@ export default function SimonAnalytics() {
                         </div>
                     </div>
 
-                    {/* Incorrect Responses Table */}
-                    {feedbackData.items?.length > 0 && (
-                        <div className="sa-chart-card sa-full-width">
-                            <div className="sa-chart-title" style={{ justifyContent: 'space-between' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <AlertTriangle size={14} />
-                                    Historial de Calificaciones
-                                </div>
-                                <label className="sa-toggle-label">
-                                    <input
-                                        type="checkbox"
-                                        checked={showOnlyIncorrect}
-                                        onChange={e => setShowOnlyIncorrect(e.target.checked)}
-                                    />
-                                    Solo incorrectas
-                                </label>
-                            </div>
-                            <div className="sa-chart-body">
-                                <div className="sa-feedback-table">
-                                    <div className="sa-feedback-table-header">
-                                        <span className="sa-fb-col-status">Estado</span>
-                                        <span className="sa-fb-col-question">Pregunta</span>
-                                        <span className="sa-fb-col-answer">Respuesta de Simon</span>
-                                        <span className="sa-fb-col-date">Fecha</span>
+                    {/* Incorrect Responses Audit Table with Pagination of 5 */}
+                    {feedbackData.items?.length > 0 && (() => {
+                        const filteredList = feedbackData.items.filter(item => !showOnlyIncorrect || !item.is_correct);
+                        const totalFbPages = Math.max(1, Math.ceil(filteredList.length / ITEMS_PER_PAGE));
+                        const currentFbPage = Math.min(feedbackPage, totalFbPages);
+                        const pagedItems = filteredList.slice((currentFbPage - 1) * ITEMS_PER_PAGE, currentFbPage * ITEMS_PER_PAGE);
+
+                        return (
+                            <div className="sa-chart-card sa-full-width" style={{ marginBottom: '24px' }}>
+                                <div className="sa-chart-title" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <AlertTriangle size={16} color="#ef4444" />
+                                        <span>Historial de Calificaciones y Correcciones</span>
                                     </div>
-                                    {feedbackData.items
-                                        .filter(item => !showOnlyIncorrect || !item.is_correct)
-                                        .slice(0, 20)
-                                        .map((item, i) => {
-                                            const itemId = item.id || i
-                                            const isExpanded = expandedFeedbackId === itemId
-                                            
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                        <label className="sa-toggle-label">
+                                            <input
+                                                type="checkbox"
+                                                checked={showOnlyIncorrect}
+                                                onChange={e => { setShowOnlyIncorrect(e.target.checked); setFeedbackPage(1); }}
+                                            />
+                                            Solo incorrectas
+                                        </label>
+
+                                        {/* Pagination Controls */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#64748b' }}>
+                                            <button
+                                                disabled={currentFbPage <= 1}
+                                                onClick={() => setFeedbackPage(prev => Math.max(1, prev - 1))}
+                                                style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', background: currentFbPage <= 1 ? '#f1f5f9' : 'white', cursor: currentFbPage <= 1 ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 600 }}
+                                            >
+                                                ⬅️ Anterior
+                                            </button>
+                                            <span>Pág. <strong>{currentFbPage}</strong> de <strong>{totalFbPages}</strong></span>
+                                            <button
+                                                disabled={currentFbPage >= totalFbPages}
+                                                onClick={() => setFeedbackPage(prev => Math.min(totalFbPages, prev + 1))}
+                                                style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', background: currentFbPage >= totalFbPages ? '#f1f5f9' : 'white', cursor: currentFbPage >= totalFbPages ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 600 }}
+                                            >
+                                                Siguiente ➡️
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="sa-chart-body">
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                        {pagedItems.map((item, idx) => {
+                                            const itemId = item.id || `fb-${(currentFbPage - 1) * ITEMS_PER_PAGE + idx}`;
                                             return (
-                                                <div key={itemId} className="sa-feedback-row-container">
-                                                    <div
-                                                        className={`sa-feedback-row ${item.is_correct ? 'correct' : 'incorrect'} ${isExpanded ? 'expanded' : ''}`}
-                                                        onClick={() => setExpandedFeedbackId(isExpanded ? null : itemId)}
-                                                        style={{ cursor: 'pointer' }}
-                                                    >
-                                                        <span className="sa-fb-col-status">
-                                                            {item.is_correct ? (
-                                                                <span className="sa-fb-badge correct">
-                                                                    <ThumbsUp size={10} /> OK
-                                                                </span>
-                                                            ) : (
-                                                                <span className="sa-fb-badge incorrect">
-                                                                    <ThumbsDown size={10} /> Mal
-                                                                </span>
-                                                            )}
+                                                <div key={itemId} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                                        <span className={`sa-fb-badge ${item.is_correct ? 'correct' : 'incorrect'}`} style={{ padding: '4px 12px', fontSize: '12px' }}>
+                                                            {item.is_correct ? <><ThumbsUp size={12} /> OK - Respuesta Correcta</> : <><ThumbsDown size={12} /> Mal - Respuesta Incorrecta</>}
                                                         </span>
-                                                        <span className="sa-fb-col-question" title={item.question}>
-                                                            {item.question || '—'}
-                                                        </span>
-                                                        <span className="sa-fb-col-answer" title={item.answer_preview}>
-                                                            {isExpanded ? (item.answer_preview || '—') : (item.answer_preview
-                                                                ? (item.answer_preview.length > 120
-                                                                    ? item.answer_preview.slice(0, 120) + '...'
-                                                                    : item.answer_preview)
-                                                                : '—')}
-                                                        </span>
-                                                        <span className="sa-fb-col-date">
-                                                            {item.created_at
-                                                                ? new Date(item.created_at).toLocaleDateString('es-AR', {
-                                                                    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-                                                                })
-                                                                : '—'}
+                                                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                                                            {item.created_at ? new Date(item.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Reciente'}
                                                         </span>
                                                     </div>
-                                                    
-                                                    {isExpanded && (
-                                                        <div className="sa-feedback-expanded-details">
-                                                            <div className="sa-fb-detail-group">
-                                                                <h4>Pregunta del Usuario:</h4>
-                                                                <p>{item.question || 'Sin pregunta registrada'}</p>
-                                                            </div>
-                                                            <div className="sa-fb-detail-group mt-3">
-                                                                <h4>Respuesta de Simon:</h4>
-                                                                <p style={{ whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>{item.answer_preview || 'Sin respuesta registrada'}</p>
+
+                                                    {/* Full Question Text */}
+                                                    <div style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '12px 14px' }}>
+                                                        <strong style={{ fontSize: '11px', textTransform: 'uppercase', color: '#2563eb', letterSpacing: '0.5px' }}>Pregunta Completa del Usuario:</strong>
+                                                        <p style={{ margin: '4px 0 0', fontSize: '13px', fontWeight: 600, color: '#0f172a', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                                            {item.question || 'Consulta sin texto registrado'}
+                                                        </p>
+                                                    </div>
+
+                                                    {/* Full Simon Answer Text */}
+                                                    <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 14px' }}>
+                                                        <strong style={{ fontSize: '11px', textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.5px' }}>Respuesta Completa Brindada por Simon:</strong>
+                                                        <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#334155', lineHeight: '1.6', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                                            {item.answer_preview || item.answer || 'Sin respuesta detallada'}
+                                                        </p>
+                                                    </div>
+
+                                                    {/* Responder con la Verdad & Crear Regla */}
+                                                    <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '12px 14px', marginTop: '4px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700, color: '#1d4ed8', marginBottom: '8px' }}>
+                                                            <Pencil size={14} />
+                                                            <span>Responder con la Verdad / Crear Regla Oficial</span>
+                                                        </div>
+                                                        <textarea
+                                                            value={truthInputs[itemId] || ''}
+                                                            onChange={e => setTruthInputs(prev => ({ ...prev, [itemId]: e.target.value }))}
+                                                            placeholder="Ingresá la respuesta correcta o normativa real para que Simon aprenda esta verdad como una Regla Activa..."
+                                                            rows={2}
+                                                            style={{ width: '100%', border: '1px solid #93c5fd', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                                                        />
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                                                            <select
+                                                                value={truthCategories[itemId] || 'obra_social'}
+                                                                onChange={e => setTruthCategories(prev => ({ ...prev, [itemId]: e.target.value }))}
+                                                                style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px', background: 'white' }}
+                                                            >
+                                                                <option value="obra_social">Obra Social</option>
+                                                                <option value="precios">Precios</option>
+                                                                <option value="protocolo">Protocolo</option>
+                                                                <option value="administrativo">Administrativo</option>
+                                                                <option value="medico">Médico</option>
+                                                                <option value="general">General</option>
+                                                            </select>
+                                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                                <button
+                                                                    onClick={() => handleSaveTruthAsRule(item.question, itemId)}
+                                                                    disabled={savingTruthId === itemId || !(truthInputs[itemId] || '').trim()}
+                                                                    style={{ background: '#2563eb', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', opacity: !(truthInputs[itemId] || '').trim() ? 0.6 : 1 }}
+                                                                >
+                                                                    {savingTruthId === itemId ? <Loader2 size={13} className="rag-spin" /> : <Save size={13} />}
+                                                                    Guardar como Regla Oficial
+                                                                </button>
                                                             </div>
                                                         </div>
-                                                    )}
+                                                    </div>
                                                 </div>
-                                            )
+                                            );
                                         })}
-                                    {feedbackData.items.filter(item => !showOnlyIncorrect || !item.is_correct).length === 0 && (
-                                        <div className="sa-chart-empty" style={{ padding: '20px 0' }}>
-                                            {showOnlyIncorrect
-                                                ? '🎉 No hay respuestas marcadas como incorrectas'
-                                                : 'Sin calificaciones en este período'}
-                                        </div>
-                                    )}
+
+                                        {filteredList.length === 0 && (
+                                            <div className="sa-chart-empty" style={{ padding: '20px 0' }}>
+                                                {showOnlyIncorrect ? '🎉 No hay respuestas marcadas como incorrectas' : 'Sin calificaciones en este período'}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
-                    {/* Pending User Proposals Audit Section */}
+                    {/* Pending User Proposals Audit Section with Pagination of 5 */}
                     <div className="sa-chart-card sa-full-width" style={{ marginTop: '24px', borderLeft: '4px solid #f59e0b', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                        <div className="sa-chart-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
+                        <div className="sa-chart-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap', gap: '12px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700, fontSize: '0.95rem' }}>
                                 <AlertTriangle size={18} color="#d97706" />
-                                <span>Auditoría de Preguntas Mal Respondidas & Propuestas de Usuarios</span>
+                                <span>Auditoría de Propuestas de Usuarios</span>
                             </div>
-                            <span style={{ background: pendingRules.length > 0 ? '#fef3c7' : '#ecfdf5', color: pendingRules.length > 0 ? '#b45309' : '#047857', padding: '4px 12px', borderRadius: '12px', fontSize: '11px', fontWeight: 700 }}>
-                                {pendingRules.length} propuesta(s) pendiente(s) de aprobación
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <span style={{ background: pendingRules.length > 0 ? '#fef3c7' : '#ecfdf5', color: pendingRules.length > 0 ? '#b45309' : '#047857', padding: '4px 12px', borderRadius: '12px', fontSize: '11px', fontWeight: 700 }}>
+                                    {pendingRules.length} propuesta(s) pendiente(s)
+                                </span>
+                                {pendingRules.length > 0 && (() => {
+                                    const totalAuditPages = Math.max(1, Math.ceil(pendingRules.length / ITEMS_PER_PAGE));
+                                    const currentAuditPage = Math.min(auditPage, totalAuditPages);
+                                    return (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#64748b' }}>
+                                            <button
+                                                disabled={currentAuditPage <= 1}
+                                                onClick={() => setAuditPage(prev => Math.max(1, prev - 1))}
+                                                style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', background: currentAuditPage <= 1 ? '#f1f5f9' : 'white', cursor: currentAuditPage <= 1 ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 600 }}
+                                            >
+                                                ⬅️ Anterior
+                                            </button>
+                                            <span>Pág. <strong>{currentAuditPage}</strong> de <strong>{totalAuditPages}</strong></span>
+                                            <button
+                                                disabled={currentAuditPage >= totalAuditPages}
+                                                onClick={() => setAuditPage(prev => Math.min(totalAuditPages, prev + 1))}
+                                                style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', background: currentAuditPage >= totalAuditPages ? '#f1f5f9' : 'white', cursor: currentAuditPage >= totalAuditPages ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 600 }}
+                                            >
+                                                Siguiente ➡️
+                                            </button>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
                         </div>
                         <div className="sa-chart-body" style={{ padding: '20px' }}>
                             {isLoadingPendingRules ? (
@@ -875,48 +974,55 @@ export default function SimonAnalytics() {
                                 </div>
                             ) : pendingRules.length === 0 ? (
                                 <div style={{ textAlign: 'center', padding: '24px 0', color: '#64748b', fontSize: '13px' }}>
-                                    🎉 No hay respuestas mal respondidas o propuestas de usuario pendientes de validación.
+                                    🎉 No hay propuestas de usuario pendientes de validación.
                                 </div>
-                            ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                                    {pendingRules.map(rule => (
-                                        <div key={rule.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                                                <span style={{ fontSize: '11px', fontWeight: 700, color: '#b45309', background: '#fef3c7', padding: '3px 10px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                                    📌 Propuesta ingresada por usuario ({rule.author || 'Usuario'})
-                                                </span>
-                                                <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                                                    {rule.created_at ? new Date(rule.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Reciente'}
-                                                </span>
-                                            </div>
+                            ) : (() => {
+                                const totalAuditPages = Math.max(1, Math.ceil(pendingRules.length / ITEMS_PER_PAGE));
+                                const currentAuditPage = Math.min(auditPage, totalAuditPages);
+                                const pagedAuditRules = pendingRules.slice((currentAuditPage - 1) * ITEMS_PER_PAGE, currentAuditPage * ITEMS_PER_PAGE);
 
-                                            <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: 600 }}>
-                                                Título / Referencia: <span style={{ color: '#2563eb' }}>"{rule.title || 'Propuesta de corrección'}"</span>
-                                            </div>
+                                return (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                        {pagedAuditRules.map(rule => (
+                                            <div key={rule.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#b45309', background: '#fef3c7', padding: '3px 10px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                        📌 Propuesta ingresada por usuario ({rule.author || 'Usuario'})
+                                                    </span>
+                                                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                                                        {rule.created_at ? new Date(rule.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Reciente'}
+                                                    </span>
+                                                </div>
 
-                                            <div style={{ background: 'white', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '12px 14px', fontSize: '13px', color: '#334155', lineHeight: 1.6 }}>
-                                                <strong style={{ color: '#0f172a' }}>Regla / Respuesta Correcta Propuesta:</strong>
-                                                <p style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{rule.text || rule.processed_text || rule.original_text}</p>
-                                            </div>
+                                                <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: 600 }}>
+                                                    Título / Referencia: <span style={{ color: '#2563eb' }}>"{rule.title || 'Propuesta de corrección'}"</span>
+                                                </div>
 
-                                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
-                                                <button
-                                                    onClick={() => handleApproveUserRule(rule.id)}
-                                                    style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
-                                                >
-                                                    <CheckCircle size={14} /> Validar y Convertir en Regla Activa
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDeletePendingRule(rule.id)}
-                                                    style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '8px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}
-                                                >
-                                                    <Trash2 size={14} /> Descartar
-                                                </button>
+                                                {/* Full Rule Text */}
+                                                <div style={{ background: 'white', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '12px 14px', fontSize: '13px', color: '#334155', lineHeight: 1.6 }}>
+                                                    <strong style={{ color: '#0f172a' }}>Regla / Respuesta Correcta Propuesta (Completa):</strong>
+                                                    <p style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit' }}>{rule.text || rule.processed_text || rule.original_text}</p>
+                                                </div>
+
+                                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+                                                    <button
+                                                        onClick={() => handleApproveUserRule(rule.id)}
+                                                        style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                    >
+                                                        <CheckCircle size={14} /> Validar y Convertir en Regla Activa
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeletePendingRule(rule.id)}
+                                                        style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                    >
+                                                        <Trash2 size={14} /> Descartar
+                                                    </button>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                                        ))}
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                 </>
