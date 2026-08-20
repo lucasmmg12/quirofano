@@ -19,11 +19,17 @@ async function safeFetch(url, options) {
 
 // === Chat ===
 
-export async function sendRAGMessage(question, conversationId = null) {
+export async function sendRAGMessage(question, conversationId = null, userId = null) {
+    const body = { question, conversation_id: conversationId };
+    if (userId) body.user_id = userId;
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (userId) headers['X-User-Id'] = userId;
+
     const response = await safeFetch(`${RAG_API_BASE}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, conversation_id: conversationId }),
+        headers,
+        body: JSON.stringify(body),
     });
     if (!response.ok) {
         const error = await response.json().catch(() => ({ detail: 'Error de conexión' }));
@@ -34,20 +40,24 @@ export async function sendRAGMessage(question, conversationId = null) {
 
 // === Conversations ===
 
-export async function listRAGConversations() {
-    const response = await safeFetch(`${RAG_API_BASE}/conversations`);
+export async function listRAGConversations(userId = null) {
+    const params = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
+    const headers = userId ? { 'X-User-Id': userId } : {};
+    const response = await safeFetch(`${RAG_API_BASE}/conversations${params}`, { headers });
     if (!response.ok) throw new Error('Error al cargar conversaciones');
     return response.json();
 }
 
-export async function getRAGConversationMessages(conversationId) {
-    const response = await safeFetch(`${RAG_API_BASE}/conversations/${conversationId}/messages`);
+export async function getRAGConversationMessages(conversationId, userId = null) {
+    const params = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
+    const response = await safeFetch(`${RAG_API_BASE}/conversations/${conversationId}/messages${params}`);
     if (!response.ok) throw new Error('Error al cargar mensajes');
     return response.json();
 }
 
-export async function deleteRAGConversation(conversationId) {
-    const response = await safeFetch(`${RAG_API_BASE}/conversations/${conversationId}`, {
+export async function deleteRAGConversation(conversationId, userId = null) {
+    const params = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
+    const response = await safeFetch(`${RAG_API_BASE}/conversations/${conversationId}${params}`, {
         method: 'DELETE',
     });
     if (!response.ok) throw new Error('Error al eliminar conversación');
@@ -244,6 +254,27 @@ export async function submitFeedback(conversationId, messageIndex, isCorrect) {
     if (!response.ok) {
         const error = await response.json().catch(() => ({ detail: 'Error al enviar feedback' }));
         throw new Error(error.detail || 'Error al enviar feedback');
+    }
+    return response.json();
+}
+
+export async function submitProposedRule(userQuestion, proposedText, authorUser = '') {
+    const fullText = `[Propuesta de regla enviada por usuario ${authorUser || ''}]\nPregunta original: "${userQuestion}"\nRespuesta/Regla correcta propuesta:\n${proposedText}`;
+    const response = await safeFetch(`${RAG_API_BASE}/rules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            text: fullText,
+            title: `Propuesta: ${userQuestion.slice(0, 45)}...`,
+            category: 'general',
+            is_active: false,
+            status: 'pending_validation',
+            author: authorUser || 'Usuario Sanatorio'
+        }),
+    });
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Error al enviar propuesta de regla' }));
+        throw new Error(error.detail || 'Error al guardar la regla borrador');
     }
     return response.json();
 }

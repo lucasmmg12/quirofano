@@ -7,13 +7,13 @@ import {
     Search, Sparkles, Layers, BarChart3, FolderOpen, Tag,
     Download, FolderPlus, ArrowLeft, Home, Folder,
     Lightbulb, GraduationCap, HelpCircle, Shield, FileWarning,
-    Info, ThumbsUp, ThumbsDown, Eye, Calendar, ExternalLink
+    Info, ThumbsUp, ThumbsDown, Eye, Calendar, ExternalLink, Pencil, Save
 } from 'lucide-react'
 import {
     sendRAGMessage, listRAGConversations, getRAGConversationMessages,
     deleteRAGConversation, uploadRAGDocument, uploadRAGBatch,
     listRAGFiles, downloadRAGFile, previewRAGFile, createRAGFolder, deleteRAGFile,
-    deleteRAGFolder, checkRAGHealth, fetchSuggestions, submitFeedback
+    deleteRAGFolder, checkRAGHealth, fetchSuggestions, submitFeedback, submitProposedRule
 } from '../../api/ragClient'
 import RAGHelp from './RAGHelp'
 
@@ -157,8 +157,22 @@ export default function RAGPanel() {
     // Custom confirm modal state
     const [confirmAction, setConfirmAction] = useState(null)
 
-    // Feedback state
-    const [feedbackState, setFeedbackState] = useState({})
+    // User identification (scoped per logged in user)
+    const currentUser = sessionStorage.getItem('username') || localStorage.getItem('username') || 'usuario_actual';
+
+    // Correction modal state for Thumbs Down
+    const [correctionModal, setCorrectionModal] = useState({
+        isOpen: false,
+        userQuestion: '',
+        assistantIndex: null,
+        proposedText: '',
+        isSending: false,
+    });
+
+    // File Manager Search & Grouping State
+    const [fileSearchQuery, setFileSearchQuery] = useState('');
+    const [groupByOS, setGroupByOS] = useState(false);
+    const [collapsedGroups, setCollapsedGroups] = useState({});
 
     // Document Previewer state
     const [previewItem, setPreviewItem] = useState(null)
@@ -578,7 +592,7 @@ export default function RAGPanel() {
             message: '¿Estás seguro de que querés eliminar esta conversación del historial?',
             onConfirm: async () => {
                 try {
-                    await deleteRAGConversation(convId)
+                    await deleteRAGConversation(convId, currentUser)
                     if (activeConversation === convId) {
                         startNewConversation()
                     }
@@ -598,7 +612,7 @@ export default function RAGPanel() {
             const userMsg = { role: 'user', content: suggestion, created_at: new Date().toISOString() }
             setMessages(prev => [...prev, userMsg])
             setIsLoading(true)
-            sendRAGMessage(suggestion, activeConversation)
+            sendRAGMessage(suggestion, activeConversation, currentUser)
                 .then(result => {
                     if (!activeConversation && result.conversation_id) {
                         setActiveConversation(result.conversation_id)
@@ -639,6 +653,24 @@ export default function RAGPanel() {
                 ...prev,
                 [key]: isCorrect ? 'correct' : 'incorrect'
             }))
+
+            if (!isCorrect) {
+                // Find user question for this response
+                let userQuestionText = '';
+                for (let idx = messages.length - 1; idx >= 0; idx--) {
+                    if (messages[idx]?.role === 'user') {
+                        userQuestionText = messages[idx].content;
+                        break;
+                    }
+                }
+                setCorrectionModal({
+                    isOpen: true,
+                    userQuestion: userQuestionText || 'Consulta sobre normativas del Sanatorio',
+                    assistantIndex: assistantMsgIndex,
+                    proposedText: '',
+                    isSending: false,
+                });
+            }
         } catch (e) {
             console.error('Feedback error:', e)
             setFeedbackState(prev => {
@@ -647,6 +679,19 @@ export default function RAGPanel() {
                 return next
             })
             setError('Error al enviar feedback')
+        }
+    }
+
+    async function handleSubmitCorrection() {
+        if (!correctionModal.proposedText.trim()) return;
+        setCorrectionModal(prev => ({ ...prev, isSending: true }));
+        try {
+            await submitProposedRule(correctionModal.userQuestion, correctionModal.proposedText.trim(), currentUser);
+            setCorrectionModal({ isOpen: false, userQuestion: '', assistantIndex: null, proposedText: '', isSending: false });
+            alert('✅ ¡Gracias! Tu propuesta de regla fue enviada a los administradores para su validación.');
+        } catch (e) {
+            setError(e.message || 'Error al enviar la propuesta de regla');
+            setCorrectionModal(prev => ({ ...prev, isSending: false }));
         }
     }
 
@@ -1185,31 +1230,62 @@ export default function RAGPanel() {
             </div>
 
             <div className="rag-documents-area" style={{ display: activeTab === 'documents' ? 'flex' : 'none', flex: 1, flexDirection: 'column', background: '#f8fafc', overflow: 'hidden' }}>
-                    <div className="rag-doc-header" style={{ padding: '24px 32px 16px', background: 'white', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="rag-doc-header" style={{ padding: '20px 32px', background: 'white', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                         <div>
                             <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#0f172a', margin: 0 }}>Gestión de Archivos</h2>
-                            <p style={{ fontSize: '0.875rem', color: '#64748b', margin: '4px 0 0' }}>Administrá los documentos disponibles para Simon IA</p>
+                            <p style={{ fontSize: '0.875rem', color: '#64748b', margin: '4px 0 0' }}>Documentos y normativas de Obras Sociales para Simon IA</p>
                         </div>
-                        <div className="rag-fm-toolbar" style={{ borderBottom: 'none', padding: 0 }}>
+                        <div className="rag-fm-toolbar" style={{ borderBottom: 'none', padding: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            {/* Real-time search field */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '4px 12px', width: '280px' }}>
+                                <Search size={15} color="#64748b" />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar por código (ej: 647) o nombre..."
+                                    value={fileSearchQuery}
+                                    onChange={(e) => setFileSearchQuery(e.target.value)}
+                                    style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', width: '100%', color: '#0f172a' }}
+                                />
+                                {fileSearchQuery && (
+                                    <button onClick={() => setFileSearchQuery('')} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0 }}>
+                                        <X size={14} />
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Group by OS toggle */}
+                            <button
+                                className={`btn ${groupByOS ? 'btn-primary' : 'btn-secondary'}`}
+                                onClick={() => setGroupByOS(!groupByOS)}
+                                style={{
+                                    gap: '6px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    background: groupByOS ? '#2563eb' : 'white',
+                                    color: groupByOS ? 'white' : '#475569',
+                                    border: '1px solid #cbd5e1',
+                                    padding: '8px 12px',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontSize: '13px',
+                                    fontWeight: 600
+                                }}
+                                title="Agrupar archivos por código y nombre de Obra Social"
+                            >
+                                <Layers size={14} />
+                                {groupByOS ? 'Vista Agrupada' : 'Agrupar por Obra Social'}
+                            </button>
+
                             <input ref={fileInputRef} type="file" onChange={handleFileSelect}
                                 accept=".pdf,.docx,.xlsx,.xls,.csv,.txt,.md,.json,.xml,.html,.htm,.png,.jpg,.jpeg,.webp"
                                 style={{ display: 'none' }} multiple />
                             <input ref={folderInputRef} type="file" onChange={handleFileSelect}
                                 style={{ display: 'none' }} webkitdirectory="" directory="" multiple />
-                            <div className="rag-tag-input" style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0 8px' }}>
-                                <Tag size={14} color="#94a3b8" />
-                                <input type="text" placeholder="Tag" value={uploadTag}
-                                    onChange={(e) => setUploadTag(e.target.value)}
-                                    className="rag-tag-field" style={{ border: 'none', outline: 'none', padding: '8px', fontSize: '13px', width: '100px' }} />
-                            </div>
                             <div className="rag-fm-actions" style={{ display: 'flex', gap: '8px' }}>
                                 <button className="btn btn-secondary" onClick={() => setShowNewFolder(!showNewFolder)} style={{ gap: '6px', display: 'flex', alignItems: 'center', background: 'white', border: '1px solid #e2e8f0', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 500, color: '#475569' }}>
                                     <FolderPlus size={14} /> Nueva Carpeta
                                 </button>
-                                <button className="btn btn-secondary" onClick={() => folderInputRef.current?.click()} style={{ gap: '6px', display: 'flex', alignItems: 'center', background: 'white', border: '1px solid #e2e8f0', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 500, color: '#475569' }}>
-                                    <FolderOpen size={14} /> Subir Carpeta
-                                </button>
-                                <button className="btn btn-primary" onClick={() => fileInputRef.current?.click()} style={{ gap: '6px', display: 'flex', alignItems: 'center', background: '#3b82f6', border: 'none', color: 'white', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 500 }}>
+                                <button className="btn btn-primary" onClick={() => fileInputRef.current?.click()} style={{ gap: '6px', display: 'flex', alignItems: 'center', background: '#2563eb', border: 'none', color: 'white', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 500 }}>
                                     <Upload size={14} /> Subir Archivos
                                 </button>
                             </div>
@@ -1252,73 +1328,162 @@ export default function RAGPanel() {
                             })}
                         </div>
 
-                        {fileItems.length === 0 ? (
-                            <div className="rag-empty-state" style={{ background: 'white', borderRadius: '12px', padding: '48px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
-                                <BookOpen size={48} style={{ color: '#cbd5e1', marginBottom: '16px' }} />
-                                <p style={{ fontSize: '16px', fontWeight: 500, color: '#334155', margin: '0 0 8px 0' }}>{currentFolder ? 'Carpeta vacía' : 'No hay archivos'}</p>
-                                <span style={{ fontSize: '14px' }}>Subí archivos para que la IA pueda consultarlos</span>
-                            </div>
-                        ) : (
-                            <div className="rag-doc-table-container" style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-                                <table className="rag-doc-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                                    <thead>
-                                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>
-                                            <th style={{ padding: '12px 16px', fontWeight: 600 }}>Nombre</th>
-                                            <th style={{ padding: '12px 16px', fontWeight: 600, width: '150px' }}>Fecha</th>
-                                            <th style={{ padding: '12px 16px', fontWeight: 600, width: '110px' }}>Tamaño</th>
-                                            <th style={{ padding: '12px 16px', fontWeight: 600, width: '90px' }}>Chunks</th>
-                                            <th style={{ padding: '12px 16px', fontWeight: 600, width: '110px' }}>Tag</th>
-                                            <th style={{ padding: '12px 16px', fontWeight: 600, width: '100px', textAlign: 'right' }}>Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {fileItems.map(item => (
-                                            item.type === 'folder' ? (
-                                                <tr key={item.path} style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = 'white'} onClick={() => navigateToFolder(item.path)}>
-                                                    <td style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px', color: '#334155', fontWeight: 500 }}>
-                                                        <Folder size={18} color="#3b82f6" /> {item.name}
-                                                    </td>
-                                                    <td style={{ padding: '12px 16px', color: '#94a3b8' }}>—</td>
-                                                    <td style={{ padding: '12px 16px', color: '#94a3b8' }}>—</td>
-                                                    <td style={{ padding: '12px 16px', color: '#94a3b8' }}>—</td>
-                                                    <td style={{ padding: '12px 16px', color: '#94a3b8' }}>—</td>
-                                                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteFolder(item) }} title="Eliminar carpeta" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', borderRadius: '4px', transition: 'all 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#fef2f2'} onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ) : (
-                                                <tr key={item.name} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = 'white'}>
-                                                    <td style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px', color: '#334155', fontWeight: 500 }}>
-                                                        <span style={{ fontSize: '18px' }}>{FILE_ICONS[item.file_type] || '📄'}</span> {item.name}
-                                                    </td>
-                                                    <td style={{ padding: '12px 16px', color: '#64748b', whiteSpace: 'nowrap' }}>
-                                                        {item.created_at ? formatFullDate(item.created_at) : '—'}
-                                                    </td>
-                                                    <td style={{ padding: '12px 16px', color: '#64748b' }}>{formatFileSize(item.file_size)}</td>
-                                                    <td style={{ padding: '12px 16px', color: '#64748b' }}>{item.total_chunks}</td>
-                                                    <td style={{ padding: '12px 16px' }}>
-                                                        {item.tag && <span style={{ background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 500 }}>{item.tag}</span>}
-                                                    </td>
-                                                    <td style={{ padding: '12px 16px', textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '4px' }}>
-                                                        <button onClick={() => handleOpenPreview(item)} title="Visualizar sin descargar" style={{ background: 'none', border: 'none', color: '#6366f1', cursor: 'pointer', padding: '6px', borderRadius: '4px', transition: 'all 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#e0e7ff'} onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
-                                                            <Eye size={14} />
-                                                        </button>
-                                                        <button onClick={() => handleDownload(item)} title="Descargar" style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', borderRadius: '4px', transition: 'all 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#eff6ff'} onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
-                                                            <Download size={14} />
-                                                        </button>
-                                                        <button onClick={() => handleDeleteFile(item)} title="Eliminar" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', borderRadius: '4px', transition: 'all 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#fef2f2'} onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            )
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
+                        {(() => {
+                            const filteredItems = fileItems.filter(item => {
+                                if (!fileSearchQuery.trim()) return true;
+                                const q = fileSearchQuery.toLowerCase().trim();
+                                return (item.name || '').toLowerCase().includes(q) || (item.tag || '').toLowerCase().includes(q);
+                            });
+
+                            if (filteredItems.length === 0) {
+                                return (
+                                    <div className="rag-empty-state" style={{ background: 'white', borderRadius: '12px', padding: '48px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+                                        <BookOpen size={48} style={{ color: '#cbd5e1', marginBottom: '16px' }} />
+                                        <p style={{ fontSize: '16px', fontWeight: 500, color: '#334155', margin: '0 0 8px 0' }}>
+                                            {fileSearchQuery ? `No se encontraron resultados para "${fileSearchQuery}"` : (currentFolder ? 'Carpeta vacía' : 'No hay archivos')}
+                                        </p>
+                                        <span style={{ fontSize: '14px' }}>Subí archivos o limpia el filtro de búsqueda</span>
+                                    </div>
+                                );
+                            }
+
+                            if (groupByOS) {
+                                // Group items by Obra Social code/name (e.g. 647 - ROISA)
+                                const osGroups = {};
+                                filteredItems.forEach(item => {
+                                    if (item.type === 'folder') return;
+                                    const match = (item.name || '').match(/^(\d{3,4})\s*-\s*([A-Za-z0-9_ -]+?)(?=\s*-|\.|$)/);
+                                    let key = 'Otros Documentos';
+                                    if (match) {
+                                        key = `${match[1]} - ${match[2].trim()}`;
+                                    }
+                                    if (!osGroups[key]) osGroups[key] = [];
+                                    osGroups[key].push(item);
+                                });
+
+                                return (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                        {Object.entries(osGroups).map(([groupName, items]) => {
+                                            const isCollapsed = collapsedGroups[groupName];
+                                            return (
+                                                <div key={groupName} style={{ background: 'white', borderRadius: '12px', border: '1px solid #cbd5e1', overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+                                                    <div
+                                                        onClick={() => setCollapsedGroups(prev => ({ ...prev, [groupName]: !prev[groupName] }))}
+                                                        style={{
+                                                            padding: '12px 20px',
+                                                            background: '#f8fafc',
+                                                            borderBottom: isCollapsed ? 'none' : '1px solid #e2e8f0',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            cursor: 'pointer',
+                                                            userSelect: 'none'
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                            <Folder size={18} color="#2563eb" />
+                                                            <strong style={{ fontSize: '14px', color: '#0f172a' }}>{groupName}</strong>
+                                                            <span style={{ background: '#dbeafe', color: '#1d4ed8', padding: '2px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 600 }}>
+                                                                {items.length} {items.length === 1 ? 'archivo' : 'archivos'}
+                                                            </span>
+                                                        </div>
+                                                        <ChevronRight size={16} style={{ transform: isCollapsed ? 'none' : 'rotate(90deg)', transition: 'transform 0.2s', color: '#64748b' }} />
+                                                    </div>
+                                                    {!isCollapsed && (
+                                                        <table className="rag-doc-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                                                            <tbody>
+                                                                {items.map(item => (
+                                                                    <tr key={item.name} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = 'white'}>
+                                                                        <td style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px', color: '#334155', fontWeight: 500 }}>
+                                                                            <span style={{ fontSize: '18px' }}>{FILE_ICONS[item.file_type] || '📄'}</span> {item.name}
+                                                                        </td>
+                                                                        <td style={{ padding: '12px 16px', color: '#64748b', whiteSpace: 'nowrap', width: '150px' }}>
+                                                                            {item.created_at ? formatFullDate(item.created_at) : '—'}
+                                                                        </td>
+                                                                        <td style={{ padding: '12px 16px', color: '#64748b', width: '110px' }}>{formatFileSize(item.file_size)}</td>
+                                                                        <td style={{ padding: '12px 16px', color: '#64748b', width: '90px' }}>{item.total_chunks}</td>
+                                                                        <td style={{ padding: '12px 16px', textAlign: 'right', width: '100px' }}>
+                                                                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '4px' }}>
+                                                                                <button onClick={() => handleOpenPreview(item)} title="Visualizar" style={{ background: 'none', border: 'none', color: '#6366f1', cursor: 'pointer', padding: '6px', borderRadius: '4px' }}><Eye size={14} /></button>
+                                                                                <button onClick={() => handleDownload(item)} title="Descargar" style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: '6px', borderRadius: '4px' }}><Download size={14} /></button>
+                                                                                <button onClick={() => handleDeleteFile(item)} title="Eliminar" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', borderRadius: '4px' }}><Trash2 size={14} /></button>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            }
+
+                            // Standard Table View with Filter
+                            return (
+                                <div className="rag-doc-table-container" style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                                    <table className="rag-doc-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                                        <thead>
+                                            <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>
+                                                <th style={{ padding: '12px 16px', fontWeight: 600 }}>Nombre</th>
+                                                <th style={{ padding: '12px 16px', fontWeight: 600, width: '150px' }}>Fecha</th>
+                                                <th style={{ padding: '12px 16px', fontWeight: 600, width: '110px' }}>Tamaño</th>
+                                                <th style={{ padding: '12px 16px', fontWeight: 600, width: '90px' }}>Chunks</th>
+                                                <th style={{ padding: '12px 16px', fontWeight: 600, width: '110px' }}>Tag</th>
+                                                <th style={{ padding: '12px 16px', fontWeight: 600, width: '100px', textAlign: 'right' }}>Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filteredItems.map(item => (
+                                                item.type === 'folder' ? (
+                                                    <tr key={item.path} style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = 'white'} onClick={() => navigateToFolder(item.path)}>
+                                                        <td style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px', color: '#334155', fontWeight: 500 }}>
+                                                            <Folder size={18} color="#3b82f6" /> {item.name}
+                                                        </td>
+                                                        <td style={{ padding: '12px 16px', color: '#94a3b8' }}>—</td>
+                                                        <td style={{ padding: '12px 16px', color: '#94a3b8' }}>—</td>
+                                                        <td style={{ padding: '12px 16px', color: '#94a3b8' }}>—</td>
+                                                        <td style={{ padding: '12px 16px', color: '#94a3b8' }}>—</td>
+                                                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteFolder(item) }} title="Eliminar carpeta" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', borderRadius: '4px', transition: 'all 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#fef2f2'} onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    <tr key={item.name} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = 'white'}>
+                                                        <td style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px', color: '#334155', fontWeight: 500 }}>
+                                                            <span style={{ fontSize: '18px' }}>{FILE_ICONS[item.file_type] || '📄'}</span> {item.name}
+                                                        </td>
+                                                        <td style={{ padding: '12px 16px', color: '#64748b', whiteSpace: 'nowrap' }}>
+                                                            {item.created_at ? formatFullDate(item.created_at) : '—'}
+                                                        </td>
+                                                        <td style={{ padding: '12px 16px', color: '#64748b' }}>{formatFileSize(item.file_size)}</td>
+                                                        <td style={{ padding: '12px 16px', color: '#64748b' }}>{item.total_chunks}</td>
+                                                        <td style={{ padding: '12px 16px' }}>
+                                                            {item.tag && <span style={{ background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 500 }}>{item.tag}</span>}
+                                                        </td>
+                                                        <td style={{ padding: '12px 16px', textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '4px' }}>
+                                                            <button onClick={() => handleOpenPreview(item)} title="Visualizar sin descargar" style={{ background: 'none', border: 'none', color: '#6366f1', cursor: 'pointer', padding: '6px', borderRadius: '4px', transition: 'all 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#e0e7ff'} onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
+                                                                <Eye size={14} />
+                                                            </button>
+                                                            <button onClick={() => handleDownload(item)} title="Descargar" style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', borderRadius: '4px', transition: 'all 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#eff6ff'} onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
+                                                                <Download size={14} />
+                                                            </button>
+                                                            <button onClick={() => handleDeleteFile(item)} title="Eliminar" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', borderRadius: '4px', transition: 'all 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#fef2f2'} onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                )
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             </div>
@@ -1594,6 +1759,65 @@ export default function RAGPanel() {
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {correctionModal.isOpen && (
+                <div className="rag-modal-overlay" onClick={() => setCorrectionModal({ isOpen: false, userQuestion: '', assistantIndex: null, proposedText: '', isSending: false })}>
+                    <div className="rag-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '540px', width: '90%' }}>
+                        <div className="rag-modal-header" style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', padding: '16px 20px', borderRadius: '12px 12px 0 0', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div className="rag-modal-icon" style={{ background: '#eff6ff', color: '#2563eb', width: '38px', height: '38px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <Pencil size={20} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a', fontWeight: 700 }}>Ayudanos a mejorar a Simon IA</h3>
+                                <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b' }}>Proponé la respuesta o regla correcta para esta consulta</p>
+                            </div>
+                            <button className="rag-modal-close" onClick={() => setCorrectionModal({ isOpen: false, userQuestion: '', assistantIndex: null, proposedText: '', isSending: false })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="rag-modal-body" style={{ padding: '20px' }}>
+                            <div style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '12px 16px', marginBottom: '16px' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Pregunta realizada:</span>
+                                <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#0f172a', fontWeight: 600 }}>"{correctionModal.userQuestion}"</p>
+                            </div>
+
+                            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>
+                                Respuesta o Regla Correcta Propuesta:
+                            </label>
+                            <textarea
+                                rows={4}
+                                value={correctionModal.proposedText}
+                                onChange={(e) => setCorrectionModal(prev => ({ ...prev, proposedText: e.target.value }))}
+                                placeholder="Escribí detalladamente la información o regla correcta que Simon debería responder para este tema..."
+                                style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #cbd5e1', borderRadius: '10px', fontSize: '13px', outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                            />
+                            <p style={{ fontSize: '11px', color: '#64748b', margin: '8px 0 0' }}>
+                                📌 Se enviará como propuesta de regla pendiente para ser validada por los administradores en el panel de reglas.
+                            </p>
+                        </div>
+
+                        <div className="rag-modal-footer" style={{ padding: '14px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px', borderRadius: '0 0 12px 12px' }}>
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => setCorrectionModal({ isOpen: false, userQuestion: '', assistantIndex: null, proposedText: '', isSending: false })}
+                                style={{ background: 'white', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', color: '#475569' }}
+                            >
+                                Omitir
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleSubmitCorrection}
+                                disabled={!correctionModal.proposedText.trim() || correctionModal.isSending}
+                                style={{ background: '#2563eb', color: 'white', border: 'none', padding: '8px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
+                            >
+                                {correctionModal.isSending ? <Loader2 size={14} className="rag-spin" /> : <Save size={14} />}
+                                Enviar Propuesta de Regla
+                            </button>
                         </div>
                     </div>
                 </div>

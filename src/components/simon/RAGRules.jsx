@@ -117,6 +117,23 @@ export default function RAGRules() {
         }
     }
 
+    async function handleApproveRule(ruleId) {
+        try {
+            const resp = await fetch(`${RAG_API_BASE}/rules/${ruleId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_active: true, status: 'active' })
+            })
+            if (resp.ok) {
+                setSuccess('✅ Regla aprobada y activada correctamente para Simon IA')
+                setTimeout(() => setSuccess(null), 3500)
+                loadRules()
+            }
+        } catch (e) {
+            setError('Error al aprobar la regla')
+        }
+    }
+
     function startEditing(rule) {
         setEditingRuleId(rule.id)
         setEditText(rule.original_text || rule.processed_text || '')
@@ -351,6 +368,14 @@ export default function RAGRules() {
                                     >
                                         {catStyle.label}
                                     </span>
+                                    {(rule.status === 'pending_validation' || rule.is_active === false || rule.original_text?.includes('Propuesta')) && (
+                                        <span
+                                            className="rag-rule-category"
+                                            style={{ color: '#d97706', background: '#fef3c7', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}
+                                        >
+                                            <AlertCircle size={10} /> Pendiente de Aprobación
+                                        </span>
+                                    )}
                                     <span className="rag-rule-date">
                                         <Clock size={10} />
                                         {formatDate(rule.created_at)}
@@ -420,9 +445,20 @@ export default function RAGRules() {
                                     </>
                                 )}
 
-                                {/* ── Action buttons ── */}
+                                 {/* ── Action buttons ── */}
                                 {!isEditing && (
                                     <div className="rag-rule-actions">
+                                        {(rule.status === 'pending_validation' || rule.is_active === false || rule.original_text?.includes('Propuesta')) && (
+                                            <button
+                                                className="rag-rule-action-btn edit"
+                                                onClick={() => handleApproveRule(rule.id)}
+                                                style={{ background: '#ecfdf5', color: '#059669', borderColor: '#a7f3d0' }}
+                                                title="Aprobar y activar esta propuesta de regla para Simon IA"
+                                            >
+                                                <CheckCircle size={12} />
+                                                Aprobar
+                                            </button>
+                                        )}
                                         <button
                                             className="rag-rule-action-btn edit"
                                             onClick={() => startEditing(rule)}
