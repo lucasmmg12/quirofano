@@ -21,7 +21,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         }
         
         // Normal users always see config, manual, actividad_usuarios, and Simon IA
-        if (['config', 'manual', 'actividad_usuarios', 'beto', 'simon'].includes(id)) return true;
+        if (['config', 'manual', 'actividad_usuarios', 'beto', 'beto_rules', 'beto_analytics', 'simon'].includes(id)) return true;
         
         return selectedModules.includes(id);
     };
@@ -34,7 +34,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     // Sub-items dentro de "Simon IA"
     const simonSubItems = [
         { id: 'beto', label: 'Chat & Documentos', icon: Brain },
-        { id: 'beto_rules', label: 'Reglas de Simon', icon: Shield },
+        { id: 'beto_rules', label: 'Gestión de Reglas', icon: BookMarked },
         { id: 'beto_analytics', label: 'Simon Analytics', icon: BarChart3 },
     ].filter(i => isModuleVisible(i.id));
 

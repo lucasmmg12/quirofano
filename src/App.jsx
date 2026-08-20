@@ -147,7 +147,7 @@ const VIEW_LABELS = {
     consultas: 'Consultas',
     auditoria_historias: 'Auditoría de Historias',
     beto: 'Simon IA',
-    beto_rules: 'Reglas de Simon',
+    beto_rules: 'Gestión de Reglas',
     asociaciones_entrega: 'Asociaciones Entrega',
     laboratorios: 'Laboratorios',
     pedidos_marcela: 'Pedidos Especiales',
