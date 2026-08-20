@@ -72,9 +72,21 @@ serve(async (req) => {
         
         const token = await getGoogleAccessToken()
         
-        // 1. Buscar correos NO LEÍDOS en la bandeja (Filtrados por remitente)
-        const query = `is:unread from:lucasmmarinero@gmail.com`
-        const searchUrl = `https://gmail.googleapis.com/gmail/v1/users/${TARGET_MAILBOX}/messages?q=${encodeURIComponent(query)}&maxResults=5`
+        // 1. Cargar historial de correos procesados
+        let processedIds = []
+        try {
+            const { data: fileData, error: dlError } = await supabase.storage.from('simon_documents').download('_system/processed_emails.json')
+            if (!dlError && fileData) {
+                const text = await fileData.text()
+                processedIds = JSON.parse(text)
+            }
+        } catch (e) {
+            console.error('Error leyendo historial de procesados', e)
+        }
+
+        // 2. Buscar últimos correos en la bandeja (Filtrados por remitente)
+        const query = `from:lucasmmarinero@gmail.com`
+        const searchUrl = `https://gmail.googleapis.com/gmail/v1/users/${TARGET_MAILBOX}/messages?q=${encodeURIComponent(query)}&maxResults=10`
         
         const searchResp = await fetch(searchUrl, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -86,7 +98,10 @@ serve(async (req) => {
         }
 
         const searchData = await searchResp.json()
-        const messages = searchData.messages || []
+        let messages = searchData.messages || []
+        
+        // Filtrar los que ya procesamos
+        messages = messages.filter(m => !processedIds.includes(m.id))
 
         console.log(`Se encontraron ${messages.length} correos nuevos.`)
 
@@ -211,20 +226,23 @@ serve(async (req) => {
                 }
             }
 
-            // Marcar correo como Leído (remover etiqueta UNREAD)
-            const modifyUrl = `https://gmail.googleapis.com/gmail/v1/users/${TARGET_MAILBOX}/messages/${msgId}/modify`
-            await fetch(modifyUrl, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    removeLabelIds: ['UNREAD']
-                })
-            })
-
+            // Actualizar historial de procesados
+            processedIds.push(msgId)
             processedResults.push({ id: msgId, subject, success: true })
+        }
+
+        // Guardar historial actualizado si procesamos algo
+        if (processedResults.length > 0) {
+            try {
+                // Keep only last 500 ids to avoid huge files
+                if (processedIds.length > 500) {
+                    processedIds = processedIds.slice(processedIds.length - 500)
+                }
+                const blob = new Blob([JSON.stringify(processedIds)], { type: 'application/json' })
+                await supabase.storage.from('simon_documents').upload('_system/processed_emails.json', blob, { upsert: true })
+            } catch (e) {
+                console.error('Error guardando historial', e)
+            }
         }
 
         return new Response(JSON.stringify({
