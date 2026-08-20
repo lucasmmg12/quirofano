@@ -97,7 +97,7 @@ export async function fetchRecentActivity() {
     try {
         const { data } = await supabase
             .from('surgery_events')
-            .select('id, surgery_id, event_type, details, created_at, user_name')
+            .select('id, surgery_id, event_type, details, created_at, performed_by')
             .order('created_at', { ascending: false })
             .limit(8);
         return data || [];
