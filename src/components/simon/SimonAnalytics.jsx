@@ -162,6 +162,22 @@ export default function SimonAnalytics() {
         }
     }
 
+    async function handleDeleteFeedback(feedbackId) {
+        if (!confirm('¿Estás seguro de que querés eliminar este registro de calificación?')) return
+        try {
+            const resp = await fetch(`${RAG_API_BASE}/feedback/${feedbackId}`, { method: 'DELETE' })
+            if (resp.ok) {
+                alert('✅ Registro eliminado correctamente')
+                loadAnalytics()
+            } else {
+                throw new Error('Error al eliminar registro')
+            }
+        } catch (e) {
+            console.error('Error al eliminar feedback:', e)
+            alert('Hubo un error al eliminar el registro.')
+        }
+    }
+
     async function loadAnalytics() {
         setIsLoading(true)
         setError(null)
@@ -774,9 +790,18 @@ export default function SimonAnalytics() {
                                                         <span className={`sa-fb-badge ${item.is_correct ? 'correct' : 'incorrect'}`} style={{ padding: '4px 12px', fontSize: '12px' }}>
                                                             {item.is_correct ? <><ThumbsUp size={12} /> OK - Respuesta Correcta</> : <><ThumbsDown size={12} /> Mal - Respuesta Incorrecta</>}
                                                         </span>
-                                                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                                                            {item.created_at ? new Date(item.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Reciente'}
-                                                        </span>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                            <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                                                                {item.created_at ? new Date(item.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Reciente'}
+                                                            </span>
+                                                            <button 
+                                                                onClick={() => handleDeleteFeedback(item.id)}
+                                                                style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', padding: 0 }}
+                                                                title="Eliminar este registro"
+                                                            >
+                                                                <Trash2 size={12} /> Borrar
+                                                            </button>
+                                                        </div>
                                                     </div>
 
                                                     {/* Full Question Text */}
