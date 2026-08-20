@@ -72,9 +72,9 @@ serve(async (req) => {
         
         const token = await getGoogleAccessToken()
         
-        // 1. Buscar correos NO LEÍDOS de Melissa
-        const query = `is:unread from:${MELISSA_EMAIL}`
-        const searchUrl = `https://gmail.googleapis.com/gmail/v1/users/${TARGET_MAILBOX}/messages?q=${encodeURIComponent(query)}`
+        // 1. Buscar correos NO LEÍDOS en la bandeja (Filtrados por remitente)
+        const query = `is:unread from:lucasmmarinero@gmail.com`
+        const searchUrl = `https://gmail.googleapis.com/gmail/v1/users/${TARGET_MAILBOX}/messages?q=${encodeURIComponent(query)}&maxResults=5`
         
         const searchResp = await fetch(searchUrl, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -88,7 +88,7 @@ serve(async (req) => {
         const searchData = await searchResp.json()
         const messages = searchData.messages || []
 
-        console.log(`Se encontraron ${messages.length} correos nuevos de Melissa.`)
+        console.log(`Se encontraron ${messages.length} correos nuevos.`)
 
         const processedResults = []
 
