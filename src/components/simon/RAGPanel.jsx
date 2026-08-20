@@ -953,90 +953,91 @@ export default function RAGPanel() {
                                     {msg.type === 'clarification' && msg.suggestions && msg.suggestions.length > 0 && (
                                         <div className="rag-clarification">
                                             <div className="rag-clarification-header">
-                                                <Lightbulb size={14} />
-                                                Sugerencias
+                                                <Lightbulb size={15} color="#2563eb" />
+                                                <span>Sugerencias para ser más específico:</span>
                                             </div>
                                             <div className="rag-suggestion-chips">
-                                                {msg.suggestions.map((suggestion, j) => (
-                                                    <button
-                                                        key={j}
-                                                        className="rag-suggestion-chip"
-                                                        onClick={() => handleSuggestionClick(suggestion)}
-                                                        disabled={isLoading}
-                                                    >
-                                                        <HelpCircle size={12} />
-                                                        {suggestion}
-                                                    </button>
-                                                ))}
+                                                {msg.suggestions.map((suggestion, j) => {
+                                                    const cleanText = sanitizeQuestionText(suggestion);
+                                                    return (
+                                                        <button
+                                                            key={j}
+                                                            className="rag-suggestion-chip"
+                                                            onClick={() => handleSuggestionClick(cleanText)}
+                                                            disabled={isLoading}
+                                                        >
+                                                            <HelpCircle size={14} className="rag-suggestion-icon" />
+                                                            <span>{cleanText}</span>
+                                                        </button>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     )}
                                     {msg.sources && msg.sources.length > 0 && (
                                         <div className="rag-sources">
                                             <div className="rag-sources-header">
-                                                <FileText size={12} />
-                                                Fuentes consultadas
+                                                <FileText size={13} color="#2563eb" />
+                                                <span>Fuentes consultadas ({msg.sources.length})</span>
                                             </div>
-                                            {msg.sources.map((src, j) => (
-                                                <div key={j} className="rag-source-item">
-                                                    <span className="rag-source-icon">
-                                                        {src.source_type === 'chat_history' ? '🧠' : (FILE_ICONS[src.file_type] || '📄')}
-                                                    </span>
-                                                    <span className="rag-source-name">
-                                                        {src.source_type === 'chat_history' ? 'Aprendido de chat previo' : src.filename}
-                                                    </span>
-                                                    <span className="badge info">{src.chunks_used} chunks</span>
-                                                    {src.rerank_score > 0 && (
-                                                        <span className="badge positive">{src.rerank_score}/10</span>
-                                                    )}
-                                                    {src.source_type === 'chat_history' && (
-                                                        <span className="badge" style={{ background: '#7c3aed22', color: '#7c3aed', fontSize: '10px' }}>
-                                                            <GraduationCap size={9} /> Aprendido
+                                            <div className="rag-sources-grid">
+                                                {msg.sources.map((src, j) => (
+                                                    <div key={j} className="rag-source-item">
+                                                        <span className="rag-source-icon">
+                                                            {src.source_type === 'chat_history' ? '🧠' : (FILE_ICONS[src.file_type] || '📄')}
                                                         </span>
-                                                    )}
-                                                    {src.source_type !== 'chat_history' && src.storage_path && (
-                                                        <div style={{ display: 'flex', gap: 2 }}>
-                                                            <button
-                                                                className="rag-source-download"
-                                                                onClick={() => handleOpenPreview({ storage_path: src.storage_path, name: src.filename, file_type: src.file_type || ('.' + src.filename.split('.').pop()) })}
-                                                                title={`Visualizar ${src.filename}`}
-                                                            >
-                                                                <Eye size={11} />
-                                                            </button>
-                                                            <button
-                                                                className="rag-source-download"
-                                                                onClick={() => downloadRAGFile(src.storage_path)}
-                                                                title={`Descargar ${src.filename}`}
-                                                            >
-                                                                <Download size={11} />
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ))}
+                                                        <span className="rag-source-name">
+                                                            {src.source_type === 'chat_history' ? 'Aprendido de chat previo' : src.filename}
+                                                        </span>
+                                                        <span className="badge info">{src.chunks_used} chunks</span>
+                                                        {src.rerank_score > 0 && (
+                                                            <span className="badge positive">{src.rerank_score}/10</span>
+                                                        )}
+                                                        {src.source_type !== 'chat_history' && src.storage_path && (
+                                                            <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
+                                                                <button
+                                                                    className="rag-source-download"
+                                                                    onClick={() => handleOpenPreview({ storage_path: src.storage_path, name: src.filename, file_type: src.file_type || ('.' + src.filename.split('.').pop()) })}
+                                                                    title={`Visualizar ${src.filename}`}
+                                                                >
+                                                                    <Eye size={12} />
+                                                                </button>
+                                                                <button
+                                                                    className="rag-source-download"
+                                                                    onClick={() => downloadRAGFile(src.storage_path)}
+                                                                    title={`Descargar ${src.filename}`}
+                                                                >
+                                                                    <Download size={12} />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
                                     )}
                                     {msg.pipeline_info && (
-                                        <div className="rag-pipeline-info">
-                                            <BarChart3 size={11} />
-                                            {msg.pipeline_info.disambiguation_triggered && (
-                                                <span style={{ color: '#f59e0b' }}>⚡ Desambiguación</span>
-                                            )}
-                                            <span>HyDE: {msg.pipeline_info.hyde_generated ? 'Sí' : 'No'}</span>
-                                            <span>Queries: {(msg.pipeline_info.multi_queries || 0) + 1}</span>
-                                            <span>Buscados: {msg.pipeline_info.total_searched}</span>
-                                            <span>Únicos: {msg.pipeline_info.unique_results}</span>
-                                            {msg.pipeline_info.entity_detected && msg.pipeline_info.entity_detected.length > 0 && (
-                                                <span style={{ color: '#3b82f6' }}>
-                                                    🏷️ {msg.pipeline_info.entity_detected.join(', ')}
-                                                    {msg.pipeline_info.entity_filter === 'strict' ? ' (estricto)' : ''}
-                                                </span>
-                                            )}
-                                            <span>Usados: {msg.pipeline_info.reranked_kept}</span>
-                                            {msg.pipeline_info.chat_learning && (
-                                                <span style={{ color: '#7c3aed' }}>🧠 Aprendido</span>
-                                            )}
-                                        </div>
+                                        <details className="rag-pipeline-accordion">
+                                            <summary className="rag-pipeline-summary">
+                                                <BarChart3 size={12} color="#64748b" />
+                                                <span>Detalles del proceso RAG</span>
+                                            </summary>
+                                            <div className="rag-pipeline-info">
+                                                {msg.pipeline_info.disambiguation_triggered && (
+                                                    <span className="rag-pipeline-badge warning">⚡ Desambiguación</span>
+                                                )}
+                                                <span>HyDE: {msg.pipeline_info.hyde_generated ? 'Sí' : 'No'}</span>
+                                                <span>Queries: {(msg.pipeline_info.multi_queries || 0) + 1}</span>
+                                                <span>Buscados: {msg.pipeline_info.total_searched}</span>
+                                                <span>Únicos: {msg.pipeline_info.unique_results}</span>
+                                                {msg.pipeline_info.entity_detected && msg.pipeline_info.entity_detected.length > 0 && (
+                                                    <span className="rag-pipeline-badge info">
+                                                        🏷️ {msg.pipeline_info.entity_detected.join(', ')}
+                                                    </span>
+                                                )}
+                                                <span>Usados: {msg.pipeline_info.reranked_kept}</span>
+                                            </div>
+                                        </details>
                                     )}
                                     {msg.role === 'assistant' && msg.type !== 'clarification' && (() => {
                                         const assistantIndex = messages
@@ -1095,21 +1096,19 @@ export default function RAGPanel() {
                     )}
 
                     {isLoading && (
-                        <div className="rag-message assistant">
+                        <div className="rag-message assistant thinking">
                             <div className="rag-message-avatar">
-                                <div className="rag-avatar-simon-container" style={{ background: '#3b82f6', borderRadius: '8px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                                <div className="rag-avatar-simon-container">
                                     <Brain size={18} />
                                 </div>
                             </div>
                             <div className="rag-message-content">
-                                <div className="rag-thinking-skeleton">
-                                    <div className="rag-thinking-pulse-line header" />
-                                    <div className="rag-thinking-pulse-line body-1" />
-                                    <div className="rag-thinking-pulse-line body-2" />
-                                    <div className="rag-thinking-status">
-                                        <Sparkles size={13} className="rag-sparkle-spin" />
-                                        <span>Simon está procesando y comparando las reglas del Sanatorio...</span>
+                                <div className="rag-thinking-card">
+                                    <div className="rag-thinking-header">
+                                        <Sparkles size={16} className="rag-sparkle-spin" color="#2563eb" />
+                                        <span>Simon IA está analizando la documentación del Sanatorio...</span>
                                     </div>
+                                    <div className="rag-thinking-shimmer" />
                                 </div>
                             </div>
                         </div>

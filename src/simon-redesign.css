@@ -761,3 +761,291 @@ body.dark-theme {
   color: #2563eb;
 }
 
+/* ==========================================================================
+   CHATGPT-STYLE CONVERSATIONAL MESSAGES & SUGGESTION CARDS
+   ========================================================================== */
+
+/* User Message Styling */
+.rag-message.user {
+  flex-direction: row-reverse;
+  align-self: flex-end;
+}
+
+.rag-message.user .rag-avatar-user-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0284c7, #2563eb);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.875rem;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2);
+}
+
+.rag-message.user .rag-message-content {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #ffffff;
+  padding: 14px 20px;
+  border-radius: 20px 20px 4px 20px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.5;
+  max-width: 80%;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.18);
+}
+
+.rag-message.user .rag-message-text {
+  color: #ffffff;
+}
+
+/* Assistant Message Styling (ChatGPT Card) */
+.rag-message.assistant {
+  align-self: flex-start;
+  width: 100%;
+}
+
+.rag-avatar-simon-container {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  flex-shrink: 0;
+}
+
+.rag-message.assistant .rag-message-content {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  padding: 20px 24px;
+  border-radius: 4px 20px 20px 20px;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: #0f172a;
+  width: 100%;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  box-sizing: border-box;
+}
+
+.rag-message-text {
+  color: #0f172a;
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.rag-message-text p {
+  margin: 0 0 12px 0;
+}
+
+.rag-message-text p:last-child {
+  margin-bottom: 0;
+}
+
+.rag-message-text strong {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.rag-message-text ol,
+.rag-message-text ul {
+  margin: 12px 0;
+  padding-left: 22px;
+}
+
+.rag-message-text li {
+  margin-bottom: 8px;
+  line-height: 1.7;
+}
+
+/* Clarification / Sugerencias Section (High Visibility) */
+.rag-clarification {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #2563eb;
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin-top: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.rag-clarification-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #0f172a;
+  margin-bottom: 14px;
+}
+
+.rag-suggestion-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.rag-suggestion-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 12px;
+  color: #0f172a;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.rag-suggestion-icon {
+  color: #2563eb;
+  flex-shrink: 0;
+}
+
+.rag-suggestion-chip:hover:not(:disabled) {
+  border-color: #2563eb;
+  background: #f0f6ff;
+  color: #1d4ed8;
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+}
+
+/* Collapsible Pipeline Details Accordion */
+.rag-pipeline-accordion {
+  margin-top: 14px;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 10px;
+}
+
+.rag-pipeline-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.rag-pipeline-summary:hover {
+  background: #f1f5f9;
+  color: #2563eb;
+}
+
+.rag-pipeline-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  color: #475569;
+}
+
+.rag-pipeline-badge {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.rag-pipeline-badge.warning {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.rag-pipeline-badge.info {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* Sources Consulted Grid */
+.rag-sources {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.rag-sources-header {
+  font-size: 0.813rem;
+  font-weight: 700;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.rag-sources-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rag-source-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 0.813rem;
+  color: #334155;
+  transition: border-color 0.15s;
+}
+
+.rag-source-item:hover {
+  border-color: #cbd5e1;
+}
+
+/* Thinking Skeleton Card */
+.rag-thinking-card {
+  padding: 16px 20px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  width: 100%;
+}
+
+.rag-thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.rag-sparkle-spin {
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
