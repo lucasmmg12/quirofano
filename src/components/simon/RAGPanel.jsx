@@ -799,7 +799,6 @@ export default function RAGPanel() {
                     
                     <h1 className="simon-loader-title">Simon IA</h1>
                     <p className="simon-loader-subtitle">Núcleo Neural de Inteligencia Artificial Documental</p>
-                    <p className="simon-loader-institution">Sanatorio Argentino</p>
 
                     <div className="simon-progress-container">
                         <div className="simon-progress-track">
@@ -848,12 +847,6 @@ export default function RAGPanel() {
                             Reintentar Conexión
                         </button>
                     )}
-
-                    <div className="simon-loader-footer">
-                        <span>SANATORIO ARGENTINO</span>
-                        <span className="dot">•</span>
-                        <span>GROW LABS INTELLIGENCE</span>
-                    </div>
                 </div>
             </div>
         )
