@@ -12,7 +12,8 @@ import {
     TrendingUp, MessageSquare, CheckCircle, AlertCircle,
     FileText, Brain, Clock, Loader2, RefreshCw, BarChart3,
     Search, Sparkles, HelpCircle, BookOpen, Shield, Zap,
-    Target, Activity, ThumbsUp, ThumbsDown, AlertTriangle
+    Target, Activity, ThumbsUp, ThumbsDown, AlertTriangle,
+    Plus, Trash2, Pencil, Save
 } from 'lucide-react'
 
 import { getFeedbackHistory } from '../../api/ragClient'
@@ -36,9 +37,88 @@ export default function SimonAnalytics() {
     const [showOnlyIncorrect, setShowOnlyIncorrect] = useState(true)
     const [expandedFeedbackId, setExpandedFeedbackId] = useState(null)
 
+    // Quick Rule Creator State
+    const [quickRuleText, setQuickRuleText] = useState('')
+    const [quickRuleCategory, setQuickRuleCategory] = useState('obra_social')
+    const [isSubmittingQuickRule, setIsSubmittingQuickRule] = useState(false)
+    const [quickRuleSuccess, setQuickRuleSuccess] = useState(null)
+
+    // Pending User Proposals State
+    const [pendingRules, setPendingRules] = useState([])
+    const [isLoadingPendingRules, setIsLoadingPendingRules] = useState(false)
+
     useEffect(() => {
         loadAnalytics()
+        loadPendingRules()
     }, [period])
+
+    async function loadPendingRules() {
+        setIsLoadingPendingRules(true)
+        try {
+            const resp = await fetch(`${RAG_API_BASE}/rules`)
+            if (resp.ok) {
+                const result = await resp.json()
+                const rulesList = result.rules || []
+                const filtered = rulesList.filter(r => r.status === 'pending_validation' || r.is_active === false || (r.original_text && r.original_text.includes('Propuesta')))
+                setPendingRules(filtered)
+            }
+        } catch (e) {
+            console.error('Error loading pending rules:', e)
+        }
+        setIsLoadingPendingRules(false)
+    }
+
+    async function handleCreateQuickRule() {
+        if (!quickRuleText.trim() || quickRuleText.trim().length < 5) return
+        setIsSubmittingQuickRule(true)
+        setQuickRuleSuccess(null)
+        try {
+            const resp = await fetch(`${RAG_API_BASE}/rules`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: quickRuleText.trim(),
+                    category: quickRuleCategory,
+                    is_active: true
+                })
+            })
+            if (!resp.ok) throw new Error('Error al guardar regla instantánea')
+            const result = await resp.json()
+            setQuickRuleSuccess(`✅ Regla instantánea guardada y activa: "${result.title}"`)
+            setQuickRuleText('')
+            setTimeout(() => setQuickRuleSuccess(null), 4000)
+        } catch (e) {
+            alert(e.message)
+        }
+        setIsSubmittingQuickRule(false)
+    }
+
+    async function handleApproveUserRule(ruleId) {
+        try {
+            const resp = await fetch(`${RAG_API_BASE}/rules/${ruleId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_active: true, status: 'active' })
+            })
+            if (resp.ok) {
+                alert('✅ Propuesta validada y activada exitosamente como regla oficial de Simon')
+                loadPendingRules()
+            }
+        } catch (e) {
+            alert('Error al activar regla')
+        }
+    }
+
+    async function handleDeletePendingRule(ruleId) {
+        try {
+            const resp = await fetch(`${RAG_API_BASE}/rules/${ruleId}`, { method: 'DELETE' })
+            if (resp.ok) {
+                loadPendingRules()
+            }
+        } catch (e) {
+            console.error('Error al descartar regla:', e)
+        }
+    }
 
     async function loadAnalytics() {
         setIsLoading(true)
@@ -113,9 +193,92 @@ export default function SimonAnalytics() {
                         <option value={30}>Últimos 30 días</option>
                         <option value={90}>Últimos 90 días</option>
                     </select>
-                    <button className="sa-refresh-btn" onClick={loadAnalytics} title="Actualizar">
+                    <button className="sa-refresh-btn" onClick={() => { loadAnalytics(); loadPendingRules(); }} title="Actualizar">
                         <RefreshCw size={14} />
                     </button>
+                </div>
+            </div>
+
+            {/* Quick Rule Creator Card */}
+            <div className="sa-chart-card sa-full-width" style={{ marginBottom: '20px', borderLeft: '4px solid #2563eb', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                <div className="sa-chart-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700, fontSize: '0.95rem' }}>
+                        <Zap size={18} color="#2563eb" />
+                        <span>Agregar Regla Rápida a Simon IA</span>
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>
+                        ⚡ Se activa instantáneamente en el conocimiento de Simon
+                    </span>
+                </div>
+                <div className="sa-chart-body" style={{ padding: '16px 20px' }}>
+                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                        <textarea
+                            value={quickRuleText}
+                            onChange={e => setQuickRuleText(e.target.value)}
+                            placeholder="Escribí aquí una nueva instrucción o normativa (Ej: Para la Obra Social 647 - ROISA es obligatorio adjuntar la orden médica digital antes de las 48hs)..."
+                            rows={2}
+                            style={{
+                                flex: 1,
+                                minWidth: '320px',
+                                padding: '10px 14px',
+                                border: '1.5px solid #cbd5e1',
+                                borderRadius: '10px',
+                                fontSize: '13px',
+                                outline: 'none',
+                                resize: 'vertical',
+                                fontFamily: 'inherit'
+                            }}
+                        />
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <select
+                                value={quickRuleCategory}
+                                onChange={e => setQuickRuleCategory(e.target.value)}
+                                style={{
+                                    padding: '10px 14px',
+                                    border: '1.5px solid #cbd5e1',
+                                    borderRadius: '10px',
+                                    fontSize: '13px',
+                                    background: 'white',
+                                    cursor: 'pointer',
+                                    fontWeight: 500
+                                }}
+                            >
+                                <option value="obra_social">Obra Social</option>
+                                <option value="precios">Precios</option>
+                                <option value="protocolo">Protocolo</option>
+                                <option value="administrativo">Administrativo</option>
+                                <option value="medico">Médico</option>
+                                <option value="general">General</option>
+                            </select>
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleCreateQuickRule}
+                                disabled={isSubmittingQuickRule || !quickRuleText.trim()}
+                                style={{
+                                    background: '#2563eb',
+                                    color: 'white',
+                                    border: 'none',
+                                    padding: '10px 18px',
+                                    borderRadius: '10px',
+                                    fontSize: '13px',
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    cursor: 'pointer',
+                                    opacity: (!quickRuleText.trim() || isSubmittingQuickRule) ? 0.6 : 1
+                                }}
+                            >
+                                {isSubmittingQuickRule ? <Loader2 size={15} className="rag-spin" /> : <Plus size={15} />}
+                                Guardar Regla Instantánea
+                            </button>
+                        </div>
+                    </div>
+                    {quickRuleSuccess && (
+                        <div style={{ marginTop: '12px', color: '#059669', background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '8px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <CheckCircle size={14} /> {quickRuleSuccess}
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -692,6 +855,69 @@ export default function SimonAnalytics() {
                             </div>
                         </div>
                     )}
+
+                    {/* Pending User Proposals Audit Section */}
+                    <div className="sa-chart-card sa-full-width" style={{ marginTop: '24px', borderLeft: '4px solid #f59e0b', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                        <div className="sa-chart-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700, fontSize: '0.95rem' }}>
+                                <AlertTriangle size={18} color="#d97706" />
+                                <span>Auditoría de Preguntas Mal Respondidas & Propuestas de Usuarios</span>
+                            </div>
+                            <span style={{ background: pendingRules.length > 0 ? '#fef3c7' : '#ecfdf5', color: pendingRules.length > 0 ? '#b45309' : '#047857', padding: '4px 12px', borderRadius: '12px', fontSize: '11px', fontWeight: 700 }}>
+                                {pendingRules.length} propuesta(s) pendiente(s) de aprobación
+                            </span>
+                        </div>
+                        <div className="sa-chart-body" style={{ padding: '20px' }}>
+                            {isLoadingPendingRules ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '13px', padding: '12px 0' }}>
+                                    <Loader2 size={16} className="rag-spin" /> Cargando propuestas...
+                                </div>
+                            ) : pendingRules.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '24px 0', color: '#64748b', fontSize: '13px' }}>
+                                    🎉 No hay respuestas mal respondidas o propuestas de usuario pendientes de validación.
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                    {pendingRules.map(rule => (
+                                        <div key={rule.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                                <span style={{ fontSize: '11px', fontWeight: 700, color: '#b45309', background: '#fef3c7', padding: '3px 10px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                    📌 Propuesta ingresada por usuario ({rule.author || 'Usuario'})
+                                                </span>
+                                                <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                                                    {rule.created_at ? new Date(rule.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Reciente'}
+                                                </span>
+                                            </div>
+
+                                            <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: 600 }}>
+                                                Título / Referencia: <span style={{ color: '#2563eb' }}>"{rule.title || 'Propuesta de corrección'}"</span>
+                                            </div>
+
+                                            <div style={{ background: 'white', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '12px 14px', fontSize: '13px', color: '#334155', lineHeight: 1.6 }}>
+                                                <strong style={{ color: '#0f172a' }}>Regla / Respuesta Correcta Propuesta:</strong>
+                                                <p style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{rule.text || rule.processed_text || rule.original_text}</p>
+                                            </div>
+
+                                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+                                                <button
+                                                    onClick={() => handleApproveUserRule(rule.id)}
+                                                    style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                >
+                                                    <CheckCircle size={14} /> Validar y Convertir en Regla Activa
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeletePendingRule(rule.id)}
+                                                    style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '8px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                >
+                                                    <Trash2 size={14} /> Descartar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </>
             )}
         </div>
