@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 
 import { getFeedbackHistory } from '../../api/ragClient'
+import '../../simon-redesign.css'
 
 const RAG_API_BASE = import.meta.env.VITE_RAG_API_URL || '/rag-api'
 
