@@ -11,6 +11,7 @@ import {
     Building2, UserCheck, Layers, Filter, Check, Eye, ToggleLeft, ToggleRight, Mail
 } from 'lucide-react'
 import { listRAGFiles } from '../../api/ragClient'
+import { supabase } from '../../lib/supabase'
 
 const RAG_API_BASE = import.meta.env.VITE_RAG_API_URL || '/rag-api'
 
@@ -47,6 +48,7 @@ export default function RAGRules() {
     const [error, setError] = useState(null)
     const [success, setSuccess] = useState(null)
     const [isLoading, setIsLoading] = useState(true)
+    const [isSyncing, setIsSyncing] = useState(false)
 
     // Obras Sociales dynamic list from document manager
     const [osList, setOsList] = useState([
@@ -117,6 +119,28 @@ export default function RAGRules() {
         } catch (e) {
             console.error('Error extracting Obras Sociales:', e)
         }
+    }
+
+    async function handleSyncEmails() {
+        setIsSyncing(true)
+        setError(null)
+        setSuccess(null)
+        try {
+            const { data, error: fnError } = await supabase.functions.invoke('simon-email-ingest', {
+                method: 'POST'
+            })
+
+            if (fnError) throw new Error(fnError.message || 'Error en sincronización')
+            if (data?.error) throw new Error(data.error)
+            
+            setSuccess(`✅ ${data?.message || 'Correos sincronizados correctamente'}`)
+            setTimeout(() => setSuccess(null), 5000)
+            loadRules()
+        } catch (e) {
+            console.error('Error sincronizando:', e)
+            setError(`Error al sincronizar correos: ${e.message}`)
+        }
+        setIsSyncing(false)
     }
 
     async function loadRules() {
@@ -755,6 +779,22 @@ export default function RAGRules() {
 
             {activeTab === 'inbox' && (
                 <div className="rag-rules-inbox" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                        <button
+                            onClick={handleSyncEmails}
+                            disabled={isSyncing}
+                            style={{
+                                background: '#2563eb', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', 
+                                fontSize: '13px', fontWeight: 600, cursor: isSyncing ? 'not-allowed' : 'pointer', 
+                                display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)',
+                                opacity: isSyncing ? 0.7 : 1
+                            }}
+                        >
+                            {isSyncing ? <Loader2 size={16} className="rag-spin" /> : <RotateCcw size={16} />}
+                            {isSyncing ? 'Buscando nuevos correos...' : 'Sincronizar Bandeja ahora'}
+                        </button>
+                    </div>
+
                     {inboxRules.length === 0 ? (
                         <div style={{ padding: '60px 40px', textAlign: 'center', color: '#64748b', background: 'white', borderRadius: '16px', border: '1px dashed #cbd5e1' }}>
                             <CheckCircle size={48} color="#10b981" style={{ marginBottom: '16px', opacity: 0.8 }} />

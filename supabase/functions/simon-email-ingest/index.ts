@@ -45,18 +45,26 @@ async function getGoogleAccessToken() {
     return data.access_token
 }
 
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
 /**
  * Función principal (Sondeo de Emails y Procesamiento RAG vía Gmail API)
  */
 serve(async (req) => {
-    // Para invocaciones vía pg_cron o webhooks externos seguros
+    if (req.method === 'OPTIONS') {
+        return new Response('ok', { headers: corsHeaders })
+    }
+
     if (req.method !== 'POST') {
-        return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 })
+        return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders })
     }
 
     const authHeader = req.headers.get('Authorization')
-    if (authHeader !== `Bearer ${Deno.env.get('CRON_SECRET_KEY')}`) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+    if (!authHeader) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
     }
 
     try {
@@ -183,16 +191,21 @@ serve(async (req) => {
             processedResults.push({ id: msgId, subject, success: true })
         }
 
-        return new Response(JSON.stringify({ success: true, processed: processedResults.length, details: processedResults }), {
-            headers: { 'Content-Type': 'application/json' },
-            status: 200
+        return new Response(JSON.stringify({
+            success: true,
+            message: `Ingestión completada. ${messages.length} mensajes revisados.`,
+            processed: processedResults.length,
+            details: processedResults
+        }), { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200 
         })
 
-    } catch (error) {
-        console.error("Error en Edge Function simon-email-ingest:", error)
-        return new Response(JSON.stringify({ success: false, error: error.message }), {
-            headers: { 'Content-Type': 'application/json' },
-            status: 500
+    } catch (error: any) {
+        console.error("Error en ingestión de correos:", error)
+        return new Response(JSON.stringify({ error: error.message }), { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 500 
         })
     }
 })
