@@ -122,11 +122,12 @@ serve(async (req) => {
             const cleanText = rawBody.replace(/<[^>]*>?/gm, '').trim()
 
             // Insertar como Regla en Supabase (estado pending para validación)
-            if (cleanText.length > 10) {
-                const { error: ruleError } = await supabase
+            let insertedRuleId = null
+            if (cleanText.length > 10 || (msg.payload?.parts && msg.payload.parts.some(p => p.filename))) {
+                const { error: ruleError, data: ruleData } = await supabase
                     .from('rag_rules')
                     .insert({
-                        text: cleanText,
+                        text: cleanText || '(Correo solo con adjuntos)',
                         title: `Regla Automática: ${subject}`,
                         is_active: false,
                         status: 'pending_validation',
@@ -134,11 +135,18 @@ serve(async (req) => {
                         author: 'Ingestión Automática (Melissa)',
                         original_text: cleanText
                     })
+                    .select()
+                    .single()
                 
-                if (ruleError) console.error("Error insertando regla:", ruleError)
+                if (ruleError) {
+                    console.error("Error insertando regla:", ruleError)
+                } else if (ruleData) {
+                    insertedRuleId = ruleData.id
+                }
             }
 
             // Procesar adjuntos (attachments)
+            let attachmentNotes = ''
             for (const part of (msg.payload?.parts || [])) {
                 if (part.filename && part.body?.attachmentId) {
                     const fileName = part.filename
@@ -167,12 +175,50 @@ serve(async (req) => {
                                 
                             if (storageError) {
                                 console.error(`Error subiendo adjunto ${fileName}:`, storageError)
+                                attachmentNotes += `\n⚠️ [ERROR DE ALMACENAMIENTO]: No se pudo guardar ${fileName} en Supabase.\n`
                             } else {
-                                console.log(`Adjunto subido: ${fileName}`)
+                                console.log(`Adjunto subido a Supabase: ${fileName}`)
+                                
+                                // Intentar vectorizar en Simon IA
+                                const ragApiUrl = Deno.env.get('RAG_API_URL')
+                                if (!ragApiUrl) {
+                                    attachmentNotes += `\n⚠️ [ATENCIÓN]: El archivo '${fileName}' se guardó, pero NO fue vectorizado. Falta configurar el secreto RAG_API_URL.\n`
+                                } else {
+                                    try {
+                                        const formData = new FormData()
+                                        const blob = new Blob([bytes.buffer], { type: part.mimeType })
+                                        formData.append('file', blob, fileName)
+                                        formData.append('folder', 'IngestaAutomatica')
+                                        formData.append('tag', 'email-attachment')
+
+                                        const ragResp = await fetch(`${ragApiUrl}/upload`, {
+                                            method: 'POST',
+                                            body: formData
+                                        })
+
+                                        if (ragResp.ok) {
+                                            attachmentNotes += `\n✅ [ADJUNTO VECTORIZADO]: '${fileName}' fue ingresado exitosamente a Simon IA.\n`
+                                        } else {
+                                            const errText = await ragResp.text()
+                                            attachmentNotes += `\n❌ [ERROR DE VECTORIZACIÓN]: Falló al enviar '${fileName}' a Simon IA. Detalle: ${errText}\n`
+                                        }
+                                    } catch (ragErr) {
+                                        attachmentNotes += `\n❌ [ERROR DE CONEXIÓN]: No se pudo contactar al motor de Simon IA para vectorizar '${fileName}'. Detalle: ${ragErr.message}\n`
+                                    }
+                                }
                             }
                         }
                     }
                 }
+            }
+
+            // Si hubo adjuntos y tenemos notas, actualizamos la regla para avisar al usuario
+            if (insertedRuleId && attachmentNotes) {
+                const finalRuleText = (cleanText || '(Correo solo con adjuntos)') + '\n\n--- Reporte de Adjuntos ---\n' + attachmentNotes
+                await supabase.from('rag_rules').update({ 
+                    text: finalRuleText,
+                    original_text: finalRuleText
+                }).eq('id', insertedRuleId)
             }
 
             // Marcar correo como Leído (remover etiqueta UNREAD)
