@@ -216,10 +216,16 @@ export default function RAGRules() {
 
     async function handleApproveRule(ruleId) {
         try {
+            const ruleToApprove = inboxRules.find(r => r.id === ruleId)
+            let newText = ruleToApprove ? ruleToApprove.original_text : ''
+            if (newText.includes('[ESTADO: pendiente]')) {
+                newText = newText.replace('[ESTADO: pendiente]', '').replace('[AUTOR: Ingestión Automática (Melissa)]', '').trim()
+            }
+
             const resp = await fetch(`${RAG_API_BASE}/rules/${ruleId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ is_active: true, status: 'active' })
+                body: JSON.stringify({ text: newText, is_active: true, status: 'active' })
             })
             if (resp.ok) {
                 setSuccess('✅ Regla aprobada e integrada a Simon IA')
@@ -371,8 +377,8 @@ export default function RAGRules() {
     }
 
     // Filter & Group Rules
-    const inboxRules = rules.filter(r => (r.author || '').includes('Ingestión Automática') && r.status === 'pending_validation');
-    const generalRules = rules.filter(r => !((r.author || '').includes('Ingestión Automática') && r.status === 'pending_validation'));
+    const inboxRules = rules.filter(r => (r.original_text || '').includes('[ESTADO: pendiente]'));
+    const generalRules = rules.filter(r => !(r.original_text || '').includes('[ESTADO: pendiente]'));
 
     const filteredRules = generalRules.filter(r => {
         if (!searchFilter.trim()) return true;
@@ -652,7 +658,7 @@ export default function RAGRules() {
                                         {groupItems.map(rule => {
                                             const catStyle = getCategoryStyle(rule.category)
                                             const isEditing = editingRuleId === rule.id
-                                            const isPending = rule.status === 'pending_validation' || rule.is_active === false || rule.original_text?.includes('Propuesta')
+                                            const isPending = (rule.original_text || '').includes('[ESTADO: pendiente]')
 
                                             return (
                                                 <div key={rule.id} style={{ background: '#f8fafc', border: isPending ? '1.5px solid #f59e0b' : '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -748,7 +754,7 @@ export default function RAGRules() {
                                                                 style={{ background: rule.is_active !== false ? '#f1f5f9' : '#fef3c7', color: rule.is_active !== false ? '#475569' : '#b45309', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}
                                                             >
                                                                 {rule.is_active !== false ? <ToggleRight size={14} color="#059669" /> : <ToggleLeft size={14} color="#94a3b8" />}
-                                                                {rule.is_active !== false ? 'Activa' : 'Inactiva'}
+                                                                {isPending ? 'Pendiente' : (rule.is_active !== false ? 'Activa' : 'Inactiva')}
                                                             </button>
                                                             <button
                                                                 onClick={() => startEditing(rule)}
@@ -823,7 +829,7 @@ export default function RAGRules() {
 
                                 {editingRuleId === rule.id ? (
                                     <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '10px', border: '1px solid #cbd5e1', marginTop: '20px' }}>
-                                        <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '8px', display: 'block' }}>Contenido de la regla (editable)</label>
+                                        <label style={{ fontSize: '13px', fontWeight: 600, color: '#475469', marginBottom: '8px', display: 'block' }}>Contenido de la regla (editable)</label>
                                         <textarea
                                             ref={editTextareaRef}
                                             value={editText}
