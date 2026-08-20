@@ -121,32 +121,10 @@ serve(async (req) => {
             
             const cleanText = rawBody.replace(/<[^>]*>?/gm, '').trim()
 
-            // Insertar como Regla en Supabase (estado pending para validación)
-            let insertedRuleId = null
-            if (cleanText.length > 10 || (msg.payload?.parts && msg.payload.parts.some(p => p.filename))) {
-                const { error: ruleError, data: ruleData } = await supabase
-                    .from('rag_rules')
-                    .insert({
-                        text: cleanText || '(Correo solo con adjuntos)',
-                        title: `Regla Automática: ${subject}`,
-                        is_active: false,
-                        status: 'pending_validation',
-                        category: 'general',
-                        author: 'Ingestión Automática (Melissa)',
-                        original_text: cleanText
-                    })
-                    .select()
-                    .single()
-                
-                if (ruleError) {
-                    console.error("Error insertando regla:", ruleError)
-                } else if (ruleData) {
-                    insertedRuleId = ruleData.id
-                }
-            }
-
             // Procesar adjuntos (attachments)
             let attachmentNotes = ''
+            const ragApiUrl = Deno.env.get('RAG_API_URL')
+            
             for (const part of (msg.payload?.parts || [])) {
                 if (part.filename && part.body?.attachmentId) {
                     const fileName = part.filename
@@ -180,7 +158,6 @@ serve(async (req) => {
                                 console.log(`Adjunto subido a Supabase: ${fileName}`)
                                 
                                 // Intentar vectorizar en Simon IA
-                                const ragApiUrl = Deno.env.get('RAG_API_URL')
                                 if (!ragApiUrl) {
                                     attachmentNotes += `\n⚠️ [ATENCIÓN]: El archivo '${fileName}' se guardó, pero NO fue vectorizado. Falta configurar el secreto RAG_API_URL.\n`
                                 } else {
@@ -212,13 +189,26 @@ serve(async (req) => {
                 }
             }
 
-            // Si hubo adjuntos y tenemos notas, actualizamos la regla para avisar al usuario
-            if (insertedRuleId && attachmentNotes) {
-                const finalRuleText = (cleanText || '(Correo solo con adjuntos)') + '\n\n--- Reporte de Adjuntos ---\n' + attachmentNotes
-                await supabase.from('rag_rules').update({ 
-                    text: finalRuleText,
-                    original_text: finalRuleText
-                }).eq('id', insertedRuleId)
+            // Insertar como Regla en el RAG API (estado pending para validación embebido en el texto)
+            const baseText = cleanText || '(Correo solo con adjuntos)'
+            const finalRuleText = `[ESTADO: pendiente]\n[AUTOR: Ingestión Automática (Melissa)]\n${baseText}${attachmentNotes ? '\n\n--- Reporte de Adjuntos ---\n' + attachmentNotes : ''}`
+            
+            if (ragApiUrl && finalRuleText.length > 10) {
+                try {
+                    const ruleResp = await fetch(`${ragApiUrl}/rules`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            text: finalRuleText,
+                            category: 'general'
+                        })
+                    })
+                    if (!ruleResp.ok) {
+                        console.error('Error insertando regla en RAG API:', await ruleResp.text())
+                    }
+                } catch (e) {
+                    console.error('Excepción al insertar regla en RAG API:', e)
+                }
             }
 
             // Marcar correo como Leído (remover etiqueta UNREAD)
