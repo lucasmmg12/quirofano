@@ -174,7 +174,22 @@ export async function updateAltaEstado(id, estado, operador = 'operador', select
             carrito_traspaso_at: null,
             traspaso_id: null,
             traspasada_at: null,
-            traspasada_por: null
+            traspasada_por: null,
+            facturada: false,
+            facturada_at: null,
+            usuario_facturo: null,
+            cantidad_facturas: 0,
+            facturacion_cerrada_hasta: null,
+            devolucion_id: null,
+            devuelta_at: null,
+            devuelta_por: null,
+            en_carrito_devolucion: false,
+            carrito_devolucion_por: null,
+            carrito_devolucion_at: null,
+            en_carrito_rendicion: false,
+            carrito_rendicion_por: null,
+            carrito_rendicion_at: null,
+            rendicion_garantia_id: null
         };
     }
 
@@ -878,7 +893,22 @@ export async function ejecutarCorteDeMesProlongadas(fromDate, toDate) {
             carrito_traspaso_at: null,
             traspaso_id: null,
             traspasada_at: null,
-            traspasada_por: null
+            traspasada_por: null,
+            facturada: false,
+            facturada_at: null,
+            usuario_facturo: null,
+            cantidad_facturas: 0,
+            facturacion_cerrada_hasta: null,
+            devolucion_id: null,
+            devuelta_at: null,
+            devuelta_por: null,
+            en_carrito_devolucion: false,
+            carrito_devolucion_por: null,
+            carrito_devolucion_at: null,
+            en_carrito_rendicion: false,
+            carrito_rendicion_por: null,
+            carrito_rendicion_at: null,
+            rendicion_garantia_id: null
         });
     }
 
