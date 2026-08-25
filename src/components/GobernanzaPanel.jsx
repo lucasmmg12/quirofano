@@ -24,6 +24,7 @@ export default function GobernanzaPanel({ currentUser }) {
     const [processingState, setProcessingState] = useState(null); // 'uploading', 'analyzing', null
     const [resultData, setResultData] = useState(null);
     const [transcriptionText, setTranscriptionText] = useState("");
+    const [pollIntervalId, setPollIntervalId] = useState(null);
 
     // Refs
     const mediaRecorderRef = useRef(null);
@@ -200,26 +201,50 @@ export default function GobernanzaPanel({ currentUser }) {
             // 3. Invoke Edge Function (Backend Processing)
             setProcessingState('analyzing');
             
-            const { data: edgeData, error: edgeError } = await supabase.functions.invoke('gobernanza-ai', {
-                body: { 
-                    action: 'transcribe_and_analyze', 
-                    payload: {
-                        entrevista_id: entrevistaId,
-                        plantilla_id: selectedPlantilla.id,
-                        audio_path: fileName
-                    }
+            // We don't await this directly if it takes too long, we set up polling
+            // We start the fetch but don't block forever if it throws a network timeout
+            
+            // Setup polling for the DB record
+            const pollId = setInterval(async () => {
+                const { data: checkData } = await supabase
+                    .from('gobernanza_entrevistas')
+                    .select('estado, transcripcion, resumen, respuestas_cuestionario, mapa_conceptual_mermaid, minutas')
+                    .eq('id', entrevistaId)
+                    .single();
+
+                if (checkData && checkData.estado === 'completado') {
+                    clearInterval(pollId);
+                    
+                    const url = URL.createObjectURL(blob);
+                    setAudioUrl(url);
+                    setTranscriptionText(checkData.transcripcion || "");
+                    setResultData({
+                        resumen: checkData.resumen,
+                        respuestas: checkData.respuestas_cuestionario,
+                        mapa_conceptual_mermaid: checkData.mapa_conceptual_mermaid,
+                        minutas: checkData.minutas
+                    });
+                    setProcessingState(null);
                 }
-            });
+            }, 5000);
+            
+            setPollIntervalId(pollId);
 
-            if (edgeError) throw new Error(`Timeout o error en IA: ${edgeError.message}`);
-            if (edgeData?.error) throw new Error(edgeData.error);
-
-            // Success! 
-            const url = URL.createObjectURL(blob);
-            setAudioUrl(url);
-            setTranscriptionText(edgeData.transcript);
-            setResultData(edgeData.aiResponse);
-            setProcessingState(null);
+            try {
+                await supabase.functions.invoke('gobernanza-ai', {
+                    body: { 
+                        action: 'transcribe_and_analyze', 
+                        payload: {
+                            entrevista_id: entrevistaId,
+                            plantilla_id: selectedPlantilla.id,
+                            audio_path: fileName
+                        }
+                    }
+                });
+            } catch (err) {
+                // If it times out, the polling will still catch it if it completes in the background
+                console.warn("La llamada directa a la función dio timeout o error, confiando en el polling...", err);
+            }
 
         } catch (error) {
             console.error("Error general:", error);
@@ -268,6 +293,7 @@ export default function GobernanzaPanel({ currentUser }) {
     };
 
     const resetView = () => {
+        if (pollIntervalId) clearInterval(pollIntervalId);
         setSelectedPlantilla(null);
         setResultData(null);
         setTranscriptionText("");
@@ -276,19 +302,20 @@ export default function GobernanzaPanel({ currentUser }) {
         setManualText('');
         if (audioUrl) URL.revokeObjectURL(audioUrl);
         setAudioUrl(null);
+        setPollIntervalId(null);
     };
 
     // VISTA 1: Lista de Plantillas
     if (!selectedPlantilla) {
         return (
-            <div style={{ padding: '32px', maxWidth: '1000px', margin: '0 auto', fontFamily: "'Inter', sans-serif" }}>
+            <div style={{ padding: '32px', width: '100%', fontFamily: "'Inter', sans-serif" }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
                     <div style={{ background: '#eff6ff', padding: '10px', borderRadius: '12px', color: '#3b82f6' }}>
                         <ShieldCheck size={28} />
                     </div>
                     <div>
-                        <h1 style={{ margin: 0, fontSize: '1.6rem', color: '#0f172a', fontWeight: 700 }}>Gobernanza de Datos</h1>
-                        <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.95rem' }}>Seleccione una plantilla institucional para iniciar la auditoría/entrevista.</p>
+                        <h1 style={{ margin: 0, fontSize: '1.8rem', color: '#0f172a', fontWeight: 700 }}>Gobernanza de Datos</h1>
+                        <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '1rem' }}>Seleccione una plantilla institucional para iniciar la auditoría/entrevista.</p>
                     </div>
                 </div>
 
@@ -301,14 +328,14 @@ export default function GobernanzaPanel({ currentUser }) {
                             <h3 style={{ margin: '0 0 8px', color: '#334155', fontSize: '1.1rem' }}>No hay plantillas disponibles</h3>
                         </div>
                     ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '20px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px' }}>
                             {plantillas.map(t => (
-                                <div key={t.id} onClick={() => setSelectedPlantilla(t)} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '16px' }} onMouseOver={e => { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.08)'; }} onMouseOut={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.02)'; }}>
+                                <div key={t.id} onClick={() => setSelectedPlantilla(t)} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '32px', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', gap: '20px' }} onMouseOver={e => { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(59, 130, 246, 0.1)'; }} onMouseOut={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.03)'; }}>
                                     <div>
-                                        <h3 style={{ margin: '0 0 8px', color: '#1e293b', fontSize: '1.1rem', fontWeight: 600 }}>{t.nombre}</h3>
-                                        <span style={{ display: 'inline-block', padding: '4px 10px', background: '#f1f5f9', color: '#475569', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>{t.preguntas ? t.preguntas.length : 0} Preguntas</span>
+                                        <h3 style={{ margin: '0 0 12px', color: '#1e293b', fontSize: '1.25rem', fontWeight: 700 }}>{t.nombre}</h3>
+                                        <span style={{ display: 'inline-block', padding: '6px 12px', background: '#f1f5f9', color: '#475569', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 600 }}>{t.preguntas ? t.preguntas.length : 0} Preguntas a evaluar</span>
                                     </div>
-                                    <div style={{ marginTop: 'auto', alignSelf: 'flex-start', color: '#3b82f6', fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>Comenzar Auditoría <ChevronRight size={16} /></div>
+                                    <div style={{ marginTop: 'auto', alignSelf: 'flex-start', color: '#3b82f6', fontSize: '1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>Comenzar Auditoría <ChevronRight size={18} /></div>
                                 </div>
                             ))}
                         </div>
@@ -361,11 +388,11 @@ export default function GobernanzaPanel({ currentUser }) {
                                 {/* Modo: Grabar */}
                                 {inputMode === 'record' && (
                                     <>
-                                        <div style={{ fontSize: '4.5rem', fontWeight: 300, color: duration > 540 ? '#f59e0b' : isRecording ? '#ef4444' : '#334155', fontVariantNumeric: 'tabular-nums', letterSpacing: '-2px', marginBottom: '8px', transition: 'color 0.3s' }}>
+                                        <div style={{ fontSize: '4.5rem', fontWeight: 300, color: duration > 1680 ? '#f59e0b' : isRecording ? '#ef4444' : '#334155', fontVariantNumeric: 'tabular-nums', letterSpacing: '-2px', marginBottom: '8px', transition: 'color 0.3s' }}>
                                             {formatTime(duration)}
                                         </div>
                                         <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '24px', fontWeight: 500 }}>
-                                            Tiempo máximo recomendado: 10 minutos
+                                            Tiempo máximo recomendado: 30 minutos
                                         </div>
 
                                         <div style={{ width: '100%', height: '140px', background: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)', position: 'relative', overflow: 'hidden', marginBottom: '40px', opacity: (!isRecording && duration === 0) ? 0.6 : 1 }}>
