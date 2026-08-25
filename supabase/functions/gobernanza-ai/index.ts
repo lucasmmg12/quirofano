@@ -19,37 +19,51 @@ Deno.serve(async (req) => {
     try {
         const { action, payload } = await req.json();
 
-        if (action === 'transcribe_and_analyze') {
-            const { entrevista_id, plantilla_id, audio_path } = payload;
+        if (action === 'transcribe_and_analyze' || action === 'analyze_text') {
+            const { entrevista_id, plantilla_id } = payload;
             
-            // 1. Download audio from Supabase Storage
-            const { data: audioData, error: downloadError } = await supabase.storage
-                .from('gobernanza_audios')
-                .download(audio_path);
+            let transcript = "";
 
-            if (downloadError) throw new Error(`Error downloading audio: ${downloadError.message}`);
+            if (action === 'transcribe_and_analyze') {
+                const { audio_path } = payload;
+                // 1. Download audio from Supabase Storage
+                const { data: audioData, error: downloadError } = await supabase.storage
+                    .from('gobernanza_audios')
+                    .download(audio_path);
 
-            // 2. Transcribe with Whisper
-            const formData = new FormData();
-            formData.append('file', new File([audioData], 'audio.webm', { type: 'audio/webm' }));
-            formData.append('model', 'whisper-1');
-            formData.append('language', 'es');
+                if (downloadError) throw new Error(`Error downloading audio: ${downloadError.message}`);
 
-            const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
-                },
-                body: formData
-            });
+                // 2. Transcribe with Whisper
+                const formData = new FormData();
+                // Determine mime type from extension
+                const isMp3 = audio_path.endsWith('.mp3');
+                const isWav = audio_path.endsWith('.wav');
+                const mimeType = isMp3 ? 'audio/mpeg' : isWav ? 'audio/wav' : 'audio/webm';
+                const filename = `audio.${isMp3 ? 'mp3' : isWav ? 'wav' : 'webm'}`;
+                
+                formData.append('file', new File([audioData], filename, { type: mimeType }));
+                formData.append('model', 'whisper-1');
+                formData.append('language', 'es');
+                formData.append('prompt', 'Esta es una entrevista formal de auditoría y gobernanza de datos para el Sanatorio Argentino.');
+                formData.append('temperature', '0.2');
 
-            if (!whisperRes.ok) {
-                const errText = await whisperRes.text();
-                throw new Error(`Whisper Error: ${errText}`);
+                const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}` },
+                    body: formData
+                });
+
+                if (!whisperRes.ok) {
+                    const errText = await whisperRes.text();
+                    throw new Error(`Whisper Error: ${errText}`);
+                }
+
+                const whisperData = await whisperRes.json();
+                transcript = whisperData.text;
+            } else {
+                // Manual text analysis
+                transcript = payload.transcript_text;
             }
-
-            const whisperData = await whisperRes.json();
-            const transcript = whisperData.text;
 
             // 3. Get Plantilla Questions
             const { data: plantilla } = await supabase
@@ -64,17 +78,20 @@ Deno.serve(async (req) => {
             const systemPrompt = `
 Eres un asistente experto en auditoría y gobernanza de datos para el Sanatorio Argentino.
 Te proveeré la transcripción literal de una entrevista y la lista de preguntas que se debían responder.
-Tu tarea es:
-1. Extraer las respuestas específicas que dio el usuario para cada una de las preguntas de la plantilla, basándote SOLO en la transcripción.
-2. Si una pregunta no fue respondida, indícalo claramente (ej: "No especificado en el audio").
-3. Redactar un 'resumen' gerencial (1 párrafo) de los hallazgos principales.
 
-Responde estrictamente en este formato JSON:
+OBJETIVOS OBLIGATORIOS:
+1. "resumen": Redacta un resumen ejecutivo de los puntos tratados (1 párrafo).
+2. "minutas": Redacta los puntos clave (bullet points) para armar diapositivas de presentación.
+3. "mapa_conceptual_mermaid": Crea un diagrama en código Mermaid.js que muestre las entidades y procesos técnicos mencionados en la charla (ej: graph TD; A-->B).
+4. "respuestas": Analiza qué dijo el entrevistado respecto a cada pregunta de la plantilla. Si no respondió, escribe "No especificado en el audio".
+
+Responde ESTRICTAMENTE en este formato JSON:
 {
   "resumen": "Resumen general...",
+  "minutas": ["Punto 1", "Punto 2"],
+  "mapa_conceptual_mermaid": "graph TD\\n  A[Entidad] --> B[Proceso]",
   "respuestas": [
-    { "pregunta": "Pregunta 1", "respuesta": "Lo que dijo el usuario..." },
-    { "pregunta": "Pregunta 2", "respuesta": "Lo que dijo..." }
+    { "pregunta": "Pregunta 1", "respuesta": "Lo que dijo el usuario..." }
   ]
 }`;
 
@@ -88,7 +105,7 @@ Responde estrictamente en este formato JSON:
                     model: 'gpt-4o-mini',
                     messages: [
                         { role: 'system', content: systemPrompt },
-                        { role: 'user', content: `PREGUNTAS:\n${JSON.stringify(customQuestions)}\n\nTRANSCRIPCIÓN:\n"${transcript}"` }
+                        { role: 'user', content: `PREGUNTAS DE LA PLANTILLA:\n${JSON.stringify(customQuestions)}\n\nTRANSCRIPCIÓN:\n"${transcript}"` }
                     ],
                     response_format: { type: 'json_object' },
                     temperature: 0.2
@@ -100,18 +117,20 @@ Responde estrictamente en este formato JSON:
             const aiResponse = JSON.parse(gptData.choices[0].message.content);
 
             // 5. Update Database
-            const { error: updateError } = await supabase
-                .from('gobernanza_entrevistas')
-                .update({
-                    transcripcion: transcript,
-                    resumen: aiResponse.resumen,
-                    respuestas_cuestionario: aiResponse.respuestas,
-                    estado: 'completado',
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', entrevista_id);
+            if (entrevista_id) {
+                const { error: updateError } = await supabase
+                    .from('gobernanza_entrevistas')
+                    .update({
+                        transcripcion: transcript,
+                        resumen: aiResponse.resumen,
+                        respuestas_cuestionario: aiResponse.respuestas,
+                        estado: 'completado',
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', entrevista_id);
 
-            if (updateError) throw new Error(`DB Update Error: ${updateError.message}`);
+                if (updateError) throw new Error(`DB Update Error: ${updateError.message}`);
+            }
 
             return new Response(JSON.stringify({ 
                 success: true, 

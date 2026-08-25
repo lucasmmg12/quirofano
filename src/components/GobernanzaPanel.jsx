@@ -1,16 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Play, Square, ChevronRight, Mic, Loader2, ArrowLeft, ShieldCheck, CheckCircle2, FileText, BrainCircuit } from 'lucide-react';
+import { Play, Square, ChevronRight, Mic, Loader2, ArrowLeft, ShieldCheck, CheckCircle2, FileText, BrainCircuit, List, UploadCloud, Type, Network } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import mermaid from 'mermaid';
 
 export default function GobernanzaPanel({ currentUser }) {
     const [plantillas, setPlantillas] = useState([]);
     const [selectedPlantilla, setSelectedPlantilla] = useState(null);
     const [loading, setLoading] = useState(true);
 
+    // Modes: 'record', 'upload', 'text'
+    const [inputMode, setInputMode] = useState('record');
+
     // Recording states
     const [isRecording, setIsRecording] = useState(false);
     const [duration, setDuration] = useState(0);
+    const [audioUrl, setAudioUrl] = useState(null);
+    
+    // Upload / Text states
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [manualText, setManualText] = useState('');
+
     const [processingState, setProcessingState] = useState(null); // 'uploading', 'analyzing', null
     const [resultData, setResultData] = useState(null);
     const [transcriptionText, setTranscriptionText] = useState("");
@@ -23,6 +33,7 @@ export default function GobernanzaPanel({ currentUser }) {
     const analyserRef = useRef(null);
     const timerRef = useRef(null);
     const streamRef = useRef(null);
+    const mermaidRef = useRef(null);
 
     // Fetch Plantillas on mount
     useEffect(() => {
@@ -43,6 +54,20 @@ export default function GobernanzaPanel({ currentUser }) {
         };
         fetchPlantillas();
     }, []);
+
+    // Initialize mermaid when results are shown
+    useEffect(() => {
+        if (resultData?.mapa_conceptual_mermaid && mermaidRef.current) {
+            try {
+                mermaid.initialize({ startOnLoad: false, theme: 'default' });
+                mermaid.run({
+                    nodes: [mermaidRef.current]
+                });
+            } catch (err) {
+                console.error("Error renderizando mermaid:", err);
+            }
+        }
+    }, [resultData]);
 
     const formatTime = (secs) => {
         const m = Math.floor(secs / 60);
@@ -91,6 +116,8 @@ export default function GobernanzaPanel({ currentUser }) {
             streamRef.current = stream;
             
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            
             const analyser = audioCtx.createAnalyser();
             const source = audioCtx.createMediaStreamSource(stream);
             source.connect(analyser);
@@ -109,7 +136,7 @@ export default function GobernanzaPanel({ currentUser }) {
                 const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                 if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
                 
-                await handleAudioUploadAndAnalyze(audioBlob);
+                await processAudioBlob(audioBlob);
             };
 
             mediaRecorder.start();
@@ -134,18 +161,24 @@ export default function GobernanzaPanel({ currentUser }) {
         }
     };
 
-    const handleAudioUploadAndAnalyze = async (blob) => {
+    const handleFileChange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            setSelectedFile(e.target.files[0]);
+        }
+    };
+
+    const processAudioBlob = async (blob, customExt = 'webm') => {
         try {
             const entrevistaId = uuidv4();
-            const fileName = `${entrevistaId}.webm`;
-            const durationSecs = duration; // captured from state
+            const fileName = `${entrevistaId}.${customExt}`;
+            const durationSecs = duration; // captured from state (might be 0 for uploads)
 
             // 1. Upload to Storage
             setProcessingState('uploading');
             const { error: uploadError } = await supabase.storage
                 .from('gobernanza_audios')
                 .upload(fileName, blob, {
-                    contentType: 'audio/webm'
+                    contentType: blob.type || 'audio/webm'
                 });
             
             if (uploadError) throw new Error(`Error subiendo audio: ${uploadError.message}`);
@@ -157,7 +190,7 @@ export default function GobernanzaPanel({ currentUser }) {
                     id: entrevistaId,
                     usuario_id: currentUser?.id,
                     plantilla_id: selectedPlantilla.id,
-                    audio_url: fileName, // The path inside the bucket
+                    audio_url: fileName,
                     duracion_segundos: durationSecs,
                     estado: 'procesando'
                 });
@@ -178,27 +211,59 @@ export default function GobernanzaPanel({ currentUser }) {
                 }
             });
 
-            if (edgeError) {
-                // If the function hits the 60s timeout, it might throw an error here, but the file is saved!
-                throw new Error(`Timeout o error en IA: ${edgeError.message}`);
-            }
+            if (edgeError) throw new Error(`Timeout o error en IA: ${edgeError.message}`);
+            if (edgeData?.error) throw new Error(edgeData.error);
 
-            if (edgeData?.error) {
-                throw new Error(edgeData.error);
-            }
-
-            // Success! The DB is already updated by the edge function, we just update the UI state.
+            // Success! 
+            const url = URL.createObjectURL(blob);
+            setAudioUrl(url);
             setTranscriptionText(edgeData.transcript);
             setResultData(edgeData.aiResponse);
             setProcessingState(null);
 
         } catch (error) {
             console.error("Error general:", error);
-            alert("Error al procesar: " + error.message + "\n\nEl audio fue guardado y podrá procesarse luego de forma asíncrona (función en desarrollo).");
+            alert("Error al procesar: " + error.message + "\n\nEl backend podría continuar en 2do plano.");
             setProcessingState(null);
-            
-            // Just for robust UI cleanup if it fails
             setDuration(0); 
+        }
+    };
+
+    const handleUploadAudio = async () => {
+        if (!selectedFile) return;
+        const ext = selectedFile.name.split('.').pop() || 'mp3';
+        await processAudioBlob(selectedFile, ext);
+    };
+
+    const handleTextSubmit = async () => {
+        if (!manualText.trim()) return;
+        try {
+            setProcessingState('analyzing');
+            const entrevistaId = uuidv4();
+            
+            // Invoke Edge Function for text analysis directly
+            const { data: edgeData, error: edgeError } = await supabase.functions.invoke('gobernanza-ai', {
+                body: { 
+                    action: 'analyze_text', 
+                    payload: {
+                        entrevista_id: entrevistaId,
+                        plantilla_id: selectedPlantilla.id,
+                        transcript_text: manualText
+                    }
+                }
+            });
+
+            if (edgeError) throw new Error(`Timeout o error en IA: ${edgeError.message}`);
+            if (edgeData?.error) throw new Error(edgeData.error);
+
+            setTranscriptionText(edgeData.transcript);
+            setResultData(edgeData.aiResponse);
+            setProcessingState(null);
+
+        } catch (error) {
+            console.error("Error en análisis de texto:", error);
+            alert("Error al analizar el texto: " + error.message);
+            setProcessingState(null);
         }
     };
 
@@ -207,6 +272,10 @@ export default function GobernanzaPanel({ currentUser }) {
         setResultData(null);
         setTranscriptionText("");
         setDuration(0);
+        setSelectedFile(null);
+        setManualText('');
+        if (audioUrl) URL.revokeObjectURL(audioUrl);
+        setAudioUrl(null);
     };
 
     // VISTA 1: Lista de Plantillas
@@ -261,7 +330,7 @@ export default function GobernanzaPanel({ currentUser }) {
                 <div>
                     <h2 style={{ margin: 0, fontSize: '1.1rem', color: '#0f172a', fontWeight: 700 }}>{selectedPlantilla.nombre}</h2>
                     <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>
-                        {isRecording ? '● Grabando audio...' : processingState ? 'Trabajando en el Backend...' : resultData ? 'Entrevista completada' : 'Lista para iniciar'}
+                        {isRecording ? '● Grabando audio...' : processingState ? 'Trabajando en el Backend...' : resultData ? 'Análisis completado' : 'Lista para iniciar'}
                     </span>
                 </div>
             </div>
@@ -269,56 +338,127 @@ export default function GobernanzaPanel({ currentUser }) {
             <div style={{ flex: 1, overflowY: 'auto', padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 {!resultData ? (
                     <div style={{ width: '100%', maxWidth: '700px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                        <div style={{ fontSize: '4.5rem', fontWeight: 300, color: isRecording ? '#ef4444' : '#334155', fontVariantNumeric: 'tabular-nums', letterSpacing: '-2px', marginBottom: '32px', transition: 'color 0.3s' }}>
-                            {formatTime(duration)}
-                        </div>
-
-                        <div style={{ width: '100%', height: '140px', background: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)', position: 'relative', overflow: 'hidden', marginBottom: '40px', opacity: (!isRecording && duration === 0) ? 0.6 : 1 }}>
-                            <canvas ref={canvasRef} width="700" height="140" style={{ width: '100%', height: '100%', display: 'block' }} />
-                            {(!isRecording && duration === 0) && (
-                                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '0.9rem', fontWeight: 500 }}>
-                                    <Mic size={18} style={{ marginRight: '8px' }} /> El espectro de audio aparecerá al grabar
-                                </div>
-                            )}
-                        </div>
-
+                        
                         {processingState ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#3b82f6', gap: '16px', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#3b82f6', gap: '16px', textAlign: 'center', marginTop: '60px' }}>
                                 <Loader2 size={48} className="animate-spin" />
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                     <span style={{ fontSize: '1.1rem', fontWeight: 600 }}>
-                                        {processingState === 'uploading' ? '1/3: Subiendo audio seguro a Supabase Storage...' : '2/3: Analizando respuestas (Whisper + GPT-4)...'}
+                                        {processingState === 'uploading' ? 'Subiendo datos seguros a Supabase...' : 'Analizando charla con Inteligencia Artificial...'}
                                     </span>
-                                    {processingState === 'analyzing' && <span style={{ fontSize: '0.85rem', color: '#64748b' }}>El backend está procesando los datos. Esto puede tomar varios segundos.</span>}
+                                    {processingState === 'analyzing' && <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Generando minutas, mapa conceptual y respuestas...</span>}
                                 </div>
                             </div>
-                        ) : !isRecording ? (
-                            <button onClick={startRecording} style={{ background: '#3b82f6', color: 'white', border: 'none', borderRadius: '30px', padding: '16px 40px', fontSize: '1.1rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)', transition: 'transform 0.2s, background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#2563eb'} onMouseOut={e => e.currentTarget.style.background = '#3b82f6'} onMouseDown={e => e.currentTarget.style.transform = 'scale(0.96)'} onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}>
-                                <Play size={22} fill="white" /> Iniciar Entrevista
-                            </button>
                         ) : (
-                            <button onClick={stopRecording} style={{ background: '#ef4444', color: 'white', border: 'none', borderRadius: '30px', padding: '16px 40px', fontSize: '1.1rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)', animation: 'pulse 2s infinite' }}>
-                                <Square size={22} fill="white" /> Detener y Analizar
-                            </button>
+                            <>
+                                {/* Modo Selector */}
+                                <div style={{ display: 'flex', gap: '8px', background: '#e2e8f0', padding: '4px', borderRadius: '12px', marginBottom: '40px' }}>
+                                    <button onClick={() => setInputMode('record')} style={{ padding: '8px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: inputMode === 'record' ? 'white' : 'transparent', color: inputMode === 'record' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}><Mic size={16}/> Grabar</button>
+                                    <button onClick={() => setInputMode('upload')} style={{ padding: '8px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: inputMode === 'upload' ? 'white' : 'transparent', color: inputMode === 'upload' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}><UploadCloud size={16}/> Subir Audio</button>
+                                    <button onClick={() => setInputMode('text')} style={{ padding: '8px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: inputMode === 'text' ? 'white' : 'transparent', color: inputMode === 'text' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}><Type size={16}/> Pegar Texto</button>
+                                </div>
+
+                                {/* Modo: Grabar */}
+                                {inputMode === 'record' && (
+                                    <>
+                                        <div style={{ fontSize: '4.5rem', fontWeight: 300, color: duration > 540 ? '#f59e0b' : isRecording ? '#ef4444' : '#334155', fontVariantNumeric: 'tabular-nums', letterSpacing: '-2px', marginBottom: '8px', transition: 'color 0.3s' }}>
+                                            {formatTime(duration)}
+                                        </div>
+                                        <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '24px', fontWeight: 500 }}>
+                                            Tiempo máximo recomendado: 10 minutos
+                                        </div>
+
+                                        <div style={{ width: '100%', height: '140px', background: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)', position: 'relative', overflow: 'hidden', marginBottom: '40px', opacity: (!isRecording && duration === 0) ? 0.6 : 1 }}>
+                                            <canvas ref={canvasRef} width="700" height="140" style={{ width: '100%', height: '100%', display: 'block' }} />
+                                            {(!isRecording && duration === 0) && (
+                                                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '0.9rem', fontWeight: 500 }}>
+                                                    <Mic size={18} style={{ marginRight: '8px' }} /> El espectro de audio aparecerá al grabar
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {!isRecording ? (
+                                            <button onClick={startRecording} style={{ background: '#3b82f6', color: 'white', border: 'none', borderRadius: '30px', padding: '16px 40px', fontSize: '1.1rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)', transition: 'transform 0.2s, background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#2563eb'} onMouseOut={e => e.currentTarget.style.background = '#3b82f6'} onMouseDown={e => e.currentTarget.style.transform = 'scale(0.96)'} onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}>
+                                                <Play size={22} fill="white" /> Iniciar Entrevista
+                                            </button>
+                                        ) : (
+                                            <button onClick={stopRecording} style={{ background: '#ef4444', color: 'white', border: 'none', borderRadius: '30px', padding: '16px 40px', fontSize: '1.1rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)', animation: 'pulse 2s infinite' }}>
+                                                <Square size={22} fill="white" /> Detener y Analizar
+                                            </button>
+                                        )}
+                                    </>
+                                )}
+
+                                {/* Modo: Subir Archivo */}
+                                {inputMode === 'upload' && (
+                                    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'white', padding: '40px', borderRadius: '16px', border: '2px dashed #cbd5e1' }}>
+                                        <UploadCloud size={48} color="#94a3b8" style={{ marginBottom: '16px' }} />
+                                        <input type="file" accept="audio/mp3, audio/wav, audio/webm" onChange={handleFileChange} style={{ marginBottom: '24px' }} />
+                                        <button disabled={!selectedFile} onClick={handleUploadAudio} style={{ background: selectedFile ? '#3b82f6' : '#cbd5e1', color: 'white', border: 'none', borderRadius: '8px', padding: '12px 24px', fontWeight: 600, cursor: selectedFile ? 'pointer' : 'not-allowed' }}>
+                                            Analizar Audio
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Modo: Pegar Texto */}
+                                {inputMode === 'text' && (
+                                    <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
+                                        <textarea 
+                                            value={manualText}
+                                            onChange={e => setManualText(e.target.value)}
+                                            placeholder="Pega aquí la transcripción de la entrevista..."
+                                            style={{ width: '100%', height: '200px', padding: '16px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '0.95rem', fontFamily: "'Inter', sans-serif", resize: 'vertical', marginBottom: '16px' }}
+                                        />
+                                        <button disabled={!manualText.trim()} onClick={handleTextSubmit} style={{ background: manualText.trim() ? '#3b82f6' : '#cbd5e1', color: 'white', border: 'none', borderRadius: '8px', padding: '12px 24px', fontWeight: 600, cursor: manualText.trim() ? 'pointer' : 'not-allowed', alignSelf: 'flex-end' }}>
+                                            Analizar Texto
+                                        </button>
+                                    </div>
+                                )}
+                                
+                                <div style={{ width: '100%', marginTop: '60px', borderTop: '1px solid #e2e8f0', paddingTop: '24px' }}>
+                                    <h4 style={{ color: '#64748b', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px' }}>Preguntas a evaluar</h4>
+                                    <ul style={{ margin: 0, padding: '0 0 0 20px', color: '#475569', fontSize: '0.95rem', lineHeight: 1.6 }}>
+                                        {(selectedPlantilla.preguntas || []).map((q, i) => <li key={i} style={{ marginBottom: '8px' }}>{q}</li>)}
+                                    </ul>
+                                </div>
+                            </>
                         )}
-                        
-                        <div style={{ width: '100%', marginTop: '60px', borderTop: '1px solid #e2e8f0', paddingTop: '24px' }}>
-                            <h4 style={{ color: '#64748b', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px' }}>Preguntas a realizar</h4>
-                            <ul style={{ margin: 0, padding: '0 0 0 20px', color: '#475569', fontSize: '0.95rem', lineHeight: 1.6 }}>
-                                {(selectedPlantilla.preguntas || []).map((q, i) => <li key={i} style={{ marginBottom: '8px' }}>{q}</li>)}
-                            </ul>
-                        </div>
                     </div>
                 ) : (
                     <div style={{ width: '100%', maxWidth: '800px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                        
+                        {/* Resumen */}
                         <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', color: '#10b981' }}>
                                 <CheckCircle2 size={24} />
-                                <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#0f172a' }}>Análisis Completado</h3>
+                                <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#0f172a' }}>Análisis y Resumen</h3>
                             </div>
                             <p style={{ margin: 0, color: '#475569', fontSize: '1rem', lineHeight: 1.6 }}>{resultData.resumen}</p>
                         </div>
 
+                        {/* Minutas */}
+                        {(resultData.minutas && resultData.minutas.length > 0) && (
+                            <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                                <h4 style={{ margin: '0 0 16px', fontSize: '1.1rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}><List size={20} color="#f59e0b" /> Puntos Clave (Minutas)</h4>
+                                <ul style={{ margin: 0, paddingLeft: '20px', color: '#334155', lineHeight: 1.6 }}>
+                                    {resultData.minutas.map((m, i) => <li key={i} style={{ marginBottom: '8px' }}>{m}</li>)}
+                                </ul>
+                            </div>
+                        )}
+
+                        {/* Mapa Conceptual Mermaid */}
+                        {resultData.mapa_conceptual_mermaid && (
+                            <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                                <h4 style={{ margin: '0 0 16px', fontSize: '1.1rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}><Network size={20} color="#8b5cf6" /> Mapa Conceptual</h4>
+                                <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', overflowX: 'auto', display: 'flex', justifyContent: 'center' }}>
+                                    <div className="mermaid" ref={mermaidRef}>
+                                        {resultData.mapa_conceptual_mermaid}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Cuestionario */}
                         <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                             <h4 style={{ margin: '0 0 20px', fontSize: '1.1rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}><BrainCircuit size={20} color="#3b82f6" /> Mapeo de Respuestas</h4>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -331,13 +471,21 @@ export default function GobernanzaPanel({ currentUser }) {
                             </div>
                         </div>
 
+                        {/* Transcripción */}
                         <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-                            <h4 style={{ margin: '0 0 20px', fontSize: '1.1rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={20} color="#64748b" /> Transcripción Original (Whisper)</h4>
+                            <h4 style={{ margin: '0 0 20px', fontSize: '1.1rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={20} color="#64748b" /> Transcripción Original</h4>
+                            
+                            {audioUrl && (
+                                <div style={{ marginBottom: '16px' }}>
+                                    <audio controls src={audioUrl} style={{ width: '100%', height: '40px' }} />
+                                </div>
+                            )}
+
                             <div style={{ background: '#f1f5f9', padding: '16px', borderRadius: '8px', color: '#475569', fontSize: '0.9rem', fontStyle: 'italic', lineHeight: 1.6 }}>"{transcriptionText}"</div>
                         </div>
 
                         <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px' }}>
-                            <button onClick={resetView} style={{ background: 'white', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '12px 24px', fontSize: '1rem', fontWeight: 600, cursor: 'pointer' }}>Volver a Plantillas</button>
+                            <button onClick={resetView} style={{ background: 'white', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '12px 24px', fontSize: '1rem', fontWeight: 600, cursor: 'pointer' }}>Realizar Nueva Auditoría</button>
                         </div>
                     </div>
                 )}
