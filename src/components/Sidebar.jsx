@@ -20,8 +20,8 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             return selectedModules.includes(id);
         }
         
-        // Normal users always see config, manual, actividad_usuarios, and Simon IA
-        if (['config', 'manual', 'actividad_usuarios', 'beto', 'beto_rules', 'beto_analytics', 'simon'].includes(id)) return true;
+        // Normal users always see config, manual, actividad_usuarios, Simon IA and Gobernanza
+        if (['config', 'manual', 'actividad_usuarios', 'beto', 'beto_rules', 'beto_analytics', 'simon', 'gobernanza'].includes(id)) return true;
         
         return selectedModules.includes(id);
     };

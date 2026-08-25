@@ -254,7 +254,7 @@ function App({ currentUser, onLogout }) {
         if (selectedModules.length === 1 && selectedModules[0] !== 'config') {
             isVisible = selectedModules.includes(activeView);
         } else {
-            if (['config', 'manual', 'actividad_usuarios', 'beto', 'simon', 'beto_rules', 'beto_analytics'].includes(activeView)) isVisible = true;
+            if (['config', 'manual', 'actividad_usuarios', 'beto', 'simon', 'beto_rules', 'beto_analytics', 'gobernanza'].includes(activeView)) isVisible = true;
             else if (ALWAYS_VISIBLE.includes(activeView)) isVisible = true;
             else isVisible = selectedModules.includes(activeView);
         }
