@@ -1,10 +1,10 @@
 /**
- * UserActivityPanel ÔÇö Analytics de uso por usuario
+ * UserActivityPanel — Analytics de uso por usuario
  * 
  * Muestra:
  * - Usuarios online ahora
  * - Ranking de horas por usuario
- * - M├│dulos m├ís usados globalmente
+ * - Módulos más usados globalmente
  * 
  * Visible solo para lmarinero.
  */
@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { fetchUserActivitySummary, fetchModuleUsageGlobal, fetchActiveSessions } from '../services/activityService';
 
-// ÔöÇÔöÇ Date range helpers ÔöÇÔöÇ
+// ── Date range helpers ──
 function getDateRange(preset) {
     const now = new Date();
     const hasta = now.toISOString();
@@ -70,7 +70,7 @@ function formatSeconds(secs) {
 }
 
 function timeAgo(dateStr) {
-    if (!dateStr) return 'ÔÇö';
+    if (!dateStr) return '—';
     const diff = Date.now() - new Date(dateStr).getTime();
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return 'Ahora';
@@ -81,7 +81,7 @@ function timeAgo(dateStr) {
     return `hace ${days}d`;
 }
 
-// ÔöÇÔöÇ Color palette for avatars ÔöÇÔöÇ
+// ── Color palette for avatars ──
 const AVATAR_COLORS = [
     'linear-gradient(135deg, #6366F1, #4F46E5)',
     'linear-gradient(135deg, #EC4899, #DB2777)',
@@ -97,12 +97,12 @@ function getAvatarColor(index) {
     return AVATAR_COLORS[index % AVATAR_COLORS.length];
 }
 
-// ÔöÇÔöÇ Preset labels ÔöÇÔöÇ
+// ── Preset labels ──
 const PRESETS = [
     { key: 'hoy', label: 'Hoy' },
     { key: 'semana', label: 'Semana' },
-    { key: 'mes', label: '30 d├¡as' },
-    { key: '3meses', label: '90 d├¡as' },
+    { key: 'mes', label: '30 días' },
+    { key: '3meses', label: '90 días' },
 ];
 
 export default function UserActivityResumen() {
@@ -152,7 +152,7 @@ export default function UserActivityResumen() {
 
     return (
         <div className="content no-print" style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-            {/* ÔöÇÔöÇ Header ÔöÇÔöÇ */}
+            {/* ── Header ── */}
             <div className="animate-fade-in" style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 marginBottom: '24px', flexWrap: 'wrap', gap: '12px',
@@ -171,7 +171,7 @@ export default function UserActivityResumen() {
                             Actividad de Usuarios
                         </h2>
                         <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--neutral-500)' }}>
-                            Sesiones, horas y m├│dulos m├ís usados
+                            Sesiones, horas y módulos más usados
                         </p>
                     </div>
                 </div>
@@ -226,7 +226,7 @@ export default function UserActivityResumen() {
                 </div>
             ) : (
                 <>
-                    {/* ÔöÇÔöÇ Summary Cards ÔöÇÔöÇ */}
+                    {/* ── Summary Cards ── */}
                     <div className="animate-fade-in" style={{
                         display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
                         gap: '16px', marginBottom: '24px',
@@ -288,7 +288,7 @@ export default function UserActivityResumen() {
                         ))}
                     </div>
 
-                    {/* ÔöÇÔöÇ Online Now ÔöÇÔöÇ */}
+                    {/* ── Online Now ── */}
                     {activeSessions.length > 0 && (
                         <div className="animate-fade-in" style={{
                             padding: '18px 20px', borderRadius: '14px',
@@ -339,8 +339,8 @@ export default function UserActivityResumen() {
                                                 margin: 0, fontSize: '0.68rem', color: 'var(--neutral-400)',
                                             }}>
                                                 {s.current_module
-                                                    ? `­ƒôì ${s.current_module.module_label}`
-                                                    : `Sesi├│n: ${timeAgo(s.started_at)}`
+                                                    ? `📍 ${s.current_module.module_label}`
+                                                    : `Sesión: ${timeAgo(s.started_at)}`
                                                 }
                                             </p>
                                         </div>
@@ -350,12 +350,12 @@ export default function UserActivityResumen() {
                         </div>
                     )}
 
-                    {/* ÔöÇÔöÇ Two column layout: Users + Modules ÔöÇÔöÇ */}
+                    {/* ── Two column layout: Users + Modules ── */}
                     <div style={{
                         display: 'grid', gridTemplateColumns: '1fr 1fr',
                         gap: '20px',
                     }}>
-                        {/* ÔöÇÔöÇ User Ranking ÔöÇÔöÇ */}
+                        {/* ── User Ranking ── */}
                         <div className="animate-fade-in" style={{
                             padding: '18px 20px', borderRadius: '14px',
                             background: '#fff', border: '1px solid var(--neutral-100)',
@@ -371,7 +371,7 @@ export default function UserActivityResumen() {
                             {userSummary.length === 0 ? (
                                 <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--neutral-400)' }}>
                                     <Users size={32} strokeWidth={1.2} />
-                                    <p style={{ fontSize: '0.82rem', marginTop: '8px' }}>Sin datos para este per├¡odo</p>
+                                    <p style={{ fontSize: '0.82rem', marginTop: '8px' }}>Sin datos para este período</p>
                                 </div>
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -394,7 +394,7 @@ export default function UserActivityResumen() {
                                                     fontSize: '0.72rem', fontWeight: 700, color: 'var(--neutral-400)',
                                                     width: '20px', textAlign: 'center', flexShrink: 0,
                                                 }}>
-                                                    {idx === 0 ? '­ƒÑç' : idx === 1 ? '­ƒÑê' : idx === 2 ? '­ƒÑë' : `#${idx + 1}`}
+                                                    {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}
                                                 </span>
 
                                                 {/* Avatar */}
@@ -422,7 +422,7 @@ export default function UserActivityResumen() {
                                                             {user.total_sessions} sesiones
                                                         </span>
                                                         <span style={{ fontSize: '0.68rem', color: 'var(--neutral-400)' }}>
-                                                            ┬À ├Ültimo: {timeAgo(user.last_seen)}
+                                                            · Último: {timeAgo(user.last_seen)}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -468,7 +468,7 @@ export default function UserActivityResumen() {
                                                         margin: '0 0 6px', fontSize: '0.7rem', fontWeight: 600,
                                                         color: 'var(--neutral-500)', textTransform: 'uppercase',
                                                         letterSpacing: '0.04em',
-                                                    }}>M├│dulos m├ís usados</p>
+                                                    }}>Módulos más usados</p>
                                                     {user.top_modules.slice(0, 5).map((mod, mi) => (
                                                         <div key={mi} style={{
                                                             display: 'flex', alignItems: 'center', gap: '8px',
@@ -495,7 +495,7 @@ export default function UserActivityResumen() {
                             )}
                         </div>
 
-                        {/* ÔöÇÔöÇ Module Usage ÔöÇÔöÇ */}
+                        {/* ── Module Usage ── */}
                         <div className="animate-fade-in" style={{
                             padding: '18px 20px', borderRadius: '14px',
                             background: '#fff', border: '1px solid var(--neutral-100)',
@@ -504,14 +504,14 @@ export default function UserActivityResumen() {
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                                 <Monitor size={16} color="#F59E0B" />
                                 <h3 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: 'var(--neutral-700)' }}>
-                                    M├│dulos M├ís Usados
+                                    Módulos Más Usados
                                 </h3>
                             </div>
 
                             {moduleUsage.length === 0 ? (
                                 <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--neutral-400)' }}>
                                     <Monitor size={32} strokeWidth={1.2} />
-                                    <p style={{ fontSize: '0.82rem', marginTop: '8px' }}>Sin datos para este per├¡odo</p>
+                                    <p style={{ fontSize: '0.82rem', marginTop: '8px' }}>Sin datos para este período</p>
                                 </div>
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
