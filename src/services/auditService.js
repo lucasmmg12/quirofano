@@ -53,21 +53,30 @@ export async function logAction(accion, detalle = {}) {
 
 
 /**
- * Obtiene el historial de auditoría con filtros opcionales
+ * Obtiene el historial de auditoría con filtros opcionales y paginación
  * 
- * @param {{ usuario?: string, accion?: string, desde?: string, hasta?: string, limit?: number }} filters
- * @returns {Promise<Array>}
+ * @param {{ search?: string, accion?: string, desde?: string, hasta?: string, limit?: number, offset?: number }} filters
+ * @returns {Promise<{data: Array, count: number}>}
  */
 export async function fetchAuditLog(filters = {}) {
     let query = supabase
         .from('audit_log')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(filters.limit || 200);
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false });
 
-    if (filters.usuario) {
-        query = query.eq('usuario', filters.usuario);
+    // Paginación
+    if (filters.limit) {
+        const offset = filters.offset || 0;
+        query = query.range(offset, offset + filters.limit - 1);
+    } else {
+        query = query.limit(200);
     }
+
+    if (filters.search) {
+        // Search by user email/name or module inside detalle
+        query = query.or(`usuario.ilike.%${filters.search}%,nombre.ilike.%${filters.search}%`);
+    }
+    
     if (filters.accion) {
         query = query.eq('accion', filters.accion);
     }
@@ -78,14 +87,14 @@ export async function fetchAuditLog(filters = {}) {
         query = query.lte('created_at', filters.hasta);
     }
 
-    const { data, error } = await query;
+    const { data, error, count } = await query;
 
     if (error) {
         console.error('[AuditService] Error fetching audit log:', error);
-        return [];
+        return { data: [], count: 0 };
     }
 
-    return data || [];
+    return { data: data || [], count: count || 0 };
 }
 
 

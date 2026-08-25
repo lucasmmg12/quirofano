@@ -241,6 +241,8 @@ function App({ currentUser, onLogout }) {
         localStorage.setItem('active_view', view);
         // Track module navigation
         trackModuleChange(view, VIEW_LABELS[view] || view);
+        // Audit log click
+        logAction('Clic', { modulo: view, label: VIEW_LABELS[view] || view });
     }, []);
 
     // Enforce module access control on activeView
