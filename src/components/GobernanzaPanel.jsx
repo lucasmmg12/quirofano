@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Play, Square, ChevronRight, Mic, Loader2, ArrowLeft, ShieldCheck, CheckCircle2, FileText, BrainCircuit, List, UploadCloud, Type, Network } from 'lucide-react';
+import { Play, Square, ChevronRight, Mic, Loader2, ArrowLeft, ShieldCheck, CheckCircle2, FileText, BrainCircuit, List, UploadCloud, Type, Network, Plus, Trash2, Save } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import mermaid from 'mermaid';
 
@@ -8,6 +8,12 @@ export default function GobernanzaPanel({ currentUser }) {
     const [plantillas, setPlantillas] = useState([]);
     const [selectedPlantilla, setSelectedPlantilla] = useState(null);
     const [loading, setLoading] = useState(true);
+
+    // Template Creator States
+    const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
+    const [newTemplateName, setNewTemplateName] = useState("");
+    const [newTemplateQuestions, setNewTemplateQuestions] = useState([""]);
+    const [isSavingTemplate, setIsSavingTemplate] = useState(false);
 
     // Modes: 'record', 'upload', 'text'
     const [inputMode, setInputMode] = useState('record');
@@ -55,6 +61,24 @@ export default function GobernanzaPanel({ currentUser }) {
         };
         fetchPlantillas();
     }, []);
+
+    // Function to refetch templates
+    const refreshPlantillas = async () => {
+        setLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('gobernanza_plantillas')
+                .select('*')
+                .order('created_at', { ascending: false });
+            
+            if (error) throw error;
+            if (data) setPlantillas(data);
+        } catch (err) {
+            console.error("Error fetching plantillas:", err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // Initialize mermaid when results are shown
     useEffect(() => {
@@ -305,6 +329,116 @@ export default function GobernanzaPanel({ currentUser }) {
         setPollIntervalId(null);
     };
 
+    // --- TEMPLATE MANAGER FUNCTIONS ---
+    const handleAddQuestion = () => {
+        setNewTemplateQuestions([...newTemplateQuestions, ""]);
+    };
+
+    const handleRemoveQuestion = (index) => {
+        const updated = newTemplateQuestions.filter((_, i) => i !== index);
+        setNewTemplateQuestions(updated);
+    };
+
+    const handleQuestionChange = (index, value) => {
+        const updated = [...newTemplateQuestions];
+        updated[index] = value;
+        setNewTemplateQuestions(updated);
+    };
+
+    const handleSaveTemplate = async () => {
+        if (!newTemplateName.trim()) return alert("El nombre de la plantilla es obligatorio.");
+        const validQuestions = newTemplateQuestions.filter(q => q.trim() !== "");
+        if (validQuestions.length === 0) return alert("Debes añadir al menos una pregunta.");
+
+        setIsSavingTemplate(true);
+        try {
+            const { error } = await supabase
+                .from('gobernanza_plantillas')
+                .insert({
+                    id: uuidv4(),
+                    nombre: newTemplateName.trim(),
+                    preguntas: validQuestions,
+                    created_by: currentUser?.id
+                });
+            
+            if (error) throw error;
+            
+            setIsCreatingTemplate(false);
+            setNewTemplateName("");
+            setNewTemplateQuestions([""]);
+            await refreshPlantillas();
+        } catch (error) {
+            console.error("Error saving template:", error);
+            alert("Error al guardar la plantilla: " + error.message);
+        } finally {
+            setIsSavingTemplate(false);
+        }
+    };
+
+    // VISTA: CREADOR DE PLANTILLAS
+    if (isCreatingTemplate) {
+        return (
+            <div style={{ padding: '32px', maxWidth: '800px', margin: '0 auto', fontFamily: "'Inter', sans-serif" }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
+                    <button onClick={() => setIsCreatingTemplate(false)} style={{ background: 'none', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center' }}>
+                        <ArrowLeft size={20} />
+                    </button>
+                    <div>
+                        <h2 style={{ margin: 0, fontSize: '1.4rem', color: '#0f172a', fontWeight: 700 }}>Crear Nueva Plantilla</h2>
+                        <span style={{ fontSize: '0.9rem', color: '#64748b' }}>Añade y numera las preguntas que el auditor deberá hacer.</span>
+                    </div>
+                </div>
+
+                <div style={{ background: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '32px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
+                    <div style={{ marginBottom: '24px' }}>
+                        <label style={{ display: 'block', fontSize: '0.95rem', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>Nombre de la Plantilla</label>
+                        <input 
+                            type="text" 
+                            value={newTemplateName}
+                            onChange={(e) => setNewTemplateName(e.target.value)}
+                            placeholder="Ej: Auditoría de Acceso a Servidores"
+                            style={{ width: '100%', padding: '12px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '1rem', outline: 'none' }}
+                        />
+                    </div>
+
+                    <div style={{ marginBottom: '32px' }}>
+                        <label style={{ display: 'block', fontSize: '0.95rem', fontWeight: 600, color: '#334155', marginBottom: '16px' }}>Preguntas a evaluar</label>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {newTemplateQuestions.map((q, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <span style={{ fontWeight: 700, color: '#94a3b8', width: '24px', textAlign: 'right' }}>{i + 1}.</span>
+                                    <input 
+                                        type="text"
+                                        value={q}
+                                        onChange={(e) => handleQuestionChange(i, e.target.value)}
+                                        placeholder={`Pregunta número ${i + 1}`}
+                                        style={{ flex: 1, padding: '10px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.95rem', outline: 'none' }}
+                                    />
+                                    {newTemplateQuestions.length > 1 && (
+                                        <button onClick={() => handleRemoveQuestion(i)} style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '8px', padding: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                                            <Trash2 size={18} />
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                        
+                        <button onClick={handleAddQuestion} style={{ marginTop: '16px', background: 'transparent', color: '#3b82f6', border: '1px dashed #bfdbfe', borderRadius: '8px', padding: '10px 16px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', width: '100%', justifyContent: 'center' }}>
+                            <Plus size={18} /> Añadir otra pregunta
+                        </button>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid #e2e8f0', paddingTop: '24px' }}>
+                        <button disabled={isSavingTemplate} onClick={handleSaveTemplate} style={{ background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', padding: '12px 24px', fontWeight: 600, cursor: isSavingTemplate ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', opacity: isSavingTemplate ? 0.7 : 1 }}>
+                            {isSavingTemplate ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                            {isSavingTemplate ? "Guardando..." : "Guardar Plantilla"}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     // VISTA 1: Lista de Plantillas
     if (!selectedPlantilla) {
         return (
@@ -329,6 +463,15 @@ export default function GobernanzaPanel({ currentUser }) {
                         </div>
                     ) : (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px' }}>
+                            
+                            {/* Card: Crear Nueva Plantilla */}
+                            <div onClick={() => setIsCreatingTemplate(true)} style={{ background: '#f8fafc', border: '2px dashed #cbd5e1', borderRadius: '12px', padding: '32px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', transition: 'all 0.2s', minHeight: '180px' }} onMouseOver={e => { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.background = '#eff6ff'; }} onMouseOut={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#f8fafc'; }}>
+                                <div style={{ background: 'white', padding: '12px', borderRadius: '50%', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                                    <Plus size={24} color="#3b82f6" />
+                                </div>
+                                <h3 style={{ margin: 0, color: '#3b82f6', fontSize: '1.1rem', fontWeight: 600 }}>Crear Nueva Plantilla</h3>
+                            </div>
+
                             {plantillas.map(t => (
                                 <div key={t.id} onClick={() => setSelectedPlantilla(t)} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '32px', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', gap: '20px' }} onMouseOver={e => { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(59, 130, 246, 0.1)'; }} onMouseOut={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.03)'; }}>
                                     <div>
@@ -444,8 +587,13 @@ export default function GobernanzaPanel({ currentUser }) {
                                 
                                 <div style={{ width: '100%', marginTop: '60px', borderTop: '1px solid #e2e8f0', paddingTop: '24px' }}>
                                     <h4 style={{ color: '#64748b', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px' }}>Preguntas a evaluar</h4>
-                                    <ul style={{ margin: 0, padding: '0 0 0 20px', color: '#475569', fontSize: '0.95rem', lineHeight: 1.6 }}>
-                                        {(selectedPlantilla.preguntas || []).map((q, i) => <li key={i} style={{ marginBottom: '8px' }}>{q}</li>)}
+                                    <ul style={{ margin: 0, padding: '0 0 0 20px', color: '#475569', fontSize: '0.95rem', lineHeight: 1.6, listStyleType: 'none', marginLeft: '-20px' }}>
+                                        {(selectedPlantilla.preguntas || []).map((q, i) => (
+                                            <li key={i} style={{ marginBottom: '12px', display: 'flex', gap: '12px' }}>
+                                                <span style={{ fontWeight: 700, color: '#3b82f6' }}>{i + 1}.</span>
+                                                <span>{q}</span>
+                                            </li>
+                                        ))}
                                     </ul>
                                 </div>
                             </>

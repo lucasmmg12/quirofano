@@ -73,6 +73,9 @@ Deno.serve(async (req) => {
                 .single();
 
             const customQuestions = plantilla?.preguntas || [];
+            
+            // Format questions as a numbered list for GPT-4
+            const numberedQuestions = customQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n');
 
             // 4. Analyze with GPT-4o-mini
             const systemPrompt = `
@@ -105,7 +108,7 @@ Responde ESTRICTAMENTE en este formato JSON:
                     model: 'gpt-4o-mini',
                     messages: [
                         { role: 'system', content: systemPrompt },
-                        { role: 'user', content: `PREGUNTAS DE LA PLANTILLA:\n${JSON.stringify(customQuestions)}\n\nTRANSCRIPCIÓN:\n"${transcript}"` }
+                        { role: 'user', content: `PREGUNTAS DE LA PLANTILLA:\n${numberedQuestions}\n\nTRANSCRIPCIÓN:\n"${transcript}"` }
                     ],
                     response_format: { type: 'json_object' },
                     temperature: 0.2
