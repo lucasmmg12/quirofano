@@ -58,6 +58,7 @@ import ModuleOnboarding from './components/ModuleOnboarding.jsx';
 import FrojoCelebration from './components/FrojoCelebration.jsx';
 import ActivosPanel from './components/ActivosPanel.jsx';
 import EquipoAuditoriaView from './components/EquipoAuditoriaView.jsx';
+import GobernanzaPanel from './components/GobernanzaPanel.jsx';
 import { startSession, endSession, trackModuleChange } from './lib/activityTracker';
 import { supabase } from './lib/supabase';
 import './App.css';
@@ -1013,6 +1014,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'actividad_usuarios' && (
                     <UserActivityPanel />
+                )}
+
+                {activeView === 'gobernanza' && (
+                    <GobernanzaPanel currentUser={currentUser} />
                 )}
             </main>
 

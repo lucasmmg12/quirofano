@@ -66,10 +66,11 @@ const MODULE_GROUPS = [
         ],
     },
     {
-        label: 'Analytics',
-        description: 'Reportes y análisis',
+        label: 'Analytics & Data',
+        description: 'Reportes, IA y Gobernanza',
         items: [
             { id: 'beto', label: 'Simon IA', icon: Brain, hint: 'Asistente documental con IA, reglas y gestor de archivos' },
+            { id: 'gobernanza', label: 'Gobernanza de Datos', icon: ClipboardCheck, hint: 'Grabación y análisis de entrevistas por IA' },
         ],
     },
 ];

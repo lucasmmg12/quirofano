@@ -3,7 +3,7 @@ import {
     ClipboardList, History, BookOpen, Settings, PanelLeftClose, PanelLeft,
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
     ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain, Users, PackageCheck, Microscope,
-    Activity, FileSpreadsheet, BookMarked, FolderOpen, Receipt, FileCheck, Shield, Wrench,
+    Activity, FileSpreadsheet, BookMarked, FolderOpen, Receipt, FileCheck, Shield, Wrench, ShieldCheck,
 } from 'lucide-react';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '', onOpenBeto, currentUser, selectedModules }) {
@@ -234,6 +234,22 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                         >
                             <Home size={20} className="sidebar__item-icon" />
                             {!collapsed && <span className="sidebar__item-label">Inicio</span>}
+                            {isActive && <div className="sidebar__item-indicator" />}
+                        </button>
+                    );
+                })()}
+
+                {/* ─── Gobernanza ─── */}
+                {isModuleVisible('gobernanza') && (() => {
+                    const isActive = activeView === 'gobernanza';
+                    return (
+                        <button
+                            className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
+                            onClick={() => onViewChange('gobernanza')}
+                            title={collapsed ? 'Gobernanza' : undefined}
+                        >
+                            <ShieldCheck size={20} className="sidebar__item-icon" />
+                            {!collapsed && <span className="sidebar__item-label">Gobernanza</span>}
                             {isActive && <div className="sidebar__item-indicator" />}
                         </button>
                     );
