@@ -159,40 +159,59 @@ export default function GobernanzaPanel({ currentUser }) {
             const ws = new WebSocket(wsUrl);
             wsRef.current = ws;
 
+            ws.onopen = () => console.log("WS conectado");
+            ws.onerror = (e) => console.error("WS Error:", e);
+            ws.onclose = () => console.log("WS cerrado");
+
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
+                console.log("WS recibe:", data);
                 if (data.type === 'transcript' && data.text) {
                     liveTranscriptRef.current += " " + data.text;
                     setTranscriptionText(liveTranscriptRef.current);
+                } else if (data.type === 'error') {
+                    console.error("Error desde el servidor WS:", data.message);
                 }
             };
 
-            const mediaRecorder = new MediaRecorder(stream);
-            mediaRecorderRef.current = mediaRecorder;
             audioChunksRef.current = [];
-
-            mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    audioChunksRef.current.push(event.data);
-                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                        wsRef.current.send(event.data);
-                    }
-                }
-            };
-
-            mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
-                
-                if (wsRef.current) wsRef.current.close();
-                
-                await processAudioBlob(audioBlob, 'webm', liveTranscriptRef.current);
-            };
-
-            // Enviar chunks de 4 segundos
-            mediaRecorder.start(4000);
             setIsRecording(true);
             setDuration(0);
+            
+            const startDiscreteChunk = () => {
+                // If stopped globally, don't start a new one
+                if (!streamRef.current || streamRef.current.getTracks()[0].readyState === 'ended') return;
+
+                const recorder = new MediaRecorder(streamRef.current);
+                const chunks = [];
+                
+                recorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) chunks.push(event.data);
+                };
+
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'audio/webm' });
+                    audioChunksRef.current.push(blob);
+                    
+                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                        wsRef.current.send(blob);
+                    }
+                };
+
+                recorder.start();
+                mediaRecorderRef.current = recorder;
+
+                setTimeout(() => {
+                    if (recorder.state === 'recording') {
+                        recorder.stop();
+                        // start next chunk only if we are still recording globally
+                        // (we'll check a ref or state inside startDiscreteChunk next tick)
+                        setTimeout(startDiscreteChunk, 10);
+                    }
+                }, 5000);
+            };
+
+            startDiscreteChunk();
             
             timerRef.current = setInterval(() => setDuration(prev => prev + 1), 1000);
             setTimeout(() => drawWaveform(), 50);
@@ -204,11 +223,24 @@ export default function GobernanzaPanel({ currentUser }) {
     };
 
     const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
+        if (isRecording) {
+            setIsRecording(false); // Flags startDiscreteChunk to stop looping next time
+            
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+                mediaRecorderRef.current.stop();
+            }
+            
             clearInterval(timerRef.current);
             if (animationRef.current) cancelAnimationFrame(animationRef.current);
+
+            // Wait briefly for the last onstop to append to audioChunksRef
+            setTimeout(async () => {
+                const finalAudioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
+                if (wsRef.current) wsRef.current.close();
+                
+                await processAudioBlob(finalAudioBlob, 'webm', liveTranscriptRef.current);
+            }, 500);
         }
     };
 
