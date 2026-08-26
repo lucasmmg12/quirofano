@@ -154,8 +154,9 @@ export default function GobernanzaPanel({ currentUser }) {
             liveTranscriptRef.current = "";
             setTranscriptionText("");
 
-            // Conectar a WebSocket local (o cambiar a WSS de producción luego)
-            const ws = new WebSocket('ws://localhost:4000');
+            // Apuntamos al backend de Simon en Render (usando wss para conexión segura)
+            const wsUrl = import.meta.env.VITE_WS_URL || 'wss://contactcenter-1.onrender.com/api/ws/transcribe';
+            const ws = new WebSocket(wsUrl);
             wsRef.current = ws;
 
             ws.onmessage = (event) => {
