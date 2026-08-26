@@ -43,7 +43,8 @@ export default function GobernanzaPanel({ currentUser }) {
     const [isChatLoading, setIsChatLoading] = useState(false);
     
     // Participantes
-    const [participantes, setParticipantes] = useState('');
+    const [participantes, setParticipantes] = useState([]);
+    const [participanteInput, setParticipanteInput] = useState('');
 
     // Refs
     const mediaRecorderRef = useRef(null);
@@ -289,7 +290,7 @@ export default function GobernanzaPanel({ currentUser }) {
                             entrevista_id: entrevistaId,
                             plantilla_id: selectedPlantilla.id,
                             transcript_text: liveTranscript,
-                            participantes: participantes
+                            participantes: participantes.length > 0 ? participantes.join(', ') : ''
                         }
                     }
                 });
@@ -336,7 +337,7 @@ export default function GobernanzaPanel({ currentUser }) {
                                 entrevista_id: entrevistaId,
                                 plantilla_id: selectedPlantilla.id,
                                 audio_path: fileName,
-                                participantes: participantes
+                                participantes: participantes.length > 0 ? participantes.join(', ') : ''
                             }
                         }
                     });
@@ -719,21 +720,53 @@ export default function GobernanzaPanel({ currentUser }) {
                                             )}
                                         </div>
 
-                                        {!isRecording && duration === 0 && (
                                             <div style={{ width: '100%', marginBottom: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                                                 <label style={{ fontSize: '1rem', color: '#1e293b', fontWeight: 600, marginBottom: '8px' }}>Participantes de la Entrevista (Opcional)</label>
-                                                <input 
-                                                    type="text" 
-                                                    value={participantes}
-                                                    onChange={e => setParticipantes(e.target.value)}
-                                                    placeholder="Ej: Lucas Marinero, Dra. López"
-                                                    style={{ width: '100%', maxWidth: '500px', padding: '14px 20px', borderRadius: '12px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '1rem', textAlign: 'center', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
-                                                />
-                                                <div style={{ color: '#3b82f6', fontSize: '0.85rem', marginTop: '12px', background: '#eff6ff', padding: '8px 16px', borderRadius: '8px', display: 'inline-block', fontWeight: 500 }}>
-                                                    <strong>Tip:</strong> Al iniciar la grabación, que cada uno diga "Hola, soy [Nombre]" para calibrar las voces.
+                                                <div style={{ display: 'flex', gap: '8px', width: '100%', maxWidth: '500px', marginBottom: '12px' }}>
+                                                    <input 
+                                                        type="text" 
+                                                        value={participanteInput}
+                                                        onChange={e => setParticipanteInput(e.target.value)}
+                                                        onKeyDown={e => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                if (participanteInput.trim()) {
+                                                                    setParticipantes([...participantes, participanteInput.trim()]);
+                                                                    setParticipanteInput('');
+                                                                }
+                                                            }
+                                                        }}
+                                                        placeholder="Ej: Lucas Marinero"
+                                                        style={{ flex: 1, padding: '14px 20px', borderRadius: '12px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '1rem', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
+                                                    />
+                                                    <button 
+                                                        onClick={() => {
+                                                            if (participanteInput.trim()) {
+                                                                setParticipantes([...participantes, participanteInput.trim()]);
+                                                                setParticipanteInput('');
+                                                            }
+                                                        }}
+                                                        style={{ padding: '0 24px', borderRadius: '12px', border: 'none', background: '#3b82f6', color: 'white', fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s' }}
+                                                    >
+                                                        Agregar
+                                                    </button>
+                                                </div>
+                                                {participantes.length > 0 && (
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', maxWidth: '500px', justifyContent: 'center', marginBottom: '12px' }}>
+                                                        {participantes.map((p, i) => (
+                                                            <div key={i} style={{ background: '#e0e7ff', color: '#3730a3', padding: '6px 12px', borderRadius: '20px', fontSize: '0.9rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                {p}
+                                                                <button onClick={() => setParticipantes(participantes.filter((_, idx) => idx !== i))} style={{ background: 'transparent', border: 'none', color: '#4f46e5', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', fontSize: '1.2rem' }}>
+                                                                    &times;
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <div style={{ color: '#3b82f6', fontSize: '0.85rem', background: '#eff6ff', padding: '8px 16px', borderRadius: '8px', display: 'inline-block', fontWeight: 500 }}>
+                                                    <strong>Tip:</strong> Al iniciar la grabación, que cada uno diga "Hola, soy [Nombre]".
                                                 </div>
                                             </div>
-                                        )}
 
                                         {!isRecording ? (
                                             <button onClick={startRecording} style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', color: 'white', border: 'none', borderRadius: '40px', padding: '20px 48px', fontSize: '1.2rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.4)', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)' }} onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 15px 30px -5px rgba(59, 130, 246, 0.5)'; }} onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(59, 130, 246, 0.4)'; }} onMouseDown={e => e.currentTarget.style.transform = 'scale(0.96)'} onMouseUp={e => e.currentTarget.style.transform = 'translateY(-2px)'}>
