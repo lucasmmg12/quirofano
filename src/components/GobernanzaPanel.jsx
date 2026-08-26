@@ -610,20 +610,20 @@ export default function GobernanzaPanel({ currentUser }) {
     // VISTA 1: Lista de Plantillas
     if (!selectedPlantilla) {
         return (
-            <div style={{ padding: '32px', width: '100%', fontFamily: "'Inter', sans-serif" }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-                    <div style={{ background: '#eff6ff', padding: '10px', borderRadius: '12px', color: '#3b82f6' }}>
-                        <ShieldCheck size={28} />
+            <div style={{ padding: '40px', width: '100%', fontFamily: "'Inter', sans-serif", background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', minHeight: '100vh' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '40px' }}>
+                    <div style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', padding: '16px', borderRadius: '16px', color: 'white', boxShadow: '0 10px 25px -5px rgba(59,130,246,0.4)' }}>
+                        <ShieldCheck size={36} />
                     </div>
                     <div>
-                        <h1 style={{ margin: 0, fontSize: '1.8rem', color: '#0f172a', fontWeight: 700 }}>Gobernanza de Datos</h1>
-                        <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '1rem' }}>Seleccione una plantilla institucional para iniciar la auditoría/entrevista.</p>
+                        <h1 style={{ margin: 0, fontSize: '2.4rem', color: '#0f172a', fontWeight: 800, letterSpacing: '-0.5px' }}>Gobernanza de Datos</h1>
+                        <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '1.1rem' }}>Plataforma integral de auditoría impulsada por Inteligencia Artificial.</p>
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px', background: '#e2e8f0', padding: '6px', borderRadius: '12px', width: 'fit-content', marginBottom: '32px' }}>
-                    <button onClick={() => setViewMode('plantillas')} style={{ padding: '8px 24px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: viewMode === 'plantillas' ? 'white' : 'transparent', color: viewMode === 'plantillas' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}><Plus size={18}/> Nueva Auditoría</button>
-                    <button onClick={() => { setViewMode('historial'); fetchHistorial(); }} style={{ padding: '8px 24px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: viewMode === 'historial' ? 'white' : 'transparent', color: viewMode === 'historial' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}><History size={18}/> Historial</button>
+                <div style={{ display: 'flex', gap: '8px', background: 'rgba(226, 232, 240, 0.6)', padding: '6px', borderRadius: '16px', width: 'fit-content', marginBottom: '40px', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.5)' }}>
+                    <button onClick={() => setViewMode('plantillas')} style={{ padding: '10px 28px', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: 700, background: viewMode === 'plantillas' ? 'white' : 'transparent', color: viewMode === 'plantillas' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: viewMode === 'plantillas' ? '0 4px 6px rgba(0,0,0,0.02)' : 'none', transition: 'all 0.2s' }}><Plus size={18}/> Nueva Auditoría</button>
+                    <button onClick={() => { setViewMode('historial'); fetchHistorial(); }} style={{ padding: '10px 28px', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: 700, background: viewMode === 'historial' ? 'white' : 'transparent', color: viewMode === 'historial' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: viewMode === 'historial' ? '0 4px 6px rgba(0,0,0,0.02)' : 'none', transition: 'all 0.2s' }}><History size={18}/> Historial</button>
                 </div>
 
                 <div style={{ marginTop: '20px' }}>
@@ -638,17 +638,19 @@ export default function GobernanzaPanel({ currentUser }) {
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                 {historialEntrevistas.map(h => (
-                                    <div key={h.id} onClick={() => openHistoryItem(h)} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onMouseOver={e => e.currentTarget.style.borderColor = '#93c5fd'} onMouseOut={e => e.currentTarget.style.borderColor = '#e2e8f0'}>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                <h3 style={{ margin: 0, color: '#1e293b', fontSize: '1.1rem', fontWeight: 700 }}>{h.gobernanza_plantillas?.nombre || 'Auditoría'}</h3>
-                                                <span style={{ padding: '4px 8px', background: h.estado === 'completado' ? '#dcfce7' : '#fef9c3', color: h.estado === 'completado' ? '#166534' : '#854d0e', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase' }}>{h.estado}</span>
+                                    <div key={h.id} onClick={() => openHistoryItem(h)} style={{ background: 'white', border: '1px solid rgba(255,255,255,0.8)', borderRadius: '20px', padding: '24px 32px', cursor: 'pointer', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.03)' }} onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 20px 30px -10px rgba(59,130,246,0.1)'; e.currentTarget.style.borderColor = '#bfdbfe'; }} onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(0,0,0,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.8)'; }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                                <h3 style={{ margin: 0, color: '#0f172a', fontSize: '1.3rem', fontWeight: 800 }}>{h.gobernanza_plantillas?.nombre || 'Auditoría'}</h3>
+                                                <span style={{ padding: '6px 12px', background: h.estado === 'completado' ? '#dcfce7' : '#fef9c3', color: h.estado === 'completado' ? '#166534' : '#854d0e', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase' }}>{h.estado}</span>
                                             </div>
-                                            <div style={{ color: '#64748b', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <CalendarDays size={16} /> {new Date(h.created_at).toLocaleDateString()} a las {new Date(h.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                            <div style={{ color: '#64748b', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 500 }}>
+                                                <CalendarDays size={18} /> {new Date(h.created_at).toLocaleDateString()} a las {new Date(h.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                             </div>
                                         </div>
-                                        <ChevronRight size={24} color="#94a3b8" />
+                                        <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '50%', color: '#3b82f6', transition: 'background 0.2s' }}>
+                                            <ChevronRight size={24} />
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -661,23 +663,30 @@ export default function GobernanzaPanel({ currentUser }) {
                             <h3 style={{ margin: '0 0 8px', color: '#334155', fontSize: '1.1rem' }}>No hay plantillas disponibles</h3>
                         </div>
                     ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '32px' }}>
                             
                             {/* Card: Crear Nueva Plantilla */}
-                            <div onClick={() => setIsCreatingTemplate(true)} style={{ background: '#f8fafc', border: '2px dashed #cbd5e1', borderRadius: '12px', padding: '32px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', transition: 'all 0.2s', minHeight: '180px' }} onMouseOver={e => { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.background = '#eff6ff'; }} onMouseOut={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#f8fafc'; }}>
-                                <div style={{ background: 'white', padding: '12px', borderRadius: '50%', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                                    <Plus size={24} color="#3b82f6" />
+                            <div onClick={() => setIsCreatingTemplate(true)} style={{ background: 'rgba(255,255,255,0.4)', border: '2px dashed #94a3b8', borderRadius: '24px', padding: '32px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', transition: 'all 0.3s ease', minHeight: '220px', backdropFilter: 'blur(10px)' }} onMouseOver={e => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.background = 'rgba(239,246,255,0.8)'; e.currentTarget.style.transform = 'translateY(-4px)'; }} onMouseOut={e => { e.currentTarget.style.borderColor = '#94a3b8'; e.currentTarget.style.background = 'rgba(255,255,255,0.4)'; e.currentTarget.style.transform = 'translateY(0)'; }}>
+                                <div style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', padding: '16px', borderRadius: '50%', boxShadow: '0 8px 16px -4px rgba(59,130,246,0.5)' }}>
+                                    <Plus size={32} color="white" />
                                 </div>
-                                <h3 style={{ margin: 0, color: '#3b82f6', fontSize: '1.1rem', fontWeight: 600 }}>Crear Nueva Plantilla</h3>
+                                <h3 style={{ margin: 0, color: '#1e293b', fontSize: '1.2rem', fontWeight: 700 }}>Crear Plantilla</h3>
                             </div>
 
                             {plantillas.map(t => (
-                                <div key={t.id} onClick={() => setSelectedPlantilla(t)} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '32px', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', gap: '20px' }} onMouseOver={e => { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(59, 130, 246, 0.1)'; }} onMouseOut={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.03)'; }}>
-                                    <div>
-                                        <h3 style={{ margin: '0 0 12px', color: '#1e293b', fontSize: '1.25rem', fontWeight: 700 }}>{t.nombre}</h3>
-                                        <span style={{ display: 'inline-block', padding: '6px 12px', background: '#f1f5f9', color: '#475569', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 600 }}>{t.preguntas ? t.preguntas.length : 0} Preguntas a evaluar</span>
+                                <div key={t.id} onClick={() => setSelectedPlantilla(t)} style={{ background: 'white', border: '1px solid rgba(255,255,255,0.8)', borderRadius: '24px', padding: '32px', cursor: 'pointer', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', boxShadow: '0 10px 30px -10px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', gap: '24px' }} onMouseOver={e => { e.currentTarget.style.boxShadow = '0 20px 40px -15px rgba(59, 130, 246, 0.15)'; e.currentTarget.style.transform = 'translateY(-6px)'; e.currentTarget.style.borderColor = '#bfdbfe'; }} onMouseOut={e => { e.currentTarget.style.boxShadow = '0 10px 30px -10px rgba(0,0,0,0.05)'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.8)'; }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <div style={{ background: '#f1f5f9', padding: '14px', borderRadius: '16px', color: '#64748b' }}>
+                                            <FileText size={28} />
+                                        </div>
+                                        <span style={{ display: 'inline-block', padding: '8px 16px', background: '#eff6ff', color: '#2563eb', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 700 }}>{t.preguntas ? t.preguntas.length : 0} Preguntas</span>
                                     </div>
-                                    <div style={{ marginTop: 'auto', alignSelf: 'flex-start', color: '#3b82f6', fontSize: '1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>Comenzar Auditoría <ChevronRight size={18} /></div>
+                                    <div>
+                                        <h3 style={{ margin: '0 0 8px', color: '#0f172a', fontSize: '1.4rem', fontWeight: 800, letterSpacing: '-0.5px' }}>{t.nombre}</h3>
+                                    </div>
+                                    <div style={{ marginTop: 'auto', alignSelf: 'flex-start', color: '#3b82f6', fontSize: '1.05rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', transition: 'gap 0.2s' }} onMouseOver={e => e.currentTarget.style.gap = '12px'} onMouseOut={e => e.currentTarget.style.gap = '8px'}>
+                                        Comenzar Auditoría <ChevronRight size={20} />
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -689,16 +698,16 @@ export default function GobernanzaPanel({ currentUser }) {
 
     // VISTA 2: Grabación / Resultados
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f8fafc', fontFamily: "'Inter', sans-serif" }}>
-            <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', fontFamily: "'Inter', sans-serif" }}>
+            <div style={{ background: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(226, 232, 240, 0.6)', padding: '20px 32px', display: 'flex', alignItems: 'center', gap: '20px', flexShrink: 0, boxShadow: '0 4px 10px -2px rgba(0, 0, 0, 0.02)', zIndex: 10 }}>
                 {(!isRecording && !processingState) && (
-                    <button onClick={resetView} style={{ background: 'none', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onMouseOver={e => e.currentTarget.style.background = '#f1f5f9'} onMouseOut={e => e.currentTarget.style.background = 'none'}>
+                    <button onClick={resetView} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px', cursor: 'pointer', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', transition: 'all 0.2s' }} onMouseOver={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.transform = 'translateX(-2px)'; }} onMouseOut={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.transform = 'translateX(0)'; }}>
                         <ArrowLeft size={20} />
                     </button>
                 )}
                 <div>
-                    <h2 style={{ margin: 0, fontSize: '1.1rem', color: '#0f172a', fontWeight: 700 }}>{selectedPlantilla.nombre}</h2>
-                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>
+                    <h2 style={{ margin: 0, fontSize: '1.3rem', color: '#0f172a', fontWeight: 800 }}>{selectedPlantilla.nombre}</h2>
+                    <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>
                         {isRecording ? '● Grabando audio...' : processingState ? 'Trabajando en el Backend...' : resultData ? 'Análisis completado' : 'Lista para iniciar'}
                     </span>
                 </div>
@@ -730,29 +739,29 @@ export default function GobernanzaPanel({ currentUser }) {
                                 {/* Modo: Grabar */}
                                 {inputMode === 'record' && (
                                     <>
-                                        <div style={{ fontSize: '4.5rem', fontWeight: 300, color: duration > 1680 ? '#f59e0b' : isRecording ? '#ef4444' : '#334155', fontVariantNumeric: 'tabular-nums', letterSpacing: '-2px', marginBottom: '8px', transition: 'color 0.3s' }}>
+                                        <div style={{ fontSize: '6rem', fontWeight: 200, color: duration > 1680 ? '#f59e0b' : isRecording ? '#ef4444' : '#0f172a', fontVariantNumeric: 'tabular-nums', letterSpacing: '-4px', marginBottom: '8px', transition: 'color 0.3s', textShadow: isRecording ? '0 8px 30px rgba(239,68,68,0.2)' : 'none' }}>
                                             {formatTime(duration)}
                                         </div>
-                                        <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '24px', fontWeight: 500 }}>
+                                        <div style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '32px', fontWeight: 600 }}>
                                             Tiempo máximo recomendado: 2 horas
                                         </div>
 
-                                        <div style={{ width: '100%', height: '140px', background: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)', position: 'relative', overflow: 'hidden', marginBottom: '40px', opacity: (!isRecording && duration === 0) ? 0.6 : 1 }}>
-                                            <canvas ref={canvasRef} width="700" height="140" style={{ width: '100%', height: '100%', display: 'block' }} />
+                                        <div style={{ width: '100%', height: '160px', background: 'white', borderRadius: '24px', border: '1px solid rgba(226, 232, 240, 0.8)', boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.02), 0 10px 30px -10px rgba(0,0,0,0.05)', position: 'relative', overflow: 'hidden', marginBottom: '48px', opacity: (!isRecording && duration === 0) ? 0.7 : 1 }}>
+                                            <canvas ref={canvasRef} width="700" height="160" style={{ width: '100%', height: '100%', display: 'block' }} />
                                             {(!isRecording && duration === 0) && (
-                                                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '0.9rem', fontWeight: 500 }}>
-                                                    <Mic size={18} style={{ marginRight: '8px' }} /> El espectro de audio aparecerá al grabar
+                                                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '1rem', fontWeight: 600 }}>
+                                                    <Mic size={20} style={{ marginRight: '10px' }} /> El espectro de audio aparecerá al grabar
                                                 </div>
                                             )}
                                         </div>
 
                                         {!isRecording ? (
-                                            <button onClick={startRecording} style={{ background: '#3b82f6', color: 'white', border: 'none', borderRadius: '30px', padding: '16px 40px', fontSize: '1.1rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)', transition: 'transform 0.2s, background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#2563eb'} onMouseOut={e => e.currentTarget.style.background = '#3b82f6'} onMouseDown={e => e.currentTarget.style.transform = 'scale(0.96)'} onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}>
-                                                <Play size={22} fill="white" /> Iniciar Entrevista
+                                            <button onClick={startRecording} style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', color: 'white', border: 'none', borderRadius: '40px', padding: '20px 48px', fontSize: '1.2rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.4)', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)' }} onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 15px 30px -5px rgba(59, 130, 246, 0.5)'; }} onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(59, 130, 246, 0.4)'; }} onMouseDown={e => e.currentTarget.style.transform = 'scale(0.96)'} onMouseUp={e => e.currentTarget.style.transform = 'translateY(-2px)'}>
+                                                <Play size={24} fill="white" /> Iniciar Entrevista
                                             </button>
                                         ) : (
-                                            <button onClick={stopRecording} style={{ background: '#ef4444', color: 'white', border: 'none', borderRadius: '30px', padding: '16px 40px', fontSize: '1.1rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)', animation: 'pulse 2s infinite' }}>
-                                                <Square size={22} fill="white" /> Detener y Analizar
+                                            <button onClick={stopRecording} style={{ background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', color: 'white', border: 'none', borderRadius: '40px', padding: '20px 48px', fontSize: '1.2rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.4)', animation: 'pulse 2s infinite' }}>
+                                                <Square size={24} fill="white" /> Detener y Analizar
                                             </button>
                                         )}
                                     </>
