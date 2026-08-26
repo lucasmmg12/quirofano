@@ -120,6 +120,8 @@ Deno.serve(async (req) => {
                 transcript = payload.transcript_text;
             }
 
+            const manual_answers = payload.manual_answers || {};
+
             // 3. Get Plantilla Questions
             const { data: plantilla } = await supabase
                 .from('gobernanza_plantillas')
@@ -129,8 +131,14 @@ Deno.serve(async (req) => {
 
             const customQuestions = plantilla?.preguntas || [];
             
-            // Format questions as a numbered list for GPT-4
-            const numberedQuestions = customQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n');
+            // Format questions as a numbered list for GPT-4, injecting manual answers if provided
+            const numberedQuestions = customQuestions.map((q, i) => {
+                const manualAnswer = manual_answers[i];
+                if (manualAnswer && manualAnswer.trim().length > 0) {
+                    return `${i + 1}. ${q}\n   -> [BORRADOR MANUAL MAPEADO EN VIVO]: ${manualAnswer}`;
+                }
+                return `${i + 1}. ${q}`;
+            }).join('\n');
 
             // 4. Analyze with GPT-4o-mini
             const systemPrompt = `
@@ -146,7 +154,10 @@ OBJETIVOS OBLIGATORIOS:
 1. "resumen": Redacta un resumen ejecutivo de los puntos tratados (1 párrafo).
 2. "minutas": Redacta los puntos clave (bullet points) para armar diapositivas de presentación. Si se menciona a alguien, indica su nombre.
 3. "mapa_conceptual_mermaid": Crea un diagrama en código Mermaid.js que muestre las entidades y procesos técnicos mencionados en la charla (ej: graph TD; A-->B).
-4. "respuestas": Analiza qué dijo el entrevistado respecto a cada pregunta de la plantilla. Si no respondió, escribe "No especificado en el audio".
+4. "respuestas": Analiza qué dijo el entrevistado respecto a cada pregunta de la plantilla. Si hay un [BORRADOR MANUAL MAPEADO EN VIVO] adjunto a una pregunta, úsalo como la base principal (es el borrador que el usuario marcó en vivo como la respuesta). Pule su redacción y complétalo con la transcripción si hay más detalles. Si no respondió ni hay borrador, escribe "No especificado en el audio".
+
+PREGUNTAS DE LA PLANTILLA:
+${numberedQuestions}
 
 Responde ESTRICTAMENTE en este formato JSON:
 {

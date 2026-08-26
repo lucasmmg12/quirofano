@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Play, Square, ChevronRight, Mic, Loader2, ArrowLeft, ShieldCheck, CheckCircle2, FileText, BrainCircuit, List, UploadCloud, Type, Network, Plus, Trash2, Save, MessageCircle, Send, History, CalendarDays } from 'lucide-react';
+import { Play, Square, ChevronRight, Mic, Loader2, ArrowLeft, ShieldCheck, CheckCircle2, FileText, BrainCircuit, List, UploadCloud, Type, Network, Plus, Trash2, Save, MessageCircle, Send, History, CalendarDays, Download } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import mermaid from 'mermaid';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
 
 export default function GobernanzaPanel({ currentUser }) {
     const [plantillas, setPlantillas] = useState([]);
@@ -45,6 +47,10 @@ export default function GobernanzaPanel({ currentUser }) {
     // Participantes
     const [participantes, setParticipantes] = useState([]);
     const [participanteInput, setParticipanteInput] = useState('');
+
+    // Mapeo Manual en Vivo
+    const [activeQuestionIndex, setActiveQuestionIndex] = useState(null);
+    const [manualAnswers, setManualAnswers] = useState({});
 
     // Refs
     const mediaRecorderRef = useRef(null);
@@ -110,6 +116,13 @@ export default function GobernanzaPanel({ currentUser }) {
         }
     }, [resultData]);
 
+    // Sync activeQuestionIndex to ref for access inside chopper closure
+    useEffect(() => {
+        if (wsRef.current) {
+            wsRef.current.activeQuestion = activeQuestionIndex;
+        }
+    }, [activeQuestionIndex]);
+
     const formatTime = (secs) => {
         const m = Math.floor(secs / 60);
         const s = secs % 60;
@@ -167,6 +180,8 @@ export default function GobernanzaPanel({ currentUser }) {
 
             liveTranscriptRef.current = "";
             setTranscriptionText("");
+            setActiveQuestionIndex(null);
+            setManualAnswers({});
 
             setIsRecording(true);
             setDuration(0);
@@ -218,6 +233,14 @@ export default function GobernanzaPanel({ currentUser }) {
                                         if (newText.length > 0) {
                                             liveTranscriptRef.current += " " + newText;
                                             setTranscriptionText(liveTranscriptRef.current);
+                                            
+                                            // Añadir texto a la pregunta activa si existe
+                                            if (isRecordingRef.current && wsRef.current?.activeQuestion !== undefined && wsRef.current?.activeQuestion !== null) {
+                                                setManualAnswers(prev => ({
+                                                    ...prev,
+                                                    [wsRef.current.activeQuestion]: (prev[wsRef.current.activeQuestion] || '') + ' ' + newText
+                                                }));
+                                            }
                                         }
                                     }
                                 };
@@ -368,7 +391,8 @@ export default function GobernanzaPanel({ currentUser }) {
                                 entrevista_id: entrevistaId,
                                 plantilla_id: selectedPlantilla.id,
                                 audio_path: fileName,
-                                participantes: participantes.length > 0 ? participantes.join(', ') : ''
+                                participantes: participantes.length > 0 ? participantes.join(', ') : '',
+                                manual_answers: manualAnswers
                             }
                         }
                     });
@@ -435,6 +459,68 @@ export default function GobernanzaPanel({ currentUser }) {
         setPollIntervalId(null);
         setChatMessages([]);
         setChatInput('');
+    };
+
+    const handleExportPDF = () => {
+        if (!selectedPlantilla) return;
+        const doc = new jsPDF();
+        
+        // Estilo Institucional Sanatorio Argentino
+        doc.setFillColor(37, 99, 235); // #2563eb (Azul institucional)
+        doc.rect(0, 0, 210, 20, 'F');
+        
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text("SANATORIO ARGENTINO", 15, 14);
+        
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(18);
+        doc.text("Auditoría y Gobernanza de Datos", 15, 35);
+        
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Plantilla: ${selectedPlantilla.nombre}`, 15, 45);
+        doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 15, 52);
+        
+        let yPos = 65;
+        
+        const preguntas = selectedPlantilla.preguntas || [];
+        
+        preguntas.forEach((q, i) => {
+            if (yPos > 270) {
+                doc.addPage();
+                yPos = 20;
+            }
+            
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(15, 23, 42);
+            doc.setFontSize(11);
+            
+            const questionLines = doc.splitTextToSize(`${i + 1}. ${q}`, 180);
+            doc.text(questionLines, 15, yPos);
+            yPos += (questionLines.length * 6) + 2;
+            
+            let answerText = "____________________________________________________________________\n____________________________________________________________________";
+            
+            if (resultData && resultData.respuestas && resultData.respuestas[i]) {
+                const aiAnswer = resultData.respuestas[i];
+                answerText = typeof aiAnswer === 'string' ? aiAnswer : (aiAnswer.respuesta || "");
+            } else if (manualAnswers[i]) {
+                answerText = manualAnswers[i];
+            }
+
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(71, 85, 105);
+            doc.setFontSize(10);
+            
+            const answerLines = doc.splitTextToSize(answerText, 175);
+            doc.text(answerLines, 20, yPos);
+            yPos += (answerLines.length * 5) + 12;
+        });
+        
+        doc.save(`Auditoria_${selectedPlantilla.nombre.replace(/\\s+/g, '_')}.pdf`);
     };
 
     const fetchHistorial = async () => {
@@ -695,18 +781,26 @@ export default function GobernanzaPanel({ currentUser }) {
     // VISTA 2: Grabación / Resultados
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', fontFamily: "'Inter', sans-serif" }}>
-            <div style={{ background: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(226, 232, 240, 0.6)', padding: '20px 32px', display: 'flex', alignItems: 'center', gap: '20px', flexShrink: 0, boxShadow: '0 4px 10px -2px rgba(0, 0, 0, 0.02)', zIndex: 10 }}>
+            <div style={{ background: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(226, 232, 240, 0.6)', padding: '20px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '20px', flexShrink: 0, boxShadow: '0 4px 10px -2px rgba(0, 0, 0, 0.02)', zIndex: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                    {(!isRecording && !processingState) && (
+                        <button onClick={resetView} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px', cursor: 'pointer', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', transition: 'all 0.2s' }} onMouseOver={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.transform = 'translateX(-2px)'; }} onMouseOut={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.transform = 'translateX(0)'; }}>
+                            <ArrowLeft size={20} />
+                        </button>
+                    )}
+                    <div>
+                        <h2 style={{ margin: 0, fontSize: '1.3rem', color: '#0f172a', fontWeight: 800 }}>{selectedPlantilla.nombre}</h2>
+                        <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>
+                            {isRecording ? '● Grabando audio...' : processingState ? 'Trabajando en el Backend...' : resultData ? 'Análisis completado' : 'Lista para iniciar'}
+                        </span>
+                    </div>
+                </div>
+                
                 {(!isRecording && !processingState) && (
-                    <button onClick={resetView} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px', cursor: 'pointer', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', transition: 'all 0.2s' }} onMouseOver={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.transform = 'translateX(-2px)'; }} onMouseOut={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.transform = 'translateX(0)'; }}>
-                        <ArrowLeft size={20} />
+                    <button onClick={handleExportPDF} style={{ background: '#3b82f6', color: 'white', border: 'none', borderRadius: '12px', padding: '10px 20px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 10px rgba(59,130,246,0.3)', transition: 'all 0.2s' }} onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 15px rgba(59,130,246,0.4)'; }} onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 10px rgba(59,130,246,0.3)'; }}>
+                        <Download size={18} /> Exportar PDF
                     </button>
                 )}
-                <div>
-                    <h2 style={{ margin: 0, fontSize: '1.3rem', color: '#0f172a', fontWeight: 800 }}>{selectedPlantilla.nombre}</h2>
-                    <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>
-                        {isRecording ? '● Grabando audio...' : processingState ? 'Trabajando en el Backend...' : resultData ? 'Análisis completado' : 'Lista para iniciar'}
-                    </span>
-                </div>
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -807,6 +901,38 @@ export default function GobernanzaPanel({ currentUser }) {
                                             <button onClick={stopRecording} style={{ background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', color: 'white', border: 'none', borderRadius: '40px', padding: '20px 48px', fontSize: '1.2rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.4)', animation: 'pulse 2s infinite' }}>
                                                 <Square size={24} fill="white" /> Detener y Analizar
                                             </button>
+                                        )}
+
+                                        {/* UI de Mapeo Interactivo */}
+                                        {isRecording && selectedPlantilla?.preguntas && (
+                                            <div style={{ marginTop: '40px', width: '100%', background: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
+                                                <h3 style={{ margin: '0 0 8px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}><List size={20} color="#3b82f6" /> Mapeo en Vivo</h3>
+                                                <p style={{ color: '#64748b', fontSize: '0.95rem', marginBottom: '24px' }}>Toca <strong>Enfocar</strong> en la pregunta que están debatiendo. La transcripción se asociará automáticamente.</p>
+                                                
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                                    {selectedPlantilla.preguntas.map((q, i) => (
+                                                        <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '20px', border: activeQuestionIndex === i ? '2px solid #3b82f6' : '1px solid #e2e8f0', borderRadius: '12px', background: activeQuestionIndex === i ? '#eff6ff' : 'white', transition: 'all 0.2s', boxShadow: activeQuestionIndex === i ? '0 4px 12px rgba(59,130,246,0.1)' : 'none' }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
+                                                                <span style={{ fontWeight: 600, color: activeQuestionIndex === i ? '#1e40af' : '#1e293b', fontSize: '1.05rem', flex: 1, lineHeight: '1.5' }}>
+                                                                    {i + 1}. {q}
+                                                                </span>
+                                                                <button 
+                                                                    onClick={() => setActiveQuestionIndex(i === activeQuestionIndex ? null : i)}
+                                                                    style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', background: activeQuestionIndex === i ? '#3b82f6' : '#f1f5f9', color: activeQuestionIndex === i ? 'white' : '#475569', fontWeight: 700, cursor: 'pointer', flexShrink: 0, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                                >
+                                                                    {activeQuestionIndex === i ? <><Mic size={14} className="animate-pulse" /> Enfocando</> : 'Enfocar'}
+                                                                </button>
+                                                            </div>
+                                                            
+                                                            {manualAnswers[i] && (
+                                                                <div style={{ marginTop: '4px', padding: '16px', background: activeQuestionIndex === i ? 'white' : '#f8fafc', borderRadius: '8px', fontSize: '0.95rem', color: '#475569', fontStyle: 'italic', borderLeft: `3px solid ${activeQuestionIndex === i ? '#3b82f6' : '#cbd5e1'}`, lineHeight: '1.6' }}>
+                                                                    {manualAnswers[i]}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         )}
                                     </>
                                 )}
