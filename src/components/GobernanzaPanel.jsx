@@ -168,54 +168,77 @@ export default function GobernanzaPanel({ currentUser }) {
             liveTranscriptRef.current = "";
             setTranscriptionText("");
 
-            // Apuntamos al backend de Simon en Render (usando wss para conexión segura)
-            const wsUrl = import.meta.env.VITE_WS_URL || 'wss://contactcenter-1.onrender.com/api/ws/transcribe';
-            const ws = new WebSocket(wsUrl);
-            wsRef.current = ws;
-
-            ws.onopen = () => console.log("WS conectado");
-            ws.onerror = (e) => console.error("WS Error:", e);
-            ws.onclose = () => console.log("WS cerrado");
-
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === 'transcript' && data.text) {
-                    let newText = data.text;
-                    const alucinaciones = [
-                        "Subtítulos realizados por la comunidad de Amara.org",
-                        "www.alimmenta.com"
-                    ];
-                    alucinaciones.forEach(frase => {
-                        newText = newText.replace(new RegExp(frase, 'gi'), '');
-                    });
-                    newText = newText.trim();
-                    if (newText.length > 0) {
-                        liveTranscriptRef.current += " " + newText;
-                        setTranscriptionText(liveTranscriptRef.current);
-                    }
-                } else if (data.type === 'error') {
-                    console.error("Error desde el servidor WS:", data.message);
-                }
-            };
-
             setIsRecording(true);
             setDuration(0);
             
-            const recorder = new MediaRecorder(streamRef.current, { mimeType: 'audio/webm' });
-            mediaRecorderRef.current = recorder;
+            // Grabador continuo para el análisis final
+            const continuousRecorder = new MediaRecorder(streamRef.current, { mimeType: 'audio/webm' });
+            mediaRecorderRef.current = continuousRecorder;
             audioChunksRef.current = [];
-            
-            recorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    audioChunksRef.current.push(event.data);
-                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                        wsRef.current.send(event.data);
-                    }
+            continuousRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) audioChunksRef.current.push(e.data);
+            };
+            continuousRecorder.start();
+
+            // Referencia para saber si seguimos grabando en el loop
+            const isRecordingRef = { current: true };
+            wsRef.current = isRecordingRef; // Reutilizamos wsRef para guardar el flag de grabación del chopper
+
+            const startDiscreteChunk = () => {
+                if (!isRecordingRef.current) return;
+                
+                try {
+                    const chunkRecorder = new MediaRecorder(streamRef.current, { mimeType: 'audio/webm' });
+                    const chunks = [];
+                    
+                    chunkRecorder.ondataavailable = e => chunks.push(e.data);
+                    chunkRecorder.onstop = async () => {
+                        if (chunks.length > 0) {
+                            const blob = new Blob(chunks, { type: 'audio/webm' });
+                            try {
+                                const buffer = await blob.arrayBuffer();
+                                const base64Audio = btoa(new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''));
+                                
+                                const { data, error } = await supabase.functions.invoke('gobernanza-ai', {
+                                    body: {
+                                        action: 'transcribe_chunk',
+                                        payload: { chunkBase64: base64Audio }
+                                    }
+                                });
+                                
+                                if (data && data.text) {
+                                    let newText = data.text.trim();
+                                    const alucinaciones = ["Subtítulos", "Amara.org", "www.alimmenta.com"];
+                                    alucinaciones.forEach(frase => {
+                                        newText = newText.replace(new RegExp(frase, 'gi'), '');
+                                    });
+                                    newText = newText.trim();
+                                    if (newText.length > 0) {
+                                        liveTranscriptRef.current += " " + newText;
+                                        setTranscriptionText(liveTranscriptRef.current);
+                                    }
+                                }
+                            } catch (err) {
+                                console.error("Error transcribiendo chunk:", err);
+                            }
+                        }
+                        // Lanzar el siguiente chunk si seguimos grabando
+                        if (isRecordingRef.current) {
+                            startDiscreteChunk();
+                        }
+                    };
+                    
+                    chunkRecorder.start();
+                    setTimeout(() => {
+                        if (chunkRecorder.state === 'recording') chunkRecorder.stop();
+                    }, 5000); // 5 segundos
+                } catch(e) {
+                    console.error("Error en chopper:", e);
                 }
             };
             
-            recorder.start(500); // 500ms chunks to WS
-
+            // Iniciar el chopper
+            startDiscreteChunk();
             
             timerRef.current = setInterval(() => setDuration(prev => prev + 1), 1000);
             setTimeout(() => drawWaveform(), 50);
@@ -228,7 +251,8 @@ export default function GobernanzaPanel({ currentUser }) {
 
     const stopRecording = () => {
         if (isRecording) {
-            setIsRecording(false); // Flags startDiscreteChunk to stop looping next time
+            setIsRecording(false);
+            if (wsRef.current) wsRef.current.current = false; // Detener chopper loop
             
             if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
                 mediaRecorderRef.current.stop();
@@ -240,10 +264,9 @@ export default function GobernanzaPanel({ currentUser }) {
             setTimeout(async () => {
                 const finalAudioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                 if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
-                if (wsRef.current) wsRef.current.close();
                 
                 await processAudioBlob(finalAudioBlob, 'webm', liveTranscriptRef.current);
-            }, 1500);
+            }, 500); // Darle tiempo al continuousRecorder de hacer el último ondataavailable
         }
     };
 

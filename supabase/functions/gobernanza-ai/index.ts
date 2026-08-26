@@ -19,9 +19,46 @@ Deno.serve(async (req) => {
     try {
         const { action, payload } = await req.json();
 
+        // ---------------------------------------------------------
+        // LIVE TRANSCRIPTION (Chunks) - FAST WHISPER
+        // ---------------------------------------------------------
+        if (action === 'transcribe_chunk') {
+            const { chunkBase64, isMp3, isWav } = payload;
+            if (!chunkBase64) throw new Error("Falta chunkBase64");
+            
+            // Convert base64 to File
+            const byteCharacters = atob(chunkBase64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'audio/webm' });
+            
+            const formData = new FormData();
+            formData.append('file', new File([blob], 'chunk.webm', { type: 'audio/webm' }));
+            formData.append('model', 'whisper-1');
+            formData.append('language', 'es');
+            
+            const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}` },
+                body: formData
+            });
+
+            if (!whisperRes.ok) throw new Error(await whisperRes.text());
+            const whisperData = await whisperRes.json();
+            
+            return new Response(JSON.stringify({ success: true, text: whisperData.text }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+
+        // ---------------------------------------------------------
+        // FULL AUDIO ANALYSIS - DEEPGRAM DIARIZATION
+        // ---------------------------------------------------------
         if (action === 'transcribe_and_analyze' || action === 'analyze_text') {
             const { entrevista_id, plantilla_id, participantes } = payload;
-            
             let transcript = "";
 
             if (action === 'transcribe_and_analyze') {
@@ -33,33 +70,51 @@ Deno.serve(async (req) => {
 
                 if (downloadError) throw new Error(`Error downloading audio: ${downloadError.message}`);
 
-                // 2. Transcribe with Whisper
-                const formData = new FormData();
-                // Determine mime type from extension
-                const isMp3 = audio_path.endsWith('.mp3');
-                const isWav = audio_path.endsWith('.wav');
-                const mimeType = isMp3 ? 'audio/mpeg' : isWav ? 'audio/wav' : 'audio/webm';
-                const filename = `audio.${isMp3 ? 'mp3' : isWav ? 'wav' : 'webm'}`;
+                const DEEPGRAM_API_KEY = "896c8da735b5edce67498d67fc58422f11962dce";
                 
-                formData.append('file', new File([audioData], filename, { type: mimeType }));
-                formData.append('model', 'whisper-1');
-                formData.append('language', 'es');
-                formData.append('prompt', 'Esta es una entrevista formal de auditoría y gobernanza de datos para el Sanatorio Argentino.');
-                formData.append('temperature', '0.2');
-
-                const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                const deepgramRes = await fetch('https://api.deepgram.com/v1/listen?model=nova-2&language=es&diarize=true&smart_format=true', {
                     method: 'POST',
-                    headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}` },
-                    body: formData
+                    headers: {
+                        'Authorization': `Token ${DEEPGRAM_API_KEY}`,
+                        'Content-Type': 'audio/webm'
+                    },
+                    body: audioData
                 });
 
-                if (!whisperRes.ok) {
-                    const errText = await whisperRes.text();
-                    throw new Error(`Whisper Error: ${errText}`);
+                if (!deepgramRes.ok) {
+                    const errText = await deepgramRes.text();
+                    throw new Error(`Deepgram Error: ${errText}`);
                 }
 
-                const whisperData = await whisperRes.json();
-                transcript = whisperData.text;
+                const dgData = await deepgramRes.json();
+                
+                // Parse diarization
+                const words = dgData?.results?.channels?.[0]?.alternatives?.[0]?.words || [];
+                let formattedTranscript = "";
+                let currentSpeaker = null;
+                let currentText = "";
+                
+                if (words.length > 0) {
+                    for (const w of words) {
+                        const speaker = w.speaker || 0;
+                        const word = w.punctuated_word || w.word;
+                        if (speaker !== currentSpeaker) {
+                            if (currentSpeaker !== null) {
+                                formattedTranscript += `\n[Participante ${currentSpeaker}]: ${currentText.trim()} `;
+                            }
+                            currentSpeaker = speaker;
+                            currentText = word;
+                        } else {
+                            currentText += ` ${word}`;
+                        }
+                    }
+                    if (currentSpeaker !== null) {
+                        formattedTranscript += `\n[Participante ${currentSpeaker}]: ${currentText.trim()} `;
+                    }
+                    transcript = formattedTranscript.trim();
+                } else {
+                    transcript = dgData?.results?.channels?.[0]?.alternatives?.[0]?.transcript || "";
+                }
             } else {
                 // Manual text analysis
                 transcript = payload.transcript_text;
