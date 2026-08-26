@@ -41,6 +41,9 @@ export default function GobernanzaPanel({ currentUser }) {
     const [chatMessages, setChatMessages] = useState([]);
     const [chatInput, setChatInput] = useState('');
     const [isChatLoading, setIsChatLoading] = useState(false);
+    
+    // Participantes
+    const [participantes, setParticipantes] = useState('');
 
     // Refs
     const mediaRecorderRef = useRef(null);
@@ -175,30 +178,16 @@ export default function GobernanzaPanel({ currentUser }) {
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                console.log("WS recibe:", data);
                 if (data.type === 'transcript' && data.text) {
                     let newText = data.text;
-                    
-                    // Limpiar alucinaciones típicas de Whisper cuando hay silencio
                     const alucinaciones = [
                         "Subtítulos realizados por la comunidad de Amara.org",
-                        "Subtítulos por la comunidad de Amara.org",
-                        "Subtítulos por Amara.org",
-                        "www.alimmenta.com",
-                        "Más información en www.alimmenta.com",
-                        "Más información en alimmenta.com",
-                        "Más información alimmenta.com",
-                        "alimmenta.com"
+                        "www.alimmenta.com"
                     ];
-                    
                     alucinaciones.forEach(frase => {
-                        // case insensitive replacement
-                        const regex = new RegExp(frase, 'gi');
-                        newText = newText.replace(regex, '');
+                        newText = newText.replace(new RegExp(frase, 'gi'), '');
                     });
-                    
                     newText = newText.trim();
-                    
                     if (newText.length > 0) {
                         liveTranscriptRef.current += " " + newText;
                         setTranscriptionText(liveTranscriptRef.current);
@@ -208,44 +197,20 @@ export default function GobernanzaPanel({ currentUser }) {
                 }
             };
 
-            audioChunksRef.current = [];
             setIsRecording(true);
             setDuration(0);
             
-            const startDiscreteChunk = () => {
-                // If stopped globally, don't start a new one
-                if (!streamRef.current || streamRef.current.getTracks()[0].readyState === 'ended') return;
-
-                const recorder = new MediaRecorder(streamRef.current);
-                const chunks = [];
-                
-                recorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) chunks.push(event.data);
-                };
-
-                recorder.onstop = () => {
-                    const blob = new Blob(chunks, { type: 'audio/webm' });
-                    audioChunksRef.current.push(blob);
-                    
-                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                        wsRef.current.send(blob);
-                    }
-                };
-
-                recorder.start();
-                mediaRecorderRef.current = recorder;
-
-                setTimeout(() => {
-                    if (recorder.state === 'recording') {
-                        recorder.stop();
-                        // start next chunk only if we are still recording globally
-                        // (we'll check a ref or state inside startDiscreteChunk next tick)
-                        setTimeout(startDiscreteChunk, 10);
-                    }
-                }, 5000);
+            const recorder = new MediaRecorder(streamRef.current, { mimeType: 'audio/webm' });
+            mediaRecorderRef.current = recorder;
+            
+            recorder.ondataavailable = (event) => {
+                if (event.data.size > 0 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(event.data);
+                }
             };
+            
+            recorder.start(500); // 500ms chunks to WS
 
-            startDiscreteChunk();
             
             timerRef.current = setInterval(() => setDuration(prev => prev + 1), 1000);
             setTimeout(() => drawWaveform(), 50);
@@ -267,15 +232,12 @@ export default function GobernanzaPanel({ currentUser }) {
             clearInterval(timerRef.current);
             if (animationRef.current) cancelAnimationFrame(animationRef.current);
 
-            // Esperamos 3 segundos para asegurar que el backend de Python tenga tiempo 
-            // de procesar con Whisper el último pedacito de audio antes de cerrar el WebSocket.
             setTimeout(async () => {
-                const finalAudioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                 if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
                 if (wsRef.current) wsRef.current.close();
                 
-                await processAudioBlob(finalAudioBlob, 'webm', liveTranscriptRef.current);
-            }, 3000);
+                await processAudioBlob(new Blob([], { type: 'audio/webm' }), 'webm', liveTranscriptRef.current);
+            }, 1500);
         }
     };
 
@@ -326,7 +288,8 @@ export default function GobernanzaPanel({ currentUser }) {
                         payload: {
                             entrevista_id: entrevistaId,
                             plantilla_id: selectedPlantilla.id,
-                            transcript_text: liveTranscript
+                            transcript_text: liveTranscript,
+                            participantes: participantes
                         }
                     }
                 });
@@ -372,7 +335,8 @@ export default function GobernanzaPanel({ currentUser }) {
                             payload: {
                                 entrevista_id: entrevistaId,
                                 plantilla_id: selectedPlantilla.id,
-                                audio_path: fileName
+                                audio_path: fileName,
+                                participantes: participantes
                             }
                         }
                     });
@@ -754,6 +718,22 @@ export default function GobernanzaPanel({ currentUser }) {
                                                 </div>
                                             )}
                                         </div>
+
+                                        {!isRecording && duration === 0 && (
+                                            <div style={{ width: '100%', marginBottom: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                                <label style={{ fontSize: '1rem', color: '#1e293b', fontWeight: 600, marginBottom: '8px' }}>Participantes de la Entrevista (Opcional)</label>
+                                                <input 
+                                                    type="text" 
+                                                    value={participantes}
+                                                    onChange={e => setParticipantes(e.target.value)}
+                                                    placeholder="Ej: Lucas Marinero, Dra. López"
+                                                    style={{ width: '100%', maxWidth: '500px', padding: '14px 20px', borderRadius: '12px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '1rem', textAlign: 'center', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
+                                                />
+                                                <div style={{ color: '#3b82f6', fontSize: '0.85rem', marginTop: '12px', background: '#eff6ff', padding: '8px 16px', borderRadius: '8px', display: 'inline-block', fontWeight: 500 }}>
+                                                    <strong>Tip:</strong> Al iniciar la grabación, que cada uno diga "Hola, soy [Nombre]" para calibrar las voces.
+                                                </div>
+                                            </div>
+                                        )}
 
                                         {!isRecording ? (
                                             <button onClick={startRecording} style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', color: 'white', border: 'none', borderRadius: '40px', padding: '20px 48px', fontSize: '1.2rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.4)', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)' }} onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 15px 30px -5px rgba(59, 130, 246, 0.5)'; }} onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(59, 130, 246, 0.4)'; }} onMouseDown={e => e.currentTarget.style.transform = 'scale(0.96)'} onMouseUp={e => e.currentTarget.style.transform = 'translateY(-2px)'}>
