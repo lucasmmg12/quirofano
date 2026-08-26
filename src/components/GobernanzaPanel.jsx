@@ -196,28 +196,31 @@ export default function GobernanzaPanel({ currentUser }) {
                         if (chunks.length > 0) {
                             const blob = new Blob(chunks, { type: 'audio/webm' });
                             try {
-                                const buffer = await blob.arrayBuffer();
-                                const base64Audio = btoa(new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''));
-                                
-                                const { data, error } = await supabase.functions.invoke('gobernanza-ai', {
-                                    body: {
-                                        action: 'transcribe_chunk',
-                                        payload: { chunkBase64: base64Audio }
-                                    }
-                                });
-                                
-                                if (data && data.text) {
-                                    let newText = data.text.trim();
-                                    const alucinaciones = ["Subtítulos", "Amara.org", "www.alimmenta.com"];
-                                    alucinaciones.forEach(frase => {
-                                        newText = newText.replace(new RegExp(frase, 'gi'), '');
+                                const reader = new FileReader();
+                                reader.readAsDataURL(blob);
+                                reader.onloadend = async () => {
+                                    const base64Audio = reader.result.split(',')[1];
+                                    
+                                    const { data, error } = await supabase.functions.invoke('gobernanza-ai', {
+                                        body: {
+                                            action: 'transcribe_chunk',
+                                            payload: { chunkBase64: base64Audio }
+                                        }
                                     });
-                                    newText = newText.trim();
-                                    if (newText.length > 0) {
-                                        liveTranscriptRef.current += " " + newText;
-                                        setTranscriptionText(liveTranscriptRef.current);
+                                    
+                                    if (data && data.text) {
+                                        let newText = data.text.trim();
+                                        const alucinaciones = ["Subtítulos", "Amara.org", "www.alimmenta.com"];
+                                        alucinaciones.forEach(frase => {
+                                            newText = newText.replace(new RegExp(frase, 'gi'), '');
+                                        });
+                                        newText = newText.trim();
+                                        if (newText.length > 0) {
+                                            liveTranscriptRef.current += " " + newText;
+                                            setTranscriptionText(liveTranscriptRef.current);
+                                        }
                                     }
-                                }
+                                };
                             } catch (err) {
                                 console.error("Error transcribiendo chunk:", err);
                             }
