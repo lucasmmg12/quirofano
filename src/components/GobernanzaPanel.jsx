@@ -41,6 +41,8 @@ export default function GobernanzaPanel({ currentUser }) {
     const timerRef = useRef(null);
     const streamRef = useRef(null);
     const mermaidRef = useRef(null);
+    const wsRef = useRef(null);
+    const liveTranscriptRef = useRef("");
 
     // Fetch Plantillas on mount
     useEffect(() => {
@@ -149,22 +151,45 @@ export default function GobernanzaPanel({ currentUser }) {
             analyser.fftSize = 2048;
             analyserRef.current = analyser;
 
+            liveTranscriptRef.current = "";
+            setTranscriptionText("");
+
+            // Conectar a WebSocket local (o cambiar a WSS de producción luego)
+            const ws = new WebSocket('ws://localhost:4000');
+            wsRef.current = ws;
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'transcript' && data.text) {
+                    liveTranscriptRef.current += " " + data.text;
+                    setTranscriptionText(liveTranscriptRef.current);
+                }
+            };
+
             const mediaRecorder = new MediaRecorder(stream);
             mediaRecorderRef.current = mediaRecorder;
             audioChunksRef.current = [];
 
             mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) audioChunksRef.current.push(event.data);
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                        wsRef.current.send(event.data);
+                    }
+                }
             };
 
             mediaRecorder.onstop = async () => {
                 const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                 if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
                 
-                await processAudioBlob(audioBlob);
+                if (wsRef.current) wsRef.current.close();
+                
+                await processAudioBlob(audioBlob, 'webm', liveTranscriptRef.current);
             };
 
-            mediaRecorder.start();
+            // Enviar chunks de 4 segundos
+            mediaRecorder.start(4000);
             setIsRecording(true);
             setDuration(0);
             
@@ -192,11 +217,11 @@ export default function GobernanzaPanel({ currentUser }) {
         }
     };
 
-    const processAudioBlob = async (blob, customExt = 'webm') => {
+    const processAudioBlob = async (blob, customExt = 'webm', liveTranscript = null) => {
         try {
             const entrevistaId = uuidv4();
             const fileName = `${entrevistaId}.${customExt}`;
-            const durationSecs = duration; // captured from state (might be 0 for uploads)
+            const durationSecs = duration;
 
             // 1. Upload to Storage
             setProcessingState('uploading');
@@ -225,51 +250,68 @@ export default function GobernanzaPanel({ currentUser }) {
             // 3. Invoke Edge Function (Backend Processing)
             setProcessingState('analyzing');
             
-            // We don't await this directly if it takes too long, we set up polling
-            // We start the fetch but don't block forever if it throws a network timeout
-            
-            // Setup polling for the DB record
-            const pollId = setInterval(async () => {
-                const { data: checkData } = await supabase
-                    .from('gobernanza_entrevistas')
-                    .select('estado, transcripcion, resumen, respuestas_cuestionario, mapa_conceptual_mermaid, minutas')
-                    .eq('id', entrevistaId)
-                    .single();
-
-                if (checkData && checkData.estado === 'completado') {
-                    clearInterval(pollId);
-                    
-                    const url = URL.createObjectURL(blob);
-                    setAudioUrl(url);
-                    setTranscriptionText(checkData.transcripcion || "");
-                    setResultData({
-                        resumen: checkData.resumen,
-                        respuestas: checkData.respuestas_cuestionario,
-                        mapa_conceptual_mermaid: checkData.mapa_conceptual_mermaid,
-                        minutas: checkData.minutas
-                    });
-                    setProcessingState(null);
-                }
-            }, 5000);
-            
-            setPollIntervalId(pollId);
-
-            try {
-                await supabase.functions.invoke('gobernanza-ai', {
+            if (liveTranscript && liveTranscript.trim().length > 0) {
+                // Ya tenemos la transcripción en vivo por WebSockets, pasamos directo al análisis
+                const { data: edgeData, error: edgeError } = await supabase.functions.invoke('gobernanza-ai', {
                     body: { 
-                        action: 'transcribe_and_analyze', 
+                        action: 'analyze_text', 
                         payload: {
                             entrevista_id: entrevistaId,
                             plantilla_id: selectedPlantilla.id,
-                            audio_path: fileName
+                            transcript_text: liveTranscript
                         }
                     }
                 });
-            } catch (err) {
-                // If it times out, the polling will still catch it if it completes in the background
-                console.warn("La llamada directa a la función dio timeout o error, confiando en el polling...", err);
-            }
 
+                if (edgeError) throw new Error(`Error en IA: ${edgeError.message}`);
+                if (edgeData?.error) throw new Error(edgeData.error);
+                
+                const url = URL.createObjectURL(blob);
+                setAudioUrl(url);
+                setResultData(edgeData.aiResponse);
+                setProcessingState(null);
+            } else {
+                // Fallback (ej: subida manual o WS falló)
+                const pollId = setInterval(async () => {
+                    const { data: checkData } = await supabase
+                        .from('gobernanza_entrevistas')
+                        .select('estado, transcripcion, resumen, respuestas_cuestionario, mapa_conceptual_mermaid, minutas')
+                        .eq('id', entrevistaId)
+                        .single();
+
+                    if (checkData && checkData.estado === 'completado') {
+                        clearInterval(pollId);
+                        
+                        const url = URL.createObjectURL(blob);
+                        setAudioUrl(url);
+                        setTranscriptionText(checkData.transcripcion || "");
+                        setResultData({
+                            resumen: checkData.resumen,
+                            respuestas: checkData.respuestas_cuestionario,
+                            mapa_conceptual_mermaid: checkData.mapa_conceptual_mermaid,
+                            minutas: checkData.minutas
+                        });
+                        setProcessingState(null);
+                    }
+                }, 5000);
+                
+                setPollIntervalId(pollId);
+
+                try {
+                    await supabase.functions.invoke('gobernanza-ai', {
+                        body: { 
+                            action: 'transcribe_and_analyze', 
+                            payload: {
+                                entrevista_id: entrevistaId,
+                                plantilla_id: selectedPlantilla.id,
+                                audio_path: fileName
+                            }
+                        }
+                    });
+                } catch (err) {
+                    console.warn("La llamada directa a la función dio timeout o error, confiando en el polling...", err);
+                }
+            }
         } catch (error) {
             console.error("Error general:", error);
             alert("Error al procesar: " + error.message + "\n\nEl backend podría continuar en 2do plano.");
@@ -586,15 +628,10 @@ export default function GobernanzaPanel({ currentUser }) {
                                 )}
                                 
                                 <div style={{ width: '100%', marginTop: '60px', borderTop: '1px solid #e2e8f0', paddingTop: '24px' }}>
-                                    <h4 style={{ color: '#64748b', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px' }}>Preguntas a evaluar</h4>
-                                    <ul style={{ margin: 0, padding: '0 0 0 20px', color: '#475569', fontSize: '0.95rem', lineHeight: 1.6, listStyleType: 'none', marginLeft: '-20px' }}>
-                                        {(selectedPlantilla.preguntas || []).map((q, i) => (
-                                            <li key={i} style={{ marginBottom: '12px', display: 'flex', gap: '12px' }}>
-                                                <span style={{ fontWeight: 700, color: '#3b82f6' }}>{i + 1}.</span>
-                                                <span>{q}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
+                                    <h4 style={{ color: '#64748b', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px' }}>Transcripción en Vivo</h4>
+                                    <div style={{ background: '#f1f5f9', padding: '16px', borderRadius: '12px', minHeight: '100px', color: transcriptionText ? '#0f172a' : '#94a3b8', fontSize: '0.95rem', fontStyle: transcriptionText ? 'normal' : 'italic', lineHeight: 1.6, border: '1px solid #e2e8f0' }}>
+                                        {transcriptionText || "La transcripción aparecerá aquí en tiempo real a medida que hables..."}
+                                    </div>
                                 </div>
                             </>
                         )}
