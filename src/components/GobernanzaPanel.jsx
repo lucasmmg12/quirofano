@@ -167,8 +167,32 @@ export default function GobernanzaPanel({ currentUser }) {
                 const data = JSON.parse(event.data);
                 console.log("WS recibe:", data);
                 if (data.type === 'transcript' && data.text) {
-                    liveTranscriptRef.current += " " + data.text;
-                    setTranscriptionText(liveTranscriptRef.current);
+                    let newText = data.text;
+                    
+                    // Limpiar alucinaciones típicas de Whisper cuando hay silencio
+                    const alucinaciones = [
+                        "Subtítulos realizados por la comunidad de Amara.org",
+                        "Subtítulos por la comunidad de Amara.org",
+                        "Subtítulos por Amara.org",
+                        "www.alimmenta.com",
+                        "Más información en www.alimmenta.com",
+                        "Más información en alimmenta.com",
+                        "Más información alimmenta.com",
+                        "alimmenta.com"
+                    ];
+                    
+                    alucinaciones.forEach(frase => {
+                        // case insensitive replacement
+                        const regex = new RegExp(frase, 'gi');
+                        newText = newText.replace(regex, '');
+                    });
+                    
+                    newText = newText.trim();
+                    
+                    if (newText.length > 0) {
+                        liveTranscriptRef.current += " " + newText;
+                        setTranscriptionText(liveTranscriptRef.current);
+                    }
                 } else if (data.type === 'error') {
                     console.error("Error desde el servidor WS:", data.message);
                 }
