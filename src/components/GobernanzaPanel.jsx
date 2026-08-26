@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Play, Square, ChevronRight, Mic, Loader2, ArrowLeft, ShieldCheck, CheckCircle2, FileText, BrainCircuit, List, UploadCloud, Type, Network, Plus, Trash2, Save } from 'lucide-react';
+import { Play, Square, ChevronRight, Mic, Loader2, ArrowLeft, ShieldCheck, CheckCircle2, FileText, BrainCircuit, List, UploadCloud, Type, Network, Plus, Trash2, Save, MessageCircle, Send, History, CalendarDays } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import mermaid from 'mermaid';
 
@@ -31,6 +31,16 @@ export default function GobernanzaPanel({ currentUser }) {
     const [resultData, setResultData] = useState(null);
     const [transcriptionText, setTranscriptionText] = useState("");
     const [pollIntervalId, setPollIntervalId] = useState(null);
+
+    // Nuevos estados
+    const [viewMode, setViewMode] = useState('plantillas'); // 'plantillas' | 'historial'
+    const [historialEntrevistas, setHistorialEntrevistas] = useState([]);
+    const [loadingHistorial, setLoadingHistorial] = useState(false);
+    
+    // Estados de Chat
+    const [chatMessages, setChatMessages] = useState([]);
+    const [chatInput, setChatInput] = useState('');
+    const [isChatLoading, setIsChatLoading] = useState(false);
 
     // Refs
     const mediaRecorderRef = useRef(null);
@@ -427,6 +437,64 @@ export default function GobernanzaPanel({ currentUser }) {
         if (audioUrl) URL.revokeObjectURL(audioUrl);
         setAudioUrl(null);
         setPollIntervalId(null);
+        setChatMessages([]);
+        setChatInput('');
+    };
+
+    const fetchHistorial = async () => {
+        setLoadingHistorial(true);
+        try {
+            const { data, error } = await supabase
+                .from('gobernanza_entrevistas')
+                .select('*, gobernanza_plantillas(nombre)')
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            setHistorialEntrevistas(data || []);
+        } catch (err) {
+            console.error("Error fetching historial:", err);
+        } finally {
+            setLoadingHistorial(false);
+        }
+    };
+
+    const openHistoryItem = (item) => {
+        setSelectedPlantilla({ id: item.plantilla_id, nombre: item.gobernanza_plantillas?.nombre || 'Auditoría Pasada' });
+        setTranscriptionText(item.transcripcion);
+        setResultData({
+            resumen: item.resumen,
+            minutas: item.minutas,
+            mapa_conceptual_mermaid: item.mapa_conceptual_mermaid,
+            respuestas: item.respuestas_cuestionario
+        });
+        setChatMessages([]);
+    };
+
+    const sendChatMessage = async () => {
+        if (!chatInput.trim()) return;
+        const newMessages = [...chatMessages, { role: 'user', content: chatInput }];
+        setChatMessages(newMessages);
+        setChatInput('');
+        setIsChatLoading(true);
+        
+        try {
+            const res = await fetch('https://contactcenter-1.onrender.com/api/gobernanza/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    transcript: transcriptionText,
+                    messages: newMessages
+                })
+            });
+            const data = await res.json();
+            if (data.answer) {
+                setChatMessages([...newMessages, { role: 'assistant', content: data.answer }]);
+            }
+        } catch (err) {
+            console.error("Error chat:", err);
+            setChatMessages([...newMessages, { role: 'assistant', content: 'Lo siento, hubo un error de conexión con el servidor.' }]);
+        } finally {
+            setIsChatLoading(false);
+        }
     };
 
     // --- TEMPLATE MANAGER FUNCTIONS ---
@@ -543,7 +611,7 @@ export default function GobernanzaPanel({ currentUser }) {
     if (!selectedPlantilla) {
         return (
             <div style={{ padding: '32px', width: '100%', fontFamily: "'Inter', sans-serif" }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
                     <div style={{ background: '#eff6ff', padding: '10px', borderRadius: '12px', color: '#3b82f6' }}>
                         <ShieldCheck size={28} />
                     </div>
@@ -553,8 +621,39 @@ export default function GobernanzaPanel({ currentUser }) {
                     </div>
                 </div>
 
-                <div style={{ marginTop: '40px' }}>
-                    {loading ? (
+                <div style={{ display: 'flex', gap: '8px', background: '#e2e8f0', padding: '6px', borderRadius: '12px', width: 'fit-content', marginBottom: '32px' }}>
+                    <button onClick={() => setViewMode('plantillas')} style={{ padding: '8px 24px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: viewMode === 'plantillas' ? 'white' : 'transparent', color: viewMode === 'plantillas' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}><Plus size={18}/> Nueva Auditoría</button>
+                    <button onClick={() => { setViewMode('historial'); fetchHistorial(); }} style={{ padding: '8px 24px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: viewMode === 'historial' ? 'white' : 'transparent', color: viewMode === 'historial' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}><History size={18}/> Historial</button>
+                </div>
+
+                <div style={{ marginTop: '20px' }}>
+                    {viewMode === 'historial' ? (
+                        loadingHistorial ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><Loader2 className="animate-spin" size={36} color="#94a3b8" /></div>
+                        ) : historialEntrevistas.length === 0 ? (
+                            <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                                <History size={48} color="#cbd5e1" style={{ margin: '0 auto 16px' }} />
+                                <h3 style={{ margin: '0 0 8px', color: '#334155', fontSize: '1.1rem' }}>No hay entrevistas guardadas</h3>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                {historialEntrevistas.map(h => (
+                                    <div key={h.id} onClick={() => openHistoryItem(h)} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onMouseOver={e => e.currentTarget.style.borderColor = '#93c5fd'} onMouseOut={e => e.currentTarget.style.borderColor = '#e2e8f0'}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                <h3 style={{ margin: 0, color: '#1e293b', fontSize: '1.1rem', fontWeight: 700 }}>{h.gobernanza_plantillas?.nombre || 'Auditoría'}</h3>
+                                                <span style={{ padding: '4px 8px', background: h.estado === 'completado' ? '#dcfce7' : '#fef9c3', color: h.estado === 'completado' ? '#166534' : '#854d0e', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase' }}>{h.estado}</span>
+                                            </div>
+                                            <div style={{ color: '#64748b', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <CalendarDays size={16} /> {new Date(h.created_at).toLocaleDateString()} a las {new Date(h.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                            </div>
+                                        </div>
+                                        <ChevronRight size={24} color="#94a3b8" />
+                                    </div>
+                                ))}
+                            </div>
+                        )
+                    ) : loading ? (
                         <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><Loader2 className="animate-spin" size={36} color="#94a3b8" /></div>
                     ) : plantillas.length === 0 ? (
                         <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '40px', textAlign: 'center', color: '#64748b' }}>
@@ -635,7 +734,7 @@ export default function GobernanzaPanel({ currentUser }) {
                                             {formatTime(duration)}
                                         </div>
                                         <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '24px', fontWeight: 500 }}>
-                                            Tiempo máximo recomendado: 30 minutos
+                                            Tiempo máximo recomendado: 2 horas
                                         </div>
 
                                         <div style={{ width: '100%', height: '140px', background: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)', position: 'relative', overflow: 'hidden', marginBottom: '40px', opacity: (!isRecording && duration === 0) ? 0.6 : 1 }}>
@@ -754,8 +853,44 @@ export default function GobernanzaPanel({ currentUser }) {
                             <div style={{ background: '#f1f5f9', padding: '16px', borderRadius: '8px', color: '#475569', fontSize: '0.9rem', fontStyle: 'italic', lineHeight: 1.6 }}>"{transcriptionText}"</div>
                         </div>
 
+                        {/* Chat de Consultas */}
+                        <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginTop: '16px' }}>
+                            <h4 style={{ margin: '0 0 20px', fontSize: '1.1rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}><MessageCircle size={20} color="#10b981" /> Consultá sobre esta entrevista</h4>
+                            
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', minHeight: '150px', maxHeight: '400px', overflowY: 'auto' }}>
+                                {chatMessages.length === 0 ? (
+                                    <div style={{ color: '#94a3b8', textAlign: 'center', margin: 'auto' }}>Hacé una pregunta sobre los temas tratados en esta auditoría.</div>
+                                ) : (
+                                    chatMessages.map((msg, i) => (
+                                        <div key={i} style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', background: msg.role === 'user' ? '#3b82f6' : 'white', color: msg.role === 'user' ? 'white' : '#1e293b', border: msg.role === 'user' ? 'none' : '1px solid #cbd5e1', padding: '12px 16px', borderRadius: '12px', maxWidth: '80%', lineHeight: 1.5, fontSize: '0.95rem' }}>
+                                            {msg.content}
+                                        </div>
+                                    ))
+                                )}
+                                {isChatLoading && (
+                                    <div style={{ alignSelf: 'flex-start', background: 'white', border: '1px solid #cbd5e1', padding: '12px 16px', borderRadius: '12px', color: '#64748b', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                        <Loader2 size={16} className="animate-spin" /> Analizando...
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                                <input 
+                                    type="text" 
+                                    value={chatInput}
+                                    onChange={e => setChatInput(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && sendChatMessage()}
+                                    placeholder="Ej: ¿Qué se mencionó sobre la seguridad de las contraseñas?"
+                                    style={{ flex: 1, padding: '12px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.95rem' }}
+                                />
+                                <button onClick={sendChatMessage} disabled={isChatLoading || !chatInput.trim()} style={{ background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', padding: '0 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: (isChatLoading || !chatInput.trim()) ? 'not-allowed' : 'pointer', opacity: (isChatLoading || !chatInput.trim()) ? 0.6 : 1 }}>
+                                    <Send size={18} />
+                                </button>
+                            </div>
+                        </div>
+
                         <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px' }}>
-                            <button onClick={resetView} style={{ background: 'white', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '12px 24px', fontSize: '1rem', fontWeight: 600, cursor: 'pointer' }}>Realizar Nueva Auditoría</button>
+                            <button onClick={resetView} style={{ background: 'white', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '12px 24px', fontSize: '1rem', fontWeight: 600, cursor: 'pointer' }}>Volver al Inicio</button>
                         </div>
                     </div>
                 )}
