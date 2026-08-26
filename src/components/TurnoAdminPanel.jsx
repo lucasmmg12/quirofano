@@ -1087,12 +1087,17 @@ const MOTIVOS_CANCELACION = [
 
 // ─── Componente: Modal de Cambiar Trámite ───
 function CambiarTramiteModal({ turno, configList, onConfirm, onClose, isFinalizar = false }) {
-    // Todos los trámites reales que vienen de la DB, independientemente de si tienen un grupo asignado o no.
-    const validOptions = configList;
+    // Agrupar las opciones por su grupo
+    const groupedOptions = configList.reduce((acc, curr) => {
+        const group = curr.grupo_label || curr.grupo || 'Otros';
+        if (!acc[group]) acc[group] = [];
+        acc[group].push(curr);
+        return acc;
+    }, {});
 
     return (
         <div style={s.modalOverlay} onClick={onClose}>
-            <div style={{ ...s.modal, maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ ...s.modal, maxWidth: '600px', width: '95%' }} onClick={e => e.stopPropagation()}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                     <div style={{
                         width: '36px', height: '36px', borderRadius: '10px',
@@ -1110,39 +1115,57 @@ function CambiarTramiteModal({ turno, configList, onConfirm, onClose, isFinaliza
                     </div>
                 </div>
 
-                <p style={{ fontSize: '0.88rem', color: '#475569', marginBottom: '16px' }}>
+                <p style={{ fontSize: '0.88rem', color: '#475569', marginBottom: '20px' }}>
                     {isFinalizar 
                         ? 'Seleccione el trámite realizado para finalizar la atención de este turno.' 
                         : 'Seleccione el nuevo trámite correcto para este turno.'}
                 </p>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
-                    {validOptions.map(m => (
-                        <button
-                            key={m.tipo_tramite}
-                            onClick={() => onConfirm(m.tipo_tramite)}
-                            disabled={!isFinalizar && m.tipo_tramite === turno.tipo_tramite}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: '12px',
-                                padding: '12px 16px', borderRadius: '12px',
-                                border: `1.5px solid ${(!isFinalizar && m.tipo_tramite === turno.tipo_tramite) ? '#E2E8F0' : m.color + '40'}`,
-                                background: (!isFinalizar && m.tipo_tramite === turno.tipo_tramite) ? '#F8FAFC' : m.color + '06',
-                                cursor: (!isFinalizar && m.tipo_tramite === turno.tipo_tramite) ? 'not-allowed' : 'pointer',
-                                textAlign: 'left', opacity: (!isFinalizar && m.tipo_tramite === turno.tipo_tramite) ? 0.6 : 1,
-                                transition: 'all 0.15s',
-                            }}
-                        >
-                            <div style={{ flex: 1 }}>
-                                <span style={{ display: 'block', fontSize: '0.9rem', fontWeight: 700, color: '#0D3B66' }}>
-                                    {m.label} {m.grupo_label ? `(${m.grupo_label})` : ''}
-                                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '55vh', overflowY: 'auto', paddingRight: '8px' }}>
+                    {Object.entries(groupedOptions).map(([groupName, options]) => (
+                        <div key={groupName}>
+                            <h4 style={{ margin: '0 0 10px 4px', fontSize: '0.8rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                {groupName}
+                            </h4>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
+                                {options.map(m => {
+                                    const isDisabled = !isFinalizar && m.tipo_tramite === turno.tipo_tramite;
+                                    return (
+                                        <button
+                                            key={m.tipo_tramite}
+                                            onClick={() => onConfirm(m.tipo_tramite)}
+                                            disabled={isDisabled}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '10px',
+                                                padding: '12px 14px', borderRadius: '10px',
+                                                border: `1.5px solid ${isDisabled ? '#E2E8F0' : m.color + '40'}`,
+                                                background: isDisabled ? '#F8FAFC' : m.color + '08',
+                                                cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                                textAlign: 'left', opacity: isDisabled ? 0.6 : 1,
+                                                transition: 'all 0.15s',
+                                            }}
+                                            onMouseEnter={e => {
+                                                if (!isDisabled) e.currentTarget.style.background = m.color + '15';
+                                            }}
+                                            onMouseLeave={e => {
+                                                if (!isDisabled) e.currentTarget.style.background = m.color + '08';
+                                            }}
+                                        >
+                                            <div style={{ flex: 1 }}>
+                                                <span style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#0D3B66' }}>
+                                                    {m.label}
+                                                </span>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
                             </div>
-                        </button>
+                        </div>
                     ))}
                 </div>
 
                 <button onClick={onClose} style={{
-                    width: '100%', marginTop: '16px', padding: '12px', borderRadius: '10px',
+                    width: '100%', marginTop: '20px', padding: '12px', borderRadius: '10px',
                     border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#64748B',
                     cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem',
                 }}>
