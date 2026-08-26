@@ -312,7 +312,7 @@ export default function GobernanzaPanel({ currentUser }) {
                 const pollId = setInterval(async () => {
                     const { data: checkData } = await supabase
                         .from('gobernanza_entrevistas')
-                        .select('estado, transcripcion, resumen, respuestas_cuestionario, mapa_conceptual_mermaid, minutas')
+                        .select('estado, transcripcion, resumen, respuestas_cuestionario, mapa_conceptual_mermaid')
                         .eq('id', entrevistaId)
                         .single();
 
