@@ -56,6 +56,13 @@ function playDerivAlert() {
     }
 }
 
+function formatSeconds(secs) {
+    if (!secs || isNaN(secs)) return '';
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}m ${s}s`;
+}
+
 export default function TurnoAdminPanel({ addToast, currentUser }) {
     const [config, setConfig] = useState([]);
     const [cola, setCola] = useState([]);
