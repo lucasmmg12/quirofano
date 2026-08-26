@@ -222,11 +222,11 @@ export default function TurnoKiosco() {
                 {/* ═══ PASO 1: INGRESAR DNI ═══ */}
                 {step === STEPS.DNI && (boxesDisponibles === null || boxesDisponibles.length > 0) && (
                     <div style={styles.selectContainer} className="no-print">
-                        <h2 style={{ ...styles.selectTitle, marginBottom: '64px' }}>Obtené tu número de turno</h2>
+                        <h2 style={{ ...styles.selectTitle, marginBottom: '24px', marginTop: '8px', fontSize: '3rem' }}>Obtené tu número de turno</h2>
                         
                         <form onSubmit={handleCreateTurno} style={{ maxWidth: '800px', margin: '0 auto', width: '100%' }}>
                             <div style={styles.dniSection}>
-                                <label style={{ ...styles.dniLabel, fontSize: '2.5rem', marginBottom: '24px' }}>
+                                <label style={{ ...styles.dniLabel, fontSize: '2rem', marginBottom: '16px' }}>
                                     Ingresá tu número de DNI
                                 </label>
                                 <input
@@ -237,9 +237,9 @@ export default function TurnoKiosco() {
                                     style={{
                                         ...styles.dniInput,
                                         textAlign: 'center',
-                                        fontSize: '4rem',
-                                        padding: '32px',
-                                        height: '120px',
+                                        fontSize: '3.5rem',
+                                        padding: '20px',
+                                        height: '90px',
                                         borderRadius: '24px',
                                         cursor: 'default'
                                     }}
@@ -291,14 +291,14 @@ export default function TurnoKiosco() {
                                 disabled={loading || !dni || dni.length < 6}
                                 style={{
                                     width: '100%',
-                                    padding: '32px',
-                                    borderRadius: '24px',
+                                    padding: '24px',
+                                    borderRadius: '20px',
                                     background: (loading || !dni || dni.length < 6) ? '#94A3B8' : '#1565C0',
                                     color: '#fff',
-                                    fontSize: '2.4rem',
+                                    fontSize: '2.2rem',
                                     fontWeight: 800,
                                     border: 'none',
-                                    marginTop: '24px',
+                                    marginTop: '16px',
                                     cursor: (loading || !dni || dni.length < 6) ? 'not-allowed' : 'pointer',
                                     transition: 'all 0.2s',
                                     boxShadow: (loading || !dni || dni.length < 6) ? 'none' : '0 8px 24px rgba(21, 101, 192, 0.3)',
@@ -492,8 +492,8 @@ const styles = {
     dniSection: {
         background: 'rgba(255,255,255,0.9)',
         borderRadius: '24px',
-        padding: '32px',
-        marginBottom: '24px',
+        padding: '20px',
+        marginBottom: '16px',
         border: '2px solid #E2E8F0',
         boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
     },
@@ -515,17 +515,17 @@ const styles = {
     keypad: {
         display: 'grid',
         gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: '24px',
-        marginTop: '40px',
+        gap: '16px',
+        marginTop: '24px',
         maxWidth: '480px',
-        margin: '40px auto 0',
+        margin: '24px auto 0',
     },
     keypadBtn: {
         background: '#F8FAFC',
         border: '3px solid #E2E8F0',
         borderRadius: '20px',
-        padding: '28px 0',
-        fontSize: '3.5rem',
+        padding: '16px 0',
+        fontSize: '3rem',
         fontWeight: 800,
         color: '#0D3B66',
         cursor: 'pointer',
