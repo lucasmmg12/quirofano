@@ -103,9 +103,6 @@ export default function TurnoKiosco() {
                 
             if (paciente?.nombre) {
                 nombrePaciente = paciente.nombre;
-            } else {
-                // Upsert silently if no name exists just to have the DNI logged
-                await supabase.from('hospital_pacientes').upsert({ dni: dni.trim() }, { onConflict: 'dni' }).select();
             }
 
             // 4. Insertar turno
@@ -225,11 +222,11 @@ export default function TurnoKiosco() {
                 {/* ═══ PASO 1: INGRESAR DNI ═══ */}
                 {step === STEPS.DNI && (boxesDisponibles === null || boxesDisponibles.length > 0) && (
                     <div style={styles.selectContainer} className="no-print">
-                        <h2 style={{ ...styles.selectTitle, marginBottom: '32px' }}>Obtené tu número de turno</h2>
+                        <h2 style={{ ...styles.selectTitle, marginBottom: '64px' }}>Obtené tu número de turno</h2>
                         
-                        <form onSubmit={handleCreateTurno} style={{ maxWidth: '500px', margin: '0 auto', width: '100%' }}>
+                        <form onSubmit={handleCreateTurno} style={{ maxWidth: '800px', margin: '0 auto', width: '100%' }}>
                             <div style={styles.dniSection}>
-                                <label style={styles.dniLabel}>
+                                <label style={{ ...styles.dniLabel, fontSize: '2.5rem', marginBottom: '24px' }}>
                                     Ingresá tu número de DNI
                                 </label>
                                 <input
@@ -240,9 +237,10 @@ export default function TurnoKiosco() {
                                     style={{
                                         ...styles.dniInput,
                                         textAlign: 'center',
-                                        fontSize: '2rem',
-                                        padding: '24px',
-                                        height: '90px'
+                                        fontSize: '4rem',
+                                        padding: '32px',
+                                        height: '120px',
+                                        borderRadius: '24px'
                                     }}
                                     autoFocus
                                     required
@@ -260,11 +258,11 @@ export default function TurnoKiosco() {
                                 disabled={loading || !dni || dni.length < 6}
                                 style={{
                                     width: '100%',
-                                    padding: '24px',
-                                    borderRadius: '16px',
+                                    padding: '32px',
+                                    borderRadius: '24px',
                                     background: (loading || !dni || dni.length < 6) ? '#94A3B8' : '#1565C0',
                                     color: '#fff',
-                                    fontSize: '1.6rem',
+                                    fontSize: '2.4rem',
                                     fontWeight: 800,
                                     border: 'none',
                                     marginTop: '24px',
@@ -294,18 +292,18 @@ export default function TurnoKiosco() {
                         <div style={styles.ticketCard} id="turno-ticket">
                             {/* Animated success icon */}
                             <div style={{
-                                width: '80px', height: '80px', borderRadius: '50%',
+                                width: '120px', height: '120px', borderRadius: '50%',
                                 background: 'linear-gradient(135deg, #16A34A, #22C55E)',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                margin: '0 auto 16px',
+                                margin: '0 auto 24px',
                                 boxShadow: '0 8px 32px rgba(22,163,74,0.3)',
                                 animation: 'fadeInUp 0.4s ease-out',
                             }}>
-                                <CheckCircle size={44} style={{ color: '#fff' }} />
+                                <CheckCircle size={64} style={{ color: '#fff' }} />
                             </div>
 
                             <h2 style={{
-                                margin: '0 0 8px', fontSize: '1.3rem', fontWeight: 800,
+                                margin: '0 0 16px', fontSize: '2.5rem', fontWeight: 800,
                                 color: '#16A34A', animation: 'fadeInUp 0.5s ease-out',
                             }}>
                                 ¡Turno generado!
@@ -314,6 +312,7 @@ export default function TurnoKiosco() {
                             {/* Número grande */}
                             <div style={{
                                 ...styles.ticketNumber,
+                                fontSize: '8rem',
                                 color: '#1565C0',
                                 borderColor: '#1565C030',
                                 background: '#1565C008',
@@ -322,21 +321,20 @@ export default function TurnoKiosco() {
                                 {turno.numero_turno}
                             </div>
 
-                            {/* Info compacta */}
                             <div style={{
                                 display: 'flex', justifyContent: 'center',
-                                marginBottom: '20px', animation: 'fadeInUp 0.7s ease-out',
+                                marginBottom: '32px', animation: 'fadeInUp 0.7s ease-out',
                             }}>
                                 <div style={{ textAlign: 'center' }}>
-                                    <span style={{ display: 'block', fontSize: '0.85rem', color: '#94A3B8', fontWeight: 600, marginBottom: '4px' }}>Paciente DNI</span>
-                                    <span style={{ fontSize: '1.3rem', fontWeight: 700, color: '#0D3B66' }}>{turno.dni}</span>
+                                    <span style={{ display: 'block', fontSize: '1.5rem', color: '#94A3B8', fontWeight: 600, marginBottom: '8px' }}>Paciente DNI</span>
+                                    <span style={{ fontSize: '2.5rem', fontWeight: 700, color: '#0D3B66' }}>{turno.dni}</span>
                                 </div>
                             </div>
 
-                            {/* Mensaje de espera */}
                             <p style={{
                                 ...styles.ticketWait,
-                                fontSize: '1.1rem', fontWeight: 700,
+                                fontSize: '2.2rem', fontWeight: 700,
+                                padding: '24px 32px', borderRadius: '24px',
                                 animation: 'fadeInUp 0.8s ease-out',
                             }}>
                                 Aguarde a ser llamado/a
@@ -434,19 +432,19 @@ const styles = {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     },
     headerLeft: { display: 'flex', alignItems: 'center', gap: '12px' },
-    logo: { width: '44px', height: '44px', borderRadius: '10px', objectFit: 'contain' },
+    logo: { width: '80px', height: '80px', borderRadius: '16px', objectFit: 'contain' },
     headerTitle: {
-        margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0D3B66',
+        margin: 0, fontSize: '2.2rem', fontWeight: 700, color: '#0D3B66',
     },
     headerSubtitle: {
-        margin: 0, fontSize: '0.7rem', color: '#64748B', fontWeight: 500,
+        margin: 0, fontSize: '1.3rem', color: '#64748B', fontWeight: 500,
     },
     headerRight: { textAlign: 'right' },
     headerTime: {
-        display: 'block', fontSize: '1.3rem', fontWeight: 800, color: '#0D3B66',
+        display: 'block', fontSize: '2.5rem', fontWeight: 800, color: '#0D3B66',
     },
     headerDate: {
-        fontSize: '0.7rem', color: '#64748B', textTransform: 'capitalize',
+        fontSize: '1.3rem', color: '#64748B', textTransform: 'capitalize',
     },
     main: {
         position: 'relative', zIndex: 10,
@@ -460,11 +458,11 @@ const styles = {
     },
     dniSection: {
         background: 'rgba(255,255,255,0.9)',
-        borderRadius: '18px',
-        padding: '16px 18px',
-        marginBottom: '16px',
+        borderRadius: '24px',
+        padding: '32px',
+        marginBottom: '24px',
         border: '2px solid #E2E8F0',
-        boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
     },
     dniLabel: {
         display: 'block', fontSize: '1.15rem', fontWeight: 700, color: '#0D3B66',
@@ -482,8 +480,8 @@ const styles = {
         boxSizing: 'border-box',
     },
     selectTitle: {
-        fontSize: '2rem', fontWeight: 800, color: '#0D3B66',
-        textAlign: 'center', margin: '8px 0 18px',
+        fontSize: '3.5rem', fontWeight: 800, color: '#0D3B66',
+        textAlign: 'center', margin: '16px 0 32px',
         lineHeight: 1.3,
     },
     // Grid: 1 columna para botones grandes tipo lista
@@ -619,10 +617,11 @@ const styles = {
     },
     ticketCard: {
         background: 'rgba(255,255,255,0.95)',
-        borderRadius: '24px',
-        padding: '32px 24px',
+        borderRadius: '32px',
+        padding: '48px 32px',
         width: '100%',
-        boxShadow: '0 6px 32px rgba(0,0,0,0.08)',
+        maxWidth: '700px',
+        boxShadow: '0 8px 48px rgba(0,0,0,0.12)',
         border: '2px solid #E2E8F0',
         textAlign: 'center',
     },
