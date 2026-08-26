@@ -230,9 +230,9 @@ export default function TurnoKiosco() {
                                     Ingresá tu número de DNI
                                 </label>
                                 <input
-                                    type="number"
+                                    type="text"
                                     value={dni}
-                                    onChange={e => setDni(e.target.value)}
+                                    readOnly
                                     placeholder="Ej: 12345678"
                                     style={{
                                         ...styles.dniInput,
@@ -240,11 +240,44 @@ export default function TurnoKiosco() {
                                         fontSize: '4rem',
                                         padding: '32px',
                                         height: '120px',
-                                        borderRadius: '24px'
+                                        borderRadius: '24px',
+                                        cursor: 'default'
                                     }}
-                                    autoFocus
-                                    required
                                 />
+                                
+                                {/* Teclado numérico en pantalla */}
+                                <div style={styles.keypad}>
+                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+                                        <button 
+                                            key={num} type="button" 
+                                            onClick={() => setDni(d => (d + num).slice(0, 8))}
+                                            style={styles.keypadBtn}
+                                        >
+                                            {num}
+                                        </button>
+                                    ))}
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setDni('')}
+                                        style={{ ...styles.keypadBtn, background: '#FEE2E2', color: '#EF4444', borderColor: '#FECACA' }}
+                                    >
+                                        C
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setDni(d => (d + '0').slice(0, 8))}
+                                        style={styles.keypadBtn}
+                                    >
+                                        0
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setDni(d => d.slice(0, -1))}
+                                        style={{ ...styles.keypadBtn, background: '#E2E8F0', color: '#475569', borderColor: '#CBD5E1' }}
+                                    >
+                                        ⌫
+                                    </button>
+                                </div>
                             </div>
 
                             {error && (
@@ -478,6 +511,30 @@ const styles = {
         outline: 'none', transition: 'all 0.2s',
         background: '#FAFBFC',
         boxSizing: 'border-box',
+    },
+    keypad: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: '24px',
+        marginTop: '40px',
+        maxWidth: '480px',
+        margin: '40px auto 0',
+    },
+    keypadBtn: {
+        background: '#F8FAFC',
+        border: '3px solid #E2E8F0',
+        borderRadius: '20px',
+        padding: '28px 0',
+        fontSize: '3.5rem',
+        fontWeight: 800,
+        color: '#0D3B66',
+        cursor: 'pointer',
+        boxShadow: '0 6px 16px rgba(0,0,0,0.06)',
+        transition: 'all 0.1s',
+        WebkitTapHighlightColor: 'transparent',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     selectTitle: {
         fontSize: '3.5rem', fontWeight: 800, color: '#0D3B66',
