@@ -1137,22 +1137,31 @@ function CambiarTramiteModal({ turno, configList, onConfirm, onClose, isFinaliza
                                             disabled={isDisabled}
                                             style={{
                                                 display: 'flex', alignItems: 'center', gap: '10px',
-                                                padding: '12px 14px', borderRadius: '10px',
-                                                border: `1.5px solid ${isDisabled ? '#E2E8F0' : m.color + '40'}`,
-                                                background: isDisabled ? '#F8FAFC' : m.color + '08',
+                                                padding: '14px 16px', borderRadius: '12px',
+                                                border: `2px solid ${isDisabled ? '#E2E8F0' : m.color}`,
+                                                background: isDisabled ? '#F8FAFC' : m.color + '15',
                                                 cursor: isDisabled ? 'not-allowed' : 'pointer',
                                                 textAlign: 'left', opacity: isDisabled ? 0.6 : 1,
-                                                transition: 'all 0.15s',
+                                                transition: 'all 0.2s',
+                                                boxShadow: isDisabled ? 'none' : `0 2px 8px ${m.color}20`,
                                             }}
                                             onMouseEnter={e => {
-                                                if (!isDisabled) e.currentTarget.style.background = m.color + '15';
+                                                if (!isDisabled) {
+                                                    e.currentTarget.style.background = m.color + '25';
+                                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                                    e.currentTarget.style.boxShadow = `0 4px 12px ${m.color}40`;
+                                                }
                                             }}
                                             onMouseLeave={e => {
-                                                if (!isDisabled) e.currentTarget.style.background = m.color + '08';
+                                                if (!isDisabled) {
+                                                    e.currentTarget.style.background = m.color + '15';
+                                                    e.currentTarget.style.transform = 'translateY(0)';
+                                                    e.currentTarget.style.boxShadow = `0 2px 8px ${m.color}20`;
+                                                }
                                             }}
                                         >
                                             <div style={{ flex: 1 }}>
-                                                <span style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#0D3B66' }}>
+                                                <span style={{ display: 'block', fontSize: '0.95rem', fontWeight: 800, color: isDisabled ? '#94A3B8' : m.color }}>
                                                     {m.label}
                                                 </span>
                                             </div>
