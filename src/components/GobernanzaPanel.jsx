@@ -203,10 +203,14 @@ export default function GobernanzaPanel({ currentUser }) {
             
             const recorder = new MediaRecorder(streamRef.current, { mimeType: 'audio/webm' });
             mediaRecorderRef.current = recorder;
+            audioChunksRef.current = [];
             
             recorder.ondataavailable = (event) => {
-                if (event.data.size > 0 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                    wsRef.current.send(event.data);
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                        wsRef.current.send(event.data);
+                    }
                 }
             };
             
@@ -234,10 +238,11 @@ export default function GobernanzaPanel({ currentUser }) {
             if (animationRef.current) cancelAnimationFrame(animationRef.current);
 
             setTimeout(async () => {
+                const finalAudioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                 if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
                 if (wsRef.current) wsRef.current.close();
                 
-                await processAudioBlob(new Blob([], { type: 'audio/webm' }), 'webm', liveTranscriptRef.current);
+                await processAudioBlob(finalAudioBlob, 'webm', liveTranscriptRef.current);
             }, 1500);
         }
     };
