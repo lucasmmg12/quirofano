@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
         const { action, payload } = await req.json();
 
         if (action === 'transcribe_and_analyze' || action === 'analyze_text') {
-            const { entrevista_id, plantilla_id } = payload;
+            const { entrevista_id, plantilla_id, participantes } = payload;
             
             let transcript = "";
 
@@ -80,11 +80,16 @@ Deno.serve(async (req) => {
             // 4. Analyze with GPT-4o-mini
             const systemPrompt = `
 Eres un asistente experto en auditoría y gobernanza de datos para el Sanatorio Argentino.
-Te proveeré la transcripción literal de una entrevista y la lista de preguntas que se debían responder.
+Te proveeré la transcripción de una entrevista y la lista de preguntas que se debían responder.
+
+${participantes ? `INFORMACIÓN DE PARTICIPANTES (DIARIZACIÓN):
+Se ha detectado audio de distintos locutores. El sistema enumera a los participantes como [Participante 0], [Participante 1], etc. 
+La lista esperada de personas en la sala es: ${participantes}.
+INSTRUCCIÓN VITAL: Al leer el texto inicial, detecta cómo se presenta cada uno. Si el [Participante 0] se presenta como "soy Lucas", a partir de ahí asume que siempre es Lucas. En tu resumen, minutas y mapa usa sus NOMBRES REALES basándote en la lista proporcionada y el contexto de las presentaciones, NUNCA uses "Participante X".` : ''}
 
 OBJETIVOS OBLIGATORIOS:
 1. "resumen": Redacta un resumen ejecutivo de los puntos tratados (1 párrafo).
-2. "minutas": Redacta los puntos clave (bullet points) para armar diapositivas de presentación.
+2. "minutas": Redacta los puntos clave (bullet points) para armar diapositivas de presentación. Si se menciona a alguien, indica su nombre.
 3. "mapa_conceptual_mermaid": Crea un diagrama en código Mermaid.js que muestre las entidades y procesos técnicos mencionados en la charla (ej: graph TD; A-->B).
 4. "respuestas": Analiza qué dijo el entrevistado respecto a cada pregunta de la plantilla. Si no respondió, escribe "No especificado en el audio".
 
