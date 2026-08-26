@@ -111,7 +111,7 @@ export default function GobernanzaPanel({ currentUser }) {
         const dataArray = new Uint8Array(bufferLength);
 
         const draw = () => {
-            if (!isRecording) return;
+            // Se usa requestAnimationFrame para el loop. Al detener, se llama a cancelAnimationFrame.
             animationRef.current = requestAnimationFrame(draw);
             analyser.getByteTimeDomainData(dataArray);
 
