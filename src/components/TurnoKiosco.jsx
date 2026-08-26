@@ -20,26 +20,19 @@ const ICON_MAP = {
     Receipt, ShieldCheck, Building2, Users, Baby, HelpCircle, FileText, Microscope,
 };
 
-const STEPS = { DNI: 'dni', SELECT: 'select', SUB_SELECT: 'sub_select', TICKET: 'ticket' };
+const STEPS = { DNI: 'dni', TICKET: 'ticket' };
 
 export default function TurnoKiosco() {
-    const [config, setConfig] = useState([]);
-    const [step, setStep] = useState(STEPS.SELECT);
+    const [step, setStep] = useState(STEPS.DNI);
     const [dni, setDni] = useState('');
-    const [selectedType, setSelectedType] = useState(null);
-    const [selectedGrupo, setSelectedGrupo] = useState(null);
     const [turno, setTurno] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [colaCount, setColaCount] = useState({});
     const [boxesDisponibles, setBoxesDisponibles] = useState(null); // null = loading, [] = none
 
-    // Cargar configuración + verificar boxes disponibles
+    // Check box availability on mount and every 60s
     useEffect(() => {
-        supabase.from('turnos_config').select('*').eq('activo', true).order('orden')
-            .then(({ data }) => setConfig(data || []));
-
-        // Check box availability on mount and every 60s
         const checkBoxes = () => {
             getBoxesDisponibles()
                 .then(boxes => setBoxesDisponibles(boxes))
@@ -49,45 +42,6 @@ export default function TurnoKiosco() {
         const boxInterval = setInterval(checkBoxes, 60000);
         return () => clearInterval(boxInterval);
     }, []);
-
-    // Construir estructura jerárquica
-    const menuItems = useMemo(() => {
-        const items = [];
-        const gruposProcessed = new Set();
-
-        config.forEach(cfg => {
-            if (cfg.grupo) {
-                // Tiene grupo → agregar grupo padre (una sola vez)
-                if (!gruposProcessed.has(cfg.grupo)) {
-                    gruposProcessed.add(cfg.grupo);
-                    items.push({
-                        type: 'group',
-                        key: cfg.grupo,
-                        label: cfg.grupo_label || cfg.grupo,
-                        icono: cfg.grupo_icono || 'ShieldCheck',
-                        color: cfg.grupo_color || '#8B5CF6',
-                        children: config.filter(c => c.grupo === cfg.grupo),
-                    });
-                }
-            } else {
-                // Sin grupo → botón directo
-                items.push({
-                    type: 'direct',
-                    key: cfg.tipo_tramite,
-                    ...cfg,
-                });
-            }
-        });
-
-        return items;
-    }, [config]);
-
-    // Sub-opciones del grupo seleccionado
-    const subItems = useMemo(() => {
-        if (!selectedGrupo) return [];
-        const group = menuItems.find(m => m.type === 'group' && m.key === selectedGrupo);
-        return group?.children || [];
-    }, [selectedGrupo, menuItems]);
 
     // Cargar cantidad en espera por tipo
     const loadColaCount = useCallback(async () => {
@@ -118,31 +72,40 @@ export default function TurnoKiosco() {
     }, [colaCount]);
 
     // Crear turno con asignación balanceada de box
-    const handleCreateTurno = useCallback(async (tipo) => {
+    const handleCreateTurno = useCallback(async (e) => {
+        if (e) e.preventDefault();
+        if (!dni || dni.trim().length < 6) {
+            setError('Por favor, ingresá un DNI válido.');
+            return;
+        }
+
         setLoading(true);
         setError(null);
         try {
+            const tipo = 'admision_general'; // Turno genérico unificado
+
             // 1. Obtener próximo número
             const { data: numData, error: numErr } = await supabase
                 .rpc('next_turno_number', { p_tipo: tipo });
             if (numErr) throw numErr;
 
             // 2. Obtener box disponible con balanceo inteligente
-            const cfgItem = config.find(c => c.tipo_tramite === tipo);
             const boxAsignado = await getBoxBalanceado();
 
             // 3. Buscar nombre del paciente por DNI
             let nombrePaciente = null;
-            if (dni.trim()) {
-                const { data: paciente } = await supabase
-                    .from('hospital_pacientes')
-                    .select('nombre')
-                    .eq('dni', dni.trim())
-                    .limit(1)
-                    .maybeSingle();
-                if (paciente?.nombre) {
-                    nombrePaciente = paciente.nombre;
-                }
+            const { data: paciente } = await supabase
+                .from('hospital_pacientes')
+                .select('nombre')
+                .eq('dni', dni.trim())
+                .limit(1)
+                .maybeSingle();
+                
+            if (paciente?.nombre) {
+                nombrePaciente = paciente.nombre;
+            } else {
+                // Upsert silently if no name exists just to have the DNI logged
+                await supabase.from('hospital_pacientes').upsert({ dni: dni.trim() }, { onConflict: 'dni' }).select();
             }
 
             // 4. Insertar turno
@@ -151,7 +114,7 @@ export default function TurnoKiosco() {
                 .insert({
                     numero_turno: numData,
                     tipo_tramite: tipo,
-                    dni: dni.trim() || null,
+                    dni: dni.trim(),
                     nombre_paciente: nombrePaciente,
                     box_asignado: boxAsignado || 1,
                     estado: 'esperando',
@@ -162,7 +125,6 @@ export default function TurnoKiosco() {
             if (insertErr) throw insertErr;
 
             setTurno(turnoData);
-            setSelectedType(cfgItem);
             setStep(STEPS.TICKET);
             loadColaCount();
         } catch (err) {
@@ -171,129 +133,23 @@ export default function TurnoKiosco() {
         } finally {
             setLoading(false);
         }
-    }, [config, dni, loadColaCount]);
-
-    // Seleccionar item del menú
-    const handleMenuClick = useCallback((item) => {
-        if (item.type === 'group') {
-            setSelectedGrupo(item.key);
-            setStep(STEPS.SUB_SELECT);
-        } else {
-            handleCreateTurno(item.tipo_tramite);
-        }
-    }, [handleCreateTurno]);
-
-    // Volver de sub-selección al menú principal
-    const handleBackToMenu = useCallback(() => {
-        setStep(STEPS.SELECT);
-        setSelectedGrupo(null);
-    }, []);
+    }, [dni, loadColaCount]);
 
     // Reset completo
     const handleReset = useCallback(() => {
-        setStep(STEPS.SELECT);
+        setStep(STEPS.DNI);
         setDni('');
         setTurno(null);
-        setSelectedType(null);
-        setSelectedGrupo(null);
         setError(null);
     }, []);
 
-    // Auto-reset después de 15 segundos en la pantalla de ticket
+    // Auto-reset después de 8 segundos en la pantalla de ticket
     useEffect(() => {
         if (step === STEPS.TICKET) {
             const timer = setTimeout(handleReset, 8000);
             return () => clearTimeout(timer);
         }
     }, [step, handleReset]);
-
-    // Helper: descripción largo para el ticket (incluye grupo si aplica)
-    const getTicketTramiteLabel = useCallback(() => {
-        if (!selectedType) return '';
-        if (selectedType.grupo_label) {
-            return `${selectedType.grupo_label} \u2014 ${selectedType.label}`;
-        }
-        return selectedType.label;
-    }, [selectedType]);
-
-    // ─── RawBT / Thermal Printing ───────────────────────────────────
-    const isAndroid = /android/i.test(navigator.userAgent);
-
-    // Genera ticket compacto con ESC/POS para Nictom 58mm
-    const buildTicketText = useCallback(() => {
-        if (!turno || !selectedType) return '';
-
-        const ESC = '\x1B';
-        const GS = '\x1D';
-        const INIT = ESC + '\x40';
-        const CENTER = ESC + '\x61\x01';
-        const LEFT = ESC + '\x61\x00';
-        const BOLD_ON = ESC + '\x45\x01';
-        const BOLD_OFF = ESC + '\x45\x00';
-        const DOUBLE = GS + '\x21\x11';
-        const NORMAL = GS + '\x21\x00';
-        const FEED = ESC + '\x64\x02';       // Feed 2 lines
-        const CUT = GS + '\x56\x01';
-
-        const tramiteLabel = getTicketTramiteLabel();
-        const hora = new Date(turno.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
-
-        let t = INIT + CENTER;
-
-        // Header compacto
-        t += BOLD_ON + 'SANATORIO ARGENTINO\n' + BOLD_OFF;
-        t += '--------------------------------\n';
-
-        // Número GRANDE
-        t += DOUBLE + BOLD_ON;
-        t += turno.numero_turno + '\n';
-        t += NORMAL + BOLD_OFF;
-        t += '--------------------------------\n';
-
-        // Detalles en una zona compacta
-        t += LEFT;
-        t += tramiteLabel + '\n';
-        if (turno.dni) t += 'DNI ' + turno.dni + '\n';
-        t += hora + '\n';
-
-        // Footer
-        t += CENTER + '--------------------------------\n';
-        t += BOLD_ON + 'Aguarde a ser llamado/a\n' + BOLD_OFF;
-
-        t += FEED + CUT;
-        return t;
-    }, [turno, selectedType, getTicketTramiteLabel]);
-
-    // Envía texto directamente a RawBT via intent URI (silencioso)
-    const printViaRawBT = useCallback((text) => {
-        const encoded = encodeURI(text);
-        const intentURI = 'intent:' + encoded
-            + '#Intent;'
-            + 'scheme=rawbt;'
-            + 'package=ru.a402d.rawbtprinter;'
-            + 'end;';
-        window.location.href = intentURI;
-    }, []);
-
-    // Imprimir ticket: RawBT en Android, window.print() en PC
-    const handlePrint = useCallback(() => {
-        if (isAndroid) {
-            const text = buildTicketText();
-            if (text) printViaRawBT(text);
-        } else {
-            window.print();
-        }
-    }, [isAndroid, buildTicketText, printViaRawBT]);
-
-    // Auto-imprimir el ticket apenas se genera
-    useEffect(() => {
-        if (step === STEPS.TICKET) {
-            const timer = setTimeout(() => {
-                handlePrint();
-            }, 500);
-            return () => clearTimeout(timer);
-        }
-    }, [step, handlePrint]);
 
     const now = new Date();
     const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
@@ -366,230 +222,66 @@ export default function TurnoKiosco() {
                     </div>
                 )}
 
-                {/* ═══ PASO 1: SELECCIONAR TRÁMITE (Menú principal) ═══ */}
-                {step === STEPS.SELECT && (boxesDisponibles === null || boxesDisponibles.length > 0) && (
+                {/* ═══ PASO 1: INGRESAR DNI ═══ */}
+                {step === STEPS.DNI && (boxesDisponibles === null || boxesDisponibles.length > 0) && (
                     <div style={styles.selectContainer} className="no-print">
-
-
-                        <h2 style={styles.selectTitle}>¿Qué trámite necesitás realizar?</h2>
-
-                        <div style={styles.grid}>
-                            {menuItems.map((item, idx) => {
-                                const Icon = ICON_MAP[item.icono || item.type === 'group' ? item.icono : item.icono] || HelpCircle;
-                                const isGroup = item.type === 'group';
-                                const waitCount = isGroup
-                                    ? getGroupWaitCount(item.children)
-                                    : (colaCount[item.tipo_tramite] || 0);
-                                const itemColor = isGroup ? item.color : item.color;
-                                const num = idx + 1;
-
-                                // Restricción horaria: Facturación y Reintegros no disponible después de las 16hs
-                                const currentHour = new Date().getHours();
-                                const isTimeLocked = !isGroup
-                                    && item.tipo_tramite === 'reintegros_facturacion'
-                                    && currentHour >= 16;
-
-                                return (
-                                    <button
-                                        key={item.key}
-                                        onClick={() => !isTimeLocked && handleMenuClick(item)}
-                                        disabled={loading || isTimeLocked}
-                                        style={{
-                                            ...styles.tramiteBtn,
-                                            borderColor: isTimeLocked ? '#CBD5E140' : itemColor + '40',
-                                            opacity: isTimeLocked ? 0.5 : loading ? 0.6 : 1,
-                                            filter: isTimeLocked ? 'grayscale(0.8)' : 'none',
-                                            cursor: isTimeLocked ? 'not-allowed' : 'pointer',
-                                        }}
-                                        onTouchStart={e => {
-                                            if (isTimeLocked) return;
-                                            e.currentTarget.style.transform = 'scale(0.97)';
-                                            e.currentTarget.style.boxShadow = `0 4px 24px ${itemColor}30`;
-                                        }}
-                                        onTouchEnd={e => {
-                                            if (isTimeLocked) return;
-                                            e.currentTarget.style.transform = 'scale(1)';
-                                            e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.06)';
-                                        }}
-                                        onMouseDown={e => {
-                                            if (isTimeLocked) return;
-                                            e.currentTarget.style.transform = 'scale(0.97)';
-                                            e.currentTarget.style.boxShadow = `0 4px 24px ${itemColor}30`;
-                                        }}
-                                        onMouseUp={e => {
-                                            if (isTimeLocked) return;
-                                            e.currentTarget.style.transform = 'scale(1)';
-                                            e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.06)';
-                                        }}
-                                    >
-
-
-                                        <div style={{
-                                            ...styles.tramiteIconWrap,
-                                            background: isTimeLocked ? '#F1F5F914' : itemColor + '14',
-                                            border: `2px solid ${isTimeLocked ? '#CBD5E130' : itemColor + '30'}`,
-                                        }}>
-                                            <Icon size={40} style={{ color: isTimeLocked ? '#94A3B8' : itemColor }} />
-                                        </div>
-
-                                        <span style={{
-                                            ...styles.tramiteLabel,
-                                            color: isTimeLocked ? '#94A3B8' : undefined,
-                                        }}>
-                                            {item.label}
-                                        </span>
-
-                                        {isTimeLocked && (
-                                            <span style={{
-                                                fontSize: '0.95rem', fontWeight: 700,
-                                                color: '#EF4444', background: '#FEF2F2',
-                                                border: '1px solid #FECACA',
-                                                padding: '6px 14px', borderRadius: '10px',
-                                                marginTop: '4px',
-                                            }}>
-                                                🕐 Disponible de 07:00 a 16:00 hs
-                                            </span>
-                                        )}
-
-                                        {isGroup && !isTimeLocked && (
-                                            <span style={{
-                                                ...styles.subBadge,
-                                                color: itemColor,
-                                                background: itemColor + '10',
-                                                border: `1px solid ${itemColor}25`,
-                                            }}>
-                                                <ChevronRight size={14} />
-                                                {item.children.length} opciones
-                                            </span>
-                                        )}
-
-
-                                    </button>
-                                );
-                            })}
-                        </div>
-
-                        {error && (
-                            <div style={styles.errorBanner}>
-                                {error}
+                        <h2 style={{ ...styles.selectTitle, marginBottom: '32px' }}>Obtené tu número de turno</h2>
+                        
+                        <form onSubmit={handleCreateTurno} style={{ maxWidth: '500px', margin: '0 auto', width: '100%' }}>
+                            <div style={styles.dniSection}>
+                                <label style={styles.dniLabel}>
+                                    Ingresá tu número de DNI
+                                </label>
+                                <input
+                                    type="number"
+                                    value={dni}
+                                    onChange={e => setDni(e.target.value)}
+                                    placeholder="Ej: 12345678"
+                                    style={{
+                                        ...styles.dniInput,
+                                        textAlign: 'center',
+                                        fontSize: '2rem',
+                                        padding: '24px',
+                                        height: '90px'
+                                    }}
+                                    autoFocus
+                                    required
+                                />
                             </div>
-                        )}
 
-                        {loading && (
-                            <div style={styles.loadingOverlay}>
-                                <RefreshCw size={40} style={{ animation: 'spin 1s linear infinite', color: '#1565C0' }} />
-                                <span style={{ fontSize: '1.1rem', color: '#475569', marginTop: '12px' }}>
-                                    Generando turno...
-                                </span>
-                            </div>
-                        )}
-
-                        <div style={{ marginTop: '20px', padding: '16px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '12px', textAlign: 'center' }}>
-                            <span style={{ fontSize: '1.5rem', fontWeight: 700, color: '#EF4444' }}>
-                                ⚠️ Es requisito obligatorio presentar DNI de paciente para cualquier tipo de gestión.
-                            </span>
-                        </div>
-                    </div>
-                )}
-
-                {/* ═══ PASO 1.5: SUB-OPCIONES (ej: Autorizaciones) ═══ */}
-                {step === STEPS.SUB_SELECT && (
-                    <div style={styles.selectContainer} className="no-print">
-                        <button
-                            onClick={handleBackToMenu}
-                            style={styles.backBtn}
-                        >
-                            <ArrowLeft size={20} />
-                            Volver al menú
-                        </button>
-
-                        {/* Grupo header */}
-                        {(() => {
-                            const group = menuItems.find(m => m.key === selectedGrupo);
-                            if (!group) return null;
-                            const GrpIcon = ICON_MAP[group.icono] || ShieldCheck;
-                            return (
-                                <div style={{
-                                    ...styles.groupHeader,
-                                    borderColor: group.color + '30',
-                                    background: group.color + '08',
-                                }}>
-                                    <div style={{
-                                        ...styles.groupHeaderIcon,
-                                        background: group.color + '18',
-                                        border: `2px solid ${group.color}30`,
-                                    }}>
-                                        <GrpIcon size={32} style={{ color: group.color }} />
-                                    </div>
-                                    <h2 style={{ ...styles.groupHeaderTitle, color: group.color }}>
-                                        {group.label}
-                                    </h2>
-                                    <p style={styles.groupHeaderSub}>Seleccioná el tipo de autorización</p>
+                            {error && (
+                                <div style={styles.errorBanner}>
+                                    {error}
                                 </div>
-                            );
-                        })()}
+                            )}
 
-                        <div style={styles.subGrid}>
-                            {subItems.map((cfg, idx) => {
-                                const Icon = ICON_MAP[cfg.icono] || HelpCircle;
-                                const waitCount = colaCount[cfg.tipo_tramite] || 0;
-                                const subNum = `2.${idx + 1}`;
-                                return (
-                                    <button
-                                        key={cfg.tipo_tramite}
-                                        onClick={() => handleCreateTurno(cfg.tipo_tramite)}
-                                        disabled={loading}
-                                        style={{
-                                            ...styles.subBtn,
-                                            borderColor: cfg.color + '40',
-                                            opacity: loading ? 0.6 : 1,
-                                        }}
-                                        onTouchStart={e => {
-                                            e.currentTarget.style.transform = 'scale(0.97)';
-                                            e.currentTarget.style.boxShadow = `0 4px 24px ${cfg.color}30`;
-                                        }}
-                                        onTouchEnd={e => {
-                                            e.currentTarget.style.transform = 'scale(1)';
-                                            e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.06)';
-                                        }}
-                                        onMouseDown={e => {
-                                            e.currentTarget.style.transform = 'scale(0.97)';
-                                            e.currentTarget.style.boxShadow = `0 4px 24px ${cfg.color}30`;
-                                        }}
-                                        onMouseUp={e => {
-                                            e.currentTarget.style.transform = 'scale(1)';
-                                            e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.06)';
-                                        }}
-                                    >
-
-
-                                        <div style={{
-                                            ...styles.subIconWrap,
-                                            background: cfg.color + '14',
-                                            border: `2px solid ${cfg.color}30`,
-                                        }}>
-                                            <Icon size={36} style={{ color: cfg.color }} />
-                                        </div>
-
-                                        <span style={styles.subLabel}>{cfg.label}</span>
-
-
-                                    </button>
-                                );
-                            })}
-                        </div>
-
-                        {error && (
-                            <div style={styles.errorBanner}>
-                                {error}
-                            </div>
-                        )}
+                            <button
+                                type="submit"
+                                disabled={loading || !dni || dni.length < 6}
+                                style={{
+                                    width: '100%',
+                                    padding: '24px',
+                                    borderRadius: '16px',
+                                    background: (loading || !dni || dni.length < 6) ? '#94A3B8' : '#1565C0',
+                                    color: '#fff',
+                                    fontSize: '1.6rem',
+                                    fontWeight: 800,
+                                    border: 'none',
+                                    marginTop: '24px',
+                                    cursor: (loading || !dni || dni.length < 6) ? 'not-allowed' : 'pointer',
+                                    transition: 'all 0.2s',
+                                    boxShadow: (loading || !dni || dni.length < 6) ? 'none' : '0 8px 24px rgba(21, 101, 192, 0.3)',
+                                }}
+                            >
+                                {loading ? 'Generando...' : 'Obtener Número'}
+                            </button>
+                        </form>
 
                         {loading && (
                             <div style={styles.loadingOverlay}>
                                 <RefreshCw size={40} style={{ animation: 'spin 1s linear infinite', color: '#1565C0' }} />
                                 <span style={{ fontSize: '1.1rem', color: '#475569', marginTop: '12px' }}>
-                                    Generando turno...
+                                    Procesando...
                                 </span>
                             </div>
                         )}
@@ -619,19 +311,12 @@ export default function TurnoKiosco() {
                                 ¡Turno generado!
                             </h2>
 
-                            <p style={{
-                                margin: '0 0 20px', fontSize: '0.9rem', color: '#64748B',
-                                animation: 'fadeInUp 0.6s ease-out',
-                            }}>
-                                🖨️ Retirá tu ticket de la impresora
-                            </p>
-
                             {/* Número grande */}
                             <div style={{
                                 ...styles.ticketNumber,
-                                color: selectedType?.color || '#1565C0',
-                                borderColor: (selectedType?.color || '#1565C0') + '30',
-                                background: (selectedType?.color || '#1565C0') + '08',
+                                color: '#1565C0',
+                                borderColor: '#1565C030',
+                                background: '#1565C008',
                                 animation: 'fadeInUp 0.5s ease-out, pulseNumber 3s ease-in-out infinite',
                             }}>
                                 {turno.numero_turno}
@@ -643,8 +328,8 @@ export default function TurnoKiosco() {
                                 marginBottom: '20px', animation: 'fadeInUp 0.7s ease-out',
                             }}>
                                 <div style={{ textAlign: 'center' }}>
-                                    <span style={{ display: 'block', fontSize: '0.85rem', color: '#94A3B8', fontWeight: 600, marginBottom: '4px' }}>Trámite</span>
-                                    <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0D3B66' }}>{getTicketTramiteLabel()}</span>
+                                    <span style={{ display: 'block', fontSize: '0.85rem', color: '#94A3B8', fontWeight: 600, marginBottom: '4px' }}>Paciente DNI</span>
+                                    <span style={{ fontSize: '1.3rem', fontWeight: 700, color: '#0D3B66' }}>{turno.dni}</span>
                                 </div>
                             </div>
 
@@ -671,34 +356,8 @@ export default function TurnoKiosco() {
                         </div>
                     </div>
                 )}
+                {/* Ticket no print (removed rawBT elements) */}
             </main>
-
-            {/* Print-only ticket (thermal 80mm) */}
-            <div className="print-only" style={styles.printTicket}>
-                {turno && (
-                    <div style={styles.thermalTicket}>
-                        <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: '8px', marginBottom: '8px' }}>
-                            <strong style={{ fontSize: '14px' }}>SANATORIO ARGENTINO</strong>
-                            <br />
-                            <span style={{ fontSize: '10px' }}>Administración y Atención al Paciente</span>
-                        </div>
-                        <div style={{ textAlign: 'center', margin: '12px 0' }}>
-                            <div style={{ fontSize: '48px', fontWeight: 900, letterSpacing: '2px' }}>
-                                {turno.numero_turno}
-                            </div>
-                        </div>
-                        <div style={{ fontSize: '12px', borderTop: '1px dashed #000', paddingTop: '8px' }}>
-                            <div><strong>Trámite:</strong> {getTicketTramiteLabel()}</div>
-                            {turno.dni && <div><strong>DNI:</strong> {turno.dni}</div>}
-                            <div><strong>Hora:</strong> {new Date(turno.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</div>
-                            <div><strong>Fecha:</strong> {new Date(turno.created_at).toLocaleDateString('es-AR')}</div>
-                        </div>
-                        <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '11px', borderTop: '1px dashed #000', paddingTop: '8px' }}>
-                            Aguarde a ser llamado/a
-                        </div>
-                    </div>
-                )}
-            </div>
 
             {/* CSS */}
             <style>{`

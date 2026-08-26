@@ -72,6 +72,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
     const [derivarModal, setDerivarModal] = useState(null); // turnoId
     const [cancelarModal, setCancelarModal] = useState(null); // turno object
     const [cambiarTramiteModal, setCambiarTramiteModal] = useState(null); // turno object
+    const [finalizarModal, setFinalizarModal] = useState(null); // turno object
     const [allUsers, setAllUsers] = useState([]);
     const [myBoxNum, setMyBoxNum] = useState(null); // box asignado al usuario actual
     const [derivNotif, setDerivNotif] = useState(null); // { turnoNum, fromBox, toBox }
@@ -263,14 +264,28 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
         }
     }, [empleadoNombre, addToast, loadData]);
 
-    const handleFinalizar = useCallback(async (turno) => {
+    const handleFinalizar = useCallback((turno) => {
+        // En lugar de finalizar directamente, obligamos a clasificar el trámite primero
+        setFinalizarModal(turno);
+    }, []);
+
+    const handleConfirmFinalizar = useCallback(async (turnoId, nuevoTipo) => {
         try {
-            await finalizarAtencion(turno.id);
-            const elapsed = activeTimers[turno.id];
+            // Actualizar tipo de trámite
+            const { error: updErr } = await supabase
+                .from('turnos_cola')
+                .update({ tipo_tramite: nuevoTipo })
+                .eq('id', turnoId);
+            if (updErr) throw updErr;
+
+            await finalizarAtencion(turnoId);
+            const elapsed = activeTimers[turnoId];
             const timeStr = elapsed ? formatSeconds(elapsed) : '';
-            addToast?.(`Turno ${turno.numero_turno} finalizado ${timeStr ? `(${timeStr})` : ''}`, 'success');
+            addToast?.(`Turno finalizado exitosamente ${timeStr ? `(${timeStr})` : ''}`, 'success');
+            setFinalizarModal(null);
             loadData();
         } catch (err) {
+            console.error(err);
             addToast?.('Error al finalizar atención', 'error');
         }
     }, [activeTimers, addToast, loadData]);
@@ -847,6 +862,17 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                 />
             )}
 
+            {/* Modal de Finalizar (Clasificación obligatoria) */}
+            {finalizarModal && (
+                <CambiarTramiteModal
+                    turno={finalizarModal}
+                    configList={config}
+                    isFinalizar={true}
+                    onClose={() => setFinalizarModal(null)}
+                    onConfirm={(nuevoTipo) => handleConfirmFinalizar(finalizarModal.id, nuevoTipo)}
+                />
+            )}
+
             <style>{`
                 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
                 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -1060,7 +1086,7 @@ const MOTIVOS_CANCELACION = [
 ];
 
 // ─── Componente: Modal de Cambiar Trámite ───
-function CambiarTramiteModal({ turno, configList, onConfirm, onClose }) {
+function CambiarTramiteModal({ turno, configList, onConfirm, onClose, isFinalizar = false }) {
     // Todos los trámites reales que vienen de la DB, independientemente de si tienen un grupo asignado o no.
     const validOptions = configList;
 
@@ -1070,22 +1096,24 @@ function CambiarTramiteModal({ turno, configList, onConfirm, onClose }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                     <div style={{
                         width: '36px', height: '36px', borderRadius: '10px',
-                        background: '#DBEAFE', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: isFinalizar ? '#DCFCE7' : '#DBEAFE', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
-                        <Edit2 size={18} style={{ color: '#3B82F6' }} />
+                        <Edit2 size={18} style={{ color: isFinalizar ? '#16A34A' : '#3B82F6' }} />
                     </div>
                     <div>
                         <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0D3B66' }}>
-                            Cambiar Trámite
+                            {isFinalizar ? 'Clasificar y Finalizar' : 'Cambiar Trámite'}
                         </h3>
                         <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                            Turno {turno.numero_turno}
+                            Turno {turno.numero_turno} {turno.dni ? `· DNI ${turno.dni}` : ''}
                         </span>
                     </div>
                 </div>
 
                 <p style={{ fontSize: '0.88rem', color: '#475569', marginBottom: '16px' }}>
-                    Seleccione el nuevo trámite correcto para este turno.
+                    {isFinalizar 
+                        ? 'Seleccione el trámite realizado para finalizar la atención de este turno.' 
+                        : 'Seleccione el nuevo trámite correcto para este turno.'}
                 </p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
@@ -1093,14 +1121,14 @@ function CambiarTramiteModal({ turno, configList, onConfirm, onClose }) {
                         <button
                             key={m.tipo_tramite}
                             onClick={() => onConfirm(m.tipo_tramite)}
-                            disabled={m.tipo_tramite === turno.tipo_tramite}
+                            disabled={!isFinalizar && m.tipo_tramite === turno.tipo_tramite}
                             style={{
                                 display: 'flex', alignItems: 'center', gap: '12px',
                                 padding: '12px 16px', borderRadius: '12px',
-                                border: `1.5px solid ${m.tipo_tramite === turno.tipo_tramite ? '#E2E8F0' : m.color + '40'}`,
-                                background: m.tipo_tramite === turno.tipo_tramite ? '#F8FAFC' : m.color + '06',
-                                cursor: m.tipo_tramite === turno.tipo_tramite ? 'not-allowed' : 'pointer',
-                                textAlign: 'left', opacity: m.tipo_tramite === turno.tipo_tramite ? 0.6 : 1,
+                                border: `1.5px solid ${(!isFinalizar && m.tipo_tramite === turno.tipo_tramite) ? '#E2E8F0' : m.color + '40'}`,
+                                background: (!isFinalizar && m.tipo_tramite === turno.tipo_tramite) ? '#F8FAFC' : m.color + '06',
+                                cursor: (!isFinalizar && m.tipo_tramite === turno.tipo_tramite) ? 'not-allowed' : 'pointer',
+                                textAlign: 'left', opacity: (!isFinalizar && m.tipo_tramite === turno.tipo_tramite) ? 0.6 : 1,
                                 transition: 'all 0.15s',
                             }}
                         >
