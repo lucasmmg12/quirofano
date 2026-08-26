@@ -233,14 +233,15 @@ export default function GobernanzaPanel({ currentUser }) {
             clearInterval(timerRef.current);
             if (animationRef.current) cancelAnimationFrame(animationRef.current);
 
-            // Wait briefly for the last onstop to append to audioChunksRef
+            // Esperamos 3 segundos para asegurar que el backend de Python tenga tiempo 
+            // de procesar con Whisper el último pedacito de audio antes de cerrar el WebSocket.
             setTimeout(async () => {
                 const finalAudioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                 if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
                 if (wsRef.current) wsRef.current.close();
                 
                 await processAudioBlob(finalAudioBlob, 'webm', liveTranscriptRef.current);
-            }, 500);
+            }, 3000);
         }
     };
 
