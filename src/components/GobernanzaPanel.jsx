@@ -52,6 +52,9 @@ export default function GobernanzaPanel({ currentUser }) {
     const [activeQuestionIndex, setActiveQuestionIndex] = useState(null);
     const [manualAnswers, setManualAnswers] = useState({});
 
+    // Entrevista Activa (para reanudar)
+    const [activeEntrevistaId, setActiveEntrevistaId] = useState(null);
+
     // Refs
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
@@ -63,6 +66,7 @@ export default function GobernanzaPanel({ currentUser }) {
     const mermaidRef = useRef(null);
     const wsRef = useRef(null);
     const liveTranscriptRef = useRef("");
+    const wakeLockRef = useRef(null);
 
     // Fetch Plantillas on mount
     useEffect(() => {
@@ -164,6 +168,19 @@ export default function GobernanzaPanel({ currentUser }) {
         draw();
     };
 
+    // Auto-pausa si la app se va a segundo plano
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.hidden && isRecording) {
+                console.log("App backgrounded: Auto-pausando grabación...");
+                stopRecording();
+                alert("Grabación pausada automáticamente porque la aplicación pasó a segundo plano o entró una llamada.");
+            }
+        };
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    }, [isRecording]);
+
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -178,10 +195,21 @@ export default function GobernanzaPanel({ currentUser }) {
             analyser.fftSize = 2048;
             analyserRef.current = analyser;
 
-            liveTranscriptRef.current = "";
-            setTranscriptionText("");
-            setActiveQuestionIndex(null);
-            setManualAnswers({});
+            // Solicitar WakeLock si está soportado
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLockRef.current = await navigator.wakeLock.request('screen');
+                } catch (err) {
+                    console.log('WakeLock error:', err);
+                }
+            }
+
+            if (!activeEntrevistaId) {
+                liveTranscriptRef.current = "";
+                setTranscriptionText("");
+                setActiveQuestionIndex(null);
+                setManualAnswers({});
+            }
 
             setIsRecording(true);
             setDuration(0);
@@ -278,6 +306,13 @@ export default function GobernanzaPanel({ currentUser }) {
     const stopRecording = () => {
         if (isRecording) {
             setIsRecording(false);
+            
+            // Liberar WakeLock
+            if (wakeLockRef.current !== null) {
+                wakeLockRef.current.release().catch(console.error);
+                wakeLockRef.current = null;
+            }
+
             if (wsRef.current) wsRef.current.current = false; // Detener chopper loop
             
             if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
@@ -304,8 +339,8 @@ export default function GobernanzaPanel({ currentUser }) {
 
     const processAudioBlob = async (blob, customExt = 'webm', liveTranscript = null) => {
         try {
-            const entrevistaId = uuidv4();
-            const fileName = `${entrevistaId}.${customExt}`;
+            const entrevistaId = activeEntrevistaId || uuidv4();
+            const fileName = `${entrevistaId}_${Date.now()}.${customExt}`;
             const durationSecs = duration;
 
             // 1. Upload to Storage
@@ -318,17 +353,16 @@ export default function GobernanzaPanel({ currentUser }) {
             
             if (uploadError) throw new Error(`Error subiendo audio: ${uploadError.message}`);
 
-            // 2. Create Database Record
+            // 2. Create Database Record (Upsert)
             const { error: dbError } = await supabase
                 .from('gobernanza_entrevistas')
-                .insert({
+                .upsert({
                     id: entrevistaId,
                     usuario_id: currentUser?.id,
                     plantilla_id: selectedPlantilla.id,
-                    audio_url: fileName,
-                    duracion_segundos: durationSecs,
+                    audio_url: fileName, // Mantiene la última URL
                     estado: 'procesando'
-                });
+                }, { onConflict: 'id' });
 
             if (dbError) throw new Error(`Error creando registro en DB: ${dbError.message}`);
 
@@ -598,6 +632,7 @@ export default function GobernanzaPanel({ currentUser }) {
     };
 
     const openHistoryItem = (item) => {
+        setActiveEntrevistaId(item.id);
         setSelectedPlantilla({ id: item.plantilla_id, nombre: item.gobernanza_plantillas?.nombre || 'Auditoría Pasada' });
         setTranscriptionText(item.transcripcion);
         setResultData({
@@ -607,6 +642,23 @@ export default function GobernanzaPanel({ currentUser }) {
             respuestas: item.respuestas_cuestionario
         });
         setChatMessages([]);
+    };
+
+    const handleContinuarGrabando = () => {
+        // Al continuar, cargamos el texto pasado en el liveTranscript y preparamos el modo grabación
+        liveTranscriptRef.current = transcriptionText || "";
+        setInputMode('record');
+        setResultData(null);
+        setAudioUrl(null);
+        
+        // Convertimos las respuestas previas al formato manualAnswers (opcional, pero útil)
+        if (resultData?.respuestas) {
+            const mapped = {};
+            resultData.respuestas.forEach((item, idx) => {
+                mapped[idx] = typeof item === 'string' ? item : (item.respuesta || "");
+            });
+            setManualAnswers(mapped);
+        }
     };
 
     const sendChatMessage = async () => {
@@ -1035,9 +1087,16 @@ export default function GobernanzaPanel({ currentUser }) {
                         
                         {/* Resumen */}
                         <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', color: '#10b981' }}>
-                                <CheckCircle2 size={24} />
-                                <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#0f172a' }}>Análisis y Resumen</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#10b981' }}>
+                                    <CheckCircle2 size={24} />
+                                    <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#0f172a' }}>Análisis y Resumen</h3>
+                                </div>
+                                {activeEntrevistaId && (
+                                    <button onClick={handleContinuarGrabando} style={{ background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 16px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Mic size={16} /> Continuar Grabando
+                                    </button>
+                                )}
                             </div>
                             <p style={{ margin: 0, color: '#475569', fontSize: '1rem', lineHeight: 1.6 }}>{resultData.resumen}</p>
                         </div>
