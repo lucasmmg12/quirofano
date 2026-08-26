@@ -461,30 +461,88 @@ export default function GobernanzaPanel({ currentUser }) {
         setChatInput('');
     };
 
-    const handleExportPDF = () => {
+    const handleExportPDF = async () => {
         if (!selectedPlantilla) return;
         const doc = new jsPDF();
-        
+        const pageW = doc.internal.pageSize.getWidth();
+        const margin = 14;
+
+        // Load logo image and clip to circle via canvas
+        let logoCircleBase64 = null;
+        try {
+            const logoImg = new Image();
+            logoImg.crossOrigin = 'anonymous';
+            logoImg.src = '/logosanatorio.png';
+            await new Promise((resolve, reject) => {
+                logoImg.onload = resolve;
+                logoImg.onerror = reject;
+            });
+            const canvasSize = 200;
+            const canvas = document.createElement('canvas');
+            canvas.width = canvasSize;
+            canvas.height = canvasSize;
+            const ctx = canvas.getContext('2d');
+            ctx.beginPath();
+            ctx.arc(canvasSize / 2, canvasSize / 2, canvasSize / 2, 0, Math.PI * 2);
+            ctx.closePath();
+            ctx.clip();
+            ctx.drawImage(logoImg, 0, 0, canvasSize, canvasSize);
+            logoCircleBase64 = canvas.toDataURL('image/png');
+        } catch (e) { /* logo optional */ }
+
         // Estilo Institucional Sanatorio Argentino
-        doc.setFillColor(37, 99, 235); // #2563eb (Azul institucional)
-        doc.rect(0, 0, 210, 20, 'F');
+        doc.setFillColor(13, 59, 102); // #0D3B66 (Azul oscuro institucional)
+        doc.rect(0, 0, pageW, 34, 'F');
+
+        // Logo circular
+        const logoX = margin + 1;
+        const logoY = 10;
+        const logoSize = 14;
+        if (logoCircleBase64) {
+            // White ring behind
+            doc.setFillColor(255, 255, 255);
+            doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2 + 1.2, 'F');
+            // Circular logo
+            doc.addImage(logoCircleBase64, 'PNG', logoX, logoY, logoSize, logoSize);
+        } else {
+            // Fallback text
+            doc.setFillColor(255, 255, 255);
+            doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 'F');
+            doc.setFontSize(6);
+            doc.setTextColor(13, 59, 102);
+            doc.text('SA', logoX + 3.5, logoY + logoSize / 2 + 1.5);
+        }
         
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(16);
         doc.setFont('helvetica', 'bold');
-        doc.text("SANATORIO ARGENTINO", 15, 14);
+        doc.text("SANATORIO ARGENTINO", margin + 18, 14);
         
-        doc.setTextColor(30, 41, 59);
-        doc.setFontSize(18);
-        doc.text("Auditoría y Gobernanza de Datos", 15, 35);
-        
-        doc.setFontSize(12);
+        doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
+        doc.setTextColor(180, 200, 220);
+        doc.text('Administración · Gobernanza de Datos', margin + 18, 21);
+
+        // Top-right badge
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text('AUDITORÍA', pageW - margin, 14, { align: 'right' });
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(180, 200, 220);
+        doc.text(`Plantilla: ${selectedPlantilla.nombre}`, pageW - margin, 21, { align: 'right' });
+
+        // Accent line
+        doc.setFillColor(59, 130, 246); // #3B82F6
+        doc.rect(0, 34, pageW, 2, 'F');
+
+        // Date under header
         doc.setTextColor(100, 116, 139);
-        doc.text(`Plantilla: ${selectedPlantilla.nombre}`, 15, 45);
-        doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 15, 52);
+        doc.setFontSize(9);
+        doc.text(`Fecha de Auditoría: ${new Date().toLocaleDateString()}`, margin, 45);
         
-        let yPos = 65;
+        let yPos = 55;
         
         const preguntas = selectedPlantilla.preguntas || [];
         
@@ -499,7 +557,7 @@ export default function GobernanzaPanel({ currentUser }) {
             doc.setFontSize(11);
             
             const questionLines = doc.splitTextToSize(`${i + 1}. ${q}`, 180);
-            doc.text(questionLines, 15, yPos);
+            doc.text(questionLines, margin, yPos);
             yPos += (questionLines.length * 6) + 2;
             
             let answerText = "____________________________________________________________________\n____________________________________________________________________";
@@ -516,7 +574,7 @@ export default function GobernanzaPanel({ currentUser }) {
             doc.setFontSize(10);
             
             const answerLines = doc.splitTextToSize(answerText, 175);
-            doc.text(answerLines, 20, yPos);
+            doc.text(answerLines, margin + 5, yPos);
             yPos += (answerLines.length * 5) + 12;
         });
         
