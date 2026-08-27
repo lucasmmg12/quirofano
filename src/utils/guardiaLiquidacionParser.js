@@ -11,16 +11,13 @@ export function formatExcelDate(serialOrStr) {
     if (!serialOrStr) return '';
     if (typeof serialOrStr === 'string') {
         const trimmed = serialOrStr.trim();
-        // Si ya tiene formato fecha DD/MM/YYYY o YYYY-MM-DD
         if (trimmed.includes('/') || trimmed.includes('-')) return trimmed;
         const num = Number(trimmed);
         if (!isNaN(num) && num > 20000) serialOrStr = num;
         else return trimmed;
     }
     if (typeof serialOrStr === 'number') {
-        // Excel fecha serial
         const date = new Date(Math.round((serialOrStr - 25569) * 86400 * 1000));
-        // Ajuste de zona horaria local
         const utcDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000);
         const day = String(utcDate.getDate()).padStart(2, '0');
         const month = String(utcDate.getMonth() + 1).padStart(2, '0');
@@ -31,7 +28,7 @@ export function formatExcelDate(serialOrStr) {
 }
 
 /**
- * Normaliza nombres para comparación flexible (ignora tildes, comas, espacios y mayúsculas)
+ * Normaliza nombres para comparación flexible
  */
 export function normalizeKey(str) {
     if (!str) return '';
@@ -40,6 +37,32 @@ export function normalizeKey(str) {
         .replace(/[\u0300-\u036f]/g, '')
         .toLowerCase()
         .replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Valida si un string corresponde a un nombre legítimo de profesional médico
+ * y descarta anotaciones de cuentas, fórmulas, códigos matemáticos o estadísticas.
+ */
+export function isValidDoctorName(name) {
+    if (!name || typeof name !== 'string') return false;
+    const clean = name.trim();
+    if (clean.length < 3) return false;
+    // Excluir anotaciones de fórmulas, cálculos, divisiones o barras (ej: '420006 = 232 /// 420009 = 1605')
+    if (clean.includes('=') || clean.includes('///') || clean.includes('+') || clean.includes('%')) return false;
+    // Excluir si es puramente numérico
+    if (/^\d+$/.test(clean.replace(/[\s\-\.\/]/g, ''))) return false;
+    const lower = clean.toLowerCase();
+    if (
+        lower.includes('total') ||
+        lower.includes('subtotal') ||
+        lower.includes('cantidad') ||
+        lower.includes('neto') ||
+        lower.includes('consultas') ||
+        lower.includes('porcentaje')
+    ) {
+        return false;
+    }
+    return true;
 }
 
 /**
@@ -84,8 +107,19 @@ export function parseGuardiaExcel(buffer, options = {}) {
         const responsableRaw = r.Responsable || r.Profesional || r.Medico || r['Médico'] || '';
         const responsable = String(responsableRaw).trim();
         
-        // Ignorar filas de resumen o vacías
-        if (!responsable || responsable.toLowerCase().includes('total') || responsable.length < 3) return;
+        // Validar nombre legítimo de médico
+        if (!isValidDoctorName(responsable)) return;
+
+        // Validar también que la fila no sea un pie estadístico o de totales
+        const fechaRaw = r['Fecha Visita'] || r.Fecha || r['Fecha visita'];
+        const fechaStr = String(fechaRaw || '').trim().toLowerCase();
+        if (fechaStr.includes('cantidad') || fechaStr.includes('total') || fechaStr.includes('neto')) return;
+
+        const paciente = String(r.Paciente || '').trim();
+        if (!paciente || paciente.toLowerCase().includes('total') || paciente.toLowerCase().includes('consultas')) return;
+
+        // Si paciente es solo un número y no hay fecha serial válida, es fila estadística
+        if (/^\d+$/.test(paciente) && (!fechaRaw || isNaN(Number(fechaRaw)))) return;
 
         if (!prestadoresMap[responsable]) {
             prestadoresMap[responsable] = {
@@ -102,8 +136,7 @@ export function parseGuardiaExcel(buffer, options = {}) {
             };
         }
 
-        const fechaFormatted = formatExcelDate(r['Fecha Visita'] || r.Fecha || r['Fecha visita']);
-        const paciente = String(r.Paciente || '').trim();
+        const fechaFormatted = formatExcelDate(fechaRaw);
         const cliente = String(r.Cliente || r['Obra Social'] || '').trim();
         const valor = parseExcelNumber(r.Valor || r.Importe);
 
@@ -120,7 +153,6 @@ export function parseGuardiaExcel(buffer, options = {}) {
         // Verificar si aplica adicional
         const aplicaAdicional = obrasSocialesAdicional.some(os => cliente.toLowerCase().includes(os.toLowerCase()));
         if (aplicaAdicional) {
-            // Identificar cuál OS es
             const osMatch = obrasSocialesAdicional.find(os => cliente.toLowerCase().includes(os.toLowerCase())) || cliente;
             prestadoresMap[responsable].adicionalesPorOS[osMatch] = (prestadoresMap[responsable].adicionalesPorOS[osMatch] || 0) + 1;
             prestadoresMap[responsable].totalCantidadAdicional++;
@@ -133,7 +165,6 @@ export function parseGuardiaExcel(buffer, options = {}) {
             const ws = wb.Sheets[sheetName];
             const raw = XLSX.utils.sheet_to_json(ws, { header: 1 });
             if (raw.length > 3) {
-                // Buscar Profesional, Matrícula, etc.
                 let profName = '';
                 let mat = '';
                 let per = '';
@@ -149,55 +180,49 @@ export function parseGuardiaExcel(buffer, options = {}) {
                         if (line.includes('Periodo de liquidación:') || line.includes('Periodo:')) {
                             per = line.split(/Periodo[^:]*:/i)[1].trim();
                         }
-                        if (line.includes('Liquidación:') || line.includes('Liquidacion:')) {
-                            liq = line.split(/Liquidaci[oó]n:/i)[1].trim();
+                        if (line.includes('Liquidación Nº:') || line.includes('Liquidacion:')) {
+                            liq = line.split(/Liquidaci[oó]n[^:]*:/i)[1].trim();
                         }
                     }
                 });
 
-                // Si encontramos coincidencia en el mapa
-                const sheetNorm = normalizeKey(sheetName);
-                const profNorm = normalizeKey(profName);
-
-                const matchKey = Object.keys(prestadoresMap).find(k => {
-                    const kNorm = normalizeKey(k);
-                    return (
-                        kNorm === sheetNorm ||
-                        kNorm.includes(sheetNorm) ||
-                        sheetNorm.includes(kNorm) ||
-                        (profNorm && (kNorm === profNorm || kNorm.includes(profNorm) || profNorm.includes(kNorm)))
-                    );
-                });
-
-                if (matchKey && prestadoresMap[matchKey]) {
-                    if (mat) prestadoresMap[matchKey].matricula = mat;
-                    if (per) prestadoresMap[matchKey].periodo = per;
-                    if (liq) prestadoresMap[matchKey].liquidacion = liq;
+                if (profName) {
+                    const normProf = normalizeKey(profName);
+                    const matchingKey = Object.keys(prestadoresMap).find(k => normalizeKey(k) === normProf);
+                    if (matchingKey) {
+                        if (mat) prestadoresMap[matchingKey].matricula = mat;
+                        if (per) prestadoresMap[matchingKey].periodo = per;
+                        if (liq) prestadoresMap[matchingKey].liquidacion = liq;
+                    }
                 }
             }
         }
     });
 
-    // Calcular montos de adicionales para cada prestador
+    // Calcular montos de adicionales y totales
     const prestadoresList = Object.values(prestadoresMap).map(p => {
-        p.totalMontoAdicional = p.totalCantidadAdicional * valorAdicional;
-        p.totalGeneralConAdicional = p.totalImporte + p.totalMontoAdicional;
-        return p;
+        const totalMontoAdicional = p.totalCantidadAdicional * valorAdicional;
+        return {
+            ...p,
+            totalMontoAdicional,
+            totalGeneralConAdicional: p.totalImporte + totalMontoAdicional
+        };
     });
 
     // Ordenar alfabéticamente
     prestadoresList.sort((a, b) => a.nombre.localeCompare(b.nombre));
 
-    // Totales globales
-    const totalAtenciones = prestadoresList.reduce((acc, p) => acc + p.atenciones.length, 0);
+    // Métricas globales
     const totalFacturadoGlobal = prestadoresList.reduce((acc, p) => acc + p.totalImporte, 0);
-    const totalAdicionalesGlobal = prestadoresList.reduce((acc, p) => acc + p.totalMontoAdicional, 0);
     const totalCantidadAdicionalesGlobal = prestadoresList.reduce((acc, p) => acc + p.totalCantidadAdicional, 0);
+    const totalAdicionalesGlobal = prestadoresList.reduce((acc, p) => acc + p.totalMontoAdicional, 0);
+    const granTotalGlobal = totalFacturadoGlobal + totalAdicionalesGlobal;
+    const totalAtenciones = prestadoresList.reduce((acc, p) => acc + p.atenciones.length, 0);
 
     return {
         tipo: 'guardia_pediatrica',
         periodo: periodoDefault,
-        liquidacion: liquidacionDefault,
+        numeroLiquidacion: liquidacionDefault,
         valorAdicional,
         obrasSocialesAdicional,
         totalPrestadores: prestadoresList.length,
@@ -205,7 +230,7 @@ export function parseGuardiaExcel(buffer, options = {}) {
         totalFacturadoGlobal,
         totalCantidadAdicionalesGlobal,
         totalAdicionalesGlobal,
-        granTotalGlobal: totalFacturadoGlobal + totalAdicionalesGlobal,
+        granTotalGlobal,
         prestadores: prestadoresList
     };
 }
