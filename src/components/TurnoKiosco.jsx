@@ -222,8 +222,6 @@ export default function TurnoKiosco() {
                 {/* ═══ PASO 1: INGRESAR DNI ═══ */}
                 {step === STEPS.DNI && (boxesDisponibles === null || boxesDisponibles.length > 0) && (
                     <div style={styles.selectContainer} className="no-print">
-                        <h2 style={{ ...styles.selectTitle, marginBottom: '24px', marginTop: '8px', fontSize: '3rem' }}>Obtené tu número de turno</h2>
-                        
                         <form onSubmit={handleCreateTurno} style={{ maxWidth: '800px', margin: '0 auto', width: '100%' }}>
                             <div style={styles.dniSection}>
                                 <label style={{ ...styles.dniLabel, fontSize: '2rem', marginBottom: '16px' }}>

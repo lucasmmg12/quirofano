@@ -1104,10 +1104,17 @@ async function syncAltasAdministrativas(db) {
         const batch = uniqueRecords.slice(i, i + BATCH).map(row => {
             const preserved = existingMap.get(row.numero_admision);
             const merged = preserved ? { ...row, ...preserved } : row;
+
+            // Auto-mapear Particular si cliente es 042 - PARTICULARES y no tiene estado manual previo
+            const isParticular = (merged.cliente || '').includes('042') || (merged.cliente || '').toUpperCase().includes('PARTICULAR');
+            if (isParticular && !merged.estado) {
+                merged.estado = 'Particular';
+            }
+
             // Limpiar campo interno antes de enviar
             delete merged._prev_control_adm;
 
-            // â”€â”€ Detectar transición a "Alta Adm" para setear timestamp â”€â”€
+            // ── Detectar transición a "Alta Adm" para setear timestamp ──
             const prevControl = preserved?._prev_control_adm;
             const newControl = row.control_adm_finalizado;
 

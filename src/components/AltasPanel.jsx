@@ -134,7 +134,7 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [debouncedHistorialSearch, setDebouncedHistorialSearch] = useState('');
 
     // ── Paginación Configurable ──
-    const [pageSize, setPageSize] = useState(() => savedAltasFilters.pageSize || 50);
+    const [pageSize, setPageSize] = useState(() => savedAltasFilters.pageSize || 10);
     const [currentPage, setCurrentPage] = useState(1);
 
     // Guardar filtros en sessionStorage ante cualquier cambio
@@ -688,9 +688,10 @@ export default function AltasPanel({ addToast, currentUser }) {
 
             const isFacturada = !!(alta.facturada || alta.estado_fac === 'Facturada');
             const isDevueltaFac = !!(alta.devolucion_id && alta.estado_fac === 'Devuelta' && !isFacturada);
+            const isParticular = (cliente || '').toUpperCase().includes('042') || (cliente || '').toUpperCase().includes('PARTICULAR');
             const effectiveEstado = (isCtrlAdmSi || obsHasAltaAdm || alta.estado === 'Alta Adm')
                 ? 'Alta Adm'
-                : (alta.estado || 'Vacío');
+                : (alta.estado || (isParticular ? 'Particular' : 'Vacío'));
             // Responsable: manual override tiene prioridad sobre auto-match
             const autoResp = asignacion?.responsable || '';
             const finalResp = alta.responsable_override || autoResp;
@@ -1255,7 +1256,7 @@ export default function AltasPanel({ addToast, currentUser }) {
             </div>
 
             {activeTab === 'metricas' ? (
-                <AltasMetricsPanel altas={preFilteredAltas} />
+                <AltasMetricsPanel key={selectedMonth} altas={allProcessedAltas} />
             ) : activeTab === 'garantias' ? (
                 /* ── GARANTÍAS TAB ── */
                 <div className="animate-fade-in" style={{ marginTop: '16px' }}>

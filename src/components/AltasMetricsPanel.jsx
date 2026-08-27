@@ -26,9 +26,12 @@ const ESTADO_COLORS = {
     'Prórroga': '#F97316',
     'Con presupuesto': '#EC4899',
     'Alta Adm': '#10B981',
+    'Alta Adm. Parcial': '#0D9488',
     'Suspendida': '#EF4444',
     'Particular': '#6B7280',
     'Interconsulta': '#3B82F6',
+    'Pasa al mes que viene': '#6366F1',
+    'Vacío': '#94A3B8',
 };
 
 // ── Helpers ──
@@ -246,6 +249,15 @@ export default function AltasMetricsPanel({ altas = [] }) {
     const [filterEspecialidad, setFilterEspecialidad] = useState(new Set());
     const [filterFrom, setFilterFrom] = useState('');
     const [filterTo, setFilterTo] = useState('');
+
+    // Resetear filtros internos si cambia el conjunto de altas suministrado (ej: cambio de mes)
+    useEffect(() => {
+        setFilterOS(new Set());
+        setFilterResponsable(new Set());
+        setFilterEspecialidad(new Set());
+        setFilterFrom('');
+        setFilterTo('');
+    }, [altas]);
 
     // ── Available Options (from raw data) ──
     const availableOptions = useMemo(() => {
