@@ -57,19 +57,49 @@ export async function toggleBoxActivo(boxNumero, activo) {
     if (error) throw error;
 }
 
+// ─── Verificar si estamos dentro del horario de atención operativo (06:30 a 21:00) ───
+export function isHorarioAtencion() {
+    const now = new Date();
+    const hora = now.getHours();
+    const minutos = now.getMinutes();
+    const totalMin = hora * 60 + minutos;
+    // 06:30 (390 min) hasta 21:00 (1260 min)
+    return totalMin >= 390 && totalMin <= 1260;
+}
+
 // ─── Obtener boxes disponibles AHORA (activos) ───
 export async function getBoxesDisponibles() {
-    const boxes = await fetchBoxes();
+    try {
+        const boxes = await fetchBoxes();
+        const activos = (boxes || []).filter(box =>
+            box.activo && box.numero !== 99
+        );
 
-    return boxes.filter(box =>
-        box.activo && box.numero !== 99
-    );
+        // Si estamos en horario operativo pero ningún box fue encendido manualmente,
+        // devolver boxes 1..4 por defecto para no bloquear la emisión de turnos en el kiosco
+        if (activos.length === 0 && isHorarioAtencion()) {
+            return [
+                { numero: 1, activo: true, usuario_nombre: 'Box 1' },
+                { numero: 2, activo: true, usuario_nombre: 'Box 2' },
+                { numero: 3, activo: true, usuario_nombre: 'Box 3' },
+                { numero: 4, activo: true, usuario_nombre: 'Box 4' }
+            ];
+        }
+
+        return activos;
+    } catch (err) {
+        console.warn('Error al consultar boxes disponibles, usando fallback:', err);
+        return [
+            { numero: 1, activo: true, usuario_nombre: 'Box 1' },
+            { numero: 2, activo: true, usuario_nombre: 'Box 2' }
+        ];
+    }
 }
 
 // ─── Asignar box con balanceo (el que tenga menos turnos en espera) ───
 export async function getBoxBalanceado() {
     const disponibles = await getBoxesDisponibles();
-    if (disponibles.length === 0) return null;
+    if (!disponibles || disponibles.length === 0) return 1;
 
     // Contar turnos en espera y totales por box
     const hoy = new Date();

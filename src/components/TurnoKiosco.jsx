@@ -14,7 +14,7 @@ import {
     ChevronRight, FileText, Microscope,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { getBoxesDisponibles, getBoxBalanceado } from '../services/boxService';
+import { getBoxesDisponibles, getBoxBalanceado, isHorarioAtencion } from '../services/boxService';
 
 const ICON_MAP = {
     Receipt, ShieldCheck, Building2, Users, Baby, HelpCircle, FileText, Microscope,
@@ -31,17 +31,27 @@ export default function TurnoKiosco() {
     const [colaCount, setColaCount] = useState({});
     const [boxesDisponibles, setBoxesDisponibles] = useState(null); // null = loading, [] = none
 
-    // Check box availability on mount and every 60s
-    useEffect(() => {
-        const checkBoxes = () => {
-            getBoxesDisponibles()
-                .then(boxes => setBoxesDisponibles(boxes))
-                .catch(() => setBoxesDisponibles([]));
-        };
-        checkBoxes();
-        const boxInterval = setInterval(checkBoxes, 60000);
-        return () => clearInterval(boxInterval);
+    const checkBoxes = useCallback(() => {
+        getBoxesDisponibles()
+            .then(boxes => setBoxesDisponibles(boxes))
+            .catch(() => {
+                if (isHorarioAtencion()) {
+                    setBoxesDisponibles([
+                        { numero: 1, activo: true, usuario_nombre: 'Box 1' },
+                        { numero: 2, activo: true, usuario_nombre: 'Box 2' }
+                    ]);
+                } else {
+                    setBoxesDisponibles([]);
+                }
+            });
     }, []);
+
+    // Check box availability on mount and every 30s
+    useEffect(() => {
+        checkBoxes();
+        const boxInterval = setInterval(checkBoxes, 30000);
+        return () => clearInterval(boxInterval);
+    }, [checkBoxes]);
 
     // Cargar cantidad en espera por tipo
     const loadColaCount = useCallback(async () => {
@@ -178,8 +188,8 @@ export default function TurnoKiosco() {
 
             {/* Content */}
             <main style={styles.main}>
-                {/* ═══ FUERA DE HORARIO ═══ */}
-                {boxesDisponibles !== null && boxesDisponibles.length === 0 && step !== STEPS.TICKET && (
+                {/* ═══ FUERA DE HORARIO (Sólo si realmente estamos fuera de horario comercial) ═══ */}
+                {!isHorarioAtencion() && boxesDisponibles !== null && boxesDisponibles.length === 0 && step !== STEPS.TICKET && (
                     <div style={{
                         display: 'flex', flexDirection: 'column',
                         alignItems: 'center', justifyContent: 'center',
@@ -213,14 +223,34 @@ export default function TurnoKiosco() {
                             padding: '16px 28px', borderRadius: '16px',
                             background: '#EFF6FF', border: '2px solid #BFDBFE',
                             fontSize: '1.1rem', fontWeight: 700, color: '#1565C0',
+                            marginBottom: '20px'
                         }}>
-                            Horario de atención: 07:00 a 20:00 hs
+                            Horario de atención: 07:00 a 20:30 hs
                         </div>
+                        <button
+                            type="button"
+                            onClick={() => checkBoxes()}
+                            style={{
+                                padding: '12px 24px',
+                                background: '#1E5799',
+                                color: '#FFFFFF',
+                                border: 'none',
+                                borderRadius: '12px',
+                                fontSize: '1rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px'
+                            }}
+                        >
+                            <RefreshCw size={18} /> Reintentar / Actualizar
+                        </button>
                     </div>
                 )}
 
                 {/* ═══ PASO 1: INGRESAR DNI ═══ */}
-                {step === STEPS.DNI && (boxesDisponibles === null || boxesDisponibles.length > 0) && (
+                {step === STEPS.DNI && (isHorarioAtencion() || (boxesDisponibles && boxesDisponibles.length > 0)) && (
                     <div style={styles.selectContainer} className="no-print">
                         <form onSubmit={handleCreateTurno} style={{ maxWidth: '800px', margin: '0 auto', width: '100%' }}>
                             <div style={styles.dniSection}>
