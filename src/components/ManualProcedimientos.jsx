@@ -623,6 +623,55 @@ export const SISTEMA_MODULOS = [
                 reglas: 'Las modificaciones de configuración global quedan registradas en el log de auditoría del sistema.'
             }
         ]
+    },
+    {
+        id: 'liquidaciones',
+        titulo: 'Módulo 14: Centro de Liquidaciones Médicas (Excel ➔ PDF)',
+        icono: FileSpreadsheet,
+        color: '#059669',
+        badge: 'Honorarios Médicos',
+        resumen: 'Procesamiento automatizado de planillas Excel de Guardia Pediátrica e Instrumentadores Quirúrgicos, cálculo de adicionales de Obras Sociales (DAMSU/Provincia) y emisión de liquidaciones oficiales en PDF.',
+        diagrama: [
+            { paso: '1. Carga de Planilla Excel', desc: 'Arrastre del archivo .xlsx de Guardia Pediátrica o Instrumentadores' },
+            { paso: '2. Procesamiento & Detección', desc: 'Agrupación por médico/instrumentador y cálculo de adicionales' },
+            { paso: '3. Parámetros Editables', desc: 'Ajuste de período, N° liquidación, matrícula y valor de adicional ($8.000)' },
+            { paso: '4. Emisión Oficial en PDF', desc: 'Descarga de PDF General, PDF por Prestador o paquete masivo en ZIP' }
+        ],
+        submodulos: [
+            {
+                nombre: '14.1 Liquidación de Guardia Pediátrica',
+                procedimiento: [
+                    'Ingresar a "Liquidaciones" y seleccionar la pestaña "Guardia Pediátrica".',
+                    'Arrastrar la planilla Excel mensual con las 5.000+ atenciones ambulatorias.',
+                    'El sistema procesa automáticamente los 39 profesionales médicos, totaliza los importes facturados y contabiliza las consultas de "001 - PROVINCIA" y "004 - DAMSU".',
+                    'Verificar el cálculo del adicional por consulta ($8.000,00 por defecto, editable).',
+                    'Presionar "Descargar PDF General Consolidado" para el reporte sanatorial o "PDF" en la fila del profesional para su liquidación individual.'
+                ],
+                controles: 'Zona de carga drag & drop, tarjetas de KPI globales, editor de parámetros y botón de descarga individual/general.',
+                reglas: 'El PDF individual réplica el membrete oficial, tabla de 4 columnas (Fecha, Paciente, Obra Social, Importe) y cuadro de adicionales.'
+            },
+            {
+                nombre: '14.2 Liquidación de Instrumentadores Quirúrgicos',
+                procedimiento: [
+                    'Seleccionar la pestaña "Instrumentadores Quirúrgicos" y cargar la planilla Excel de procedimientos de quirófano.',
+                    'El sistema extrae todas las cirugías, discriminando observaciones de 2° y 3° procedimiento, valores de guardia y cirujanos intervinientes.',
+                    'Revisar las matrículas profesionales (editables con un clic en la tabla) y el período de liquidación.',
+                    'Generar el informe apaisado (Landscape) de 6 columnas o descargar el paquete masivo en archivo ZIP.'
+                ],
+                controles: 'Tabla de instrumentadores, visor de procedimientos quirúrgicos por fecha/paciente/cirujano y empaquetador ZIP.',
+                reglas: 'El informe oficial se emite en formato horizontal optimizado para auditoría de quirófano.'
+            },
+            {
+                nombre: '14.3 Descarga Masiva en ZIP y Gestión de Parámetros',
+                procedimiento: [
+                    'Presionar el botón "Descargar Todos en ZIP (.zip)".',
+                    'El motor JSZip compila en lote los PDFs individuales de cada profesional numerados secuencialmente e incorpora el Resumen General Consolidado.',
+                    'El archivo ZIP comprimido se descarga automáticamente listo para distribución a los profesionales o al sector contable.'
+                ],
+                controles: 'Barra de progreso de compresión en tiempo real y descarga con un solo clic.',
+                reglas: 'Asegura una reducción del 95% del tiempo administrativo en el cierre mensual de liquidaciones de guardia y quirófano.'
+            }
+        ]
     }
 ];
 

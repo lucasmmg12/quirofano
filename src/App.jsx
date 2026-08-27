@@ -59,6 +59,7 @@ import FrojoCelebration from './components/FrojoCelebration.jsx';
 import ActivosPanel from './components/ActivosPanel.jsx';
 import EquipoAuditoriaView from './components/EquipoAuditoriaView.jsx';
 import GobernanzaPanel from './components/GobernanzaPanel.jsx';
+import LiquidacionesPanel from './components/LiquidacionesPanel.jsx';
 import { startSession, endSession, trackModuleChange } from './lib/activityTracker';
 import { supabase } from './lib/supabase';
 import './App.css';
@@ -158,6 +159,7 @@ const VIEW_LABELS = {
     pacientes: 'Pacientes',
     actividad_usuarios: 'Actividad de Usuarios',
     activos: 'Gestión de Activos',
+    liquidaciones: 'Liquidaciones Médicas',
 };
 
 function App({ currentUser, onLogout }) {
@@ -952,6 +954,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'consultas' && (
                     <ConsultasPanel />
+                )}
+
+                {activeView === 'liquidaciones' && (
+                    <LiquidacionesPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'documentos' && (

@@ -26,6 +26,7 @@ const MODULE_ITEMS = [
     { id: 'laboratorios', label: 'Anatomía Patológica', icon: Microscope, keywords: ['laboratorio', 'biopsia', 'anatomia'] },
     { id: 'documentos', label: 'Documentos', icon: FileText, keywords: ['documento', 'archivo', 'pdf', 'excel', 'categoria'] },
     { id: 'consultas', label: 'Consultas de Guardia', icon: ClipboardCheck, keywords: ['consulta', 'guardia', 'urgencia', 'emergencia'] },
+    { id: 'liquidaciones', label: 'Liquidaciones Médicas (Excel ➔ PDF)', icon: FileText, keywords: ['liquidacion', 'excel', 'guardia', 'instrumentador', 'pdf', 'honorarios'] },
     { id: 'beto', label: 'Beto IA', icon: Brain, keywords: ['beto', 'ia', 'documento', 'ocr'] },
     { id: 'config', label: 'Configuración', icon: Settings, keywords: ['config', 'ajuste', 'usuario'] },
 ];

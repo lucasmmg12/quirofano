@@ -307,6 +307,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     { id: 'turnos', label: 'Cola de Turnos', icon: Ticket },
                     { id: 'deudas', label: 'Deudas', icon: DollarSign },
                     { id: 'consultas', label: 'Consultas Guardia', icon: Activity },
+                    { id: 'liquidaciones', label: 'Liquidaciones', icon: FileSpreadsheet },
                     { id: 'documentos', label: 'Documentos', icon: FolderOpen },
                 ].filter(item => isModuleVisible(item.id)).map(item => {
                     const Icon = item.icon;
