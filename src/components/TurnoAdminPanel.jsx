@@ -23,6 +23,7 @@ import {
 import BoxManagerPanel from './BoxManagerPanel';
 import ChartsPanel from './metrics/ChartsPanel';
 import FluidBackground3D from './metrics/FluidBackground3D';
+import { supabase } from '../lib/supabase';
 
 const ICON_MAP = { FileText, Receipt, Microscope, HelpCircle, Building2, Users, Baby, ShieldCheck };
 
