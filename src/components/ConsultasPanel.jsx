@@ -532,7 +532,7 @@ export default function ConsultasPanel({ currentUser, addToast }) {
 
     // ─── RENDER ───
     return (
-        <div className="content no-print" style={{ maxWidth: '1200px', margin: '0 auto', paddingBottom: '40px' }}>
+        <div className="content no-print" style={{ width: '100%', maxWidth: '100%', padding: '0 8px 40px 8px', boxSizing: 'border-box' }}>
             {/* Top Switcher: Dashboard & Conciliación vs Liquidaciones Médicas */}
             <div style={{
                 display: 'flex',

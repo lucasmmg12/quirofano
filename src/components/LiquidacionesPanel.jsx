@@ -401,9 +401,10 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
 
     return (
         <div style={{
-            padding: '24px',
-            maxWidth: '1300px',
-            margin: '0 auto',
+            padding: '8px 0',
+            width: '100%',
+            maxWidth: '100%',
+            boxSizing: 'border-box',
             fontFamily: "'Montserrat', sans-serif",
             color: '#0F172A'
         }}>
