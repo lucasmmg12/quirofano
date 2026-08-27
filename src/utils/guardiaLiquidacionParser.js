@@ -1,7 +1,8 @@
 /**
  * guardiaLiquidacionParser.js
  * Parser para planillas Excel de Guardia Pediátrica — Sanatorio Argentino
- * Aplica porcentaje de honorarios médicos (70% por defecto) y adicionales por O.S. (Provincia, DAMSU)
+ * Lee siempre la primera hoja del libro Excel y aplica la retención del 30% (70% neto)
+ * y el cálculo discriminado de adicionales por Obra Social (ej: 001 - PROVINCIA y 004 - DAMSU).
  */
 import * as XLSX from 'xlsx';
 
@@ -82,27 +83,34 @@ export function parseExcelNumber(val) {
 
 /**
  * Procesa el archivo Excel de Guardia Pediátrica
+ * SIEMPRE toma la primera hoja del libro Excel
  * @param {ArrayBuffer|Uint8Array} buffer
  * @param {Object} options - Parámetros configurables
  * @returns {Object} Datos procesados de guardia
  */
 export function parseGuardiaExcel(buffer, options = {}) {
-    const valorAdicional = options.valorAdicional !== undefined ? options.valorAdicional : 8000;
-    const porcentajeHonorarios = options.porcentajeHonorarios !== undefined ? options.porcentajeHonorarios : 70; // 70% por defecto
+    // Porcentaje de retención sanatorial (por defecto 30% retención = 70% neto)
+    const porcentajeRetencion = options.porcentajeRetencion !== undefined ? options.porcentajeRetencion : 30;
+    const porcentajeHonorarios = 100 - porcentajeRetencion; // 70%
     const factorHonorarios = porcentajeHonorarios / 100;
-    const obrasSocialesAdicional = options.obrasSocialesAdicional || ['001 - PROVINCIA', '004 - DAMSU'];
+
+    // Configuración de adicionales por Obra Social (soporta array de objetos [{ obraSocial, valor }])
+    const adicionalesConfig = options.adicionalesConfig || [
+        { obraSocial: '001 - PROVINCIA', valor: 8000 },
+        { obraSocial: '004 - DAMSU', valor: 8000 }
+    ];
+
     const periodoDefault = options.periodo || 'Mayo 2026';
     const liquidacionDefault = options.liquidacion || '410';
 
     const wb = XLSX.read(buffer, { type: 'array' });
-    const sheetNames = wb.SheetNames;
+    
+    // REGLA: Usar SIEMPRE la primera hoja del archivo Excel (index 0)
+    const primeraHojaNombre = wb.SheetNames[0];
+    const ws = wb.Sheets[primeraHojaNombre];
+    const rawRows = XLSX.utils.sheet_to_json(ws);
 
-    // Buscar hoja detalle o usar la primera
-    const detalleSheetName = sheetNames.find(n => n.toLowerCase().includes('detalle')) || sheetNames[0];
-    const wsDetalle = wb.Sheets[detalleSheetName];
-    const rawRows = XLSX.utils.sheet_to_json(wsDetalle);
-
-    // Agrupación por profesional
+    // Agrupación por profesional médico
     const prestadoresMap = {};
 
     rawRows.forEach((r, idx) => {
@@ -111,7 +119,7 @@ export function parseGuardiaExcel(buffer, options = {}) {
         
         if (!isValidDoctorName(responsable)) return;
 
-        // Validar también que la fila no sea un pie estadístico o de totales
+        // Validar que la fila no sea un pie estadístico o de totales
         const fechaRaw = r['Fecha Visita'] || r.Fecha || r['Fecha visita'];
         const fechaStr = String(fechaRaw || '').trim().toLowerCase();
         if (fechaStr.includes('cantidad') || fechaStr.includes('total') || fechaStr.includes('neto')) return;
@@ -128,11 +136,14 @@ export function parseGuardiaExcel(buffer, options = {}) {
                 matricula: '',
                 periodo: periodoDefault,
                 liquidacion: liquidacionDefault,
+                porcentajeRetencion,
                 porcentajeHonorarios,
                 atenciones: [],
                 totalImporteBruto: 0,
+                montoRetencion: 0,
                 totalHonorariosNeto: 0,
-                adicionalesPorOS: {},
+                // Conteo por cada Obra Social con adicional
+                conteoPorOS: {},
                 totalCantidadAdicional: 0,
                 totalMontoAdicional: 0,
                 totalGeneralConAdicional: 0
@@ -153,66 +164,46 @@ export function parseGuardiaExcel(buffer, options = {}) {
 
         prestadoresMap[responsable].totalImporteBruto += valor;
 
-        // Verificar si aplica adicional
-        const aplicaAdicional = obrasSocialesAdicional.some(os => cliente.toLowerCase().includes(os.toLowerCase()));
-        if (aplicaAdicional) {
-            const osMatch = obrasSocialesAdicional.find(os => cliente.toLowerCase().includes(os.toLowerCase())) || cliente;
-            prestadoresMap[responsable].adicionalesPorOS[osMatch] = (prestadoresMap[responsable].adicionalesPorOS[osMatch] || 0) + 1;
-            prestadoresMap[responsable].totalCantidadAdicional++;
-        }
-    });
+        // Buscar si la obra social de la atención coincide con las configuradas para adicional
+        const matchAdicional = adicionalesConfig.find(item => {
+            const osKey = typeof item === 'string' ? item : item.obraSocial;
+            return cliente.toLowerCase().includes(osKey.toLowerCase());
+        });
 
-    // Leer metadatos de hojas individuales si existen
-    sheetNames.forEach(sheetName => {
-        if (sheetName !== detalleSheetName) {
-            const ws = wb.Sheets[sheetName];
-            const raw = XLSX.utils.sheet_to_json(ws, { header: 1 });
-            if (raw.length > 3) {
-                let profName = '';
-                let mat = '';
-                let per = '';
-                let liq = '';
-
-                raw.slice(0, 5).forEach(row => {
-                    if (Array.isArray(row)) {
-                        const line = row.filter(Boolean).join(' ');
-                        if (line.includes('Profesional:')) profName = line.split('Profesional:')[1].trim();
-                        if (line.includes('matrícula:') || line.includes('matricula:')) {
-                            mat = line.split(/matr[ií]cula:/i)[1].trim();
-                        }
-                        if (line.includes('Periodo de liquidación:') || line.includes('Periodo:')) {
-                            per = line.split(/Periodo[^:]*:/i)[1].trim();
-                        }
-                        if (line.includes('Liquidación Nº:') || line.includes('Liquidacion:')) {
-                            liq = line.split(/Liquidaci[oó]n[^:]*:/i)[1].trim();
-                        }
-                    }
-                });
-
-                if (profName) {
-                    const normProf = normalizeKey(profName);
-                    const matchingKey = Object.keys(prestadoresMap).find(k => normalizeKey(k) === normProf);
-                    if (matchingKey) {
-                        if (mat) prestadoresMap[matchingKey].matricula = mat;
-                        if (per) prestadoresMap[matchingKey].periodo = per;
-                        if (liq) prestadoresMap[matchingKey].liquidacion = liq;
-                    }
-                }
+        if (matchAdicional) {
+            const osNombre = typeof matchAdicional === 'string' ? matchAdicional : matchAdicional.obraSocial;
+            const osValor = typeof matchAdicional === 'string' ? 8000 : (matchAdicional.valor || 8000);
+            
+            if (!prestadoresMap[responsable].conteoPorOS[osNombre]) {
+                prestadoresMap[responsable].conteoPorOS[osNombre] = {
+                    obraSocial: osNombre,
+                    valorUnitario: osValor,
+                    cantidad: 0,
+                    subtotal: 0
+                };
             }
+            prestadoresMap[responsable].conteoPorOS[osNombre].cantidad++;
+            prestadoresMap[responsable].conteoPorOS[osNombre].subtotal += osValor;
+            prestadoresMap[responsable].totalCantidadAdicional++;
+            prestadoresMap[responsable].totalMontoAdicional += osValor;
         }
     });
 
-    // Calcular montos de adicionales y totales con el factor de honorarios médicos (70%)
+    // Calcular montos de honorarios netos (-30%) y adicionales discriminados
     const prestadoresList = Object.values(prestadoresMap).map(p => {
-        const totalHonorariosNeto = p.totalImporteBruto * factorHonorarios;
-        const totalMontoAdicional = p.totalCantidadAdicional * valorAdicional;
+        const montoRetencion = p.totalImporteBruto * (porcentajeRetencion / 100);
+        const totalHonorariosNeto = p.totalImporteBruto - montoRetencion; // 70% neto
+
+        // Array discriminado de adicionales por Obra Social
+        const adicionalesDiscriminados = Object.values(p.conteoPorOS);
+
         return {
             ...p,
             totalImporte: p.totalImporteBruto,
-            porcentajeHonorarios,
+            montoRetencion,
             totalHonorariosNeto,
-            totalMontoAdicional,
-            totalGeneralConAdicional: totalHonorariosNeto + totalMontoAdicional
+            adicionalesDiscriminados,
+            totalGeneralConAdicional: totalHonorariosNeto + p.totalMontoAdicional
         };
     });
 
@@ -221,8 +212,8 @@ export function parseGuardiaExcel(buffer, options = {}) {
 
     // Métricas globales consolidadas
     const totalFacturadoBrutoGlobal = prestadoresList.reduce((acc, p) => acc + p.totalImporteBruto, 0);
-    const totalHonorariosNetoGlobal = prestadoresList.reduce((acc, p) => acc + p.totalHonorariosNeto, 0);
-    const totalRetencionGlobal = totalFacturadoBrutoGlobal - totalHonorariosNetoGlobal;
+    const totalRetencionGlobal = totalFacturadoBrutoGlobal * (porcentajeRetencion / 100);
+    const totalHonorariosNetoGlobal = totalFacturadoBrutoGlobal - totalRetencionGlobal;
     const totalCantidadAdicionalesGlobal = prestadoresList.reduce((acc, p) => acc + p.totalCantidadAdicional, 0);
     const totalAdicionalesGlobal = prestadoresList.reduce((acc, p) => acc + p.totalMontoAdicional, 0);
     const granTotalGlobal = totalHonorariosNetoGlobal + totalAdicionalesGlobal;
@@ -232,9 +223,9 @@ export function parseGuardiaExcel(buffer, options = {}) {
         tipo: 'guardia_pediatrica',
         periodo: periodoDefault,
         numeroLiquidacion: liquidacionDefault,
-        valorAdicional,
+        porcentajeRetencion,
         porcentajeHonorarios,
-        obrasSocialesAdicional,
+        adicionalesConfig,
         totalPrestadores: prestadoresList.length,
         totalAtenciones,
         totalFacturadoBrutoGlobal,

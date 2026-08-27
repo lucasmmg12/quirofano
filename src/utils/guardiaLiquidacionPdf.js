@@ -2,6 +2,7 @@
  * guardiaLiquidacionPdf.js
  * Generador de PDFs oficiales de Liquidación de Guardia Pediátrica — Sanatorio Argentino
  * Estética idéntica a la Constancia de Asociaciones (Navy Blue #0D3B66, Accent Blue #3B82F6, Info Bar y Grid Tables).
+ * Incluye desglose discriminado de adicionales por Obra Social (ej: 001 - PROVINCIA y 004 - DAMSU).
  */
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -124,6 +125,7 @@ function applyFooters(doc) {
 
 /**
  * Genera el PDF Individual de un Médico de Guardia Pediátrica
+ * Con deducción de retención (-30%) y cuadro discriminado de adicionales por Obra Social
  */
 export async function generateGuardiaIndividualPdf(prestador, options = {}) {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -187,16 +189,18 @@ export async function generateGuardiaIndividualPdf(prestador, options = {}) {
         formatCurrency(a.importe)
     ]);
 
-    const pct = prestador.porcentajeHonorarios || 70;
+    const pctRet = prestador.porcentajeRetencion !== undefined ? prestador.porcentajeRetencion : 30;
+    const pctHon = 100 - pctRet; // 70%
     const subtotalBruto = prestador.totalImporteBruto || prestador.totalImporte || 0;
-    const honorariosNeto = prestador.totalHonorariosNeto || (subtotalBruto * (pct / 100));
+    const montoRetencion = subtotalBruto * (pctRet / 100);
+    const honorariosNeto = subtotalBruto - montoRetencion; // 70% neto
 
     autoTable(doc, {
         startY: y,
-        head: [['#', 'Fecha', 'Paciente', 'Obra Social', 'Importe']],
+        head: [['#', 'Fecha', 'Paciente', 'Obra Social', 'Importe Bruto']],
         body: tableBody,
         foot: [
-            ['', '', '', `Subtotal Facturado (100%):`, formatCurrency(subtotalBruto)]
+            ['', '', '', 'Subtotal Facturado (100%):', formatCurrency(subtotalBruto)]
         ],
         theme: 'grid',
         headStyles: {
@@ -242,61 +246,104 @@ export async function generateGuardiaIndividualPdf(prestador, options = {}) {
 
     let finalY = doc.lastAutoTable.finalY + 6;
 
-    // Verificar salto de página para bloque de adicionales y totales
-    if (finalY + 65 > pageH - 20) {
+    // Verificar si se necesita salto de página para los cuadros de liquidación y adicionales
+    if (finalY + 75 > pageH - 20) {
         doc.addPage();
         finalY = 20;
     }
 
-    // 5. Cuadro de Liquidación Final y Adicionales
-    const valorAdicional = options.valorAdicional !== undefined ? options.valorAdicional : (prestador.valorAdicional || 8000);
-    const obrasSociales = options.obrasSocialesAdicional || prestador.obrasSocialesAdicional || ['001 - PROVINCIA', '004 - DAMSU'];
-    const cantAdic = prestador.totalCantidadAdicional || 0;
-    const montoAdic = prestador.totalMontoAdicional !== undefined ? prestador.totalMontoAdicional : (cantAdic * valorAdicional);
-    const granTotal = honorariosNeto + montoAdic;
+    // 5. Cuadro Resumen de Honorarios y Retención del 30%
+    doc.setFillColor(59, 130, 246);
+    doc.rect(margin, finalY, 3, 7, 'F');
+    doc.setFontSize(9.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(13, 59, 102);
+    doc.text('RESUMEN DE HONORARIOS MÉDICOS (NETO -30% RETENCIÓN)', margin + 6, finalY + 5.5);
+    finalY += 10;
+
+    autoTable(doc, {
+        startY: finalY,
+        margin: { left: margin, right: margin },
+        head: [['Concepto', 'Base Facturada', 'Porcentaje', 'Importe']],
+        body: [
+            ['Facturación Bruta Consultas', formatCurrency(subtotalBruto), '100%', formatCurrency(subtotalBruto)],
+            ['Retención Sanatorial (Gastos Operativos)', formatCurrency(subtotalBruto), `-${pctRet}%`, `-${formatCurrency(montoRetencion)}`],
+            ['Honorarios Médicos Netos a Percibir', formatCurrency(subtotalBruto), `${pctHon}%`, formatCurrency(honorariosNeto)]
+        ],
+        theme: 'grid',
+        headStyles: {
+            fillColor: [13, 59, 102],
+            textColor: [255, 255, 255],
+            fontSize: 7.2,
+            fontStyle: 'bold',
+            cellPadding: 2.5
+        },
+        bodyStyles: {
+            fontSize: 7.2,
+            cellPadding: 2.2,
+            textColor: [30, 30, 30]
+        },
+        columnStyles: {
+            0: { cellWidth: 80, fontStyle: 'bold' },
+            1: { cellWidth: 36, halign: 'right' },
+            2: { cellWidth: 26, halign: 'center', fontStyle: 'bold' },
+            3: { cellWidth: 40, halign: 'right', fontStyle: 'bold' }
+        }
+    });
+
+    finalY = doc.lastAutoTable.finalY + 6;
+
+    if (finalY + 50 > pageH - 20) {
+        doc.addPage();
+        finalY = 20;
+    }
+
+    // 6. Cuadro Discriminado de Adicionales por Obra Social
+    const adicionalesList = prestador.adicionalesDiscriminados || [];
+    const totalCantAdic = prestador.totalCantidadAdicional || 0;
+    const totalMontoAdic = prestador.totalMontoAdicional || 0;
+    const granTotal = honorariosNeto + totalMontoAdic;
 
     doc.setFillColor(59, 130, 246);
     doc.rect(margin, finalY, 3, 7, 'F');
     doc.setFontSize(9.5);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(13, 59, 102);
-    doc.text('RESUMEN DE LIQUIDACIÓN Y ADICIONAL DE GUARDIA PEDIÁTRICA', margin + 6, finalY + 5.5);
+    doc.text('ADICIONAL POR ATENCIÓN EN SERVICIO DE GUARDIA PEDIÁTRICA (DISCRIMINADO)', margin + 6, finalY + 5.5);
     finalY += 10;
+
+    const bodyAdicionales = adicionalesList.map(item => [
+        item.obraSocial,
+        String(item.cantidad),
+        formatCurrency(item.valorUnitario),
+        formatCurrency(item.subtotal)
+    ]);
+
+    // Si no hubo adicionales
+    if (bodyAdicionales.length === 0) {
+        bodyAdicionales.push(['Sin atenciones alcanzadas por adicional', '0', '$ 0,00', '$ 0,00']);
+    }
 
     autoTable(doc, {
         startY: finalY,
         margin: { left: margin, right: margin },
-        head: [['Concepto Liquidado', 'Detalle / Obras Sociales', 'Base / Unitario', 'Cantidad / %', 'Total Liquidado']],
-        body: [
-            [
-                'Honorarios Médicos de Guardia',
-                `Subtotal Consultas (${prestador.atenciones.length} atenciones)`,
-                formatCurrency(subtotalBruto),
-                `${pct}%`,
-                formatCurrency(honorariosNeto)
-            ],
-            [
-                'Adicional Guardia Pediátrica',
-                obrasSociales.join(' · '),
-                formatCurrency(valorAdicional),
-                String(cantAdic),
-                formatCurrency(montoAdic)
-            ]
-        ],
+        head: [['Obra Social Alcanzada', 'Cant. Atenciones', 'Valor Adicional Unit.', 'Subtotal Adicional']],
+        body: bodyAdicionales,
         foot: [
-            ['', '', '', 'TOTAL GENERAL A LIQUIDAR:', formatCurrency(granTotal)]
+            ['Subtotal Adicionales de Guardia:', String(totalCantAdic), '', formatCurrency(totalMontoAdic)],
+            ['', '', 'TOTAL GENERAL A LIQUIDAR:', formatCurrency(granTotal)]
         ],
         theme: 'grid',
         headStyles: {
             fillColor: [13, 59, 102],
             textColor: [255, 255, 255],
-            fontSize: 7.5,
+            fontSize: 7.2,
             fontStyle: 'bold',
-            cellPadding: 2.8
+            cellPadding: 2.5
         },
         bodyStyles: {
-            fontSize: 7.5,
-            cellPadding: 2.5,
+            fontSize: 7.2,
+            cellPadding: 2.2,
             textColor: [30, 30, 30]
         },
         footStyles: {
@@ -307,11 +354,10 @@ export async function generateGuardiaIndividualPdf(prestador, options = {}) {
             halign: 'right'
         },
         columnStyles: {
-            0: { cellWidth: 46, fontStyle: 'bold' },
-            1: { cellWidth: 50 },
-            2: { cellWidth: 28, halign: 'right' },
-            3: { cellWidth: 20, halign: 'center', fontStyle: 'bold', textColor: [124, 58, 237] },
-            4: { cellWidth: 38, halign: 'right', fontStyle: 'bold' }
+            0: { cellWidth: 70, fontStyle: 'bold' },
+            1: { cellWidth: 32, halign: 'center', fontStyle: 'bold', textColor: [124, 58, 237] },
+            2: { cellWidth: 38, halign: 'right' },
+            3: { cellWidth: 42, halign: 'right', fontStyle: 'bold' }
         }
     });
 
@@ -341,7 +387,7 @@ export async function generateGuardiaGeneralPdf(data, options = {}) {
     doc.setDrawColor(226, 232, 240);
     doc.roundedRect(margin, y, colW, 18, 3, 3, 'S');
 
-    const pct = data.porcentajeHonorarios || 70;
+    const pctHon = data.porcentajeHonorarios || 70;
 
     const infoItems = [
         { label: 'PERÍODO', value: data.periodo || 'Mayo 2026' },
@@ -371,7 +417,7 @@ export async function generateGuardiaGeneralPdf(data, options = {}) {
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(13, 59, 102);
-    doc.text('RESUMEN DE LIQUIDACIÓN POR PROFESIONAL MÉDICO (70% HONORARIOS + ADICIONAL)', margin + 6, y + 5.5);
+    doc.text(`RESUMEN DE LIQUIDACIÓN POR PROFESIONAL MÉDICO (${pctHon}% HONORARIOS + ADICIONALES)`, margin + 6, y + 5.5);
     y += 11;
 
     // 4. Tabla Consolidada
@@ -381,7 +427,7 @@ export async function generateGuardiaGeneralPdf(data, options = {}) {
         p.matricula || '—',
         String(p.atenciones.length),
         formatCurrency(p.totalImporteBruto || p.totalImporte),
-        formatCurrency(p.totalHonorariosNeto || (p.totalImporte * (pct / 100))),
+        formatCurrency(p.totalHonorariosNeto),
         formatCurrency(p.totalMontoAdicional || 0),
         formatCurrency(p.totalGeneralConAdicional)
     ]);
@@ -390,7 +436,7 @@ export async function generateGuardiaGeneralPdf(data, options = {}) {
         startY: y,
         margin: { left: margin, right: margin },
         head: [
-            ['#', 'Profesional / Médico', 'Matr.', 'Atenc.', 'Fact. Bruta (100%)', `Honorarios (${pct}%)`, 'Adicional ($)', 'Total Liquidado']
+            ['#', 'Profesional / Médico', 'Matr.', 'Atenc.', 'Fact. Bruta (100%)', `Honorarios (${pctHon}%)`, 'Adicional ($)', 'Total Liquidado']
         ],
         body: tableBody,
         foot: [

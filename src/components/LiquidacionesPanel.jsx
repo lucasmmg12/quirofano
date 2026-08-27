@@ -4,7 +4,7 @@
  * Sanatorio Argentino SRL
  * 
  * Pestañas:
- * 1. 🩺 Guardia Pediátrica (Consultas Médicas: 70% Honorarios + Adicionales)
+ * 1. 🩺 Guardia Pediátrica (Consultas Médicas: 70% Honorarios Netos + Adicionales Discriminados)
  * 2. 🏥 Instrumentadores Quirúrgicos (Procedimientos Quirúrgicos)
  * 3. 📜 Historial de Liquidaciones (Auditoría y re-descargas en .zip o PDF)
  */
@@ -16,7 +16,7 @@ import {
     Filter, Archive, RefreshCw, Eye, X, Edit2, ShieldAlert,
     AlertCircle, Sparkles, ChevronRight, Check, Plus, Trash2,
     Clock, Building, ArrowRight, Printer, History, Calendar,
-    UserCheck, FileArchive, ArrowUpRight, Percent
+    UserCheck, FileArchive, ArrowUpRight, Percent, Tag
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { parseGuardiaExcel } from '../utils/guardiaLiquidacionParser';
@@ -50,10 +50,15 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
     // Parámetros globales de liquidación
     const [periodo, setPeriodo] = useState('Mayo 2026');
     const [numeroLiquidacion, setNumeroLiquidacion] = useState('410');
-    const [porcentajeHonorariosGuardia, setPorcentajeHonorariosGuardia] = useState(70); // 70% por defecto
-    const [valorAdicionalGuardia, setValorAdicionalGuardia] = useState(8000);
-    const [obrasSocialesAdicional, setObrasSocialesAdicional] = useState(['001 - PROVINCIA', '004 - DAMSU']);
-    const [nuevaOSInput, setNuevaOSInput] = useState('');
+    const [porcentajeRetencion, setPorcentajeRetencion] = useState(30); // 30% retención = 70% neto
+    
+    // Lista configurable de adicionales por Obra Social
+    const [adicionalesConfig, setAdicionalesConfig] = useState([
+        { id: 'os_1', obraSocial: '001 - PROVINCIA', valor: 8000 },
+        { id: 'os_2', obraSocial: '004 - DAMSU', valor: 8000 }
+    ]);
+    const [nuevaOSNombre, setNuevaOSNombre] = useState('');
+    const [nuevoOSValor, setNuevoOSValor] = useState(8000);
 
     // Estados de carga y progreso
     const [isProcessing, setIsProcessing] = useState(false);
@@ -79,7 +84,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
         setHistorial(getHistorialLiquidaciones());
     };
 
-    // Manejador de carga de archivo Excel
+    // Manejador de carga de archivo Excel (siempre toma la primera hoja)
     const handleFileUpload = async (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -92,15 +97,14 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                 const parsed = parseGuardiaExcel(buffer, {
                     periodo,
                     liquidacion: numeroLiquidacion,
-                    porcentajeHonorarios: porcentajeHonorariosGuardia,
-                    valorAdicional: valorAdicionalGuardia,
-                    obrasSocialesAdicional
+                    porcentajeRetencion,
+                    adicionalesConfig
                 });
                 parsed.usuario = currentUser?.nombre || currentUser?.usuario || 'Administración';
                 setGuardiaData(parsed);
                 saveLiquidacionEnHistorial(parsed);
                 refreshHistorial();
-                addToast?.('Planilla de Guardia Pediátrica procesada al 70% y guardada.', 'success');
+                addToast?.('Planilla de Guardia Pediátrica procesada (Retención 30% / Honorarios 70%).', 'success');
             } else if (activeTab === 'instrumentadores') {
                 const parsed = parseInstrumentadoresExcel(buffer, {
                     periodo,
@@ -124,47 +128,65 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
     // Recalcular parámetros
     const handleRecalcular = () => {
         if (activeTab === 'guardia' && guardiaData) {
-            const factor = porcentajeHonorariosGuardia / 100;
+            const pctHon = 100 - porcentajeRetencion;
+            const factorHon = pctHon / 100;
+
             const prestadoresActualizados = guardiaData.prestadores.map(p => {
+                const conteoPorOS = {};
                 let countAdic = 0;
-                const adicPorOS = {};
+                let totalMontoAdic = 0;
+
                 p.atenciones.forEach(a => {
-                    const match = obrasSocialesAdicional.some(os => a.obraSocial.toLowerCase().includes(os.toLowerCase()));
+                    const match = adicionalesConfig.find(item => a.obraSocial.toLowerCase().includes(item.obraSocial.toLowerCase()));
                     if (match) {
-                        const osName = obrasSocialesAdicional.find(os => a.obraSocial.toLowerCase().includes(os.toLowerCase())) || a.obraSocial;
-                        adicPorOS[osName] = (adicPorOS[osName] || 0) + 1;
+                        if (!conteoPorOS[match.obraSocial]) {
+                            conteoPorOS[match.obraSocial] = {
+                                obraSocial: match.obraSocial,
+                                valorUnitario: match.valor,
+                                cantidad: 0,
+                                subtotal: 0
+                            };
+                        }
+                        conteoPorOS[match.obraSocial].cantidad++;
+                        conteoPorOS[match.obraSocial].subtotal += match.valor;
                         countAdic++;
+                        totalMontoAdic += match.valor;
                     }
                 });
-                const totalMontoAdicional = countAdic * valorAdicionalGuardia;
-                const totalHonorariosNeto = (p.totalImporteBruto || p.totalImporte) * factor;
+
+                const subtotalBruto = p.totalImporteBruto || p.totalImporte;
+                const montoRetencion = subtotalBruto * (porcentajeRetencion / 100);
+                const totalHonorariosNeto = subtotalBruto - montoRetencion;
 
                 return {
                     ...p,
                     periodo,
                     liquidacion: numeroLiquidacion,
-                    porcentajeHonorarios: porcentajeHonorariosGuardia,
+                    porcentajeRetencion,
+                    porcentajeHonorarios: pctHon,
+                    montoRetencion,
                     totalHonorariosNeto,
-                    adicionalesPorOS: adicPorOS,
+                    conteoPorOS,
+                    adicionalesDiscriminados: Object.values(conteoPorOS),
                     totalCantidadAdicional: countAdic,
-                    totalMontoAdicional,
-                    totalGeneralConAdicional: totalHonorariosNeto + totalMontoAdicional
+                    totalMontoAdicional: totalMontoAdic,
+                    totalGeneralConAdicional: totalHonorariosNeto + totalMontoAdic
                 };
             });
 
             const totalFacturadoBrutoGlobal = prestadoresActualizados.reduce((acc, p) => acc + (p.totalImporteBruto || p.totalImporte), 0);
-            const totalHonorariosNetoGlobal = prestadoresActualizados.reduce((acc, p) => acc + p.totalHonorariosNeto, 0);
-            const totalRetencionGlobal = totalFacturadoBrutoGlobal - totalHonorariosNetoGlobal;
-            const totalAdicionalesGlobal = prestadoresActualizados.reduce((acc, p) => acc + p.totalMontoAdicional, 0);
+            const totalRetencionGlobal = totalFacturadoBrutoGlobal * (porcentajeRetencion / 100);
+            const totalHonorariosNetoGlobal = totalFacturadoBrutoGlobal - totalRetencionGlobal;
             const totalCantidadAdicionalesGlobal = prestadoresActualizados.reduce((acc, p) => acc + p.totalCantidadAdicional, 0);
+            const totalAdicionalesGlobal = prestadoresActualizados.reduce((acc, p) => acc + p.totalMontoAdicional, 0);
 
             const updatedData = {
                 ...guardiaData,
                 periodo,
                 liquidacion: numeroLiquidacion,
-                porcentajeHonorarios: porcentajeHonorariosGuardia,
-                valorAdicional: valorAdicionalGuardia,
-                obrasSocialesAdicional,
+                porcentajeRetencion,
+                porcentajeHonorarios: pctHon,
+                adicionalesConfig,
                 totalFacturadoBrutoGlobal,
                 totalFacturadoGlobal: totalFacturadoBrutoGlobal,
                 totalRetencionGlobal,
@@ -178,7 +200,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
             setGuardiaData(updatedData);
             saveLiquidacionEnHistorial(updatedData);
             refreshHistorial();
-            addToast?.('Cálculos actualizados al ' + porcentajeHonorariosGuardia + '%.', 'info');
+            addToast?.('Cálculos actualizados con ' + pctHon + '% neto y adicionales discriminados.', 'info');
         } else if (activeTab === 'instrumentadores' && instrumentadoresData) {
             const updated = instrumentadoresData.instrumentadores.map(inst => ({
                 ...inst,
@@ -199,15 +221,20 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
     };
 
     const handleAddOS = () => {
-        if (!nuevaOSInput.trim()) return;
-        if (!obrasSocialesAdicional.includes(nuevaOSInput.trim())) {
-            setObrasSocialesAdicional(prev => [...prev, nuevaOSInput.trim()]);
-            setNuevaOSInput('');
+        if (!nuevaOSNombre.trim()) return;
+        const exists = adicionalesConfig.some(item => item.obraSocial.toLowerCase() === nuevaOSNombre.trim().toLowerCase());
+        if (!exists) {
+            setAdicionalesConfig(prev => [
+                ...prev,
+                { id: 'os_' + Date.now(), obraSocial: nuevaOSNombre.trim(), valor: Number(nuevoOSValor) || 8000 }
+            ]);
+            setNuevaOSNombre('');
+            setNuevoOSValor(8000);
         }
     };
 
-    const handleRemoveOS = (osName) => {
-        setObrasSocialesAdicional(prev => prev.filter(o => o !== osName));
+    const handleRemoveOS = (id) => {
+        setAdicionalesConfig(prev => prev.filter(item => item.id !== id));
     };
 
     const handleSaveMatricula = (prestadorId) => {
@@ -239,8 +266,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
         try {
             if (activeTab === 'guardia') {
                 const doc = await generateGuardiaIndividualPdf(prestador, {
-                    valorAdicional: valorAdicionalGuardia,
-                    obrasSocialesAdicional
+                    adicionalesConfig
                 });
                 const cleanName = prestador.nombre.replace(/[^a-zA-Z0-9]/g, '_');
                 doc.save(`Liquidacion_Guardia_${cleanName}_${periodo.replace(/\s+/g, '_')}.pdf`);
@@ -293,8 +319,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                 for (let i = 0; i < total; i++) {
                     const p = targetData.prestadores[i];
                     const doc = await generateGuardiaIndividualPdf(p, {
-                        valorAdicional: targetData.valorAdicional || valorAdicionalGuardia,
-                        obrasSocialesAdicional: targetData.obrasSocialesAdicional || obrasSocialesAdicional
+                        adicionalesConfig: targetData.adicionalesConfig || adicionalesConfig
                     });
                     const arrayBuffer = doc.output('arraybuffer');
                     const cleanName = p.nombre.replace(/[^a-zA-Z0-9]/g, '_');
@@ -353,9 +378,8 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
             setGuardiaData(item.dataSnapshot);
             setPeriodo(item.periodo);
             setNumeroLiquidacion(item.numeroLiquidacion);
-            if (item.valorAdicional) setValorAdicionalGuardia(item.valorAdicional);
-            if (item.porcentajeHonorarios) setPorcentajeHonorariosGuardia(item.porcentajeHonorarios);
-            if (item.obrasSocialesAdicional) setObrasSocialesAdicional(item.obrasSocialesAdicional);
+            if (item.porcentajeRetencion !== undefined) setPorcentajeRetencion(item.porcentajeRetencion);
+            if (item.adicionalesConfig) setAdicionalesConfig(item.adicionalesConfig);
             setActiveTab('guardia');
             addToast?.(`Liquidación de Guardia (${item.periodo}) cargada en el panel activo.`, 'info');
         } else {
@@ -453,7 +477,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                             Centro de Liquidaciones Médicas (Excel ➔ PDF)
                         </h2>
                         <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#64748B' }}>
-                            Sanatorio Argentino SRL · Informes Oficiales Generales e Individuales en Modo .ZIP
+                            Sanatorio Argentino SRL · Retención 30% / Honorarios 70% + Adicionales Discriminados en Modo .ZIP
                         </p>
                     </div>
                 </div>
@@ -535,7 +559,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                     {/* Zona de Carga y Parámetros */}
                     <div style={{
                         display: 'grid',
-                        gridTemplateColumns: '1fr 400px',
+                        gridTemplateColumns: '1fr 440px',
                         gap: '20px',
                         marginBottom: '20px'
                     }}>
@@ -594,10 +618,10 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                             </div>
 
                             <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0D3B66' }}>
-                                {isProcessing ? 'Procesando archivo Excel...' : `Subir planilla de ${activeTab === 'guardia' ? 'Guardia Pediátrica' : 'Instrumentadores'}`}
+                                {isProcessing ? 'Procesando primera hoja de Excel...' : `Subir planilla de ${activeTab === 'guardia' ? 'Guardia Pediátrica' : 'Instrumentadores'}`}
                             </h4>
                             <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748B' }}>
-                                Arrastra el archivo <strong>.xlsx</strong> o haz clic aquí para seleccionarlo
+                                Se procesa automáticamente la <strong>primera hoja</strong> del archivo .xlsx
                             </p>
                         </div>
 
@@ -637,7 +661,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                 </button>
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                                 <div>
                                     <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>
                                         Período
@@ -678,113 +702,109 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                         }}
                                     />
                                 </div>
-                            </div>
-
-                            {activeTab === 'guardia' && (
-                                <>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                        <div>
-                                            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>
-                                                % Honorarios Médicos
-                                            </label>
-                                            <div style={{ position: 'relative' }}>
-                                                <input
-                                                    type="number"
-                                                    value={porcentajeHonorariosGuardia}
-                                                    onChange={(e) => setPorcentajeHonorariosGuardia(Number(e.target.value))}
-                                                    style={{
-                                                        width: '100%',
-                                                        padding: '6px 24px 6px 10px',
-                                                        borderRadius: '8px',
-                                                        border: '1px solid #CBD5E1',
-                                                        fontSize: '0.8rem',
-                                                        fontWeight: 700,
-                                                        color: '#0D3B66',
-                                                        fontFamily: "'Montserrat', sans-serif",
-                                                        boxSizing: 'border-box'
-                                                    }}
-                                                />
-                                                <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', fontWeight: 800, color: '#64748B' }}>%</span>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>
-                                                Valor Adicional ($)
-                                            </label>
+                                {activeTab === 'guardia' ? (
+                                    <div>
+                                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>
+                                            Retención / Neto
+                                        </label>
+                                        <div style={{ position: 'relative' }}>
                                             <input
                                                 type="number"
-                                                value={valorAdicionalGuardia}
-                                                onChange={(e) => setValorAdicionalGuardia(Number(e.target.value))}
+                                                value={porcentajeRetencion}
+                                                onChange={(e) => setPorcentajeRetencion(Number(e.target.value))}
+                                                title="Porcentaje retenido por el Sanatorio (ej: 30%)"
                                                 style={{
                                                     width: '100%',
-                                                    padding: '6px 10px',
+                                                    padding: '6px 20px 6px 8px',
                                                     borderRadius: '8px',
                                                     border: '1px solid #CBD5E1',
                                                     fontSize: '0.8rem',
-                                                    fontWeight: 600,
+                                                    fontWeight: 700,
+                                                    color: '#DC2626',
                                                     fontFamily: "'Montserrat', sans-serif",
                                                     boxSizing: 'border-box'
                                                 }}
                                             />
+                                            <span style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.7rem', fontWeight: 800, color: '#64748B' }}>-%</span>
                                         </div>
                                     </div>
-                                    
-                                    <div>
-                                        <label style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>
-                                            Obras Sociales con Adicional:
-                                        </label>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
-                                            {obrasSocialesAdicional.map(os => (
-                                                <span key={os} style={{
-                                                    background: '#EFF6FF',
-                                                    border: '1px solid #BFDBFE',
-                                                    borderRadius: '6px',
-                                                    padding: '2px 6px',
-                                                    fontSize: '0.68rem',
-                                                    fontWeight: 700,
-                                                    color: '#0D3B66',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '4px'
-                                                }}>
-                                                    {os}
-                                                    <X size={10} style={{ cursor: 'pointer' }} onClick={() => handleRemoveOS(os)} />
-                                                </span>
-                                            ))}
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '4px' }}>
-                                            <input
-                                                type="text"
-                                                placeholder="Ej: 005 - OSDE"
-                                                value={nuevaOSInput}
-                                                onChange={(e) => setNuevaOSInput(e.target.value)}
-                                                onKeyDown={(e) => e.key === 'Enter' && handleAddOS()}
-                                                style={{
-                                                    flex: 1,
-                                                    padding: '4px 8px',
-                                                    borderRadius: '6px',
-                                                    border: '1px solid #CBD5E1',
-                                                    fontSize: '0.72rem',
-                                                    fontFamily: "'Montserrat', sans-serif"
-                                                }}
-                                            />
-                                            <button
-                                                onClick={handleAddOS}
-                                                style={{
-                                                    padding: '4px 8px',
-                                                    background: '#0D3B66',
-                                                    color: '#fff',
-                                                    border: 'none',
-                                                    borderRadius: '6px',
-                                                    cursor: 'pointer',
-                                                    fontSize: '0.72rem'
-                                                }}
-                                            >
-                                                <Plus size={12} />
-                                            </button>
-                                        </div>
+                                ) : <div />}
+                            </div>
+
+                            {activeTab === 'guardia' && (
+                                <div>
+                                    <label style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>
+                                        Obras Sociales con Cobro Adicional (Discriminado):
+                                    </label>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                                        {adicionalesConfig.map(item => (
+                                            <span key={item.id} style={{
+                                                background: '#EFF6FF',
+                                                border: '1px solid #BFDBFE',
+                                                borderRadius: '8px',
+                                                padding: '3px 8px',
+                                                fontSize: '0.7rem',
+                                                fontWeight: 700,
+                                                color: '#0D3B66',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px'
+                                            }}>
+                                                <span>{item.obraSocial}</span>
+                                                <strong style={{ color: '#059669' }}>{formatCurrency(item.valor)}</strong>
+                                                <X size={12} style={{ cursor: 'pointer', color: '#DC2626' }} onClick={() => handleRemoveOS(item.id)} />
+                                            </span>
+                                        ))}
                                     </div>
-                                </>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                        <input
+                                            type="text"
+                                            placeholder="Obra Social (ej: 005 - OSDE)"
+                                            value={nuevaOSNombre}
+                                            onChange={(e) => setNuevaOSNombre(e.target.value)}
+                                            style={{
+                                                flex: 2,
+                                                padding: '4px 8px',
+                                                borderRadius: '6px',
+                                                border: '1px solid #CBD5E1',
+                                                fontSize: '0.72rem',
+                                                fontFamily: "'Montserrat', sans-serif"
+                                            }}
+                                        />
+                                        <input
+                                            type="number"
+                                            placeholder="Monto ($)"
+                                            value={nuevoOSValor}
+                                            onChange={(e) => setNuevoOSValor(e.target.value)}
+                                            style={{
+                                                flex: 1,
+                                                padding: '4px 8px',
+                                                borderRadius: '6px',
+                                                border: '1px solid #CBD5E1',
+                                                fontSize: '0.72rem',
+                                                fontFamily: "'Montserrat', sans-serif"
+                                            }}
+                                        />
+                                        <button
+                                            onClick={handleAddOS}
+                                            style={{
+                                                padding: '4px 10px',
+                                                background: '#0D3B66',
+                                                color: '#fff',
+                                                border: 'none',
+                                                borderRadius: '6px',
+                                                cursor: 'pointer',
+                                                fontSize: '0.72rem',
+                                                fontWeight: 700,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '2px'
+                                            }}
+                                        >
+                                            <Plus size={12} /> Agregar
+                                        </button>
+                                    </div>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -828,7 +848,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
 
                                     <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
                                         <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                            Honorarios Médicos ({porcentajeHonorariosGuardia}%)
+                                            Honorarios Netos ({100 - porcentajeRetencion}%)
                                         </div>
                                         <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#059669', marginTop: '4px' }}>
                                             {formatCurrency(activeData.totalHonorariosNetoGlobal)}
@@ -984,7 +1004,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                                     Fact. Bruta (100%)
                                                 </th>
                                                 <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#059669', width: '140px' }}>
-                                                    Honorarios ({porcentajeHonorariosGuardia}%)
+                                                    Honorarios ({100 - porcentajeRetencion}%)
                                                 </th>
                                                 <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#7C3AED', width: '130px' }}>
                                                     Adicional ($)
@@ -1059,7 +1079,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                                         </td>
                                                         <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#7C3AED' }}>
                                                             {p.totalMontoAdicional > 0 ? (
-                                                                <span title={`${p.totalCantidadAdicional} consultas con adicional`}>
+                                                                <span title={p.adicionalesDiscriminados?.map(item => `${item.obraSocial}: ${item.cantidad} x ${formatCurrency(item.valorUnitario)}`).join(' | ')}>
                                                                     {formatCurrency(p.totalMontoAdicional)}
                                                                 </span>
                                                             ) : '—'}
@@ -1077,7 +1097,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                                                         <button
                                                             onClick={() => setPreviewPrestador(p)}
-                                                            title="Ver Detalle de Prestaciones"
+                                                            title="Ver Detalle de Prestaciones y Desglose Discriminado"
                                                             style={{
                                                                 padding: '6px 10px',
                                                                 background: '#F8FAFC',
@@ -1347,7 +1367,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                 </div>
             )}
 
-            {/* Modal de Vista Previa y Detalle de Atenciones */}
+            {/* Modal de Vista Previa y Detalle de Atenciones con Desglose Discriminado */}
             {previewPrestador && (
                 <div style={{
                     position: 'fixed',
@@ -1365,7 +1385,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                         background: '#FFFFFF',
                         borderRadius: '20px',
                         width: '100%',
-                        maxWidth: '900px',
+                        maxWidth: '920px',
                         maxHeight: '90vh',
                         display: 'flex',
                         flexDirection: 'column',
@@ -1427,26 +1447,66 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                         {/* Cuerpo Modal (Lista de Consultas o Procedimientos) */}
                         <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
                             {activeTab === 'guardia' ? (
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                                    <thead>
-                                        <tr style={{ background: '#F1F5F9', borderBottom: '1.5px solid #CBD5E1' }}>
-                                            <th style={{ padding: '8px', textAlign: 'left' }}>Fecha</th>
-                                            <th style={{ padding: '8px', textAlign: 'left' }}>Paciente</th>
-                                            <th style={{ padding: '8px', textAlign: 'left' }}>Obra Social</th>
-                                            <th style={{ padding: '8px', textAlign: 'right' }}>Importe Bruto</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {previewPrestador.atenciones.map((a, i) => (
-                                            <tr key={i} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                                                <td style={{ padding: '8px', color: '#64748B' }}>{a.fecha}</td>
-                                                <td style={{ padding: '8px', fontWeight: 600 }}>{a.paciente}</td>
-                                                <td style={{ padding: '8px', color: '#334155' }}>{a.obraSocial}</td>
-                                                <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(a.importe)}</td>
+                                <>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', marginBottom: '16px' }}>
+                                        <thead>
+                                            <tr style={{ background: '#F1F5F9', borderBottom: '1.5px solid #CBD5E1' }}>
+                                                <th style={{ padding: '8px', textAlign: 'left' }}>#</th>
+                                                <th style={{ padding: '8px', textAlign: 'left' }}>Fecha</th>
+                                                <th style={{ padding: '8px', textAlign: 'left' }}>Paciente</th>
+                                                <th style={{ padding: '8px', textAlign: 'left' }}>Obra Social</th>
+                                                <th style={{ padding: '8px', textAlign: 'right' }}>Importe Bruto</th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody>
+                                            {previewPrestador.atenciones.map((a, i) => (
+                                                <tr key={i} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                                    <td style={{ padding: '8px', color: '#94A3B8' }}>{i + 1}</td>
+                                                    <td style={{ padding: '8px', color: '#64748B' }}>{a.fecha}</td>
+                                                    <td style={{ padding: '8px', fontWeight: 600 }}>{a.paciente}</td>
+                                                    <td style={{ padding: '8px', color: '#334155' }}>{a.obraSocial}</td>
+                                                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(a.importe)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+
+                                    {/* Bloque de Desglose Discriminado de Adicionales */}
+                                    {previewPrestador.adicionalesDiscriminados?.length > 0 && (
+                                        <div style={{
+                                            background: '#F5F3FF',
+                                            border: '1px solid #DDD6FE',
+                                            borderRadius: '12px',
+                                            padding: '14px 18px',
+                                            marginTop: '10px'
+                                        }}>
+                                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#6D28D9', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <Tag size={14} /> Desglose Discriminado de Adicionales por Obra Social
+                                            </div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px' }}>
+                                                {previewPrestador.adicionalesDiscriminados.map(item => (
+                                                    <div key={item.obraSocial} style={{
+                                                        background: '#FFFFFF',
+                                                        border: '1px solid #E9D5FF',
+                                                        borderRadius: '8px',
+                                                        padding: '8px 12px',
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center'
+                                                    }}>
+                                                        <div>
+                                                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1E1B4B' }}>{item.obraSocial}</div>
+                                                            <div style={{ fontSize: '0.68rem', color: '#6B7280' }}>{item.cantidad} atenciones × {formatCurrency(item.valorUnitario)}</div>
+                                                        </div>
+                                                        <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#7C3AED' }}>
+                                                            {formatCurrency(item.subtotal)}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
                             ) : (
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                                     <thead>
@@ -1488,20 +1548,20 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                         }}>
                             <div>
                                 {activeTab === 'guardia' && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.8rem' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.78rem' }}>
                                         <span style={{ color: '#64748B' }}>
-                                            Subtotal Facturado: <strong>{formatCurrency(previewPrestador.totalImporteBruto || previewPrestador.totalImporte)}</strong> · Honorarios ({porcentajeHonorariosGuardia}%): <strong style={{ color: '#059669' }}>{formatCurrency(previewPrestador.totalHonorariosNeto)}</strong>
+                                            Fact. Bruta: <strong>{formatCurrency(previewPrestador.totalImporteBruto || previewPrestador.totalImporte)}</strong> · Retención ({porcentajeRetencion}%): <span style={{ color: '#DC2626' }}>-{formatCurrency(previewPrestador.montoRetencion)}</span> · Honorarios ({100 - porcentajeRetencion}%): <strong style={{ color: '#059669' }}>{formatCurrency(previewPrestador.totalHonorariosNeto)}</strong>
                                         </span>
                                         {previewPrestador.totalCantidadAdicional > 0 && (
                                             <span style={{ color: '#7C3AED', fontWeight: 700 }}>
-                                                Adicional ({previewPrestador.totalCantidadAdicional} atenciones): {formatCurrency(previewPrestador.totalMontoAdicional)}
+                                                Adicionales ({previewPrestador.totalCantidadAdicional} atenciones): {formatCurrency(previewPrestador.totalMontoAdicional)}
                                             </span>
                                         )}
                                     </div>
                                 )}
                             </div>
                             <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0D3B66' }}>
-                                Gran Total: {formatCurrency(activeTab === 'guardia' ? previewPrestador.totalGeneralConAdicional : previewPrestador.totalValor)}
+                                Gran Total a Liquidar: {formatCurrency(activeTab === 'guardia' ? previewPrestador.totalGeneralConAdicional : previewPrestador.totalValor)}
                             </div>
                         </div>
                     </div>
