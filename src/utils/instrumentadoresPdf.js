@@ -1,138 +1,238 @@
 /**
  * instrumentadoresPdf.js
  * Generador de PDFs oficiales de Liquidación de Instrumentadores Quirúrgicos — Sanatorio Argentino
+ * Estética idéntica a la Constancia de Asociaciones (Navy Blue #0D3B66, Accent Blue #3B82F6, Info Bar y Grid Tables).
  */
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatCurrency } from './guardiaLiquidacionPdf.js';
 
 /**
- * Carga el logo institucional en Base64 o fallback
+ * Carga el logo y lo recorta de forma circular con un canvas
  */
-async function loadLogoBase64() {
+async function loadCircularLogoBase64() {
     try {
-        const response = await fetch('/logosanatorio.png');
-        const blob = await response.blob();
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.readAsDataURL(blob);
+        const logoImg = new Image();
+        logoImg.crossOrigin = 'anonymous';
+        logoImg.src = '/logosanatorio.png';
+        await new Promise((resolve, reject) => {
+            logoImg.onload = resolve;
+            logoImg.onerror = reject;
         });
+
+        const canvasSize = 200;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasSize;
+        canvas.height = canvasSize;
+        const ctx = canvas.getContext('2d');
+        ctx.beginPath();
+        ctx.arc(canvasSize / 2, canvasSize / 2, canvasSize / 2, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(logoImg, 0, 0, canvasSize, canvasSize);
+        return canvas.toDataURL('image/png');
     } catch {
         return null;
     }
 }
 
 /**
- * Dibuja el encabezado institucional para la liquidación individual de instrumentador
+ * Dibuja el Header oficial tipo Asociaciones (Landscape)
  */
-function drawHeaderInstrumentador(doc, inst, logoBase64) {
-    const W = doc.internal.pageSize.getWidth();
-    const ML = 14;
-    const MR = W - 14;
+function drawInstitutionalHeaderLandscape(doc, titleRight, subtitleRight = 'Sistema ADM-QUI', logoCircleBase64) {
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
 
-    if (logoBase64) {
-        try {
-            doc.addImage(logoBase64, 'PNG', ML, 8, 24, 24);
-        } catch {
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(13);
-            doc.setTextColor(30, 87, 153);
-            doc.text('SANATORIO ARGENTINO', ML, 16);
-        }
+    // ── Barra Azul Institucional (#0D3B66) ──
+    doc.setFillColor(13, 59, 102);
+    doc.rect(0, 0, pageW, 30, 'F');
+
+    // ── Logo Circular con anillo blanco ──
+    const logoX = margin + 1;
+    const logoY = 8;
+    const logoSize = 13;
+
+    if (logoCircleBase64) {
+        doc.setFillColor(255, 255, 255);
+        doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2 + 1.2, 'F');
+        doc.addImage(logoCircleBase64, 'PNG', logoX, logoY, logoSize, logoSize);
     } else {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(13);
-        doc.setTextColor(30, 87, 153);
-        doc.text('SANATORIO ARGENTINO', ML, 16);
+        doc.setFillColor(255, 255, 255);
+        doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 'F');
+        doc.setFontSize(6);
+        doc.setTextColor(13, 59, 102);
+        doc.text('SA', logoX + 3.5, logoY + logoSize / 2 + 1.5);
     }
+
+    // ── Título y Subtítulo Izquierdo ──
+    doc.setFontSize(15);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.text('SANATORIO ARGENTINO', margin + 17, 13);
 
     doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(0, 0, 0);
+    doc.setTextColor(180, 200, 220);
+    doc.text('Administración Quirófano · Instrumentadores Quirúrgicos', margin + 17, 19.5);
 
-    const rightX = MR;
-    let y = 11;
+    // ── Badge Derecho ──
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 255, 255);
+    doc.text(titleRight, pageW - margin, 13, { align: 'right' });
 
-    doc.text(`Profesional: ${inst.nombre}`, rightX, y, { align: 'right' });
-    y += 4.5;
-    doc.text(`Número de matrícula: ${inst.matricula || '—'}`, rightX, y, { align: 'right' });
-    y += 4.5;
-    doc.text(`Periodo de liquidación: ${inst.periodo || 'Mayo 2026'}`, rightX, y, { align: 'right' });
-    y += 4.5;
-    doc.text(`Liquidación: ${inst.liquidacion || '410'}`, rightX, y, { align: 'right' });
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(180, 200, 220);
+    doc.text(subtitleRight, pageW - margin, 19.5, { align: 'right' });
+
+    // ── Línea de Acento (#3B82F6) ──
+    doc.setFillColor(59, 130, 246);
+    doc.rect(0, 30, pageW, 2, 'F');
+}
+
+/**
+ * Agrega el pie de página institucional en todas las páginas (Landscape)
+ */
+function applyFootersLandscape(doc) {
+    const totalPages = doc.internal.getNumberOfPages();
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 14;
+
+    for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        // Línea divisoria
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.3);
+        doc.line(margin, pageH - 10, pageW - margin, pageH - 10);
+
+        // Texto pie
+        doc.setFontSize(6.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(148, 163, 184);
+        doc.text('Sanatorio Argentino SRL · Quirófano Central · Sistema ADM-QUI', margin, pageH - 5.5);
+        doc.text(`Página ${p} de ${totalPages}`, pageW - margin, pageH - 5.5, { align: 'right' });
+    }
 }
 
 /**
  * Genera el PDF Individual de un Instrumentador Quirúrgico (Landscape)
- * @param {Object} inst - Objeto con datos y procedimientos del instrumentador
- * @returns {jsPDF} Documento jsPDF generado
  */
 export async function generateInstrumentadorIndividualPdf(inst) {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    const logoBase64 = await loadLogoBase64();
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
+    const colW = pageW - margin * 2;
 
-    drawHeaderInstrumentador(doc, inst, logoBase64);
+    const logoCircle = await loadCircularLogoBase64();
 
-    const tableBody = inst.procedimientos.map(p => [
+    // 1. Header institucional
+    drawInstitutionalHeaderLandscape(doc, 'LIQUIDACIÓN DE INSTRUMENTACIÓN', `Período: ${inst.periodo || 'Mayo 2026'}`, logoCircle);
+
+    let y = 38;
+
+    // 2. Info Bar (Metadata del profesional)
+    doc.setFillColor(241, 245, 249);
+    doc.roundedRect(margin, y, colW, 16, 3, 3, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, y, colW, 16, 3, 3, 'S');
+
+    const infoItems = [
+        { label: 'INSTRUMENTADOR/A', value: inst.nombre },
+        { label: 'MATRÍCULA', value: inst.matricula || '—' },
+        { label: 'PERÍODO', value: inst.periodo || 'Mayo 2026' },
+        { label: 'LIQUIDACIÓN', value: `N° ${inst.liquidacion || '410'}` },
+    ];
+
+    const cellW = colW / 4;
+    infoItems.forEach((item, i) => {
+        const x = margin + cellW * i + 6;
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(148, 163, 184);
+        doc.text(item.label, x, y + 5);
+        doc.setFontSize(i === 0 ? 8.5 : 9.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(13, 59, 102);
+        const valText = i === 0 && item.value.length > 25 ? item.value.substring(0, 25) + '...' : (item.value || '—');
+        doc.text(valText, x, y + 11.5);
+    });
+
+    y += 22;
+
+    // 3. Título de sección con acento vertical azul
+    doc.setFillColor(59, 130, 246);
+    doc.rect(margin, y, 3, 7, 'F');
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(13, 59, 102);
+    doc.text('DETALLE DE PROCEDIMIENTOS QUIRÚRGICOS LIQUIDADOS', margin + 6, y + 5.5);
+    y += 10;
+
+    // 4. Tabla de procedimientos
+    const tableBody = inst.procedimientos.map((p, idx) => [
+        String(idx + 1),
         p.fecha,
         p.paciente,
         p.procedimiento,
-        p.observacion || '',
+        p.observacion || '—',
         formatCurrency(p.valor),
         p.cirujano
     ]);
 
     autoTable(doc, {
-        startY: 32,
-        margin: { left: 14, right: 14, bottom: 15 },
-        head: [['Fecha visita', 'Paciente', 'Procedimiento quirúrgico', 'Observación', 'Valor', 'Cirujano']],
+        startY: y,
+        head: [['#', 'Fecha', 'Paciente', 'Procedimiento Quirúrgico', 'Observación', 'Valor', 'Cirujano']],
         body: tableBody,
         foot: [
-            ['', '', '', 'Total', formatCurrency(inst.totalValor), '']
+            ['', '', '', '', 'Total Liquidado:', formatCurrency(inst.totalValor), '']
         ],
-        theme: 'plain',
+        theme: 'grid',
         headStyles: {
-            fontSize: 8,
+            fillColor: [13, 59, 102],
+            textColor: [255, 255, 255],
+            fontSize: 7.5,
             fontStyle: 'bold',
-            textColor: [0, 0, 0],
-            fillColor: false,
-            lineWidth: { bottom: 0.5 },
-            lineColor: [0, 0, 0]
+            halign: 'left',
+            cellPadding: 2.8,
         },
         bodyStyles: {
-            fontSize: 7.2,
-            textColor: [0, 0, 0],
-            cellPadding: 1.2
+            fontSize: 7,
+            cellPadding: 2.2,
+            textColor: [30, 30, 30],
+        },
+        alternateRowStyles: {
+            fillColor: [248, 250, 252],
         },
         footStyles: {
-            fontSize: 8,
+            fillColor: [220, 238, 255],
+            textColor: [13, 59, 102],
+            fontSize: 8.5,
             fontStyle: 'bold',
-            textColor: [0, 0, 0],
-            fillColor: false,
-            lineWidth: { top: 0.5 },
-            lineColor: [0, 0, 0]
+            halign: 'right'
         },
         columnStyles: {
-            0: { cellWidth: 22, halign: 'left' },
-            1: { cellWidth: 56, halign: 'left' },
-            2: { cellWidth: 88, halign: 'left' },
-            3: { cellWidth: 32, halign: 'left' },
-            4: { cellWidth: 26, halign: 'right' },
-            5: { cellWidth: 45, halign: 'left' }
+            0: { cellWidth: 8, halign: 'center', fontStyle: 'bold', textColor: [148, 163, 184] },
+            1: { cellWidth: 20, halign: 'left' },
+            2: { cellWidth: 54, halign: 'left', fontStyle: 'bold' },
+            3: { cellWidth: 84, halign: 'left' },
+            4: { cellWidth: 32, halign: 'left', textColor: [124, 58, 237] },
+            5: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
+            6: { cellWidth: 45, halign: 'left' }
         },
+        margin: { left: margin, right: margin },
         didDrawPage: (data) => {
-            const pageCount = doc.internal.getNumberOfPages();
             if (data.pageNumber > 1) {
-                doc.setFontSize(7.5);
-                doc.setFont('helvetica', 'normal');
-                doc.setTextColor(100, 116, 139);
-                doc.text(`Sanatorio Argentino · Liquidación Instrumentación Quirúrgica · ${inst.nombre}`, 14, 8);
-                doc.text(`Página ${data.pageNumber} de ${pageCount}`, doc.internal.pageSize.getWidth() - 14, 8, { align: 'right' });
+                doc.setFillColor(13, 59, 102);
+                doc.rect(0, 0, pageW, 7, 'F');
+                doc.setFillColor(59, 130, 246);
+                doc.rect(0, 7, pageW, 1, 'F');
             }
         }
     });
 
+    applyFootersLandscape(doc);
     return doc;
 }
 
@@ -141,31 +241,55 @@ export async function generateInstrumentadorIndividualPdf(inst) {
  */
 export async function generateInstrumentadoresGeneralPdf(data) {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    const logoBase64 = await loadLogoBase64();
-    const W = doc.internal.pageSize.getWidth();
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
+    const colW = pageW - margin * 2;
 
-    if (logoBase64) {
-        try {
-            doc.addImage(logoBase64, 'PNG', 14, 8, 22, 22);
-        } catch {
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(13);
-            doc.setTextColor(30, 87, 153);
-            doc.text('SANATORIO ARGENTINO', 14, 16);
-        }
-    }
+    const logoCircle = await loadCircularLogoBase64();
 
+    // 1. Header institucional
+    drawInstitutionalHeaderLandscape(doc, 'INFORME CONSOLIDADO', 'Liquidación General Instrumentación', logoCircle);
+
+    let y = 38;
+
+    // 2. Info Bar Resumen
+    doc.setFillColor(241, 245, 249);
+    doc.roundedRect(margin, y, colW, 16, 3, 3, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, y, colW, 16, 3, 3, 'S');
+
+    const infoItems = [
+        { label: 'PERÍODO', value: data.periodo || 'Mayo 2026' },
+        { label: 'N° LIQUIDACIÓN', value: `N° ${data.liquidacion || '410'}` },
+        { label: 'TOTAL INSTRUMENTADORES', value: String(data.totalInstrumentadores) },
+        { label: 'TOTAL CIRUGÍAS / PROCED.', value: String(data.totalProcedimientosGlobal) },
+    ];
+
+    const cellW = colW / 4;
+    infoItems.forEach((item, i) => {
+        const x = margin + cellW * i + 6;
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(148, 163, 184);
+        doc.text(item.label, x, y + 5);
+        doc.setFontSize(i >= 2 ? 11 : 9.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(13, 59, 102);
+        doc.text(item.value || '—', x, y + 11.5);
+    });
+
+    y += 22;
+
+    // 3. Título de sección con acento
+    doc.setFillColor(59, 130, 246);
+    doc.rect(margin, y, 3, 7, 'F');
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.setTextColor(30, 87, 153);
-    doc.text('LIQUIDACIÓN GENERAL — INSTRUMENTADORES QUIRÚRGICOS', W / 2, 14, { align: 'center' });
+    doc.setTextColor(13, 59, 102);
+    doc.text('RESUMEN DE LIQUIDACIÓN POR INSTRUMENTADOR/A', margin + 6, y + 5.5);
+    y += 10;
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(80, 80, 80);
-    doc.text(`Período de Liquidación: ${data.periodo || 'Mayo 2026'} · N° Liquidación: ${data.liquidacion || '410'}`, W / 2, 19, { align: 'center' });
-    doc.text(`Fecha de Emisión: ${new Date().toLocaleDateString('es-AR')} · Total Instrumentadores: ${data.totalInstrumentadores}`, W / 2, 23.5, { align: 'center' });
-
+    // 4. Tabla Consolidada
     const tableBody = data.instrumentadores.map((inst, i) => [
         String(i + 1),
         inst.nombre,
@@ -175,10 +299,10 @@ export async function generateInstrumentadoresGeneralPdf(data) {
     ]);
 
     autoTable(doc, {
-        startY: 28,
-        margin: { left: 18, right: 18, bottom: 15 },
+        startY: y,
+        margin: { left: margin, right: margin },
         head: [
-            ['N°', 'Instrumentador / Profesional', 'Matrícula', 'Cant. Procedimientos', 'Total Liquidado']
+            ['#', 'Instrumentador / Profesional', 'Matrícula', 'Cant. Procedimientos', 'Total Liquidado']
         ],
         body: tableBody,
         foot: [
@@ -190,40 +314,46 @@ export async function generateInstrumentadoresGeneralPdf(data) {
                 formatCurrency(data.totalFacturadoGlobal)
             ]
         ],
-        theme: 'striped',
+        theme: 'grid',
         headStyles: {
-            fontSize: 8,
+            fontSize: 7.8,
             fontStyle: 'bold',
-            fillColor: [30, 87, 153],
+            fillColor: [13, 59, 102],
             textColor: [255, 255, 255],
-            halign: 'center'
+            halign: 'center',
+            cellPadding: 3
         },
         bodyStyles: {
             fontSize: 7.5,
-            textColor: [0, 0, 0],
-            cellPadding: 1.5
+            textColor: [30, 30, 30],
+            cellPadding: 2.5
+        },
+        alternateRowStyles: {
+            fillColor: [248, 250, 252]
         },
         footStyles: {
-            fontSize: 8,
+            fontSize: 8.5,
             fontStyle: 'bold',
-            fillColor: [235, 243, 252],
-            textColor: [30, 87, 153]
+            fillColor: [220, 238, 255],
+            textColor: [13, 59, 102]
         },
         columnStyles: {
-            0: { cellWidth: 12, halign: 'center' },
-            1: { cellWidth: 100, halign: 'left' },
+            0: { cellWidth: 10, halign: 'center', fontStyle: 'bold', textColor: [148, 163, 184] },
+            1: { cellWidth: 110, halign: 'left', fontStyle: 'bold' },
             2: { cellWidth: 35, halign: 'center' },
-            3: { cellWidth: 45, halign: 'center' },
-            4: { cellWidth: 65, halign: 'right', fontStyle: 'bold' }
+            3: { cellWidth: 44, halign: 'center', fontStyle: 'bold' },
+            4: { cellWidth: 70, halign: 'right', fontStyle: 'bold' }
         },
         didDrawPage: (data) => {
-            const pageCount = doc.internal.getNumberOfPages();
-            doc.setFontSize(7);
-            doc.setTextColor(120, 120, 120);
-            doc.text(`Página ${data.pageNumber} de ${pageCount}`, W - 18, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
-            doc.text('Sanatorio Argentino SRL — Sistema ADM-QUI', 18, doc.internal.pageSize.getHeight() - 8);
+            if (data.pageNumber > 1) {
+                doc.setFillColor(13, 59, 102);
+                doc.rect(0, 0, pageW, 7, 'F');
+                doc.setFillColor(59, 130, 246);
+                doc.rect(0, 7, pageW, 1, 'F');
+            }
         }
     });
 
+    applyFootersLandscape(doc);
     return doc;
 }

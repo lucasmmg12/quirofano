@@ -1,6 +1,7 @@
 /**
  * guardiaLiquidacionPdf.js
  * Generador de PDFs oficiales de Liquidación de Guardia Pediátrica — Sanatorio Argentino
+ * Estética idéntica a la Constancia de Asociaciones (Navy Blue #0D3B66, Accent Blue #3B82F6, Info Bar y Grid Tables).
  */
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -15,190 +16,295 @@ export function formatCurrency(amount) {
 }
 
 /**
- * Carga el logo institucional en Base64 o fallback
+ * Carga el logo y lo recorta de forma circular con un canvas (estética idéntica a Asociaciones)
  */
-async function loadLogoBase64() {
+async function loadCircularLogoBase64() {
     try {
-        const response = await fetch('/logosanatorio.png');
-        const blob = await response.blob();
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.readAsDataURL(blob);
+        const logoImg = new Image();
+        logoImg.crossOrigin = 'anonymous';
+        logoImg.src = '/logosanatorio.png';
+        await new Promise((resolve, reject) => {
+            logoImg.onload = resolve;
+            logoImg.onerror = reject;
         });
+
+        const canvasSize = 200;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasSize;
+        canvas.height = canvasSize;
+        const ctx = canvas.getContext('2d');
+        ctx.beginPath();
+        ctx.arc(canvasSize / 2, canvasSize / 2, canvasSize / 2, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(logoImg, 0, 0, canvasSize, canvasSize);
+        return canvas.toDataURL('image/png');
     } catch {
         return null;
     }
 }
 
 /**
- * Dibuja el encabezado institucional para la liquidación individual de guardia
+ * Dibuja el Header oficial tipo Asociaciones
  */
-function drawHeaderIndividual(doc, prestador, logoBase64) {
-    const W = doc.internal.pageSize.getWidth();
-    const ML = 14;
-    const MR = W - 14;
+function drawInstitutionalHeader(doc, titleRight, subtitleRight = 'Sistema ADM-QUI', logoCircleBase64) {
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
 
-    // Logo o Isotipo
-    if (logoBase64) {
-        try {
-            doc.addImage(logoBase64, 'PNG', ML, 10, 28, 28);
-        } catch {
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(14);
-            doc.setTextColor(30, 87, 153);
-            doc.text('SANATORIO ARGENTINO', ML, 20);
-        }
+    // ── Barra Azul Institucional (#0D3B66) ──
+    doc.setFillColor(13, 59, 102);
+    doc.rect(0, 0, pageW, 34, 'F');
+
+    // ── Logo Circular con anillo blanco ──
+    const logoX = margin + 1;
+    const logoY = 10;
+    const logoSize = 14;
+
+    if (logoCircleBase64) {
+        doc.setFillColor(255, 255, 255);
+        doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2 + 1.2, 'F');
+        doc.addImage(logoCircleBase64, 'PNG', logoX, logoY, logoSize, logoSize);
     } else {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(13);
-        doc.setTextColor(30, 87, 153);
-        doc.text('SANATORIO ARGENTINO', ML, 20);
+        doc.setFillColor(255, 255, 255);
+        doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 'F');
+        doc.setFontSize(6);
+        doc.setTextColor(13, 59, 102);
+        doc.text('SA', logoX + 3.5, logoY + logoSize / 2 + 1.5);
     }
 
-    // Bloque derecho: Datos del profesional
+    // ── Título y Subtítulo Izquierdo ──
+    doc.setFontSize(16);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.text('SANATORIO ARGENTINO', margin + 18, 14);
+
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(0, 0, 0);
+    doc.setTextColor(180, 200, 220);
+    doc.text('Administración · Guardia Pediátrica', margin + 18, 21);
 
-    const rightX = MR;
-    let y = 14;
+    // ── Badge Derecho ──
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 255, 255);
+    doc.text(titleRight, pageW - margin, 14, { align: 'right' });
 
-    doc.text(`Profesional: ${prestador.nombre}`, rightX, y, { align: 'right' });
-    y += 5;
-    doc.text(`Número de matrícula: ${prestador.matricula || '—'}`, rightX, y, { align: 'right' });
-    y += 5;
-    doc.text(`Periodo de liquidación: ${prestador.periodo || 'Mayo 2026'}`, rightX, y, { align: 'right' });
-    y += 5;
-    doc.text(`Liquidación: ${prestador.liquidacion || '410'}`, rightX, y, { align: 'right' });
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(180, 200, 220);
+    doc.text(subtitleRight, pageW - margin, 21, { align: 'right' });
+
+    // ── Línea de Acento (#3B82F6) ──
+    doc.setFillColor(59, 130, 246);
+    doc.rect(0, 34, pageW, 2, 'F');
+}
+
+/**
+ * Agrega el pie de página institucional en todas las páginas
+ */
+function applyFooters(doc) {
+    const totalPages = doc.internal.getNumberOfPages();
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 14;
+
+    for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        // Línea divisoria
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.3);
+        doc.line(margin, pageH - 12, pageW - margin, pageH - 12);
+
+        // Texto pie
+        doc.setFontSize(6.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(148, 163, 184);
+        doc.text('Sanatorio Argentino SRL · San Juan, Argentina · Sistema ADM-QUI', margin, pageH - 7);
+        doc.text(`Página ${p} de ${totalPages}`, pageW - margin, pageH - 7, { align: 'right' });
+    }
 }
 
 /**
  * Genera el PDF Individual de un Médico de Guardia Pediátrica
- * @param {Object} prestador - Objeto con datos y atenciones del médico
- * @param {Object} options - Parámetros globales
- * @returns {jsPDF} Documento jsPDF generado
  */
 export async function generateGuardiaIndividualPdf(prestador, options = {}) {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const logoBase64 = await loadLogoBase64();
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 14;
+    const colW = pageW - margin * 2;
 
-    // Dibujar encabezado en página 1
-    drawHeaderIndividual(doc, prestador, logoBase64);
+    const logoCircle = await loadCircularLogoBase64();
 
-    const tableBody = prestador.atenciones.map(a => [
+    // 1. Header institucional
+    drawInstitutionalHeader(doc, 'LIQUIDACIÓN DE GUARDIA', `Período: ${prestador.periodo || 'Mayo 2026'}`, logoCircle);
+
+    let y = 44;
+
+    // 2. Info Bar (Metadata del profesional)
+    doc.setFillColor(241, 245, 249); // #F1F5F9
+    doc.roundedRect(margin, y, colW, 18, 3, 3, 'F');
+    doc.setDrawColor(226, 232, 240); // #E2E8F0
+    doc.roundedRect(margin, y, colW, 18, 3, 3, 'S');
+
+    const infoItems = [
+        { label: 'PROFESIONAL', value: prestador.nombre },
+        { label: 'MATRÍCULA', value: prestador.matricula || '—' },
+        { label: 'PERÍODO', value: prestador.periodo || 'Mayo 2026' },
+        { label: 'LIQUIDACIÓN', value: `N° ${prestador.liquidacion || '410'}` },
+    ];
+
+    const cellW = colW / 4;
+    infoItems.forEach((item, i) => {
+        const x = margin + cellW * i + 5;
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(148, 163, 184);
+        doc.text(item.label, x, y + 6);
+        
+        doc.setFontSize(i === 0 ? 8 : 9.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(13, 59, 102);
+        const valText = i === 0 && item.value.length > 22 ? item.value.substring(0, 22) + '...' : (item.value || '—');
+        doc.text(valText, x, y + 13);
+    });
+
+    y += 26;
+
+    // 3. Título de sección con acento vertical azul
+    doc.setFillColor(59, 130, 246);
+    doc.rect(margin, y, 3, 7, 'F');
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(13, 59, 102);
+    doc.text('DETALLE DE ATENCIONES DE GUARDIA PEDIÁTRICA', margin + 6, y + 5.5);
+    y += 11;
+
+    // 4. Tabla de atenciones con estilo Grid de Asociaciones
+    const tableBody = prestador.atenciones.map((a, idx) => [
+        String(idx + 1),
         a.fecha,
         a.paciente,
         a.obraSocial,
         formatCurrency(a.importe)
     ]);
 
-    // Tabla de atenciones
     autoTable(doc, {
-        startY: 38,
-        margin: { left: 14, right: 14, bottom: 20 },
-        head: [['Fecha', 'Paciente', 'Obra Social', 'Importe']],
+        startY: y,
+        head: [['#', 'Fecha', 'Paciente', 'Obra Social', 'Importe']],
         body: tableBody,
         foot: [
-            ['', '', 'Total', formatCurrency(prestador.totalImporte)]
+            ['', '', '', 'Subtotal Consultas:', formatCurrency(prestador.totalImporte)]
         ],
-        theme: 'plain',
+        theme: 'grid',
         headStyles: {
-            fontSize: 8.5,
+            fillColor: [13, 59, 102], // #0D3B66
+            textColor: [255, 255, 255],
+            fontSize: 7.5,
             fontStyle: 'bold',
-            textColor: [0, 0, 0],
-            fillColor: false,
-            lineWidth: { bottom: 0.5 },
-            lineColor: [0, 0, 0]
+            halign: 'left',
+            cellPadding: 2.8,
         },
         bodyStyles: {
-            fontSize: 7.5,
-            textColor: [0, 0, 0],
-            cellPadding: 1.2
+            fontSize: 7.2,
+            cellPadding: 2.2,
+            textColor: [30, 30, 30],
+        },
+        alternateRowStyles: {
+            fillColor: [248, 250, 252], // #F8FAFC
         },
         footStyles: {
-            fontSize: 8.5,
+            fillColor: [235, 243, 252],
+            textColor: [13, 59, 102],
+            fontSize: 8,
             fontStyle: 'bold',
-            textColor: [0, 0, 0],
-            fillColor: false,
-            lineWidth: { top: 0.5 },
-            lineColor: [0, 0, 0]
+            halign: 'right'
         },
         columnStyles: {
-            0: { cellWidth: 24, halign: 'left' },
-            1: { cellWidth: 70, halign: 'left' },
-            2: { cellWidth: 62, halign: 'left' },
-            3: { cellWidth: 26, halign: 'right' }
+            0: { cellWidth: 8, halign: 'center', fontStyle: 'bold', textColor: [148, 163, 184] },
+            1: { cellWidth: 22, halign: 'left' },
+            2: { cellWidth: 68, halign: 'left', fontStyle: 'bold' },
+            3: { cellWidth: 56, halign: 'left' },
+            4: { cellWidth: 28, halign: 'right' }
         },
+        margin: { left: margin, right: margin },
         didDrawPage: (data) => {
-            // Si hay más páginas, dibujar encabezado sutil en páginas subsiguientes
             if (data.pageNumber > 1) {
-                doc.setFontSize(7.5);
-                doc.setFont('helvetica', 'normal');
-                doc.setTextColor(100, 116, 139);
-                doc.text(`Sanatorio Argentino · Liquidación Guardia Pediátrica · ${prestador.nombre}`, 14, 10);
-                doc.text(`Página ${data.pageNumber}`, doc.internal.pageSize.getWidth() - 14, 10, { align: 'right' });
+                doc.setFillColor(13, 59, 102);
+                doc.rect(0, 0, pageW, 8, 'F');
+                doc.setFillColor(59, 130, 246);
+                doc.rect(0, 8, pageW, 1, 'F');
             }
         }
     });
 
     let finalY = doc.lastAutoTable.finalY + 6;
 
-    // Verificar si queda espacio para el cuadro de adicionales o añadir página
-    if (finalY + 45 > 280) {
+    // Verificar salto de página para bloque de adicionales
+    if (finalY + 55 > pageH - 20) {
         doc.addPage();
         finalY = 20;
     }
 
-    // ─── Cuadro de Adicionales por Guardia Pediátrica ───
+    // 5. Cuadro de Adicionales por Guardia Pediátrica
     const valorAdicional = options.valorAdicional !== undefined ? options.valorAdicional : (prestador.valorAdicional || 8000);
     const obrasSociales = options.obrasSocialesAdicional || ['001 - PROVINCIA', '004 - DAMSU'];
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(0, 0, 0);
-    doc.text('Adicional por atención en servicio de guardia pediátrica', 14, finalY);
+    doc.setFillColor(59, 130, 246);
+    doc.rect(margin, finalY, 3, 7, 'F');
+    doc.setFontSize(9.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(13, 59, 102);
+    doc.text('ADICIONAL POR ATENCIÓN EN SERVICIO DE GUARDIA PEDIÁTRICA', margin + 6, finalY + 5.5);
+    finalY += 10;
 
     // Mini tabla resumen de adicionales
     autoTable(doc, {
-        startY: finalY + 2,
-        margin: { left: 14, right: 14 },
-        head: [['Cantidad', 'Total']],
+        startY: finalY,
+        margin: { left: margin, right: margin },
+        head: [['Concepto Adicional', 'Obras Sociales Alcanzadas', 'Valor Unitario', 'Cantidad', 'Total Adicional']],
         body: [
             [
+                'Adicional Guardia Pediátrica',
+                obrasSociales.join(' · '),
+                formatCurrency(valorAdicional),
                 String(prestador.totalCantidadAdicional || 0),
                 formatCurrency(prestador.totalMontoAdicional || 0)
             ]
         ],
-        theme: 'plain',
-        headStyles: { fontSize: 8, fontStyle: 'bold', textColor: [0, 0, 0], lineWidth: 0.3, lineColor: [0, 0, 0] },
-        bodyStyles: { fontSize: 8, textColor: [0, 0, 0], lineWidth: 0.3, lineColor: [0, 0, 0] },
-        columnStyles: {
-            0: { cellWidth: 25, halign: 'center' },
-            1: { cellWidth: 35, halign: 'right' }
+        foot: [
+            ['', '', '', 'GRAN TOTAL A LIQUIDAR:', formatCurrency(prestador.totalGeneralConAdicional || (prestador.totalImporte + (prestador.totalMontoAdicional || 0)))]
+        ],
+        theme: 'grid',
+        headStyles: {
+            fillColor: [13, 59, 102],
+            textColor: [255, 255, 255],
+            fontSize: 7.5,
+            fontStyle: 'bold',
+            cellPadding: 2.8
         },
-        styles: { cellPadding: 1.5 }
+        bodyStyles: {
+            fontSize: 7.5,
+            cellPadding: 2.5,
+            textColor: [30, 30, 30]
+        },
+        footStyles: {
+            fillColor: [220, 238, 255],
+            textColor: [13, 59, 102],
+            fontSize: 8.5,
+            fontStyle: 'bold',
+            halign: 'right'
+        },
+        columnStyles: {
+            0: { cellWidth: 42, fontStyle: 'bold' },
+            1: { cellWidth: 54 },
+            2: { cellWidth: 26, halign: 'right' },
+            3: { cellWidth: 20, halign: 'center', fontStyle: 'bold', textColor: [124, 58, 237] },
+            4: { cellWidth: 40, halign: 'right', fontStyle: 'bold' }
+        }
     });
 
-    const table2Y = doc.lastAutoTable.finalY + 4;
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Obras sociales que aplican cobro de adicional:', 14, table2Y);
-
-    // Lista de obras sociales
-    autoTable(doc, {
-        startY: table2Y + 2,
-        margin: { left: 14, right: 14 },
-        body: obrasSociales.map(os => [os, formatCurrency(valorAdicional)]),
-        theme: 'plain',
-        bodyStyles: { fontSize: 7.5, textColor: [0, 0, 0], lineWidth: 0.2, lineColor: [200, 200, 200] },
-        columnStyles: {
-            0: { cellWidth: 45, halign: 'left' },
-            1: { cellWidth: 25, halign: 'right' }
-        },
-        styles: { cellPadding: 1.2 }
-    });
-
+    applyFooters(doc);
     return doc;
 }
 
@@ -207,34 +313,55 @@ export async function generateGuardiaIndividualPdf(prestador, options = {}) {
  */
 export async function generateGuardiaGeneralPdf(data, options = {}) {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const logoBase64 = await loadLogoBase64();
-    const W = doc.internal.pageSize.getWidth();
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
+    const colW = pageW - margin * 2;
 
-    // Logo
-    if (logoBase64) {
-        try {
-            doc.addImage(logoBase64, 'PNG', 14, 10, 26, 26);
-        } catch {
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(13);
-            doc.setTextColor(30, 87, 153);
-            doc.text('SANATORIO ARGENTINO', 14, 20);
-        }
-    }
+    const logoCircle = await loadCircularLogoBase64();
 
-    // Título Central
+    // 1. Header institucional
+    drawInstitutionalHeader(doc, 'INFORME CONSOLIDADO', 'Liquidación General de Guardia', logoCircle);
+
+    let y = 44;
+
+    // 2. Info Bar Resumen General
+    doc.setFillColor(241, 245, 249);
+    doc.roundedRect(margin, y, colW, 18, 3, 3, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, y, colW, 18, 3, 3, 'S');
+
+    const infoItems = [
+        { label: 'PERÍODO', value: data.periodo || 'Mayo 2026' },
+        { label: 'N° LIQUIDACIÓN', value: `N° ${data.liquidacion || '410'}` },
+        { label: 'TOTAL PROFESIONALES', value: String(data.totalPrestadores) },
+        { label: 'TOTAL ATENCIONES', value: String(data.totalAtenciones) },
+    ];
+
+    const cellW = colW / 4;
+    infoItems.forEach((item, i) => {
+        const x = margin + cellW * i + 6;
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(148, 163, 184);
+        doc.text(item.label, x, y + 6);
+        doc.setFontSize(i === 2 || i === 3 ? 11 : 9.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(13, 59, 102);
+        doc.text(item.value || '—', x, y + 13);
+    });
+
+    y += 26;
+
+    // 3. Título con acento
+    doc.setFillColor(59, 130, 246);
+    doc.rect(margin, y, 3, 7, 'F');
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.setTextColor(30, 87, 153);
-    doc.text('LIQUIDACIÓN GENERAL — SERVICIO DE GUARDIA PEDIÁTRICA', W / 2, 18, { align: 'center' });
+    doc.setTextColor(13, 59, 102);
+    doc.text('RESUMEN DE LIQUIDACIÓN POR PROFESIONAL MÉDICO', margin + 6, y + 5.5);
+    y += 11;
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(80, 80, 80);
-    doc.text(`Período de Liquidación: ${data.periodo || 'Mayo 2026'} · N° Liquidación: ${data.liquidacion || '410'}`, W / 2, 23, { align: 'center' });
-    doc.text(`Fecha de Emisión: ${new Date().toLocaleDateString('es-AR')} · Total Profesionales: ${data.totalPrestadores}`, W / 2, 27.5, { align: 'center' });
-
-    // Tabla Resumen Consolidada
+    // 4. Tabla Consolidada
     const tableBody = data.prestadores.map((p, i) => [
         String(i + 1),
         p.nombre,
@@ -247,10 +374,10 @@ export async function generateGuardiaGeneralPdf(data, options = {}) {
     ]);
 
     autoTable(doc, {
-        startY: 34,
-        margin: { left: 12, right: 12, bottom: 15 },
+        startY: y,
+        margin: { left: margin, right: margin },
         head: [
-            ['N°', 'Profesional / Responsable', 'Matrícula', 'Atenc.', 'Subtotal Consultas', 'Adic. (Cant)', 'Monto Adicional', 'Total General']
+            ['#', 'Profesional / Médico', 'Matr.', 'Atenc.', 'Subtotal Fact.', 'Adic. (Cant)', 'Monto Adic.', 'Total General']
         ],
         body: tableBody,
         foot: [
@@ -265,43 +392,49 @@ export async function generateGuardiaGeneralPdf(data, options = {}) {
                 formatCurrency(data.granTotalGlobal)
             ]
         ],
-        theme: 'striped',
+        theme: 'grid',
         headStyles: {
-            fontSize: 7.5,
+            fontSize: 7.2,
             fontStyle: 'bold',
-            fillColor: [30, 87, 153],
+            fillColor: [13, 59, 102],
             textColor: [255, 255, 255],
-            halign: 'center'
+            halign: 'center',
+            cellPadding: 2.8
         },
         bodyStyles: {
-            fontSize: 7,
-            textColor: [0, 0, 0],
-            cellPadding: 1.4
+            fontSize: 6.8,
+            textColor: [30, 30, 30],
+            cellPadding: 2.2
+        },
+        alternateRowStyles: {
+            fillColor: [248, 250, 252]
         },
         footStyles: {
             fontSize: 7.5,
             fontStyle: 'bold',
-            fillColor: [235, 243, 252],
-            textColor: [30, 87, 153]
+            fillColor: [220, 238, 255],
+            textColor: [13, 59, 102]
         },
         columnStyles: {
-            0: { cellWidth: 8, halign: 'center' },
-            1: { cellWidth: 50, halign: 'left' },
-            2: { cellWidth: 16, halign: 'center' },
-            3: { cellWidth: 14, halign: 'center' },
-            4: { cellWidth: 28, halign: 'right' },
-            5: { cellWidth: 18, halign: 'center' },
+            0: { cellWidth: 7, halign: 'center', fontStyle: 'bold', textColor: [148, 163, 184] },
+            1: { cellWidth: 48, halign: 'left', fontStyle: 'bold' },
+            2: { cellWidth: 14, halign: 'center' },
+            3: { cellWidth: 13, halign: 'center', fontStyle: 'bold' },
+            4: { cellWidth: 26, halign: 'right' },
+            5: { cellWidth: 18, halign: 'center', textColor: [124, 58, 237] },
             6: { cellWidth: 26, halign: 'right' },
-            7: { cellWidth: 26, halign: 'right', fontStyle: 'bold' }
+            7: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
         },
         didDrawPage: (data) => {
-            const pageCount = doc.internal.getNumberOfPages();
-            doc.setFontSize(7);
-            doc.setTextColor(120, 120, 120);
-            doc.text(`Página ${data.pageNumber} de ${pageCount}`, W - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
-            doc.text('Sanatorio Argentino SRL — Sistema ADM-QUI', 14, doc.internal.pageSize.getHeight() - 8);
+            if (data.pageNumber > 1) {
+                doc.setFillColor(13, 59, 102);
+                doc.rect(0, 0, pageW, 8, 'F');
+                doc.setFillColor(59, 130, 246);
+                doc.rect(0, 8, pageW, 1, 'F');
+            }
         }
     });
 
+    applyFooters(doc);
     return doc;
 }
