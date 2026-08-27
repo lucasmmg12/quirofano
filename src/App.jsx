@@ -953,7 +953,7 @@ function App({ currentUser, onLogout }) {
                 )}
 
                 {activeView === 'consultas' && (
-                    <ConsultasPanel />
+                    <ConsultasPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'liquidaciones' && (

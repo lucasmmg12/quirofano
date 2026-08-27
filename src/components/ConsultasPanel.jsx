@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { SkeletonChartGrid } from './SkeletonLoader';
+import LiquidacionesPanel from './LiquidacionesPanel';
 import {
     BarChart3, Calendar, Users, Stethoscope, Upload, RefreshCw,
     TrendingUp, Building2, ChevronDown, FileSpreadsheet, Filter,
     ChevronLeft, ChevronRight, Search, Table2, Check, Save, Loader,
-    GraduationCap, Clock, Download, FileDown,
+    GraduationCap, Clock, Download, FileDown, DollarSign, Archive
 } from 'lucide-react';
 
 const MESES = [
@@ -32,7 +33,8 @@ const OS_CATEGORIES = {
     Particulares: { label: 'Particular', color: '#EA580C', bg: '#FFF7ED', border: '#FED7AA' },
 };
 
-export default function ConsultasPanel() {
+export default function ConsultasPanel({ currentUser, addToast }) {
+    const [modoPrincipal, setModoPrincipal] = useState('dashboard'); // 'dashboard' | 'liquidaciones'
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [mes, setMes] = useState('2026-07');
@@ -530,57 +532,127 @@ export default function ConsultasPanel() {
 
     // ─── RENDER ───
     return (
-        <div className="content no-print" style={{ maxWidth: '1100px', margin: '0 auto', paddingBottom: '40px' }}>
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <div style={{ width: '44px', height: '44px', borderRadius: '14px', background: 'linear-gradient(135deg, #4F46E5, #818CF8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Stethoscope size={22} />
-                    </div>
-                    <div>
-                        <h1 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, color: '#1E293B' }}>Consultas de Guardia</h1>
-                        <p style={{ fontSize: '0.75rem', color: '#94A3B8', margin: 0 }}>Dashboard de consultas ambulatorias por guardia</p>
-                    </div>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    {/* Month selector */}
-                    <select value={mes} onChange={e => setMes(e.target.value)} style={{
-                        padding: '8px 12px', borderRadius: '10px', border: '1px solid #E2E8F0',
-                        fontSize: '0.8rem', fontWeight: 600, background: '#fff', cursor: 'pointer',
+        <div className="content no-print" style={{ maxWidth: '1200px', margin: '0 auto', paddingBottom: '40px' }}>
+            {/* Top Switcher: Dashboard & Conciliación vs Liquidaciones Médicas */}
+            <div style={{
+                display: 'flex',
+                background: '#F1F5F9',
+                padding: '5px',
+                borderRadius: '14px',
+                marginBottom: '20px',
+                gap: '6px',
+                border: '1px solid #E2E8F0'
+            }}>
+                <button
+                    onClick={() => setModoPrincipal('dashboard')}
+                    style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        padding: '10px 16px',
+                        borderRadius: '10px',
+                        border: 'none',
+                        background: modoPrincipal === 'dashboard' ? '#FFFFFF' : 'transparent',
+                        color: modoPrincipal === 'dashboard' ? '#4F46E5' : '#64748B',
+                        fontWeight: modoPrincipal === 'dashboard' ? 800 : 600,
+                        fontSize: '0.86rem',
+                        cursor: 'pointer',
+                        boxShadow: modoPrincipal === 'dashboard' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
+                        transition: 'all 0.15s ease'
+                    }}
+                >
+                    <BarChart3 size={18} /> Dashboard & Conciliación de Guardia
+                </button>
+                <button
+                    onClick={() => setModoPrincipal('liquidaciones')}
+                    style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        padding: '10px 16px',
+                        borderRadius: '10px',
+                        border: 'none',
+                        background: modoPrincipal === 'liquidaciones' ? '#FFFFFF' : 'transparent',
+                        color: modoPrincipal === 'liquidaciones' ? '#0D3B66' : '#64748B',
+                        fontWeight: modoPrincipal === 'liquidaciones' ? 800 : 600,
+                        fontSize: '0.86rem',
+                        cursor: 'pointer',
+                        boxShadow: modoPrincipal === 'liquidaciones' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
+                        transition: 'all 0.15s ease'
+                    }}
+                >
+                    <FileSpreadsheet size={18} /> Liquidaciones Médicas (Excel ➔ PDF / .ZIP)
+                    <span style={{
+                        background: '#DBEAFE',
+                        color: '#1E40AF',
+                        fontSize: '0.68rem',
+                        fontWeight: 800,
+                        padding: '2px 8px',
+                        borderRadius: '10px'
                     }}>
-                        {MESES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                    </select>
-                    {/* Import button */}
-                    <label style={{
-                        display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
-                        borderRadius: '10px', border: '1px solid #BBF7D0', background: '#F0FDF4',
-                        color: '#16A34A', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-                    }}>
-                        <Upload size={14} />
-                        {importing ? 'Importando...' : 'Importar Excel'}
-                        <input type="file" accept=".xlsx,.xls" onChange={handleImport} hidden disabled={importing} />
-                    </label>
-                    <button onClick={fetchData} style={{
-                        width: '36px', height: '36px', borderRadius: '10px', border: '1px solid #E2E8F0',
-                        background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}><RefreshCw size={14} /></button>
-                </div>
+                        Modo .ZIP
+                    </span>
+                </button>
             </div>
 
-            {/* Import result toast */}
-            {importResult && (
-                <div style={{
-                    padding: '12px 16px', borderRadius: '12px', marginBottom: '16px',
-                    background: importResult.success ? '#F0FDF4' : '#FEF2F2',
-                    border: `1px solid ${importResult.success ? '#BBF7D0' : '#FECACA'}`,
-                    color: importResult.success ? '#16A34A' : '#DC2626',
-                    fontSize: '0.82rem', fontWeight: 600,
-                }}>
-                    {importResult.success
-                        ? `✅ ${importResult.total} registros importados para ${importResult.mes}`
-                        : `❌ Error: ${importResult.error}`}
-                </div>
-            )}
+            {modoPrincipal === 'liquidaciones' ? (
+                <LiquidacionesPanel currentUser={currentUser} addToast={addToast} />
+            ) : (
+                <>
+                    {/* Header */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                            <div style={{ width: '44px', height: '44px', borderRadius: '14px', background: 'linear-gradient(135deg, #4F46E5, #818CF8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Stethoscope size={22} />
+                            </div>
+                            <div>
+                                <h1 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, color: '#1E293B' }}>Consultas de Guardia</h1>
+                                <p style={{ fontSize: '0.75rem', color: '#94A3B8', margin: 0 }}>Dashboard de consultas ambulatorias por guardia</p>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            {/* Month selector */}
+                            <select value={mes} onChange={e => setMes(e.target.value)} style={{
+                                padding: '8px 12px', borderRadius: '10px', border: '1px solid #E2E8F0',
+                                fontSize: '0.8rem', fontWeight: 600, background: '#fff', cursor: 'pointer',
+                            }}>
+                                {MESES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                            </select>
+                            {/* Import button */}
+                            <label style={{
+                                display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
+                                borderRadius: '10px', border: '1px solid #BBF7D0', background: '#F0FDF4',
+                                color: '#16A34A', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+                            }}>
+                                <Upload size={14} />
+                                {importing ? 'Importando...' : 'Importar Excel'}
+                                <input type="file" accept=".xlsx,.xls" onChange={handleImport} hidden disabled={importing} />
+                            </label>
+                            <button onClick={fetchData} style={{
+                                width: '36px', height: '36px', borderRadius: '10px', border: '1px solid #E2E8F0',
+                                background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}><RefreshCw size={14} /></button>
+                        </div>
+                    </div>
+
+                    {/* Import result toast */}
+                    {importResult && (
+                        <div style={{
+                            padding: '12px 16px', borderRadius: '12px', marginBottom: '16px',
+                            background: importResult.success ? '#F0FDF4' : '#FEF2F2',
+                            border: `1px solid ${importResult.success ? '#BBF7D0' : '#FECACA'}`,
+                            color: importResult.success ? '#16A34A' : '#DC2626',
+                            fontSize: '0.82rem', fontWeight: 600,
+                        }}>
+                            {importResult.success
+                                ? `✅ ${importResult.total} registros importados para ${importResult.mes}`
+                                : `❌ Error: ${importResult.error}`}
+                        </div>
+                    )}
 
             {loading ? (
                 <SkeletonChartGrid kpis={6} charts={2} />
@@ -1838,6 +1910,8 @@ export default function ConsultasPanel() {
                             </div>
                         </div>
                     )}
+                </>
+            )}
                 </>
             )}
         </div>
