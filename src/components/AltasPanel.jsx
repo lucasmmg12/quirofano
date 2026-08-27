@@ -200,7 +200,55 @@ export default function AltasPanel({ addToast, currentUser }) {
     // ── Filtros por columna (tipo Excel) ──
     const [columnFilters, setColumnFilters] = useState({});
     const [activeFilterCol, setActiveFilterCol] = useState(null);
+    const [filterAnchorRect, setFilterAnchorRect] = useState(null);
     const [filterSearch, setFilterSearch] = useState('');
+
+    const toggleColumnFilter = (col, e) => {
+        if (activeFilterCol === col) {
+            setActiveFilterCol(null);
+            setFilterAnchorRect(null);
+        } else {
+            const rect = e?.currentTarget?.getBoundingClientRect();
+            setFilterAnchorRect(rect);
+            setActiveFilterCol(col);
+            setFilterSearch('');
+        }
+    };
+
+    const setFilterValues = (col, values) => {
+        setColumnFilters(prev => {
+            const next = { ...prev };
+            if (!values || values.size === 0) delete next[col];
+            else next[col] = values;
+            return next;
+        });
+    };
+
+    const toggleFilterValue = (col, value) => {
+        setColumnFilters(prev => {
+            const current = prev[col] ? new Set(prev[col]) : new Set();
+            if (current.has(value)) current.delete(value);
+            else current.add(value);
+            const next = { ...prev };
+            if (current.size === 0) delete next[col];
+            else next[col] = current;
+            return next;
+        });
+    };
+
+    const clearColumnFilter = (col) => {
+        setColumnFilters(prev => {
+            const next = { ...prev };
+            delete next[col];
+            return next;
+        });
+        setActiveFilterCol(null);
+    };
+
+    const clearAllColumnFilters = () => {
+        setColumnFilters({});
+        setActiveFilterCol(null);
+    };
 
     // ── Ordenamiento fecha ingreso ──
     const [ingresoSort, setIngresoSort] = useState('desc');
@@ -526,52 +574,6 @@ export default function AltasPanel({ addToast, currentUser }) {
         }
     };
 
-    // ── Filtros por columna helpers ──
-    const toggleColumnFilter = (col) => {
-        setActiveFilterCol(prev => prev === col ? null : col);
-        setFilterSearch('');
-    };
-
-    const setFilterValues = (col, values) => {
-        setColumnFilters(prev => {
-            const next = { ...prev };
-            if (!values || values.size === 0) {
-                delete next[col];
-            } else {
-                next[col] = values;
-            }
-            return next;
-        });
-    };
-
-    const toggleFilterValue = (col, value) => {
-        setColumnFilters(prev => {
-            const current = prev[col] ? new Set(prev[col]) : new Set();
-            if (current.has(value)) {
-                current.delete(value);
-            } else {
-                current.add(value);
-            }
-            const next = { ...prev };
-            if (current.size === 0) delete next[col];
-            else next[col] = current;
-            return next;
-        });
-    };
-
-    const clearColumnFilter = (col) => {
-        setColumnFilters(prev => {
-            const next = { ...prev };
-            delete next[col];
-            return next;
-        });
-        setActiveFilterCol(null);
-    };
-
-    const clearAllColumnFilters = () => {
-        setColumnFilters({});
-        setActiveFilterCol(null);
-    };
 
     // Obtener datos procesados con effectiveEstado (sin filtro de pill, para KPIs)
     const allProcessedAltas = useMemo(() => {
@@ -990,7 +992,10 @@ export default function AltasPanel({ addToast, currentUser }) {
             <th className="cart__th" style={{ width, position: 'relative', userSelect: 'none' }}>
                 <div
                     style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
-                    onClick={() => toggleColumnFilter(col)}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        toggleColumnFilter(col, e);
+                    }}
                 >
                     {label}
                     <ListFilter size={12} style={{
@@ -1006,19 +1011,31 @@ export default function AltasPanel({ addToast, currentUser }) {
                     )}
                 </div>
 
-                {isOpen && (
+                {isOpen && filterAnchorRect && createPortal(
                     <>
                         <div
-                            onClick={() => setActiveFilterCol(null)}
-                            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 998 }}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveFilterCol(null);
+                                setFilterAnchorRect(null);
+                            }}
+                            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9998 }}
                         />
-                        <div style={{
-                            position: 'absolute', top: '100%', left: 0, zIndex: 999,
-                            marginTop: '2px', minWidth: '200px', maxWidth: '280px',
-                            background: '#fff', borderRadius: '10px',
-                            boxShadow: '0 8px 30px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
-                            padding: '8px', animation: 'fadeIn 0.15s ease-out',
-                        }}>
+                        <div
+                            onClick={e => e.stopPropagation()}
+                            style={{
+                                position: 'fixed',
+                                top: (filterAnchorRect.bottom + 320 > window.innerHeight)
+                                    ? Math.max(8, filterAnchorRect.top - 310)
+                                    : filterAnchorRect.bottom + 4,
+                                left: Math.max(10, Math.min(filterAnchorRect.left, window.innerWidth - 270)),
+                                zIndex: 9999,
+                                minWidth: '220px', maxWidth: '280px',
+                                background: '#fff', borderRadius: '10px',
+                                boxShadow: '0 12px 36px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.08)',
+                                padding: '10px', animation: 'fadeIn 0.15s ease-out',
+                            }}
+                        >
                             {/* Search dentro del filtro */}
                             <div style={{ position: 'relative', marginBottom: '6px' }}>
                                 <Search size={12} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
@@ -1032,6 +1049,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                         width: '100%', padding: '5px 8px 5px 26px',
                                         border: '1px solid var(--neutral-200)', borderRadius: '6px',
                                         fontSize: '0.72rem', outline: 'none',
+                                        boxSizing: 'border-box'
                                     }}
                                     autoFocus
                                 />
@@ -1041,18 +1059,18 @@ export default function AltasPanel({ addToast, currentUser }) {
                                 <button
                                     onClick={e => { e.stopPropagation(); setFilterValues(col, new Set(filtered)); }}
                                     style={{
-                                        flex: 1, padding: '3px', borderRadius: '4px',
+                                        flex: 1, padding: '4px', borderRadius: '4px',
                                         border: '1px solid var(--neutral-200)', background: '#F9FAFB',
-                                        fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer',
+                                        fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
                                         color: 'var(--neutral-600)',
                                     }}
                                 >Todos</button>
                                 <button
                                     onClick={e => { e.stopPropagation(); clearColumnFilter(col); }}
                                     style={{
-                                        flex: 1, padding: '3px', borderRadius: '4px',
+                                        flex: 1, padding: '4px', borderRadius: '4px',
                                         border: '1px solid var(--neutral-200)', background: '#F9FAFB',
-                                        fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer',
+                                        fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
                                         color: '#DC2626',
                                     }}
                                 >Limpiar</button>
@@ -1088,7 +1106,8 @@ export default function AltasPanel({ addToast, currentUser }) {
                                 })}
                             </div>
                         </div>
-                    </>
+                    </>,
+                    document.body
                 )}
             </th>
         );
