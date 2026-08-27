@@ -1039,10 +1039,15 @@ async function syncAltasAdministrativas(db) {
         const rawObs = r.Observaciones?.trim() || null;
         const cleanObs = rawObs ? stripRtf(rawObs) : null;
 
+        // Si cliente no empieza con código de obra social (2-3 dígitos) o es nulo, es Particular (SALUS pone nombre del paciente)
+        const rawCliente = r.Cliente?.trim() || null;
+        const isParticular = !rawCliente || !/^\d{2,3}/.test(rawCliente) || rawCliente.includes('042') || rawCliente.toUpperCase().includes('PARTICULAR');
+        const finalCliente = isParticular ? '042 - PARTICULARES' : rawCliente;
+
         records.push({
             numero_admision: numAdmision,
             paciente: r.Paciente?.trim() || 'Sin nombre',
-            cliente: r.Cliente?.trim() || null,
+            cliente: finalCliente,
             especialidad: r.Especialidad?.trim() || null,
             proceso: r.Proceso?.trim() || null,
             doctor: r.Doctor?.trim() || null,
@@ -1051,6 +1056,7 @@ async function syncAltasAdministrativas(db) {
             observaciones: cleanObs,
             fecha_ingreso: formatDate(r['Fecha ingreso']),
             fecha_alta: formatDate(r['Fecha alta']),
+            estado: isParticular ? 'Particular' : null,
         });
     }
 
@@ -1105,10 +1111,13 @@ async function syncAltasAdministrativas(db) {
             const preserved = existingMap.get(row.numero_admision);
             const merged = preserved ? { ...row, ...preserved } : row;
 
-            // Auto-mapear Particular si cliente es 042 - PARTICULARES y no tiene estado manual previo
-            const isParticular = (merged.cliente || '').includes('042') || (merged.cliente || '').toUpperCase().includes('PARTICULAR');
-            if (isParticular && !merged.estado) {
-                merged.estado = 'Particular';
+            // Auto-mapear Particular si cliente es 042 - PARTICULARES o no empieza con número
+            const isPart = !merged.cliente || !/^\d{2,3}/.test(merged.cliente.trim()) || merged.cliente.includes('042') || merged.cliente.toUpperCase().includes('PARTICULAR');
+            if (isPart) {
+                merged.cliente = '042 - PARTICULARES';
+                if (!merged.estado) {
+                    merged.estado = 'Particular';
+                }
             }
 
             // Limpiar campo interno antes de enviar

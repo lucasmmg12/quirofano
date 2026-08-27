@@ -688,7 +688,12 @@ export default function AltasPanel({ addToast, currentUser }) {
 
             const isFacturada = !!(alta.facturada || alta.estado_fac === 'Facturada');
             const isDevueltaFac = !!(alta.devolucion_id && alta.estado_fac === 'Devuelta' && !isFacturada);
-            const isParticular = (cliente || '').toUpperCase().includes('042') || (cliente || '').toUpperCase().includes('PARTICULAR');
+            
+            // Si el cliente no empieza con código numérico (2-3 dígitos), es Particular (SALUS pone nombre del paciente)
+            const rawCliente = (cliente || alta.cliente || '').trim();
+            const isParticular = !rawCliente || !/^\d{2,3}/.test(rawCliente) || rawCliente.includes('042') || rawCliente.toUpperCase().includes('PARTICULAR');
+            const clienteNormalized = isParticular ? '042 - PARTICULARES' : rawCliente;
+
             const effectiveEstado = (isCtrlAdmSi || obsHasAltaAdm || alta.estado === 'Alta Adm')
                 ? 'Alta Adm'
                 : (alta.estado || (isParticular ? 'Particular' : 'Vacío'));
@@ -735,7 +740,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                 _siblingAdmissionNumbers: siblingAdmissionNumbers,
                 _cruzaMes: cruzaMes,
                 _fechaCierreSugerida: fechaCierreSugerida,
-                doctor, proceso, cliente // Sobrescribimos con los datos fusionados
+                doctor, proceso, cliente: clienteNormalized // Normalizado a 042 - PARTICULARES
             };
         });
 
