@@ -10,12 +10,15 @@
  * Aprobado por: Dr. Carlos Buteler (Director Médico)
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
     BookOpen, Download, Printer, Loader2, CheckCircle2, FileText,
     ArrowRight, Layers, Cpu, ShieldCheck, Activity, Users, HelpCircle,
     FileCheck2, Building, Stethoscope, AlertTriangle, Sparkles, MessageSquare,
-    QrCode, Database, RefreshCw, Send, CheckSquare, Clock, Zap, CornerDownRight
+    QrCode, Database, RefreshCw, Send, CheckSquare, Clock, Zap, CornerDownRight,
+    Search, ChevronDown, ChevronRight, Bookmark, Filter, FileSpreadsheet,
+    MessageCircle, Ticket, DollarSign, FolderOpen, Wrench, Receipt, ClipboardCheck,
+    History, ClipboardList, PackageCheck, Microscope, Brain, Settings, AlertCircle
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -24,10 +27,10 @@ import autoTable from 'jspdf-autotable';
 export const DOC_META = {
     codigo: 'ITYS 23',
     revision: '01',
-    version: '1.1',
+    version: '1.2',
     fechaVigencia: '27/08/2026',
     estado: 'Vigente — Aprobado SGC',
-    titulo: 'SISTEMA ADM-QUI — MANUAL DE PROCEDIMIENTOS OPERATIVOS INTEGRALES',
+    titulo: 'SISTEMA ADM-QUI — MANUAL DE PROCEDIMIENTOS OPERATIVOS Y GUÍA INTEGRAL',
     sistema: 'SISTEMA ADMINISTRACIÓN (ADM-QUI)',
     departamento: 'INNOVACIÓN Y TRANSFORMACIÓN DIGITAL',
     elaboro: 'Lucas Marinero',
@@ -38,21 +41,590 @@ export const DOC_META = {
     aproboCargo: 'Director Médico',
 };
 
-// ─── Paleta Institucional (RGB) ─────────────────────────────────────────────
-const COLORS = {
-    primary: [30, 87, 153],
-    primaryMid: [41, 128, 185],
-    primaryLight: [235, 243, 252],
-    accent: [26, 82, 118],
-    white: [255, 255, 255],
-    grayLight: [245, 247, 250],
-    grayMid: [189, 195, 199],
-    grayDark: [52, 73, 94],
-    textMain: [30, 39, 46],
-    textSub: [86, 101, 115],
-    tableHead: [235, 238, 242],
-    boxBorder: [200, 210, 225],
-};
+// ─── Estructura Exhaustiva de Módulos y Submódulos del Sistema ──────────────
+export const SISTEMA_MODULOS = [
+    {
+        id: 'inicio',
+        titulo: 'Módulo 1: Inicio y Dashboard Operativo',
+        icono: Layers,
+        color: '#1E5799',
+        badge: 'General',
+        resumen: 'Centro de control unificado con indicadores clave en tiempo real, accesos directos y atajo global Ctrl + K.',
+        diagrama: [
+            { paso: '1. Login Institucional', desc: 'Validación en Supabase con usuario o correo @sanatorioargentino.com.ar' },
+            { paso: '2. Carga de Preferencias', desc: 'Lectura de user_module_preferences para mostrar módulos habilitados' },
+            { paso: '3. Dashboard Dinámico', desc: 'Resumen de cirugías del día, turnos en espera y altas pendientes' },
+            { paso: '4. Atajo Global [Ctrl+K]', desc: 'Apertura inmediata de la Paleta de Comandos y Asistente Beto IA' }
+        ],
+        submodulos: [
+            {
+                nombre: '1.1 Panel de Inicio y KPIs',
+                procedimiento: [
+                    'Ingresar a la plataforma con las credenciales asignadas.',
+                    'Observar en la parte superior el resumen de actividades del día (Cirugías programadas, Pacientes en espera, Altas por auditar).',
+                    'Utilizar los accesos directos a los módulos frecuentes configurados en el perfil de usuario.'
+                ],
+                controles: 'Botones de acceso rápido, tarjetas de KPIs numéricos, banner de novedades institucionales.',
+                reglas: 'El tablero se actualiza automáticamente mediante suscripciones Realtime a la base de datos.'
+            },
+            {
+                nombre: '1.2 Paleta de Comandos y Asistente Beto IA (Ctrl + K)',
+                procedimiento: [
+                    'Presionar la combinación de teclas Ctrl + K en cualquier pantalla.',
+                    'Escribir la acción deseada (ej. "Ir a Altas", "Buscar Cirugía de Gómez", "¿Cuántas altas hay hoy?").',
+                    'Presionar Enter para navegar de inmediato o interactuar con el asistente inteligente Beto IA.'
+                ],
+                controles: 'Buscador centralizado con autocompletado y acceso directo a Beto IA.',
+                reglas: 'Permite navegación ágil sin necesidad de usar el ratón ni desplegar el menú lateral.'
+            }
+        ]
+    },
+    {
+        id: 'gobernanza',
+        titulo: 'Módulo 2: Gobernanza, Seguridad y Roles',
+        icono: ShieldCheck,
+        color: '#0D9488',
+        badge: 'Seguridad',
+        resumen: 'Administración de usuarios, asignación de permisos por perfil, reseteo de contraseñas y auditoría inmutable de actividad.',
+        diagrama: [
+            { paso: '1. Autenticación', desc: 'Validación de hash y estado activo en admqui_usuarios' },
+            { paso: '2. Matriz de Roles', desc: 'Asignación de perfil: Admisión, Facturación, Laboratorios, Admin' },
+            { paso: '3. Onboarding de Módulos', desc: 'Configuración personalizada de visibilidad de módulos por usuario' },
+            { paso: '4. Activity Audit Log', desc: 'Registro inmutable de cada acción con IP, timestamp y usuario' }
+        ],
+        submodulos: [
+            {
+                nombre: '2.1 Gestión de Usuarios y Accesos (admqui_usuarios)',
+                procedimiento: [
+                    'Acceder a la pestaña "Usuarios" en Gobernanza.',
+                    'Para dar de alta: Presionar "Nuevo Usuario", completar Nombre, Apellido, Usuario (ej. jterrera), Iniciales (JT), Correo y Contraseña inicial.',
+                    'Para editar o habilitar: Localizar al usuario en la tabla y cambiar el switch de estado a Activo/Inactivo.',
+                    'Para resetear contraseña: Usar la opción "Cambiar Contraseña" asignando la clave temporal (ej. 123456).'
+                ],
+                controles: 'Tabla de usuarios, buscador por nombre/usuario, modal de creación y modal de cambio de contraseña.',
+                reglas: 'Solo los usuarios con rol Administrador pueden crear usuarios o modificar contraseñas ajenas.'
+            },
+            {
+                nombre: '2.2 Matriz de Roles y Visibilidad de Módulos',
+                procedimiento: [
+                    'Seleccionar el usuario a configurar y presionar "Módulos Asignados".',
+                    'Marcar los módulos que corresponden a su función operativa (ej. Facturación para analistas de internado).',
+                    'Guardar los cambios. El sistema actualiza inmediatamente el menú lateral del colaborador.'
+                ],
+                controles: 'Checklist interactivo de módulos agrupados por área asistencial y administrativa.',
+                reglas: 'Evita la sobrecarga visual y garantiza que cada área acceda estrictamente a su información pertinente.'
+            },
+            {
+                nombre: '2.3 Bitácora Inmutable de Actividad (Activity Audit Log)',
+                procedimiento: [
+                    'Ingresar a la pestaña "Registro de Actividad".',
+                    'Filtrar por rango de fechas, usuario específico o tipo de evento (Login, Traspaso, Devolución, Cambio de Estado).',
+                    'Hacer clic en un registro para auditar los datos anteriores y posteriores a la modificación.'
+                ],
+                controles: 'Tabla de auditoría con orden cronológico, filtros avanzados y visor de cambios en formato JSON.',
+                reglas: 'Registro de seguridad no modificable conforme a exigencias de acreditación ITAES.'
+            }
+        ]
+    },
+    {
+        id: 'cirugías',
+        titulo: 'Módulo 3: Control de Cirugías y Triage Quirúrgico',
+        icono: Stethoscope,
+        color: '#1E5799',
+        badge: 'Quirófano',
+        resumen: 'Gestión integral de la programación quirúrgica diaria importada de SALUS, pipeline de preparación por WhatsApp y triage de fojas con IA.',
+        diagrama: [
+            { paso: '1. SALUS Sync', desc: 'Importación de cirugías programadas, cirujano y quirófano' },
+            { paso: '2. Pipeline WhatsApp', desc: 'Lila (Sin Mensaje) ➔ Amarillo (Revisión) ➔ Verde (Autorizada) ➔ Azul (Confirmada)' },
+            { paso: '3. Recepción Paciente', desc: 'Validación presencial en Admisión y verificación de ayuno' },
+            { paso: '4. Triage de Foja IA', desc: 'Escaneo de parte quirúrgico, detección de insumos y biopsias' }
+        ],
+        submodulos: [
+            {
+                nombre: '3.1 Programación Quirúrgica y Pipeline WhatsApp',
+                procedimiento: [
+                    'Verificar en el encabezado la fecha seleccionada y la lista de cirugías sincronizadas de SALUS.',
+                    'Hacer clic en el icono de WhatsApp junto al paciente para enviar el mensaje prequirúrgico automático con los requerimientos de internación.',
+                    'A medida que el paciente responde y envía órdenes autorizadas, cambiar el estado: Lila ➔ Amarillo ➔ Verde (Autorizada).',
+                    'El día de la cirugía, al confirmar la presencia del paciente con ayuno cumplido, marcar en Azul (Confirmada).'
+                ],
+                controles: 'Selector de fecha, filtros por cirujano y especialidad, botones directos de WhatsApp, selector de estados por color.',
+                reglas: 'Toda cirugía en Rojo (Suspendida/Alerta) requiere ingresar obligatoriamente el motivo de cancelación.'
+            },
+            {
+                nombre: '3.2 Triage de Fojas Quirúrgicas con Inteligencia Artificial',
+                procedimiento: [
+                    'Localizar la intervención finalizada y presionar el botón "Ver Foja / Cargar Foja".',
+                    'Subir el archivo PDF o fotografía nítida del parte quirúrgico firmado por cirujano y anestesiólogo.',
+                    'El motor de IA analiza el texto médico y resalta automáticamente: Materiales protésicos (mallas, tornillos, suturas especiales) y Biopsias tomadas.',
+                    'Cotejar visualmente los elementos detectados con el documento físico y presionar "Confirmar y Guardar".'
+                ],
+                controles: 'Visor de PDF/imagen, panel lateral de insumos detectados con casillas de verificación y botón de guardado.',
+                reglas: 'Si se detecta toma de biopsia, el sistema notifica automáticamente al Módulo de Laboratorios.'
+            },
+            {
+                nombre: '3.3 Reprogramación y Cirugías Suspendidas',
+                procedimiento: [
+                    'Si una intervención debe posponerse, abrir el modal de edición de la cirugía.',
+                    'Seleccionar el estado "Suspendida" o "Reprogramada".',
+                    'Elegir el motivo: Causa médica del paciente, falta de autorización de obra social, decisión del cirujano o fuerza mayor.',
+                    'Asignar la nueva fecha tentativa para que el sistema emita la alerta de seguimiento en Admisión.'
+                ],
+                controles: 'Modal de reprogramación con selector de motivos estandarizados y nuevo calendario.',
+                reglas: 'Las suspensiones alimentan el indicador mensual de eficiencia de quirófanos de Calidad SGC.'
+            }
+        ]
+    },
+    {
+        id: 'turnos',
+        titulo: 'Módulo 4: Cola de Turnos, Tótem y Boxes',
+        icono: Ticket,
+        color: '#10B981',
+        badge: 'Recepción',
+        resumen: 'Control de flujo presencial con tótem de autoservicio para pacientes, llamador central con voz y gestión en Boxes 1 al 8.',
+        diagrama: [
+            { paso: '1. Tótem Kiosco', desc: 'El paciente ingresa su DNI en pantalla táctil y retira ticket' },
+            { paso: '2. Balanceo Inteligente', desc: 'Asignación automática al Box activo con menor tiempo de espera' },
+            { paso: '3. Llamador Central', desc: 'Anuncio acústico (campana) y locución por voz del turno y Box' },
+            { paso: '4. Atención en Box', desc: 'Recepcionista atiende, deriva o finaliza el trámite registrando tiempos' }
+        ],
+        submodulos: [
+            {
+                nombre: '4.1 Tótem de Autoservicio Kiosco (/turno)',
+                procedimiento: [
+                    'La pantalla táctil opera de forma autónoma en el hall central.',
+                    'El paciente introduce su número de DNI utilizando el teclado numérico interactivo.',
+                    'Presiona "Obtener Turno". El sistema consulta el balanceo de carga y emite el ticket impreso con letra y número.',
+                    'El sistema vuelve automáticamente a la pantalla de inicio tras 8 segundos.'
+                ],
+                controles: 'Teclado táctil en pantalla, validador de DNI, botón de emisión de turno y reinicio automático.',
+                reglas: 'El tótem opera entre las 06:30 y 20:30 hs. Durante ese horario, siempre emite turnos con balanceo de boxes.'
+            },
+            {
+                nombre: '4.2 Pantalla Llamadora Central (/turnollamador)',
+                procedimiento: [
+                    'Se proyecta de manera continua en los monitores de la sala de espera.',
+                    'Al presionar "Llamar Siguiente" desde cualquier Box, la pantalla reproduce una campana de atención y reproduce la locución de voz sintetizada (ej. "Turno A-12, dirigirse al Box 3").',
+                    'Muestra el turno actual en tamaño gigante y el historial de los últimos 4 llamados.'
+                ],
+                controles: 'Visualizador de alta visibilidad, sintetizador de audio y listado lateral de turnos recientes.',
+                reglas: 'No requiere intervención manual; se sincroniza por WebSocket/Realtime con Supabase.'
+            },
+            {
+                nombre: '4.3 Gestión de Boxes de Atención (TurnoAdminPanel)',
+                procedimiento: [
+                    'Cada recepcionista ingresa al sistema y selecciona su Box asignado (1 al 8).',
+                    'Presiona "Llamar Siguiente" para convocar al paciente que lleva más tiempo en espera.',
+                    'Al iniciar la entrevista presiona "Atendiendo". Si necesita estudios complementarios puede "Derivar" a otro sector.',
+                    'Al concluir la gestión presiona "Finalizado". Si el paciente no se presenta tras 3 llamados, presiona "Ausente".'
+                ],
+                controles: 'Panel de control con botones Llamar, Re-llamar, Atendiendo, Finalizar, Ausente y selector de Box.',
+                reglas: 'Calcula métricas exactas de tiempo de espera y tiempo de atención para auditoría de calidad.'
+            }
+        ]
+    },
+    {
+        id: 'altas',
+        titulo: 'Módulo 5: Control de Altas Administrativas',
+        icono: ClipboardCheck,
+        color: '#8B5CF6',
+        badge: 'Internaciones',
+        resumen: 'Auditoría administrativa de egresos hospitalarios, normalización de 042 Particulares, internaciones prolongadas y Carrito de Traspaso a Facturación.',
+        diagrama: [
+            { paso: '1. Sincronización SALUS', desc: 'Importación de admisiones internadas y fecha de egreso médico' },
+            { paso: '2. Auditoría Administrativa', desc: 'Control de órdenes, firmas médicas, 042 Particulares y cruza mes' },
+            { paso: '3. Carrito de Traspaso', desc: 'Selección de fichas Alta Adm y cálculo de resumen nominal' },
+            { paso: '4. Remito TRASP y Firmas', desc: 'Emisión de código TRASP-YYYYMMDD-XXXX y firmas táctiles' }
+        ],
+        submodulos: [
+            {
+                nombre: '5.1 Bandeja de Altas y Paginación x10',
+                procedimiento: [
+                    'Ingresar a "Control de Altas" y filtrar por el mes correspondiente.',
+                    'La tabla muestra 10 registros por página para máxima agilidad de carga.',
+                    'Auditar cada historia clínica: verificar que cuente con consentimiento informado, orden quirúrgica y epicrisis.',
+                    'Asignar el estado correspondiente: "Alta Adm", "Alta Adm. Parcial", "Particular", "Suspendida", "Pasa al mes que viene" o "Interconsulta".'
+                ],
+                controles: 'Paginador ágil (10 por página), selector de estados desplegable, campo de notas y badges de alerta.',
+                reglas: 'Si el cliente es "042 - PARTICULARES" o coincide con el nombre del paciente, el sistema auto-asigna el estado "Particular".'
+            },
+            {
+                nombre: '5.2 Fusión Inteligente de Admisiones Duplicadas',
+                procedimiento: [
+                    'El sistema identifica automáticamente registros que comparten mismo paciente y fecha de ingreso.',
+                    'Agrupa los registros en una sola fila visual destacada con el badge azul [🔗 Fusionada].',
+                    'Al hacer clic en el badge se expande el desglose de los números de admisión agrupados para auditar sus prestaciones.'
+                ],
+                controles: 'Badge interactivo colapsable con desglose de números de admisión fusionados.',
+                reglas: 'Garantiza que no se generen traspasos duplicados ni se omita ninguna admisión en la liquidación.'
+            },
+            {
+                nombre: '5.3 Internaciones Prolongadas (Cruza Mes) y Garantías',
+                procedimiento: [
+                    'Para pacientes ingresados en un mes que continúan internados en el mes siguiente, revisar la alerta de "Cruza Mes".',
+                    'Si el paciente no posee cobertura total de obra social, ingresar en la columna "Garantías" el monto del pagaré o comprobante de transferencia retenido.',
+                    'Adjuntar foto del pagaré firmado para resguardo de Tesorería.'
+                ],
+                controles: 'Indicador visual de Cruza Mes, modal de carga de garantías/pagarés con carga de fotos de comprobante.',
+                reglas: 'Ningún paciente particular puede ser derivado a Facturación sin el respaldo de pagaré o cancelación previa.'
+            },
+            {
+                nombre: '5.4 Carrito de Traspaso y Remito Oficial TRASP',
+                procedimiento: [
+                    'Marcar las casillas de verificación de las admisiones en estado "Alta Adm" que están listas para liquidar.',
+                    'Presionar el botón "Generar Traspaso" ubicado en la barra superior.',
+                    'Comprobar en el modal el listado nominal de historias clínicas y total de fichas.',
+                    'Completar el nombre del responsable que entrega (Admisión) y quien recibe (Facturación).',
+                    'Capturar ambas firmas digitales sobre la pantalla táctil.',
+                    'Presionar "Confirmar Traspaso": El sistema genera el código TRASP-YYYYMMDD-XXXX, descarga la constancia en PDF y transfiere las fichas a Facturación.'
+                ],
+                controles: 'Barra flotante de selección múltiple, modal con lienzo de firmas táctiles (SignaturePad) y generador de PDF.',
+                reglas: 'El remito digital TRASP es el único documento formal válido para certificar el traspaso de expedientes.'
+            }
+        ]
+    },
+    {
+        id: 'facturacion',
+        titulo: 'Módulo 6: Facturación Internado y Devoluciones',
+        icono: Receipt,
+        color: '#EF4444',
+        badge: 'Liquidación',
+        resumen: 'Espacio de trabajo para analistas liquidadores con asignación nominal, detección automática de facturas de SALUS y circuito formal de devoluciones.',
+        diagrama: [
+            { paso: '1. Fichas Recibidas', desc: 'Ingreso desde Control de Altas con número de remito TRASP' },
+            { paso: '2. Asignación Analista', desc: 'Distribución a Jorge Terrera, Paola Illanes, Inés Dona, etc.' },
+            { paso: '3. Liquidación SALUS', desc: 'Detección automática de facturas en Puntos de Venta 21 y 31' },
+            { paso: '4. Devolución si Faltan Datos', desc: 'Carrito de Devolución con motivo obligatorio y remito DEV' }
+        ],
+        submodulos: [
+            {
+                nombre: '6.1 Asignación Nominal a Analistas Liquidadores',
+                procedimiento: [
+                    'Ingresar a la pestaña principal de "Facturación".',
+                    'Seleccionar las fichas y asignar el analista responsable mediante el menú desplegable (ej. Jorge Terrera - JT).',
+                    'Cada liquidador puede filtrar por "Mis Fichas Asignadas" para trabajar exclusivamente sobre su lote de expedientes.'
+                ],
+                controles: 'Selector de analistas con iniciales, filtro personalizado por responsable y contador de fichas por analista.',
+                reglas: 'Permite medir la productividad individual y la velocidad de liquidación por liquidador.'
+            },
+            {
+                nombre: '6.2 Detección Automática de Facturas SALUS (PDV 21/31)',
+                procedimiento: [
+                    'El analista liquida y emite la factura en el sistema central SALUS (SQL Server).',
+                    'El sync-server de ADM-QUI detecta la emisión del comprobante en los puntos de venta 21 o 31.',
+                    'El sistema actualiza de forma automática el estado de la ficha a "Facturada", incorporando el número de factura, tipo y fecha de comprobante.'
+                ],
+                controles: 'Insignia verde "Facturada" con número de comprobante vinculado e icono de sincronización.',
+                reglas: 'Evita la doble carga manual y previene errores de tipeo en los números de factura.'
+            },
+            {
+                nombre: '6.3 Carrito de Devoluciones y Remito DEV a Altas',
+                procedimiento: [
+                    'Si una historia clínica presenta inconsistencias (ej. falta firma del médico en foja, falta voucher de prótesis), presionar "Añadir a Devolución".',
+                    'Seleccionar el motivo de rechazo estandarizado y escribir una observación detallada para Admisión.',
+                    'Al completar el lote de fichas rechazadas, presionar "Generar Remito de Devolución".',
+                    'Capturar las firmas de Facturación y Admisión: El sistema emite el remito DEV y retorna las historias a la bandeja de Altas para subsanación.'
+                ],
+                controles: 'Carrito flotante de devoluciones, selector de motivos de rechazo, modal de firmas y generador de remito PDF.',
+                reglas: 'Toda devolución debe estar debidamente justificada y queda registrada en el Historial de Devoluciones.'
+            },
+            {
+                nombre: '6.4 Historial de Devoluciones y Auditoría',
+                procedimiento: [
+                    'Acceder a la pestaña "Historial de Devoluciones" dentro de Facturación.',
+                    'Consultar la lista histórica de expedientes devueltos con fecha, analista emisor, motivo y fecha de subsanación.',
+                    'Exportar el reporte mensual para análisis del Comité de Calidad y reducción de no conformidades.'
+                ],
+                controles: 'Tabla histórica con filtros por motivo y analista, botón de exportación a Excel.',
+                reglas: 'Permite identificar las causas recurrentes de devolución para capacitar al personal de Admisión.'
+            }
+        ]
+    },
+    {
+        id: 'deudas_presupuestos',
+        titulo: 'Módulo 7: Deudas, Coseguros y Presupuestos',
+        icono: DollarSign,
+        color: '#F59E0B',
+        badge: 'Finanzas',
+        resumen: 'Recuperación de cuentas corrientes de pacientes, planes de pago en cuotas, convenios de coseguros y emisión formal de presupuestos médicos.',
+        diagrama: [
+            { paso: '1. Registro de Deuda', desc: 'Carga de saldo por coseguro, prótesis o diferencia particular' },
+            { paso: '2. Plan de Pagos / WhatsApp', desc: 'Acuerdo en cuotas y envío de recordatorio formal con enlace' },
+            { paso: '3. Cotización Presupuesto', desc: 'Desglose de derechos de quirófano, honorarios y descartables' },
+            { paso: '4. Emisión PDF & Envío', desc: 'Generación de presupuesto con validez de 15 a 30 días' }
+        ],
+        submodulos: [
+            {
+                nombre: '7.1 Gestión y Recuperación de Deudas de Pacientes',
+                procedimiento: [
+                    'Ingresar a "Deudas" y buscar al paciente por DNI o apellido.',
+                    'Registrar el concepto de la deuda (Coseguro no autorizado, insumo especial, internación particular).',
+                    'Configurar el plan de pago si se pactó en cuotas (efectivo, transferencia, tarjeta de crédito).',
+                    'Presionar el botón de WhatsApp para enviar el recordatorio institucional de regularización.'
+                ],
+                controles: 'Buscador de pacientes, formulario de registro de deuda, simulador de cuotas y botón WhatsApp.',
+                reglas: 'Al cancelar la totalidad del saldo, el sistema emite el certificado digital de "Libre de Deuda".'
+            },
+            {
+                nombre: '7.2 Emisión Formal de Presupuestos Quirúrgicos',
+                procedimiento: [
+                    'Ingresar a "Presupuestos" y presionar "Nuevo Presupuesto".',
+                    'Cargar los datos del paciente, cirujano responsable y código de procedimiento solicitado.',
+                    'Desglosar los conceptos: Derecho de quirófano, honorarios médicos y anestésicos, días de cama (piso/UTI), descartables y prótesis.',
+                    'Definir la validez de la cotización (15 a 30 días) y presionar "Generar PDF".',
+                    'Enviar el presupuesto oficial membretado directamente al WhatsApp del paciente.'
+                ],
+                controles: 'Calculadora de conceptos quirúrgicos, selector de validez, visor de PDF y botón de envío directo.',
+                reglas: 'Todo presupuesto oficial lleva firma digital de la Administración y cláusula de vigencia arancelaria.'
+            }
+        ]
+    },
+    {
+        id: 'mensajeria',
+        titulo: 'Módulo 8: Mensajería WhatsApp Multilínea',
+        icono: MessageSquare,
+        color: '#2563EB',
+        badge: 'Comunicaciones',
+        resumen: 'Centro de mensajería unificada con pacientes utilizando Línea Estándar (BuilderBot) y Línea Oficial (Meta Cloud API con ventana de 24 hs).',
+        diagrama: [
+            { paso: '1. Selección de Línea', desc: 'Línea Estándar (Operativa) vs Línea Meta Cloud API (Oficial)' },
+            { paso: '2. Verificación Ventana 24h', desc: 'Si >24h desde último mensaje del paciente, exige plantilla HSM' },
+            { paso: '3. Template Manager', desc: 'Plantillas institucionales con variables {{nombre}}, {{fecha}}, etc.' },
+            { paso: '4. Registro en Conversación', desc: 'Historial unificado y trazabilidad de entrega/lectura' }
+        ],
+        submodulos: [
+            {
+                nombre: '8.1 Chat en Vivo y Ventana de 24 Horas de Meta',
+                procedimiento: [
+                    'Ingresar a "Mensajería ➔ Chat" para ver las conversaciones activas con pacientes.',
+                    'Si el paciente escribió hace menos de 24 horas, la ventana está abierta: se puede responder con texto libre o adjuntos.',
+                    'Si pasaron más de 24 horas, el sistema bloquea el texto libre y activa el selector de "Plantillas Aprobadas (HSM)".'
+                ],
+                controles: 'Bandeja de chats estilo WhatsApp Web, indicador de estado de ventana 24h y selector de plantillas.',
+                reglas: 'Cumplimiento estricto de las normativas de Meta Cloud API para evitar sanciones o bloqueos de línea.'
+            },
+            {
+                nombre: '8.2 Template Manager y Envíos Masivos Prequirúrgicos',
+                procedimiento: [
+                    'Ingresar a "Plantillas WhatsApp" para administrar los modelos de mensaje autorizados.',
+                    'Para envíos masivos: Seleccionar el lote de cirugías del día siguiente y presionar "Envío Masivo de Indicaciones".',
+                    'El sistema personaliza automáticamente las variables: {{nombre}}, {{fecha_cirugia}}, {{horario_presentacion}}, {{medico}}.',
+                    'Verificar la cola de envíos y confirmar.'
+                ],
+                controles: 'Editor de plantillas con vista previa en vivo, motor de variables automáticas y despachador en lote.',
+                reglas: 'Cada envío masivo incorpora un intervalo de 2 a 4 segundos entre mensajes para no saturar la API.'
+            }
+        ]
+    },
+    {
+        id: 'asociaciones_lab',
+        titulo: 'Módulo 9: Asociaciones Médicas y Laboratorios',
+        icono: Microscope,
+        color: '#0891B2',
+        badge: 'Trazabilidad Externa',
+        resumen: 'Agrupación gremial de fojas quirúrgicas para asociaciones médicas y trazabilidad de biopsias con reglas Facturar vs Entregar.',
+        diagrama: [
+            { paso: '1. Agrupación por Entidad', desc: 'Colegio Médico, Asociación Médica de San Juan, etc.' },
+            { paso: '2. Acta de Entrega PDF', desc: 'Generación de remito con detalle nominal de fojas y firmas' },
+            { paso: '3. Derivación de Biopsias', desc: 'Clasificación hacia CEDAP, Agüero, Ríos o Cuyo' },
+            { paso: '4. Regla Facturar vs Entregar', desc: 'Facturación institucional o entrega física con firma de paciente' }
+        ],
+        submodulos: [
+            {
+                nombre: '9.1 Entrega de Fojas a Asociaciones Médicas',
+                procedimiento: [
+                    'Ingresar a "Entrega Asociaciones" y filtrar por la entidad correspondiente (ej. Asociación Médica de San Juan).',
+                    'Seleccionar las fojas quirúrgicas auditadas que corresponden al período de entrega.',
+                    'Presionar "Emitir Constancia de Entrega": Se genera el acta PDF detallando números de historia clínica, nombres de pacientes y cirujanos.',
+                    'Firmar el acta física y digitalmente al entregar los expedientes al cadete o representante gremial.'
+                ],
+                controles: 'Selector de asociación médica, tabla de fojas listas para entrega y generador de remito PDF.',
+                reglas: 'Garantiza la trazabilidad legal de que las órdenes originales fueron entregadas a la entidad médica.'
+            },
+            {
+                nombre: '9.2 Trazabilidad de Anatomía Patológica (LaboratoriosPanel)',
+                procedimiento: [
+                    'Ingresar a "Anatomía Patológica" para revisar las muestras de biopsia extraídas en quirófano.',
+                    'Asignar el laboratorio de destino: CEDAP, Agüero, Ríos o Cuyo.',
+                    'Aplicar la regla correspondiente: 1) "Facturar" (el Sanatorio liquida la anatomía a la obra social) o 2) "Entregar" (el familiar retira la muestra para gestionarla externamente).',
+                    'Si se entrega al paciente: Capturar en el sistema la firma digital y número de DNI de quien retira la muestra.'
+                ],
+                controles: 'Selector de laboratorios patológicos, botones Facturar / Entregar, modal de firma de retiro y portal web.',
+                reglas: 'Ninguna muestra biológica puede egresar del Sanatorio sin constancia nominal firmada con DNI.'
+            }
+        ]
+    },
+    {
+        id: 'activos',
+        titulo: 'Módulo 10: Activos Médicos y Etiquetas QR',
+        icono: Wrench,
+        color: '#475569',
+        badge: 'Electromedicina',
+        resumen: 'Inventario técnico de equipamiento quirúrgico, generación de etiquetas con código QR e historial de calibraciones y mantenimientos.',
+        diagrama: [
+            { paso: '1. Registro del Activo', desc: 'Carga de marca, modelo, número de serie y ubicación' },
+            { paso: '2. Emisión de Código QR', desc: 'Generación de etiqueta QR adherible para el equipo' },
+            { paso: '3. Escaneo e Inspección', desc: 'Auditoría física rápida con celular o tablet' },
+            { paso: '4. Bitácora de Mantenimiento', desc: 'Registro de calibraciones y controles preventivos' }
+        ],
+        submodulos: [
+            {
+                nombre: '10.1 Inventario de Electromedicina y Quirófanos',
+                procedimiento: [
+                    'Ingresar a "Gestión de Activos" para consultar el inventario de equipamiento.',
+                    'Para dar de alta un equipo: Presionar "Nuevo Activo", completar Nombre (ej. Torre Laparoscopía Storz), Número de Serie, Quirófano/Ubicación y Fecha de adquisición.',
+                    'Asignar el estado operativo: "En Servicio", "En Mantenimiento", "En Calibración" o "De Baja".'
+                ],
+                controles: 'Tabla de activos médicos, filtros por quirófano y estado operativo, modal de carga de equipamiento.',
+                reglas: 'Cumplimiento de las directivas de seguridad tecnológica del paciente conforme a ITAES.'
+            },
+            {
+                nombre: '10.2 Impresión de Etiquetas QR y Bitácora Técnica',
+                procedimiento: [
+                    'Seleccionar el equipo y presionar "Imprimir Etiqueta QR".',
+                    'Adherir la etiqueta plastificada sobre el chasis del equipo médico.',
+                    'Cualquier auditor o técnico puede escanear el QR con su móvil para acceder instantáneamente a la ficha técnica.',
+                    'Registrar en la bitácora cada mantenimiento preventivo, cambio de repuestos o calibración anual con firma del técnico.'
+                ],
+                controles: 'Generador de etiquetas QR para rotuladoras térmicas, bitácora de eventos técnicos con fotos.',
+                reglas: 'Los equipos con mantenimiento vencido muestran un badge de advertencia rojo que alerta al Jefe de Quirófano.'
+            }
+        ]
+    },
+    {
+        id: 'beto',
+        titulo: 'Módulo 11: Asistente Inteligente Beto IA',
+        icono: Brain,
+        color: '#6366F1',
+        badge: 'Inteligencia Artificial',
+        resumen: 'Asistente virtual exclusivo de ADM-QUI para consultas analíticas en lenguaje natural, reportes ejecutivos en PDF y telemetría.',
+        diagrama: [
+            { paso: '1. Activación [Ctrl + K]', desc: 'Apertura del widget flotante o panel completo de Beto IA' },
+            { paso: '2. Consulta en Lenguaje Natural', desc: '"¿Cuántas cirugías hay mañana?", "¿Altas pendientes de PAMI?"' },
+            { paso: '3. Procesamiento en Tiempo Real', desc: 'Análisis instantáneo sobre la base de datos de Supabase' },
+            { paso: '4. Reportes & Excel', desc: 'Emisión de resúmenes en PDF y exportaciones masivas a Excel' }
+        ],
+        submodulos: [
+            {
+                nombre: '11.1 Chat Analítico y Respuestas en Lenguaje Natural',
+                procedimiento: [
+                    'Hacer clic en el avatar animado de Beto en la barra lateral o presionar Ctrl + K.',
+                    'Escribir la consulta médica o administrativa en lenguaje cotidiano.',
+                    'Beto analiza la base de datos en tiempo real y devuelve la respuesta con métricas, gráficos y tablas comparativas.',
+                    'Hacer clic en los botones de acción rápida para profundizar en el análisis de pacientes o prestaciones.'
+                ],
+                controles: 'Widget interactivo, campo de prompt conversacional, selector de preguntas frecuentes y modo presentación.',
+                reglas: 'Beto es exclusivo de ADM-QUI y no debe confundirse con otros asistentes corporativos externos.'
+            },
+            {
+                nombre: '11.2 Generación de Reportes Ejecutivos en PDF y Excel',
+                procedimiento: [
+                    'Solicitar a Beto un resumen de gestión (ej. "Generar reporte de cirugías del mes por cirujano").',
+                    'Al finalizar la respuesta, presionar el botón "Descargar Reporte PDF".',
+                    'El sistema genera un informe ejecutivo membretado con gráficos, tablas de control y firma institucional.',
+                    'Para análisis estadístico avanzado, presionar "Exportar a Excel (.xlsx)".'
+                ],
+                controles: 'Botones de exportación rápida a PDF estructurado y archivo de hoja de cálculo Excel.',
+                reglas: 'Los reportes PDF de Beto aplican el estándar visual institucional de Sanatorio Argentino.'
+            },
+            {
+                nombre: '11.3 Beto Analytics y Gestión de Reglas',
+                procedimiento: [
+                    'Ingresar a "Beto Analytics" para auditar el rendimiento del asistente.',
+                    'Consultar el volumen de preguntas por sector, tiempos de respuesta y tasa de satisfacción de los usuarios.',
+                    'En "Gestión de Reglas", actualizar los criterios y directivas que Beto utiliza para interpretar las consultas complejas.'
+                ],
+                controles: 'Dashboard de telemetría de IA, gráficos de uso horario y editor de reglas institucionales.',
+                reglas: 'Permite refinar continuamente la precisión del modelo adaptándolo a las nuevas normativas sanatoriales.'
+            }
+        ]
+    },
+    {
+        id: 'guardia_auditoria',
+        titulo: 'Módulo 12: Guardias Ambulatorias y Auditoría HC',
+        icono: Activity,
+        color: '#E11D48',
+        badge: 'Calidad Médica',
+        resumen: 'Monitoreo de atención en Guardia Ambulatoria (~5.800 consultas/mes), control documental de Historias Clínicas y generación de informes ITAES.',
+        diagrama: [
+            { paso: '1. Triage de Guardia', desc: 'Clasificación de gravedad por código de color Rojo, Amarillo, Verde' },
+            { paso: '2. Tiempos de Espera', desc: 'Monitoreo en vivo de tiempos de atención y desvíos' },
+            { paso: '3. Auditoría Documental HC', desc: 'Checklist de consentimiento, foja, anestesia, epicrisis y enfermería' },
+            { paso: '4. Dictamen ITAES', desc: 'Registro de No Conformidades y emisión de acta de auditoría' }
+        ],
+        submodulos: [
+            {
+                nombre: '12.1 Consultas de Guardia Ambulatoria (GuardiaPanel)',
+                procedimiento: [
+                    'Ingresar a "Consultas Guardia" para auditar el flujo de urgencias en tiempo real.',
+                    'Monitorear la distribución de consultas por nivel de triage (Rojo: Emergencia, Amarillo: Urgencia, Verde: Consulta común).',
+                    'Verificar los tiempos de espera promedio en sala y alertar al jefe de guardia ante congestión.',
+                    'Trazabilidad de pacientes derivados desde guardia hacia quirófano o piso de internación.'
+                ],
+                controles: 'Panel de control con código de colores, temporizadores de espera y gráficos de afluencia horaria.',
+                reglas: 'Permite dimensionar la dotación médica y de enfermería según los picos de demanda del sanatorio.'
+            },
+            {
+                nombre: '12.2 Auditoría de Historias Clínicas (AuditoriaHistoriasPanel)',
+                procedimiento: [
+                    'Ingresar a "Auditoría H.C." y seleccionar el expediente internado a auditar.',
+                    'Completar el checklist de calidad: 1) Consentimiento informado firmado por paciente/tutor, 2) Foja quirúrgica completa, 3) Protocolo anestésico, 4) Epicrisis médica de alta, 5) Hojas de enfermería con signos vitales.',
+                    'Si falta documentación, marcar la casilla de "No Conformidad" especificando el profesional o servicio responsable.',
+                    'Guardar la evaluación para alimentar el índice mensual de calidad documental.'
+                ],
+                controles: 'Checklist interactivo con puntaje porcentual de cumplimiento, campo de no conformidades y filtros.',
+                reglas: 'Cumplimiento estricto del estándar de registro clínico exigido por la acreditación ITAES.'
+            },
+            {
+                nombre: '12.3 Informes de Auditoría en PDF (AuditoriaPDFPanel)',
+                procedimiento: [
+                    'Ingresar a "Auditoría HC PDF" y definir el período mensual a consolidar.',
+                    'Presionar "Generar Informe de Auditoría SGC": El sistema compila los índices de completitud, médicos con observaciones y porcentaje de no conformidades.',
+                    'Descargar el informe oficial firmado para elevar al Comité de Calidad y Dirección Médica.'
+                ],
+                controles: 'Selector de período, generador de PDF con gráficos de barra y tablas de desvío.',
+                reglas: 'Documento formal requerido en las auditorías externas periódicas de calidad y seguridad del paciente.'
+            }
+        ]
+    },
+    {
+        id: 'configuracion',
+        titulo: 'Módulo 13: Configuración y Conectividad SALUS',
+        icono: Settings,
+        color: '#334155',
+        badge: 'Infraestructura',
+        resumen: 'Monitoreo del servidor de sincronización con SQL Server, estado de endpoints, reinicio de servicios y mantenimiento general.',
+        diagrama: [
+            { paso: '1. Conexión SQL Server', desc: 'Monitoreo del estado del sync-server local en puerto 3001' },
+            { paso: '2. Endpoints de Sync', desc: 'Cirugías, Admisiones, Pacientes, Turnos y Facturación SALUS' },
+            { paso: '3. Script de Respaldo', desc: 'Ejecución de "Actualizar SALUS.bat" ante interrupciones de red' },
+            { paso: '4. Diagnóstico de Salud', desc: 'Visualización de logs de sincronización y latencia de base de datos' }
+        ],
+        submodulos: [
+            {
+                nombre: '13.1 Estado de Sincronización SALUS (sync-server)',
+                procedimiento: [
+                    'Ingresar a "Configuración" para verificar los indicadores de salud del sistema.',
+                    'Verificar que el indicador de "Servidor SALUS" figure en verde (Online).',
+                    'Si el indicador está en rojo, presionar el botón "Sincronizar SALUS Ahora" para forzar la actualización de datos.',
+                    'Si persiste la desconexión, ejecutar el acceso directo "Actualizar SALUS.bat" en el servidor local de Innovación.'
+                ],
+                controles: 'Indicadores de estado (badges de salud), botón de sincronización manual y visor de logs.',
+                reglas: 'La sincronización automática se ejecuta cada 60 segundos garantizando datos actualizados.'
+            },
+            {
+                nombre: '13.2 Preferencias Globales y Personalización de Interfaz',
+                procedimiento: [
+                    'En Configuración, ajustar las preferencias visuales (modo diurno clínico, tipografía Montserrat, accesibilidad).',
+                    'Configurar las líneas telefónicas predeterminadas para los envíos de WhatsApp.',
+                    'Definir las alertas de stock para insumos críticos en el triage de fojas.'
+                ],
+                controles: 'Selectores de configuración del sistema, campos de teléfono institucional y umbrales de alerta.',
+                reglas: 'Las modificaciones de configuración global quedan registradas en el log de auditoría del sistema.'
+            }
+        ]
+    }
+];
 
 function drawWatermark(doc) {
     const W = doc.internal.pageSize.getWidth();
@@ -202,7 +774,7 @@ function para(doc, text, y, indent = 14) {
     const W = doc.internal.pageSize.getWidth();
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...COLORS.textMain);
+    doc.setTextColor(30, 39, 46);
     const lines = doc.splitTextToSize(text, W - indent - 14);
     doc.text(lines, indent, y);
     return y + lines.length * 3.8 + 1.5;
@@ -212,9 +784,9 @@ function bulletList(doc, items, y, indent = 20) {
     const W = doc.internal.pageSize.getWidth();
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...COLORS.textMain);
+    doc.setTextColor(30, 39, 46);
     for (const item of items) {
-        doc.setFillColor(...COLORS.primaryMid);
+        doc.setFillColor(41, 128, 185);
         doc.circle(indent - 4, y - 1, 0.7, 'F');
         const lines = doc.splitTextToSize(item, W - indent - 14);
         doc.text(lines, indent, y);
@@ -227,7 +799,7 @@ function stepList(doc, items, y, indent = 20) {
     const W = doc.internal.pageSize.getWidth();
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...COLORS.textMain);
+    doc.setTextColor(30, 39, 46);
     for (let i = 0; i < items.length; i++) {
         const num = `${i + 1}.`;
         doc.setFont('helvetica', 'bold');
@@ -262,9 +834,6 @@ function noteBox(doc, text, y) {
     return y + boxH + 3;
 }
 
-/**
- * Dibuja una caja de diagrama de flujo de proceso en el PDF
- */
 function drawFlowBox(doc, text, x, y, w, h, bg = [240, 245, 255], border = [30, 87, 153]) {
     doc.setFillColor(...bg);
     doc.setDrawColor(...border);
@@ -282,13 +851,10 @@ function drawFlowArrow(doc, x1, y1, x2, y2) {
     doc.setDrawColor(30, 87, 153);
     doc.setLineWidth(0.4);
     doc.line(x1, y1, x2, y2);
-    // Punta de flecha
     doc.setFillColor(30, 87, 153);
     if (x1 === x2) {
-        // Vertical
         doc.triangle(x2 - 1.5, y2 - 2, x2 + 1.5, y2 - 2, x2, y2, 'FD');
     } else {
-        // Horizontal
         doc.triangle(x2 - 2, y2 - 1.5, x2 - 2, y2 + 1.5, x2, y2, 'FD');
     }
 }
@@ -300,7 +866,7 @@ export async function generateManualPDF() {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const counters = { page: 1 };
     
-    // ── Página 1: Encabezado + Tablas de Control + Secciones 1 a 4 ──
+    // ── Página 1: Encabezado + Tablas de Control SGC ──
     drawHeader(doc, 1, '{total_pages_count_string}');
     let y = 37;
 
@@ -382,179 +948,34 @@ export async function generateManualPDF() {
         'ITAES: Instituto Técnico para la Acreditación de Establecimientos de Salud.'
     ], y);
 
-    // 4. ARQUITECTURA
-    y = checkPageBreak(doc, counters, y, 30);
-    y = sectionTitle(doc, '4. ARQUITECTURA GENERAL Y ACCESO AL SISTEMA:', y);
-    y = para(doc, 'El sistema opera bajo arquitectura moderna cloud-edge conectada en tiempo real mediante Supabase (PostgreSQL) y el servicio local de sincronización con SALUS:', y);
-    y = bulletList(doc, [
-        'Acceso de Usuarios: Inicio de sesión mediante usuario institucional o correo @sanatorioargentino.com.ar.',
-        'Atajo de Teclado Global: Combinación [Ctrl + K] para abrir la Paleta de Comandos y asistente Beto IA.',
-        'Configuración de Módulos (Onboarding): Cada colaborador personaliza los accesos visibles según su perfil de trabajo en Ajustes.',
-        'Seguridad y Cierre de Sesión: La sesión se gestiona con cifrado y se cierra automáticamente tras inactividad prolongada.'
-    ], y);
-
-    // ── 5. DIAGRAMA GENERAL DE FLUJO DEL SISTEMA ──
-    y = checkPageBreak(doc, counters, y, 40);
-    y = sectionTitle(doc, '5. DIAGRAMA GENERAL DE FLUJO DEL SISTEMA ADM-QUI:', y);
-    
-    // Dibujo de Diagrama de Flujo General
-    const boxW = 50;
-    const boxH = 10;
-    drawFlowBox(doc, '1. Sincronización SALUS\n(SQL Server en Tiempo Real)', 14, y + 2, boxW, boxH, [235, 243, 252]);
-    drawFlowArrow(doc, 14 + boxW, y + 7, 78, y + 7);
-    drawFlowBox(doc, '2. Admisión y Turnos\n(Tótem Kiosco y Boxes)', 78, y + 2, boxW, boxH, [240, 253, 244], [16, 185, 129]);
-    drawFlowArrow(doc, 78 + boxW, y + 7, 142, y + 7);
-    drawFlowBox(doc, '3. Cirugías y Triage\n(WhatsApp y Foja Quirúrgica)', 142, y + 2, boxW, boxH, [254, 243, 199], [245, 158, 11]);
-
-    drawFlowArrow(doc, 167, y + 12, 167, y + 18);
-    drawFlowBox(doc, '4. Control de Altas\n(042 Particulares y Remito TRASP)', 142, y + 18, boxW, boxH, [245, 243, 255], [139, 92, 246]);
-    drawFlowArrow(doc, 142, y + 23, 128, y + 23);
-    drawFlowBox(doc, '5. Facturación Internado\n(Detección SALUS / Devoluciones)', 78, y + 18, boxW, boxH, [255, 241, 242], [239, 68, 68]);
-    drawFlowArrow(doc, 78, y + 23, 64, y + 23);
-    drawFlowBox(doc, '6. Beto IA & Métricas\n(Auditoría y Reportes PDF)', 14, y + 18, boxW, boxH, [235, 243, 252]);
-
-    y += 34;
-
-    // ── 6. PROCEDIMIENTOS DETALLADOS MÓDULO A MÓDULO ──
+    // ── 4. DESGLOSE EXHAUSTIVO MÓDULO POR MÓDULO ──
     y = checkPageBreak(doc, counters, y, 20);
-    y = sectionTitle(doc, '6. PROCEDIMIENTOS OPERATIVOS POR MÓDULO (GUÍA PASO A PASO):', y);
+    y = sectionTitle(doc, '4. PROCEDIMIENTOS OPERATIVOS EXHAUSTIVOS (MÓDULO POR MÓDULO):', y);
 
-    // 6.1 CIRUGÍAS Y TRIAGE
-    y = checkPageBreak(doc, counters, y, 45);
-    y = subTitle(doc, '6.1 MÓDULO DE CIRUGÍAS Y TRIAGE QUIRÚRGICO (SurgeriesPanel)', y);
-    y = para(doc, 'Centraliza la programación quirúrgica diaria importada desde SALUS. Permite auditar el cumplimiento prequirúrgico y la correcta documentación médica.', y);
-    
-    // Diagrama de pipeline quirúrgico
-    drawFlowBox(doc, 'Lila: Sin Mensaje\n(Verificar Teléfono)', 14, y + 2, 32, 9, [243, 232, 255], [168, 85, 247]);
-    drawFlowArrow(doc, 46, y + 6.5, 50, y + 6.5);
-    drawFlowBox(doc, 'Amarillo: En Revisión\n(Esperando Órdenes)', 50, y + 2, 32, 9, [254, 243, 199], [245, 158, 11]);
-    drawFlowArrow(doc, 82, y + 6.5, 86, y + 6.5);
-    drawFlowBox(doc, 'Verde: Autorizada\n(Cobertura Validada)', 86, y + 2, 32, 9, [240, 253, 244], [16, 185, 129]);
-    drawFlowArrow(doc, 118, y + 6.5, 122, y + 6.5);
-    drawFlowBox(doc, 'Azul: Confirmada\n(Paciente en Quirófano)', 122, y + 2, 32, 9, [235, 243, 252], [30, 87, 153]);
-    drawFlowArrow(doc, 154, y + 6.5, 158, y + 6.5);
-    drawFlowBox(doc, 'Rojo: Alerta / Susp.\n(Reprogramación)', 158, y + 2, 32, 9, [254, 242, 242], [239, 68, 68]);
-    y += 15;
+    for (const mod of SISTEMA_MODULOS) {
+        y = checkPageBreak(doc, counters, y, 30);
+        y = subTitle(doc, mod.titulo, y);
+        y = para(doc, mod.resumen, y);
 
-    y = para(doc, 'Procedimiento Paso a Paso para Triage de Fojas Quirúrgicas:', y);
-    y = stepList(doc, [
-        'Localizar al paciente en el listado de cirugías del día y hacer clic en el botón "Ver Foja / Cargar Foja".',
-        'Cargar el archivo PDF o imagen del parte quirúrgico firmado por el cirujano y anestesiólogo.',
-        'El motor de IA extrae automáticamente insumos implantados (mallas, prótesis, suturas) y piezas anatómicas.',
-        'Verificar la coincidencia de los ítems detectados con la documentación física y confirmar el guardado.',
-        'Si se detecta toma de biopsia, remitir automáticamente la muestra al Módulo de Laboratorios.'
-    ], y);
-    y = noteBox(doc, 'Toda intervención que utilice material protésico o de osteosíntesis debe tener adjunto el sticker de trazabilidad y número de lote escaneado junto a la foja.', y);
+        // Submódulos
+        for (const sub of mod.submodulos) {
+            y = checkPageBreak(doc, counters, y, 25);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(30, 87, 153);
+            doc.text(`▸ ${sub.nombre}:`, 16, y + 3.5);
+            y += 5.5;
 
-    // 6.2 COLA DE TURNOS
-    y = checkPageBreak(doc, counters, y, 45);
-    y = subTitle(doc, '6.2 MÓDULO DE COLA DE TURNOS Y BOXES DE RECEPCIÓN (TurnoAdminPanel)', y);
-    y = para(doc, 'Administra la atención presencial de pacientes en la sede central mediante tótem interactivo y llamador acústico.', y);
-    
-    drawFlowBox(doc, 'Paso 1: Tótem Kiosco\nPaciente saca ticket A/Q/C/G/E', 14, y + 2, 54, 9, [240, 253, 244], [16, 185, 129]);
-    drawFlowArrow(doc, 68, y + 6.5, 78, y + 6.5);
-    drawFlowBox(doc, 'Paso 2: Llamador Central\nCampana + Voz Box 1-8', 78, y + 2, 54, 9, [235, 243, 252], [30, 87, 153]);
-    drawFlowArrow(doc, 132, y + 6.5, 142, y + 6.5);
-    drawFlowBox(doc, 'Paso 3: Box Recepción\nAtención y Cierre de Turno', 142, y + 2, 54, 9, [254, 243, 199], [245, 158, 11]);
-    y += 15;
+            y = stepList(doc, sub.procedimiento, y, 22);
+            y = para(doc, `Controles & Acciones: ${sub.controles}`, y, 20);
+            y = para(doc, `Pauta / Regla SGC: ${sub.reglas}`, y, 20);
+            y += 1;
+        }
+    }
 
-    y = stepList(doc, [
-        'Operación de Kiosco: El paciente pulsa en la pantalla táctil su categoría (Admisión General, Quirófano, Consultas, Guardias, Entrega de Estudios) y retira su ticket numerado.',
-        'Llamado desde Box: El personal de recepción ingresa al panel, selecciona su Box asignado (1 al 8) y hace clic en "Llamar Siguiente".',
-        'Anuncio en Pantalla Central: El sistema emite campana sonora y locución automática indicando turno y Box.',
-        'Atención y Cierre: Se marca el turno como "Atendiendo", luego "Finalizado". Si el paciente no se presenta tras 3 llamados, se marca "Ausente".'
-    ], y);
-
-    // 6.3 CONTROL DE ALTAS ADMINISTRATIVAS
-    y = checkPageBreak(doc, counters, y, 45);
-    y = subTitle(doc, '6.3 MÓDULO DE CONTROL DE ALTAS ADMINISTRATIVAS (AltasPanel)', y);
-    y = para(doc, 'Auditoría obligatoria previa al traspaso de historias clínicas internadas a Facturación.', y);
-    
-    drawFlowBox(doc, '1. Auditoría de Admisión\n(042 Particular / Duplicados)', 14, y + 2, 54, 9, [235, 243, 252], [30, 87, 153]);
-    drawFlowArrow(doc, 68, y + 6.5, 78, y + 6.5);
-    drawFlowBox(doc, '2. Carrito de Traspaso\n(Selección Fichas Alta Adm)', 78, y + 2, 54, 9, [245, 243, 255], [139, 92, 246]);
-    drawFlowArrow(doc, 132, y + 6.5, 142, y + 6.5);
-    drawFlowBox(doc, '3. Remito TRASP y Firmas\n(Pase Digital a Facturación)', 142, y + 2, 54, 9, [240, 253, 244], [16, 185, 129]);
-    y += 15;
-
-    y = bulletList(doc, [
-        'Paginación Ágil: Visualización predeterminada de a 10 registros por página para máxima velocidad de auditoría.',
-        'Mapeo Automático de Particulares: Si el cliente es "042 - PARTICULARES" o coincide con el nombre del paciente, el sistema asigna automáticamente el estado "Particular".',
-        'Fusión de Admisiones Duplicadas: Admisiones con la misma fecha de ingreso y paciente se agrupan en una única fila indicando el badge [🔗 Fusionada].',
-        'Control de Cruza Mes: Pacientes con internación prolongada que traspasan el mes calendario se auditan con alertas de cierre parcial.',
-        'Garantías y Pagarés: Registro de pagarés y comprobantes de depósito para pacientes sin cobertura integral.'
-    ], y);
-    y = para(doc, 'Procedimiento para Generar el Remito de Traspaso:', y);
-    y = stepList(doc, [
-        'Filtrar por mes y seleccionar las fichas en estado "Alta Adm" mediante las casillas de verificación.',
-        'Presionar "Generar Traspaso" para desplegar el modal con el resumen nominal de pacientes.',
-        'Ingresar los nombres de quien entrega (Admisión) y quien recibe (Facturación).',
-        'Capturar ambas firmas digitales sobre la pantalla táctil.',
-        'El sistema genera el código oficial TRASP-YYYYMMDD-XXXX, emite el PDF firmado y transfiere las fichas a la bandeja de Facturación.'
-    ], y);
-
-    // 6.4 FACTURACIÓN INTERNADO
-    y = checkPageBreak(doc, counters, y, 45);
-    y = subTitle(doc, '6.4 MÓDULO DE FACTURACIÓN INTERNADO Y DEVOLUCIONES (FacturacionPanel)', y);
-    y = para(doc, 'Espacio de liquidación hospitalaria para auditar y facturar los expedientes transferidos desde Altas.', y);
-    
-    drawFlowBox(doc, '1. Ficha Recibida de Altas\n(Asignación a Analista)', 14, y + 2, 54, 9, [245, 243, 255], [139, 92, 246]);
-    drawFlowArrow(doc, 68, y + 6.5, 78, y + 6.5);
-    drawFlowBox(doc, '2A. Facturación SALUS\n(Detección Auto PDV 21/31)', 78, y + 2, 54, 9, [240, 253, 244], [16, 185, 129]);
-    drawFlowArrow(doc, 132, y + 6.5, 142, y + 6.5);
-    drawFlowBox(doc, '2B. Devolución a Altas\n(Remito con Motivo Formal)', 142, y + 2, 54, 9, [254, 242, 242], [239, 68, 68]);
-    y += 15;
-
-    y = bulletList(doc, [
-        'Asignación de Analistas: Distribución nominal de fichas a liquidadores (Jorge Terrera, Paola Illanes, Inés Dona, etc.).',
-        'Detección Automática de SALUS: Monitoreo de facturas emitidas en puntos de venta 21 y 31. Al facturar en SALUS, el sistema actualiza automáticamente a "Facturada" con número de comprobante.',
-        'Circuito de Devolución a Altas: Si una historia clínica presenta faltantes (sin firma médica, orden no autorizada), se añade al Carrito de Devolución indicando motivo específico y se genera Remito de Devolución firmado.',
-        'Historial de Devoluciones: Pestaña con bitácora inmutable de todas las devoluciones emitidas con fecha, hora y motivo.'
-    ], y);
-
-    // 6.5 DEUDAS Y PRESUPUESTOS
-    y = checkPageBreak(doc, counters, y, 35);
-    y = subTitle(doc, '6.5 MÓDULO DE DEUDAS Y PRESUPUESTOS QUIRÚRGICOS (DeudasPanel / PresupuestosPanel)', y);
-    y = para(doc, 'Herramientas financieras para recuperación de saldos y emisión formal de cotizaciones quirúrgicas.', y);
-    y = stepList(doc, [
-        'Gestión de Deudas: Carga de coseguros pendientes, acuerdos en cuotas, cheques en cartera y recordatorios de pago por WhatsApp.',
-        'Confección de Presupuestos: Desglose de derechos de quirófano, honorarios médicos y anestésicos, días de cama (piso/UTI) y descartables.',
-        'Emisión y Envío PDF: Generación de presupuesto formal membretado con validez legal (15 a 30 días) y envío directo por WhatsApp.'
-    ], y);
-
-    // 6.6 MENSAJERÍA MULTILÍNEA Y WHATSAPP
-    y = checkPageBreak(doc, counters, y, 35);
-    y = subTitle(doc, '6.6 MÓDULO DE MENSAJERÍA WHATSAPP MULTILÍNEA (MessagingPanel)', y);
-    y = para(doc, 'Centro unificado de comunicaciones con pacientes a través de líneas autorizadas de Sanatorio Argentino.', y);
-    y = bulletList(doc, [
-        'Línea Estándar (BuilderBot): Para mensajería ágil y resolución de consultas operativas.',
-        'Línea Meta Cloud API (Oficial): Cumplimiento estricto de la política de 24 horas. Pasado dicho plazo, el sistema exige utilizar plantillas HSM aprobadas.',
-        'Template Manager: Plantillas institucionales con variables automáticas ({{nombre}}, {{fecha_cirugia}}, {{medico}}).'
-    ], y);
-
-    // 6.7 ASOCIACIONES, LABORATORIOS Y ACTIVOS QR
-    y = checkPageBreak(doc, counters, y, 35);
-    y = subTitle(doc, '6.7 ASOCIACIONES, LABORATORIOS DE PATOLOGÍA Y ACTIVOS MÉDICOS QR', y);
-    y = para(doc, 'Módulos de trazabilidad externa y equipamiento técnico hospitalario:', y);
-    y = bulletList(doc, [
-        'Asociaciones Médicas: Agrupación gremial de fojas quirúrgicas y generación de actas de entrega en PDF.',
-        'Laboratorios de Anatomía Patológica: Trazabilidad de biopsias derivadas (CEDAP, Agüero, Ríos, Cuyo) con reglas "Facturar" vs "Entregar" (constancia nominal firmada).',
-        'Activos Médicos QR: Registro de aparatología médica (laparoscopía, electrobisturíes, respiradores) e impresión de etiquetas con código QR para inspección técnica y mantenimientos.'
-    ], y);
-
-    // 6.8 BETO IA, GUARDIAS Y AUDITORÍA HC
+    // ── 5. PLAN DE CONTINGENCIA ──
     y = checkPageBreak(doc, counters, y, 40);
-    y = subTitle(doc, '6.8 ASISTENTE BETO IA, GUARDIAS AMBULATORIAS Y AUDITORÍA HC', y);
-    y = bulletList(doc, [
-        'Asistente Beto IA: Respuestas instantáneas sobre datos en lenguaje natural, reportes ejecutivos en PDF, exportación masiva a Excel y atajo global [Ctrl + K].',
-        'Consultas de Guardia: Triage por código de gravedad (Rojo, Amarillo, Verde), auditoría de tiempos de espera y trazabilidad de pases a internación (~5.800 consultas/mes).',
-        'Auditoría de Historias Clínicas: Control documental (consentimientos, fojas, anestesia, epicrisis) e informes de no conformidades para el Comité de Calidad ITAES.',
-        'Gobernanza y Roles: Matriz de permisos de usuario y registro inmutable de auditoría (Activity Audit Log).'
-    ], y);
-
-    // ── 7. PLAN DE CONTINGENCIA ──
-    y = checkPageBreak(doc, counters, y, 40);
-    y = sectionTitle(doc, '7. PLAN DE CONTINGENCIA ANTE FALLAS DE SISTEMA:', y);
+    y = sectionTitle(doc, '5. PLAN DE CONTINGENCIA ANTE FALLAS DE SISTEMA:', y);
     y = para(doc, 'Ante contingencias técnicas imprevistas, el personal aplicará los siguientes protocolos aprobados por el SGC:', y);
     autoTable(doc, {
         startY: y,
@@ -590,7 +1011,9 @@ export async function generateManualPDF() {
 
 // ─── Componente React Principal con Tipografía Montserrat ────────────────────
 export default function ManualProcedimientos() {
-    const [activeTab, setActiveTab] = useState('manual'); // 'manual' | 'diagramas' | 'guia'
+    const [activeTab, setActiveTab] = useState('explorador'); // 'explorador' | 'documento' | 'diagramas'
+    const [selectedModuleId, setSelectedModuleId] = useState(SISTEMA_MODULOS[0].id);
+    const [searchFilter, setSearchFilter] = useState('');
     const [loading, setLoading] = useState(false);
     const [done, setDone] = useState(false);
 
@@ -609,6 +1032,20 @@ export default function ManualProcedimientos() {
         }
     };
 
+    const selectedModule = useMemo(() => {
+        return SISTEMA_MODULOS.find(m => m.id === selectedModuleId) || SISTEMA_MODULOS[0];
+    }, [selectedModuleId]);
+
+    const filteredModules = useMemo(() => {
+        if (!searchFilter.trim()) return SISTEMA_MODULOS;
+        const q = searchFilter.toLowerCase();
+        return SISTEMA_MODULOS.filter(m =>
+            m.titulo.toLowerCase().includes(q) ||
+            m.resumen.toLowerCase().includes(q) ||
+            m.submodulos.some(s => s.nombre.toLowerCase().includes(q) || s.controles.toLowerCase().includes(q))
+        );
+    }, [searchFilter]);
+
     return (
         <div style={{
             minHeight: '100vh',
@@ -622,7 +1059,7 @@ export default function ManualProcedimientos() {
             {/* Barra Superior de Control */}
             <div style={{
                 width: '100%',
-                maxWidth: '960px',
+                maxWidth: '1100px',
                 background: '#FFFFFF',
                 borderRadius: '16px',
                 padding: '18px 24px',
@@ -668,20 +1105,36 @@ export default function ManualProcedimientos() {
                         gap: '2px'
                     }}>
                         <button
-                            onClick={() => setActiveTab('manual')}
+                            onClick={() => setActiveTab('explorador')}
                             style={{
                                 padding: '7px 14px',
                                 borderRadius: '8px',
                                 border: 'none',
-                                background: activeTab === 'manual' ? '#FFFFFF' : 'transparent',
-                                color: activeTab === 'manual' ? '#1E5799' : '#64748B',
-                                fontWeight: activeTab === 'manual' ? 700 : 600,
+                                background: activeTab === 'explorador' ? '#FFFFFF' : 'transparent',
+                                color: activeTab === 'explorador' ? '#1E5799' : '#64748B',
+                                fontWeight: activeTab === 'explorador' ? 700 : 600,
                                 fontSize: '0.82rem',
                                 cursor: 'pointer',
-                                boxShadow: activeTab === 'manual' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none'
+                                boxShadow: activeTab === 'explorador' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none'
                             }}
                         >
-                            Documento SGC
+                            Explorador Módulo a Módulo
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('documento')}
+                            style={{
+                                padding: '7px 14px',
+                                borderRadius: '8px',
+                                border: 'none',
+                                background: activeTab === 'documento' ? '#FFFFFF' : 'transparent',
+                                color: activeTab === 'documento' ? '#1E5799' : '#64748B',
+                                fontWeight: activeTab === 'documento' ? 700 : 600,
+                                fontSize: '0.82rem',
+                                cursor: 'pointer',
+                                boxShadow: activeTab === 'documento' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none'
+                            }}
+                        >
+                            Vista A4 SGC Oficial
                         </button>
                         <button
                             onClick={() => setActiveTab('diagramas')}
@@ -698,22 +1151,6 @@ export default function ManualProcedimientos() {
                             }}
                         >
                             Diagramas de Flujo
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('guia')}
-                            style={{
-                                padding: '7px 14px',
-                                borderRadius: '8px',
-                                border: 'none',
-                                background: activeTab === 'guia' ? '#FFFFFF' : 'transparent',
-                                color: activeTab === 'guia' ? '#1E5799' : '#64748B',
-                                fontWeight: activeTab === 'guia' ? 700 : 600,
-                                fontSize: '0.82rem',
-                                cursor: 'pointer',
-                                boxShadow: activeTab === 'guia' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none'
-                            }}
-                        >
-                            Guía Paso a Paso
                         </button>
                     </div>
 
@@ -767,15 +1204,211 @@ export default function ManualProcedimientos() {
                         ) : (
                             <>
                                 <Download size={16} />
-                                Descargar Manual PDF
+                                Descargar Manual PDF Completo
                             </>
                         )}
                     </button>
                 </div>
             </div>
 
-            {/* TAB 1: Documento SGC Completo en Pantalla */}
-            {activeTab === 'manual' && (
+            {/* TAB 1: Explorador Módulo por Módulo */}
+            {activeTab === 'explorador' && (
+                <div style={{
+                    width: '100%',
+                    maxWidth: '1100px',
+                    display: 'grid',
+                    gridTemplateColumns: '320px 1fr',
+                    gap: '20px',
+                    alignItems: 'start'
+                }}>
+                    {/* Menú Lateral de Módulos */}
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '16px',
+                        padding: '16px',
+                        border: '1px solid #E2E8F0',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.04)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px'
+                    }}>
+                        <div style={{ position: 'relative' }}>
+                            <Search size={16} color="#94A3B8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                            <input
+                                type="text"
+                                placeholder="Buscar módulo o función..."
+                                value={searchFilter}
+                                onChange={(e) => setSearchFilter(e.target.value)}
+                                style={{
+                                    width: '100%',
+                                    padding: '8px 12px 8px 36px',
+                                    borderRadius: '10px',
+                                    border: '1px solid #CBD5E1',
+                                    fontSize: '0.82rem',
+                                    fontFamily: "'Montserrat', sans-serif",
+                                    outline: 'none',
+                                    boxSizing: 'border-box'
+                                }}
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' }}>
+                            {filteredModules.map((mod) => {
+                                const Icon = mod.icono;
+                                const isSelected = mod.id === selectedModuleId;
+                                return (
+                                    <button
+                                        key={mod.id}
+                                        onClick={() => setSelectedModuleId(mod.id)}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px',
+                                            padding: '10px 12px',
+                                            borderRadius: '10px',
+                                            border: 'none',
+                                            background: isSelected ? '#EFF6FF' : 'transparent',
+                                            borderLeft: isSelected ? '4px solid #1E5799' : '4px solid transparent',
+                                            color: isSelected ? '#1E5799' : '#334155',
+                                            fontWeight: isSelected ? 700 : 500,
+                                            fontSize: '0.83rem',
+                                            cursor: 'pointer',
+                                            textAlign: 'left',
+                                            transition: 'all 0.15s ease',
+                                            fontFamily: "'Montserrat', sans-serif"
+                                        }}
+                                    >
+                                        <Icon size={18} color={isSelected ? '#1E5799' : '#64748B'} style={{ flexShrink: 0 }} />
+                                        <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {mod.titulo}
+                                        </span>
+                                        <ChevronRight size={14} color={isSelected ? '#1E5799' : '#CBD5E1'} />
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Detalle Exhaustivo del Módulo Seleccionado */}
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '16px',
+                        padding: '28px',
+                        border: '1px solid #E2E8F0',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.04)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '24px'
+                    }}>
+                        {/* Cabecera del Módulo */}
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9', paddingBottom: '16px' }}>
+                            <div>
+                                <div style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '3px 10px',
+                                    borderRadius: '8px',
+                                    background: '#EFF6FF',
+                                    color: '#1E5799',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                    marginBottom: '8px'
+                                }}>
+                                    <Bookmark size={12} /> {selectedModule.badge}
+                                </div>
+                                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F172A' }}>
+                                    {selectedModule.titulo}
+                                </h3>
+                                <p style={{ margin: '6px 0 0 0', fontSize: '0.88rem', color: '#475569', lineHeight: 1.5 }}>
+                                    {selectedModule.resumen}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Diagrama de Flujo del Módulo */}
+                        <div>
+                            <h4 style={{ margin: '0 0 12px 0', fontSize: '0.92rem', fontWeight: 800, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Layers size={16} color="#1E5799" /> Diagrama de Flujo del Proceso:
+                            </h4>
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: `repeat(${selectedModule.diagrama.length}, 1fr)`,
+                                gap: '8px',
+                                background: '#F8FAFC',
+                                padding: '14px',
+                                borderRadius: '12px',
+                                border: '1px solid #E2E8F0'
+                            }}>
+                                {selectedModule.diagrama.map((step, idx) => (
+                                    <div key={idx} style={{
+                                        background: '#FFFFFF',
+                                        borderRadius: '8px',
+                                        padding: '10px',
+                                        border: '1px solid #CBD5E1',
+                                        textAlign: 'center',
+                                        position: 'relative'
+                                    }}>
+                                        <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1E5799' }}>{step.paso}</div>
+                                        <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '4px', lineHeight: 1.3 }}>{step.desc}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Submódulos con Guía Paso a Paso */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Sparkles size={16} color="#1E5799" /> Submódulos y Procedimiento Paso a Paso:
+                            </h4>
+
+                            {selectedModule.submodulos.map((sub, idx) => (
+                                <div key={idx} style={{
+                                    border: '1px solid #E2E8F0',
+                                    borderRadius: '12px',
+                                    padding: '18px',
+                                    background: '#FFFFFF',
+                                    boxShadow: '0 1px 4px rgba(0,0,0,0.02)'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#1E5799' }} />
+                                        <h5 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#0F172A' }}>
+                                            {sub.nombre}
+                                        </h5>
+                                    </div>
+
+                                    {/* Pasos */}
+                                    <div style={{ paddingLeft: '14px', marginBottom: '12px' }}>
+                                        <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                                            Instrucciones de Uso:
+                                        </div>
+                                        <ol style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.84rem', color: '#334155', lineHeight: 1.5 }}>
+                                            {sub.procedimiento.map((p, pIdx) => (
+                                                <li key={pIdx}>{p}</li>
+                                            ))}
+                                        </ol>
+                                    </div>
+
+                                    {/* Controles & Reglas */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '12px', background: '#F8FAFC', padding: '10px 12px', borderRadius: '8px', fontSize: '0.78rem' }}>
+                                        <div>
+                                            <strong style={{ color: '#1E5799' }}>Controles y Pantallas:</strong>
+                                            <p style={{ margin: '2px 0 0 0', color: '#475569' }}>{sub.controles}</p>
+                                        </div>
+                                        <div>
+                                            <strong style={{ color: '#059669' }}>Pauta de Control SGC / Regla:</strong>
+                                            <p style={{ margin: '2px 0 0 0', color: '#475569' }}>{sub.reglas}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB 2: Vista A4 SGC Oficial */}
+            {activeTab === 'documento' && (
                 <div style={{
                     width: '100%',
                     maxWidth: '960px',
@@ -936,98 +1569,36 @@ export default function ManualProcedimientos() {
                             </ul>
                         </div>
 
-                        <div>
-                            <h3 style={{ fontSize: '13px', fontWeight: 800, margin: '0 0 6px 0' }}>4. ARQUITECTURA GENERAL Y ACCESO:</h3>
-                            <p style={{ margin: '0 0 6px 0', paddingLeft: '14px', color: '#1F2937' }}>
-                                El sistema opera bajo arquitectura moderna cloud-edge conectada en tiempo real mediante Supabase (PostgreSQL) y el servicio local de sincronización con SALUS:
-                            </p>
-                            <ul style={{ margin: 0, paddingLeft: '32px', display: 'flex', flexDirection: 'column', gap: '4px', color: '#1F2937' }}>
-                                <li><strong>Acceso de Usuarios:</strong> Inicio de sesión mediante usuario institucional o correo @sanatorioargentino.com.ar.</li>
-                                <li><strong>Atajo Global:</strong> Combinación <code>Ctrl + K</code> para abrir la Paleta de Comandos y asistente Beto IA.</li>
-                                <li><strong>Configuración Personalizada:</strong> Cada colaborador configura los módulos visibles según su función.</li>
-                            </ul>
-                        </div>
-
                         {/* Procedimientos Módulo por Módulo */}
                         <div>
-                            <h3 style={{ fontSize: '13px', fontWeight: 800, margin: '0 0 10px 0' }}>5. GUÍA OPERATIVA PASO A PASO POR MÓDULO:</h3>
+                            <h3 style={{ fontSize: '13px', fontWeight: 800, margin: '0 0 12px 0' }}>4. PROCEDIMIENTOS OPERATIVOS EXHAUSTIVOS (MÓDULO POR MÓDULO):</h3>
                             
-                            <div style={{ paddingLeft: '14px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                
-                                {/* 5.1 */}
-                                <div style={{ borderLeft: '3px solid #1E5799', paddingLeft: '12px' }}>
-                                    <strong style={{ color: '#1E5799', fontSize: '13px' }}>5.1 Cirugías y Triage Quirúrgico (SurgeriesPanel):</strong>
-                                    <p style={{ margin: '3px 0 6px 0', color: '#374151' }}>
-                                        Centraliza la programación quirúrgica diaria. Permite auditar el cumplimiento prequirúrgico mediante el pipeline de estados:
-                                    </p>
-                                    <ul style={{ margin: 0, paddingLeft: '20px', color: '#374151' }}>
-                                        <li><strong>Lila:</strong> Sin mensaje inicial enviado (verificar número telefónico).</li>
-                                        <li><strong>Amarillo:</strong> Mensaje prequirúrgico emitido (esperando órdenes y estudios).</li>
-                                        <li><strong>Verde:</strong> Cobertura validada y quirófano reservado.</li>
-                                        <li><strong>Azul:</strong> Paciente confirmó asistencia efectiva y ayuno reglamentario.</li>
-                                        <li><strong>Rojo:</strong> Cirugía reprogramada o suspendida.</li>
-                                    </ul>
-                                    <p style={{ margin: '6px 0 0 0', color: '#374151' }}>
-                                        <strong>Paso a Paso Triage de Fojas:</strong> 1) Abrir cirugía y presionar "Ver Foja". 2) Cargar archivo PDF o imagen escaneada. 3) El sistema extrae automáticamente insumos y biopsias tomadas. 4) Validar insumos y confirmar guardado.
-                                    </p>
-                                </div>
-
-                                {/* 5.2 */}
-                                <div style={{ borderLeft: '3px solid #10B981', paddingLeft: '12px' }}>
-                                    <strong style={{ color: '#059669', fontSize: '13px' }}>5.2 Cola de Turnos, Tótem y Boxes (TurnoAdminPanel):</strong>
-                                    <p style={{ margin: '3px 0', color: '#374151' }}>
-                                        <strong>1) Tótem Kiosco:</strong> El paciente retira ticket según motivo (Admisión, Quirófano, Consultas, Guardias, Entrega de Estudios). <strong>2) Llamado:</strong> El recepcionista selecciona su Box (1-8) y presiona "Llamar Siguiente". <strong>3) Pantalla Central:</strong> Emite campana y voz sintetizada. <strong>4) Atención:</strong> Se marca "Atendiendo" y luego "Finalizado".
-                                    </p>
-                                </div>
-
-                                {/* 5.3 */}
-                                <div style={{ borderLeft: '3px solid #8B5CF6', paddingLeft: '12px' }}>
-                                    <strong style={{ color: '#7C3AED', fontSize: '13px' }}>5.3 Control de Altas Administrativas (AltasPanel):</strong>
-                                    <p style={{ margin: '3px 0', color: '#374151' }}>
-                                        Paginación ágil de a 10 por defecto. Mapeo automático a <code>Particular</code> para <code>042 - PARTICULARES</code> o nombres de personas. Fusión de registros duplicados <code>[🔗 Fusionada]</code>. Control de internaciones prolongadas (Cruza Mes) y gestión de pagarés/garantías.
-                                    </p>
-                                    <p style={{ margin: '4px 0 0 0', color: '#374151' }}>
-                                        <strong>Paso a Paso Traspaso a Facturación:</strong> 1) Seleccionar fichas en estado "Alta Adm". 2) Presionar "Generar Traspaso". 3) Completar nombres de quien entrega y quien recibe. 4) Capturar firmas digitales. 5) El sistema genera el código <code>TRASP-YYYYMMDD-XXXX</code>, descarga la constancia PDF y pasa las fichas a Facturación.
-                                    </p>
-                                </div>
-
-                                {/* 5.4 */}
-                                <div style={{ borderLeft: '3px solid #EF4444', paddingLeft: '12px' }}>
-                                    <strong style={{ color: '#DC2626', fontSize: '13px' }}>5.4 Facturación Internado y Devoluciones (FacturacionPanel):</strong>
-                                    <p style={{ margin: '3px 0', color: '#374151' }}>
-                                        Distribución de expedientes a analistas (Jorge Terrera, Paola Illanes, Inés Dona, etc.). Detección automática de comprobantes emitidos en SALUS (PDV 21/31) con marcación a "Facturada". Circuito de rechazo mediante Carrito de Devolución a Altas con motivo justificado y constancia firmada.
-                                    </p>
-                                </div>
-
-                                {/* 5.5 */}
-                                <div style={{ borderLeft: '3px solid #3B82F6', paddingLeft: '12px' }}>
-                                    <strong style={{ color: '#2563EB', fontSize: '13px' }}>5.5 Deudas, Presupuestos y Mensajería Multilínea:</strong>
-                                    <p style={{ margin: '3px 0', color: '#374151' }}>
-                                        Gestión de saldos deudores de pacientes, cotización formal de presupuestos quirúrgicos en PDF con validez legal y mensajería multilínea (Línea Estándar y Meta Cloud API con control estricto de la ventana de 24 horas y plantillas aprobadas).
-                                    </p>
-                                </div>
-
-                                {/* 5.6 */}
-                                <div style={{ borderLeft: '3px solid #F59E0B', paddingLeft: '12px' }}>
-                                    <strong style={{ color: '#D97706', fontSize: '13px' }}>5.6 Asociaciones, Laboratorios de Anatomía Patológica y Activos QR:</strong>
-                                    <p style={{ margin: '3px 0', color: '#374151' }}>
-                                        Agrupación y actas de entrega de fojas para Asociaciones Médicas, trazabilidad de muestras de biopsia con reglas <code>Facturar</code> vs <code>Entregar</code> (CEDAP, Agüero, Ríos, Cuyo) e inventario de aparatología médica con etiquetas de código QR para auditoría física.
-                                    </p>
-                                </div>
-
-                                {/* 5.7 */}
-                                <div style={{ borderLeft: '3px solid #0284C7', paddingLeft: '12px' }}>
-                                    <strong style={{ color: '#0284C7', fontSize: '13px' }}>5.7 Asistente Beto IA, Guardias Médicas y Auditoría HC:</strong>
-                                    <p style={{ margin: '3px 0', color: '#374151' }}>
-                                        Beto IA responde consultas de datos en lenguaje natural, emite reportes ejecutivos en PDF y exporta a Excel (<code>Ctrl + K</code>). Monitoreo de consultas de guardia (~5.800/mes) y control de calidad documental de historias clínicas conforme a normativas ITAES.
-                                    </p>
-                                </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', paddingLeft: '10px' }}>
+                                {SISTEMA_MODULOS.map((mod, mIdx) => (
+                                    <div key={mIdx} style={{ borderLeft: `3px solid ${mod.color}`, paddingLeft: '14px' }}>
+                                        <strong style={{ color: mod.color, fontSize: '13px' }}>{mod.titulo}:</strong>
+                                        <p style={{ margin: '3px 0 8px 0', color: '#374151', fontSize: '12px' }}>{mod.resumen}</p>
+                                        
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {mod.submodulos.map((sub, sIdx) => (
+                                                <div key={sIdx} style={{ background: '#F8FAFC', padding: '8px 12px', borderRadius: '6px', fontSize: '11.5px' }}>
+                                                    <div style={{ fontWeight: 'bold', color: '#1E293B' }}>▸ {sub.nombre}</div>
+                                                    <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', color: '#4B5563' }}>
+                                                        {sub.procedimiento.map((p, pIdx) => (
+                                                            <li key={pIdx}>{p}</li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
 
                         {/* Contingencias */}
                         <div>
-                            <h3 style={{ fontSize: '13px', fontWeight: 800, margin: '0 0 6px 0' }}>6. PLAN DE CONTINGENCIA ANTE FALLAS DE SISTEMA:</h3>
+                            <h3 style={{ fontSize: '13px', fontWeight: 800, margin: '0 0 6px 0' }}>5. PLAN DE CONTINGENCIA ANTE FALLAS DE SISTEMA:</h3>
                             <table style={{ width: '100%', borderCollapse: 'collapse', border: '1.5px solid #000', fontSize: '11px' }}>
                                 <thead>
                                     <tr style={{ background: '#E5E7EB' }}>
@@ -1095,11 +1666,11 @@ export default function ManualProcedimientos() {
                 </div>
             )}
 
-            {/* TAB 2: Diagramas de Flujo Interactivos */}
+            {/* TAB 3: Diagramas de Flujo Interactivos */}
             {activeTab === 'diagramas' && (
                 <div style={{
                     width: '100%',
-                    maxWidth: '960px',
+                    maxWidth: '1100px',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '20px'
@@ -1195,81 +1766,6 @@ export default function ManualProcedimientos() {
                                 </ul>
                             </div>
                         </div>
-                    </div>
-                </div>
-            )}
-
-            {/* TAB 3: Guía Didáctica Módulo por Módulo */}
-            {activeTab === 'guia' && (
-                <div style={{
-                    width: '100%',
-                    maxWidth: '960px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '16px'
-                }}>
-                    <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '12px', padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <Sparkles color="#1E5799" size={24} />
-                        <div>
-                            <h4 style={{ margin: 0, fontWeight: 800, color: '#1E3A8A' }}>Guía de Capacitación Rápida</h4>
-                            <p style={{ margin: 0, fontSize: '0.82rem', color: '#1E40AF' }}>
-                                Consulta cómo utilizar cada módulo con instrucciones claras, controles y acciones disponibles.
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Módulo 1 */}
-                    <div style={{ background: '#FFF', borderRadius: '12px', padding: '20px', border: '1px solid #E2E8F0' }}>
-                        <h4 style={{ margin: '0 0 8px 0', color: '#1E5799', fontWeight: 800, fontSize: '1rem' }}>Módulo 1: Cirugías y Triage Quirúrgico</h4>
-                        <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: '#334155', lineHeight: 1.6 }}>
-                            <li>Revisar el listado de cirugías sincronizadas de SALUS en la pestaña superior.</li>
-                            <li>Hacer clic en el botón de WhatsApp para enviar el mensaje prequirúrgico automático.</li>
-                            <li>Hacer clic en "Ver Foja" para cargar el archivo digital y extraer automáticamente los insumos y biopsias con IA.</li>
-                            <li>Actualizar el estado del pipeline según la respuesta del paciente (Verde si autoriza, Azul si confirma).</li>
-                        </ol>
-                    </div>
-
-                    {/* Módulo 2 */}
-                    <div style={{ background: '#FFF', borderRadius: '12px', padding: '20px', border: '1px solid #E2E8F0' }}>
-                        <h4 style={{ margin: '0 0 8px 0', color: '#059669', fontWeight: 800, fontSize: '1rem' }}>Módulo 2: Cola de Turnos y Boxes</h4>
-                        <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: '#334155', lineHeight: 1.6 }}>
-                            <li>El paciente selecciona en el tótem su trámite y obtiene ticket numérico.</li>
-                            <li>El recepcionista entra a su panel, selecciona su Box (1 a 8) y presiona "Llamar Siguiente".</li>
-                            <li>El llamador central emite el aviso acústico y locución institucional.</li>
-                            <li>Finalizada la atención, se marca "Finalizado" para registrar el tiempo de atención.</li>
-                        </ol>
-                    </div>
-
-                    {/* Módulo 3 */}
-                    <div style={{ background: '#FFF', borderRadius: '12px', padding: '20px', border: '1px solid #E2E8F0' }}>
-                        <h4 style={{ margin: '0 0 8px 0', color: '#7C3AED', fontWeight: 800, fontSize: '1rem' }}>Módulo 3: Control de Altas y Traspaso</h4>
-                        <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: '#334155', lineHeight: 1.6 }}>
-                            <li>Auditar las internaciones del mes. El sistema pagina de a 10 por defecto para mayor rapidez.</li>
-                            <li>Verificar que clientes 042 o con nombre de paciente figuren automáticamente como "Particular".</li>
-                            <li>Seleccionar las fichas listas (estado "Alta Adm") y hacer clic en "Generar Traspaso".</li>
-                            <li>Capturar las firmas de entrega y recepción en pantalla para emitir el remito oficial TRASP en PDF.</li>
-                        </ol>
-                    </div>
-
-                    {/* Módulo 4 */}
-                    <div style={{ background: '#FFF', borderRadius: '12px', padding: '20px', border: '1px solid #E2E8F0' }}>
-                        <h4 style={{ margin: '0 0 8px 0', color: '#DC2626', fontWeight: 800, fontSize: '1rem' }}>Módulo 4: Facturación Internado y Devoluciones</h4>
-                        <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: '#334155', lineHeight: 1.6 }}>
-                            <li>Asignar las fichas recibidas a los analistas liquidadores.</li>
-                            <li>El sistema detecta automáticamente las facturas emitidas en SALUS (PDV 21/31) y las marca como "Facturada".</li>
-                            <li>Si un expediente está incompleto, agregarlo al "Carrito de Devolución" con el motivo específico.</li>
-                            <li>Generar el Remito de Devolución firmado para devolver el expediente a Control de Altas.</li>
-                        </ol>
-                    </div>
-
-                    {/* Módulo 5 */}
-                    <div style={{ background: '#FFF', borderRadius: '12px', padding: '20px', border: '1px solid #E2E8F0' }}>
-                        <h4 style={{ margin: '0 0 8px 0', color: '#1E5799', fontWeight: 800, fontSize: '1rem' }}>Módulo 5: Asistente Beto IA</h4>
-                        <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: '#334155', lineHeight: 1.6 }}>
-                            <li>Presionar <code>Ctrl + K</code> en cualquier pantalla para abrir Beto IA.</li>
-                            <li>Escribir preguntas en lenguaje natural (ej. "¿Cuántas cirugías hay programadas para mañana?").</li>
-                            <li>Descargar reportes ejecutivos en PDF o exportar tablas masivas a Excel con un solo clic.</li>
-                        </ol>
                     </div>
                 </div>
             )}
