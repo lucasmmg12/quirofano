@@ -117,8 +117,16 @@ const InstructivoTemplate = () => {
             </thead>
             <tbody>
               <tr>
-                <td className="border border-black p-1 h-6"></td>
-                <td className="border border-black p-1 h-6"></td>
+                <td className="border border-black p-1 text-center font-mono font-semibold">SGC-PR-01</td>
+                <td className="border border-black p-1 pl-2">Manual del Sistema de Gestión de la Calidad (SGC) — Sanatorio Argentino</td>
+              </tr>
+              <tr>
+                <td className="border border-black p-1 text-center font-mono font-semibold">ITYS-05</td>
+                <td className="border border-black p-1 pl-2">Procedimiento Operativo de Seguridad, Acceso y Confidencialidad en Sistemas de Salud</td>
+              </tr>
+              <tr>
+                <td className="border border-black p-1 text-center font-mono font-semibold">ADM-QUI-02</td>
+                <td className="border border-black p-1 pl-2">Procedimiento de Admisión Quirúrgica y Circuito de Triage de Fojas</td>
               </tr>
             </tbody>
           </table>
@@ -129,36 +137,45 @@ const InstructivoTemplate = () => {
             <div className="mb-4">
               <h2 className="font-bold mb-1">1. OBJETIVO:</h2>
               <p className="pl-4 text-justify">
-                Definir los pasos a realizar para la administración y configuración del <strong>Sistema de Administración</strong>. En este documento se indicarán las diferentes acciones a realizar como guía de usuario para asegurar el correcto flujo de la información.
+                Definir los pasos y lineamientos operativos para el uso, administración y control del <strong>Sistema de Admisión Quirúrgica y Altas Administrativas (ADM-QUI)</strong>. En este documento se indicarán las diferentes acciones a realizar como guía de usuario para asegurar el correcto flujo de la información clínica y administrativa conforme a los estándares de acreditación hospitalaria ITAES.
               </p>
             </div>
 
             <div className="mb-4">
               <h2 className="font-bold mb-1">2. CAMPO DE APLICACIÓN:</h2>
               <p className="pl-4 text-justify">
-                El presente instructivo se aplicará al equipo de Innovación y Transformación Digital y a cualquier usuario administrativo o personal de salud que haga uso del Sistema de Administración para sus operaciones diarias (admisión, liquidación, altas, etc).
+                El presente instructivo se aplicará al equipo de Innovación y Transformación Digital, Admisión Quirúrgica, Recepción Central, Control de Altas, Facturación, Quirófano y a cualquier usuario administrativo o personal de salud que haga uso del Sistema ADM-QUI para sus operaciones diarias.
               </p>
             </div>
 
             <div className="mb-4">
               <h2 className="font-bold mb-1">3. DEFINICIONES:</h2>
               <ul className="list-disc pl-8 space-y-1">
-                <li><strong>SISTEMA ADM:</strong> Sistema principal de gestión administrativa y operativa de Sanatorio Argentino.</li>
-                <li><strong>ITD:</strong> Departamento de Innovación y Transformación Digital.</li>
+                <li><strong>ADM-QUI:</strong> Sistema Integral de Admisión Quirúrgica y Control Administrativo de Sanatorio Argentino.</li>
+                <li><strong>SALUS:</strong> Sistema de Gestión Hospitalaria central (SQL Server).</li>
+                <li><strong>BETO IA:</strong> Asistente virtual de Inteligencia Artificial exclusivo del sistema ADM-QUI.</li>
+                <li><strong>CONTROL DE ALTAS:</strong> Proceso de verificación y auditoría de admisiones hospitalarias previa a facturación.</li>
+                <li><strong>PARTICULAR (042):</strong> Paciente sin cobertura de obra social o con cliente registrado con el nombre del paciente.</li>
+                <li><strong>TRASPASO:</strong> Constancia formal de entrega/recepción de expedientes con código oficial (TRASP-YYYYMMDD-XXXX) y firmas digitales.</li>
+                <li><strong>COLA DE TURNOS:</strong> Sistema de tótem y llamado a boxes de recepción para atención de pacientes.</li>
+                <li><strong>TRIAGE FOJA:</strong> Análisis y categorización automática de insumos y biopsias de fojas quirúrgicas.</li>
                 <li><strong>LUP:</strong> Lección de Un Punto (instructivo rápido y visual).</li>
-                <li><strong>USUARIO CLAVE:</strong> Referente de cada área capacitado para brindar soporte funcional de primer nivel.</li>
+                <li><strong>SGC:</strong> Sistema de Gestión de la Calidad del Sanatorio Argentino SRL.</li>
               </ul>
             </div>
 
             <div className="mb-4">
               <h2 className="font-bold mb-1">4. DIAGRAMA DE FLUJO DEL PROCESO:</h2>
               <p className="pl-4 mb-2 text-justify">
-                A continuación se detallan los lineamientos de acceso general al módulo de administración:
+                A continuación se detallan los lineamientos operativos generales del sistema:
               </p>
               <ol className="list-decimal pl-8 space-y-1">
-                <li>Ingresar a la URL oficial del sistema de admisión.</li>
-                <li>Validar credenciales de acceso mediante Supabase Auth.</li>
-                <li>Navegar por los módulos disponibles según los permisos otorgados en la matriz de roles.</li>
+                <li>Sincronización en tiempo real desde SALUS hacia Supabase (Cirugías, Admisiones, Pacientes).</li>
+                <li>Gestión y confirmación de cirugías mediante pipeline de WhatsApp y triage de fojas.</li>
+                <li>Recepción de pacientes en sala mediante tótem de turnos y derivación a box libre.</li>
+                <li>Auditoría de internaciones en Control de Altas (revisión de responsables, estados y 042 Particulares).</li>
+                <li>Traspaso formal de expedientes a Facturación mediante remito digital firmado.</li>
+                <li>Facturación en SALUS y marcación automática/manual de fichas facturadas o devueltas.</li>
               </ol>
             </div>
             
@@ -169,21 +186,21 @@ const InstructivoTemplate = () => {
             <tbody>
               <tr>
                 <td className="border border-black w-1/3 p-2 align-top relative">
-                  <div className="mb-14">ELABORADO:</div>
+                  <div className="mb-14 font-bold">ELABORADO:</div>
                   <div className="absolute bottom-2 left-0 w-full text-center">
-                    <div className="font-bold capitalize">lucas marinero</div>
-                    <div className="text-[10px] text-gray-600">Innovación y Transformación Digital</div>
+                    <div className="font-bold">Lucas Marinero</div>
+                    <div className="text-[10px] text-gray-600">Responsable de Innovación y Transformación Digital</div>
                   </div>
                 </td>
                 <td className="border border-black w-1/3 p-2 align-top relative">
-                  <div className="mb-14">REVISADO:</div>
+                  <div className="mb-14 font-bold">REVISADO:</div>
                   <div className="absolute bottom-2 left-0 w-full text-center">
                     <div className="font-bold">Gabriela Iragorre</div>
                     <div className="text-[10px] text-gray-600">Responsable Documentos SGC</div>
                   </div>
                 </td>
                 <td className="border border-black w-1/3 p-2 align-top relative">
-                  <div className="mb-14">APROBADO:</div>
+                  <div className="mb-14 font-bold">APROBADO:</div>
                   <div className="absolute bottom-2 left-0 w-full text-center">
                     <div className="font-bold">Dr. Carlos Buteler</div>
                     <div className="text-[10px] text-gray-600">Director Médico</div>

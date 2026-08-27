@@ -1,7 +1,7 @@
 /**
- * betoReportPdf.js — Genera PDFs profesionales desde los reportes de Simon
+ * betoReportPdf.js — Genera PDFs profesionales desde los reportes de Beto IA
  * 
- * Parsea markdown tables + texto de Simon y genera un PDF con estilo
+ * Parsea markdown tables + texto de Beto y genera un PDF con estilo
  * institucional del Sanatorio Argentino usando jsPDF + autoTable.
  */
 import jsPDF from 'jspdf';
@@ -9,19 +9,19 @@ import autoTable from 'jspdf-autotable';
 
 // ─── Color palette (Institucional Sanatorio Argentino) ───
 const COLORS = {
-    primary: [79, 70, 229],      // #4F46E5 — Indigo (Simon brand)
+    primary: [79, 70, 229],        // #4F46E5 — Indigo (Beto brand)
     primaryLight: [238, 242, 255], // #EEF2FF
-    dark: [30, 41, 59],           // #1E293B
-    gray: [100, 116, 139],        // #64748B
-    lightGray: [241, 245, 249],   // #F1F5F9
+    dark: [30, 41, 59],            // #1E293B
+    gray: [100, 116, 139],         // #64748B
+    lightGray: [241, 245, 249],    // #F1F5F9
     white: [255, 255, 255],
-    green: [16, 185, 129],        // #10B981
-    amber: [245, 158, 11],        // #F59E0B
-    red: [239, 68, 68],           // #EF4444
+    green: [16, 185, 129],         // #10B981
+    amber: [245, 158, 11],         // #F59E0B
+    red: [239, 68, 68],            // #EF4444
 };
 
 /**
- * Parse markdown content from Simon's response to extract:
+ * Parse markdown content from Beto's response to extract:
  * - Title
  * - Subtitle/date
  * - Tables (| header | header |)

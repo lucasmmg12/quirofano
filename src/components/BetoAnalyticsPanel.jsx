@@ -1,5 +1,5 @@
 /**
- * BetoAnalyticsPanel — #12 Dashboard de uso del asistente Simon
+ * BetoAnalyticsPanel — Dashboard de uso del asistente Beto IA (ADM-QUI)
  * Muestra métricas de consultas, tasa de éxito, queries frecuentes, etc.
  */
 import { useState, useEffect } from 'react';
