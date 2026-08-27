@@ -429,7 +429,7 @@ export async function generateManualPDF() {
     });
 
     y = doc.lastAutoTable.finalY + 6;
-    y = noteBox(doc, 'El presente documento es de cumplimiento obligatorio. Cualquier modificación debe ser canalizada mediante solicitud formal al Departamento de Innovación y Transformación Digital y aprobada por la Dirección Médica conforme a las normas SGC.');
+    y = noteBox(doc, 'El presente documento es de cumplimiento obligatorio. Cualquier modificación debe ser canalizada mediante solicitud formal al Departamento de Innovación y Transformación Digital y aprobada por la Dirección Médica conforme a las normas SGC.', y);
 
     // Bloque de firmas final
     y = (y + 35 > doc.internal.pageSize.getHeight() - 40) ? addPage(doc, counters) : y;
