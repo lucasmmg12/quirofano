@@ -6,7 +6,7 @@
  * Pestañas:
  * 1. 🩺 Guardia Pediátrica (Consultas Médicas: 70% Honorarios Netos + Adicionales Discriminados)
  * 2. 🏥 Instrumentadores Quirúrgicos (Procedimientos Quirúrgicos)
- * 3. 📜 Historial de Liquidaciones (Auditoría y re-descargas en .zip o PDF)
+ * 3. 📜 Historial de Liquidaciones (Auditoría, re-descargas en .zip/PDF y visualización de Métricas)
  */
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
@@ -16,7 +16,8 @@ import {
     Filter, Archive, RefreshCw, Eye, X, Edit2, ShieldAlert,
     AlertCircle, Sparkles, ChevronRight, Check, Plus, Trash2,
     Clock, Building, ArrowRight, Printer, History, Calendar,
-    UserCheck, FileArchive, ArrowUpRight, Percent, Tag
+    UserCheck, FileArchive, ArrowUpRight, Percent, Tag, BarChart3,
+    Table
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { parseGuardiaExcel } from '../utils/guardiaLiquidacionParser';
@@ -35,9 +36,11 @@ import {
     saveLiquidacionEnHistorial,
     deleteLiquidacionDelHistorial
 } from '../services/liquidacionesService';
+import LiquidacionesMetricasView from './liquidaciones/LiquidacionesMetricasView';
 
 export default function LiquidacionesPanel({ currentUser, addToast }) {
     const [activeTab, setActiveTab] = useState('guardia'); // 'guardia' | 'instrumentadores' | 'historial'
+    const [activeSubView, setActiveSubView] = useState('tabla'); // 'tabla' | 'metricas'
     
     // Estado de datos procesados en sesión activa
     const [guardiaData, setGuardiaData] = useState(null);
@@ -46,6 +49,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
     // Historial
     const [historial, setHistorial] = useState([]);
     const [historialFilter, setHistorialFilter] = useState('');
+    const [historialMetricsModalData, setHistorialMetricsModalData] = useState(null);
 
     // Parámetros globales de liquidación
     const [periodo, setPeriodo] = useState('Mayo 2026');
@@ -477,7 +481,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                             Centro de Liquidaciones Médicas (Excel ➔ PDF)
                         </h2>
                         <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#64748B' }}>
-                            Sanatorio Argentino SRL · Retención 30% / Honorarios 70% + Adicionales Discriminados en Modo .ZIP
+                            Sanatorio Argentino SRL · Informes Oficiales, Desglose por Obra Social y Métricas Históricas
                         </p>
                     </div>
                 </div>
@@ -809,338 +813,320 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                         </div>
                     </div>
 
-                    {/* Tarjetas de Métricas Resumen */}
+                    {/* Selector de Sub-Vista: TABLA vs MÉTRICAS Y ANALÍTICA */}
                     {activeData && (
                         <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                            gap: '14px',
-                            marginBottom: '20px'
-                        }}>
-                            <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                    {activeTab === 'guardia' ? 'Médicos Detectados' : 'Instrumentadores'}
-                                </div>
-                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
-                                    {activeTab === 'guardia' ? activeData.totalPrestadores : activeData.totalInstrumentadores}
-                                </div>
-                            </div>
-
-                            <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                    {activeTab === 'guardia' ? 'Total Consultas' : 'Total Procedimientos'}
-                                </div>
-                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0D3B66', marginTop: '4px' }}>
-                                    {activeTab === 'guardia' ? activeData.totalAtenciones : activeData.totalProcedimientosGlobal}
-                                </div>
-                            </div>
-
-                            {activeTab === 'guardia' ? (
-                                <>
-                                    <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                            Facturación Bruta (100%)
-                                        </div>
-                                        <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#475569', marginTop: '4px' }}>
-                                            {formatCurrency(activeData.totalFacturadoBrutoGlobal || activeData.totalFacturadoGlobal)}
-                                        </div>
-                                    </div>
-
-                                    <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                            Honorarios Netos ({100 - porcentajeRetencion}%)
-                                        </div>
-                                        <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#059669', marginTop: '4px' }}>
-                                            {formatCurrency(activeData.totalHonorariosNetoGlobal)}
-                                        </div>
-                                    </div>
-
-                                    <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                            Adicionales ({activeData.totalCantidadAdicionalesGlobal})
-                                        </div>
-                                        <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#7C3AED', marginTop: '4px' }}>
-                                            {formatCurrency(activeData.totalAdicionalesGlobal)}
-                                        </div>
-                                    </div>
-
-                                    <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0D3B66', textTransform: 'uppercase' }}>
-                                            Gran Total a Liquidar
-                                        </div>
-                                        <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0D3B66', marginTop: '4px' }}>
-                                            {formatCurrency(activeData.granTotalGlobal)}
-                                        </div>
-                                    </div>
-                                </>
-                            ) : (
-                                <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                        Gran Total Liquidación
-                                    </div>
-                                    <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0D3B66', marginTop: '4px' }}>
-                                        {formatCurrency(activeData.totalFacturadoGlobal)}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Barra de Acciones Globales */}
-                    {activeData && (
-                        <div style={{
-                            background: '#FFFFFF',
-                            borderRadius: '16px',
-                            padding: '16px 24px',
-                            border: '1px solid #E2E8F0',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            marginBottom: '20px',
+                            marginBottom: '16px',
+                            background: '#FFFFFF',
+                            borderRadius: '14px',
+                            padding: '8px 16px',
+                            border: '1px solid #E2E8F0',
                             flexWrap: 'wrap',
-                            gap: '14px'
+                            gap: '10px'
                         }}>
-                            <div style={{ position: 'relative', width: '320px' }}>
-                                <Search size={16} color="#94A3B8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                                <input
-                                    type="text"
-                                    placeholder="Buscar por profesional o matrícula..."
-                                    value={searchFilter}
-                                    onChange={(e) => setSearchFilter(e.target.value)}
+                            <div style={{ display: 'flex', gap: '6px', background: '#F1F5F9', padding: '4px', borderRadius: '10px' }}>
+                                <button
+                                    onClick={() => setActiveSubView('tabla')}
                                     style={{
-                                        width: '100%',
-                                        padding: '8px 12px 8px 36px',
-                                        borderRadius: '10px',
-                                        border: '1px solid #CBD5E1',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '7px 16px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: activeSubView === 'tabla' ? '#FFFFFF' : 'transparent',
+                                        color: activeSubView === 'tabla' ? '#0D3B66' : '#64748B',
+                                        fontWeight: activeSubView === 'tabla' ? 700 : 600,
                                         fontSize: '0.82rem',
-                                        fontFamily: "'Montserrat', sans-serif",
-                                        outline: 'none',
-                                        boxSizing: 'border-box'
+                                        cursor: 'pointer',
+                                        boxShadow: activeSubView === 'tabla' ? '0 1px 4px rgba(0,0,0,0.05)' : 'none'
                                     }}
-                                />
+                                >
+                                    <Table size={15} /> Tabla de Prestadores
+                                </button>
+                                <button
+                                    onClick={() => setActiveSubView('metricas')}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '7px 16px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: activeSubView === 'metricas' ? '#FFFFFF' : 'transparent',
+                                        color: activeSubView === 'metricas' ? '#0D3B66' : '#64748B',
+                                        fontWeight: activeSubView === 'metricas' ? 700 : 600,
+                                        fontSize: '0.82rem',
+                                        cursor: 'pointer',
+                                        boxShadow: activeSubView === 'metricas' ? '0 1px 4px rgba(0,0,0,0.05)' : 'none'
+                                    }}
+                                >
+                                    <BarChart3 size={15} /> 📊 Métricas & Analítica del Mes
+                                </button>
                             </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <button
                                     onClick={() => handleDownloadGeneralPdf()}
                                     style={{
-                                        padding: '9px 18px',
+                                        padding: '7px 14px',
                                         background: '#EFF6FF',
                                         color: '#0D3B66',
-                                        border: '1.5px solid #BFDBFE',
-                                        borderRadius: '10px',
-                                        fontSize: '0.85rem',
+                                        border: '1px solid #BFDBFE',
+                                        borderRadius: '8px',
+                                        fontSize: '0.78rem',
                                         fontWeight: 700,
                                         cursor: 'pointer',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '8px',
-                                        boxShadow: '0 1px 4px rgba(13,59,102,0.08)'
+                                        gap: '6px'
                                     }}
                                 >
-                                    <FileText size={16} /> Descargar PDF General Consolidado
+                                    <FileText size={14} /> PDF General Consolidado
                                 </button>
 
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                                    <button
-                                        onClick={() => handleDownloadZip()}
-                                        disabled={isZipping}
-                                        style={{
-                                            padding: '9px 20px',
-                                            background: 'linear-gradient(135deg, #0D3B66 0%, #1E5799 100%)',
-                                            color: '#FFFFFF',
-                                            border: 'none',
-                                            borderRadius: '10px',
-                                            fontSize: '0.85rem',
-                                            fontWeight: 700,
-                                            cursor: isZipping ? 'not-allowed' : 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '8px',
-                                            boxShadow: '0 2px 8px rgba(13,59,102,0.25)'
-                                        }}
-                                    >
-                                        {isZipping ? (
-                                            <>
-                                                <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                                                Empaquetando en ZIP ({zipProgress}%)...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Archive size={16} /> Descargar Prestador por Prestador (.zip)
-                                            </>
-                                        )}
-                                    </button>
-                                    <span style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '3px' }}>
-                                        📦 Comprime todos los PDFs individuales en un archivo <strong>.ZIP</strong>
-                                    </span>
-                                </div>
+                                <button
+                                    onClick={() => handleDownloadZip()}
+                                    disabled={isZipping}
+                                    style={{
+                                        padding: '7px 16px',
+                                        background: 'linear-gradient(135deg, #0D3B66 0%, #1E5799 100%)',
+                                        color: '#FFFFFF',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        fontSize: '0.78rem',
+                                        fontWeight: 700,
+                                        cursor: isZipping ? 'not-allowed' : 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px'
+                                    }}
+                                >
+                                    {isZipping ? (
+                                        <>
+                                            <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                                            Empaquetando ({zipProgress}%)...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Archive size={14} /> Descargar Prestador por Prestador (.zip)
+                                        </>
+                                    )}
+                                </button>
                             </div>
                         </div>
                     )}
 
-                    {/* Tabla de Prestadores */}
-                    {activeData && (
-                        <div style={{
-                            background: '#FFFFFF',
-                            borderRadius: '16px',
-                            border: '1px solid #E2E8F0',
-                            boxShadow: '0 2px 10px rgba(0,0,0,0.04)',
-                            overflow: 'hidden'
-                        }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
-                                <thead>
-                                    <tr style={{ background: '#F8FAFC', borderBottom: '1.5px solid #E2E8F0' }}>
-                                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 800, color: '#334155', width: '50px' }}>N°</th>
-                                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 800, color: '#334155' }}>Profesional / Prestador</th>
-                                        <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 800, color: '#334155', width: '130px' }}>Matrícula</th>
-                                        <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 800, color: '#334155', width: '110px' }}>
-                                            {activeTab === 'guardia' ? 'Atenciones' : 'Procedimientos'}
-                                        </th>
-                                        {activeTab === 'guardia' ? (
-                                            <>
-                                                <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#334155', width: '140px' }}>
-                                                    Fact. Bruta (100%)
-                                                </th>
-                                                <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#059669', width: '140px' }}>
-                                                    Honorarios ({100 - porcentajeRetencion}%)
-                                                </th>
-                                                <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#7C3AED', width: '130px' }}>
-                                                    Adicional ($)
-                                                </th>
-                                            </>
-                                        ) : (
-                                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#334155', width: '150px' }}>
-                                                Total Procedimientos
-                                            </th>
-                                        )}
-                                        <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#0D3B66', width: '150px' }}>
-                                            Total Liquidado
-                                        </th>
-                                        <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 800, color: '#334155', width: '160px' }}>Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {currentList.map((p, idx) => {
-                                        const isEditing = editingMatricula === p.id;
-                                        const totalFila = activeTab === 'guardia' ? p.totalGeneralConAdicional : p.totalValor;
+                    {/* SUB-VISTA 1: TABLA DE PRESTADORES */}
+                    {activeData && activeSubView === 'tabla' && (
+                        <>
+                            {/* Buscador de Prestadores */}
+                            <div style={{
+                                background: '#FFFFFF',
+                                borderRadius: '14px',
+                                padding: '12px 20px',
+                                border: '1px solid #E2E8F0',
+                                boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                marginBottom: '16px',
+                                flexWrap: 'wrap',
+                                gap: '10px'
+                            }}>
+                                <div style={{ position: 'relative', width: '340px' }}>
+                                    <Search size={15} color="#94A3B8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar por profesional o matrícula..."
+                                        value={searchFilter}
+                                        onChange={(e) => setSearchFilter(e.target.value)}
+                                        style={{
+                                            width: '100%',
+                                            padding: '7px 12px 7px 36px',
+                                            borderRadius: '8px',
+                                            border: '1px solid #CBD5E1',
+                                            fontSize: '0.8rem',
+                                            fontFamily: "'Montserrat', sans-serif",
+                                            outline: 'none',
+                                            boxSizing: 'border-box'
+                                        }}
+                                    />
+                                </div>
+                                <div style={{ fontSize: '0.8rem', color: '#64748B', fontWeight: 600 }}>
+                                    Mostrando <strong>{currentList.length}</strong> de <strong>{activeTab === 'guardia' ? activeData.totalPrestadores : activeData.totalInstrumentadores}</strong> profesionales
+                                </div>
+                            </div>
 
-                                        return (
-                                            <tr key={p.id} style={{ borderBottom: '1px solid #F1F5F9', transition: 'background 0.1s ease' }}>
-                                                <td style={{ padding: '12px 16px', color: '#94A3B8', fontWeight: 700 }}>{idx + 1}</td>
-                                                <td style={{ padding: '12px 16px', fontWeight: 700, color: '#0F172A' }}>
-                                                    {p.nombre}
-                                                </td>
-                                                <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                                                    {isEditing ? (
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center' }}>
-                                                            <input
-                                                                type="text"
-                                                                value={matriculaInput}
-                                                                onChange={(e) => setMatriculaInput(e.target.value)}
-                                                                autoFocus
-                                                                style={{ width: '70px', padding: '3px 6px', fontSize: '0.78rem', borderRadius: '6px', border: '1px solid #0D3B66', textAlign: 'center' }}
-                                                            />
-                                                            <button onClick={() => handleSaveMatricula(p.id)} style={{ border: 'none', background: '#10B981', color: '#fff', borderRadius: '4px', padding: '3px 6px', cursor: 'pointer' }}><Check size={12} /></button>
-                                                            <button onClick={() => setEditingMatricula(null)} style={{ border: 'none', background: '#EF4444', color: '#fff', borderRadius: '4px', padding: '3px 6px', cursor: 'pointer' }}><X size={12} /></button>
-                                                        </div>
-                                                    ) : (
-                                                        <span
-                                                            onClick={() => { setEditingMatricula(p.id); setMatriculaInput(p.matricula || ''); }}
-                                                            title="Clic para editar matrícula"
-                                                            style={{
-                                                                display: 'inline-flex',
-                                                                alignItems: 'center',
-                                                                gap: '4px',
-                                                                cursor: 'pointer',
-                                                                padding: '3px 8px',
-                                                                borderRadius: '6px',
-                                                                background: p.matricula ? '#F1F5F9' : '#FEF3C7',
-                                                                color: p.matricula ? '#334155' : '#D97706',
-                                                                fontWeight: 700,
-                                                                fontSize: '0.75rem'
-                                                            }}
-                                                        >
-                                                            {p.matricula || 'Sin Matr.'} <Edit2 size={10} />
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 700, color: '#0D3B66' }}>
-                                                    {activeTab === 'guardia' ? p.atenciones.length : p.procedimientos.length}
-                                                </td>
-                                                {activeTab === 'guardia' ? (
-                                                    <>
-                                                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#64748B' }}>
-                                                            {formatCurrency(p.totalImporteBruto || p.totalImporte)}
-                                                        </td>
-                                                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>
-                                                            {formatCurrency(p.totalHonorariosNeto)}
-                                                        </td>
-                                                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#7C3AED' }}>
-                                                            {p.totalMontoAdicional > 0 ? (
-                                                                <span title={p.adicionalesDiscriminados?.map(item => `${item.obraSocial}: ${item.cantidad} x ${formatCurrency(item.valorUnitario)}`).join(' | ')}>
-                                                                    {formatCurrency(p.totalMontoAdicional)}
-                                                                </span>
-                                                            ) : '—'}
-                                                        </td>
-                                                    </>
-                                                ) : (
-                                                    <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#334155' }}>
-                                                        {formatCurrency(p.totalValor)}
+                            {/* Tabla de Prestadores */}
+                            <div style={{
+                                background: '#FFFFFF',
+                                borderRadius: '16px',
+                                border: '1px solid #E2E8F0',
+                                boxShadow: '0 2px 10px rgba(0,0,0,0.04)',
+                                overflow: 'hidden'
+                            }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+                                    <thead>
+                                        <tr style={{ background: '#F8FAFC', borderBottom: '1.5px solid #E2E8F0' }}>
+                                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 800, color: '#334155', width: '50px' }}>N°</th>
+                                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 800, color: '#334155' }}>Profesional / Prestador</th>
+                                            <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 800, color: '#334155', width: '130px' }}>Matrícula</th>
+                                            <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 800, color: '#334155', width: '110px' }}>
+                                                {activeTab === 'guardia' ? 'Atenciones' : 'Procedimientos'}
+                                            </th>
+                                            {activeTab === 'guardia' ? (
+                                                <>
+                                                    <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#334155', width: '140px' }}>
+                                                        Fact. Bruta (100%)
+                                                    </th>
+                                                    <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#059669', width: '140px' }}>
+                                                        Honorarios ({100 - porcentajeRetencion}%)
+                                                    </th>
+                                                    <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#7C3AED', width: '130px' }}>
+                                                        Adicional ($)
+                                                    </th>
+                                                </>
+                                            ) : (
+                                                <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#334155', width: '150px' }}>
+                                                    Total Procedimientos
+                                                </th>
+                                            )}
+                                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#0D3B66', width: '150px' }}>
+                                                Total Liquidado
+                                            </th>
+                                            <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 800, color: '#334155', width: '160px' }}>Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {currentList.map((p, idx) => {
+                                            const isEditing = editingMatricula === p.id;
+                                            const totalFila = activeTab === 'guardia' ? p.totalGeneralConAdicional : p.totalValor;
+
+                                            return (
+                                                <tr key={p.id} style={{ borderBottom: '1px solid #F1F5F9', transition: 'background 0.1s ease' }}>
+                                                    <td style={{ padding: '12px 16px', color: '#94A3B8', fontWeight: 700 }}>{idx + 1}</td>
+                                                    <td style={{ padding: '12px 16px', fontWeight: 700, color: '#0F172A' }}>
+                                                        {p.nombre}
                                                     </td>
-                                                )}
-                                                <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#0D3B66' }}>
-                                                    {formatCurrency(totalFila)}
-                                                </td>
-                                                <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                                                        <button
-                                                            onClick={() => setPreviewPrestador(p)}
-                                                            title="Ver Detalle de Prestaciones y Desglose Discriminado"
-                                                            style={{
-                                                                padding: '6px 10px',
-                                                                background: '#F8FAFC',
-                                                                border: '1px solid #CBD5E1',
-                                                                borderRadius: '8px',
-                                                                color: '#475569',
-                                                                cursor: 'pointer',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '4px',
-                                                                fontSize: '0.75rem',
-                                                                fontWeight: 600
-                                                            }}
-                                                        >
-                                                            <Eye size={13} /> Ver
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleDownloadIndividualPdf(p)}
-                                                            title="Descargar PDF Oficial"
-                                                            style={{
-                                                                padding: '6px 10px',
-                                                                background: '#0D3B66',
-                                                                border: 'none',
-                                                                borderRadius: '8px',
-                                                                color: '#FFFFFF',
-                                                                cursor: 'pointer',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '4px',
-                                                                fontSize: '0.75rem',
-                                                                fontWeight: 700
-                                                            }}
-                                                        >
-                                                            <Download size={13} /> PDF
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
+                                                    <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                                        {isEditing ? (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center' }}>
+                                                                <input
+                                                                    type="text"
+                                                                    value={matriculaInput}
+                                                                    onChange={(e) => setMatriculaInput(e.target.value)}
+                                                                    autoFocus
+                                                                    style={{ width: '70px', padding: '3px 6px', fontSize: '0.78rem', borderRadius: '6px', border: '1px solid #0D3B66', textAlign: 'center' }}
+                                                                />
+                                                                <button onClick={() => handleSaveMatricula(p.id)} style={{ border: 'none', background: '#10B981', color: '#fff', borderRadius: '4px', padding: '3px 6px', cursor: 'pointer' }}><Check size={12} /></button>
+                                                                <button onClick={() => setEditingMatricula(null)} style={{ border: 'none', background: '#EF4444', color: '#fff', borderRadius: '4px', padding: '3px 6px', cursor: 'pointer' }}><X size={12} /></button>
+                                                            </div>
+                                                        ) : (
+                                                            <span
+                                                                onClick={() => { setEditingMatricula(p.id); setMatriculaInput(p.matricula || ''); }}
+                                                                title="Clic para editar matrícula"
+                                                                style={{
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
+                                                                    cursor: 'pointer',
+                                                                    padding: '3px 8px',
+                                                                    borderRadius: '6px',
+                                                                    background: p.matricula ? '#F1F5F9' : '#FEF3C7',
+                                                                    color: p.matricula ? '#334155' : '#D97706',
+                                                                    fontWeight: 700,
+                                                                    fontSize: '0.75rem'
+                                                                }}
+                                                            >
+                                                                {p.matricula || 'Sin Matr.'} <Edit2 size={10} />
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 700, color: '#0D3B66' }}>
+                                                        {activeTab === 'guardia' ? p.atenciones.length : p.procedimientos.length}
+                                                    </td>
+                                                    {activeTab === 'guardia' ? (
+                                                        <>
+                                                            <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#64748B' }}>
+                                                                {formatCurrency(p.totalImporteBruto || p.totalImporte)}
+                                                            </td>
+                                                            <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>
+                                                                {formatCurrency(p.totalHonorariosNeto)}
+                                                            </td>
+                                                            <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#7C3AED' }}>
+                                                                {p.totalMontoAdicional > 0 ? (
+                                                                    <span title={p.adicionalesDiscriminados?.map(item => `${item.obraSocial}: ${item.cantidad} x ${formatCurrency(item.valorUnitario)}`).join(' | ')}>
+                                                                        {formatCurrency(p.totalMontoAdicional)}
+                                                                    </span>
+                                                                ) : '—'}
+                                                            </td>
+                                                        </>
+                                                    ) : (
+                                                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#334155' }}>
+                                                            {formatCurrency(p.totalValor)}
+                                                        </td>
+                                                    )}
+                                                    <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#0D3B66' }}>
+                                                        {formatCurrency(totalFila)}
+                                                    </td>
+                                                    <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                            <button
+                                                                onClick={() => setPreviewPrestador(p)}
+                                                                title="Ver Detalle de Prestaciones y Desglose Discriminado"
+                                                                style={{
+                                                                    padding: '6px 10px',
+                                                                    background: '#F8FAFC',
+                                                                    border: '1px solid #CBD5E1',
+                                                                    borderRadius: '8px',
+                                                                    color: '#475569',
+                                                                    cursor: 'pointer',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
+                                                                    fontSize: '0.75rem',
+                                                                    fontWeight: 600
+                                                                }}
+                                                            >
+                                                                <Eye size={13} /> Ver
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDownloadIndividualPdf(p)}
+                                                                title="Descargar PDF Oficial"
+                                                                style={{
+                                                                    padding: '6px 10px',
+                                                                    background: '#0D3B66',
+                                                                    border: 'none',
+                                                                    borderRadius: '8px',
+                                                                    color: '#FFFFFF',
+                                                                    cursor: 'pointer',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
+                                                                    fontSize: '0.75rem',
+                                                                    fontWeight: 700
+                                                                }}
+                                                            >
+                                                                <Download size={13} /> PDF
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </>
+                    )}
+
+                    {/* SUB-VISTA 2: MÉTRICAS Y ANALÍTICA DEL MES */}
+                    {activeData && activeSubView === 'metricas' && (
+                        <LiquidacionesMetricasView data={activeData} />
                     )}
                 </>
             )}
@@ -1167,7 +1153,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                 Bitácora e Historial de Liquidaciones Generadas
                             </h3>
                             <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748B' }}>
-                                Registro histórico para re-descargar informes consolidados o paquetes individuales en modo .ZIP
+                                Registro histórico para re-descargar informes consolidados, paquetes .ZIP y consultar métricas de cualquier mes
                             </p>
                         </div>
 
@@ -1273,7 +1259,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                             </div>
                                         </div>
 
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                                             <div style={{ textAlign: 'right' }}>
                                                 <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 700 }}>GRAN TOTAL</div>
                                                 <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#059669' }}>
@@ -1281,7 +1267,27 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                                 </div>
                                             </div>
 
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <button
+                                                    onClick={() => setHistorialMetricsModalData(item.dataSnapshot)}
+                                                    title="Ver Dashboard Estadístico y Métricas Históricas"
+                                                    style={{
+                                                        padding: '7px 12px',
+                                                        background: '#F0FDF4',
+                                                        border: '1px solid #BBF7D0',
+                                                        borderRadius: '8px',
+                                                        color: '#15803D',
+                                                        fontSize: '0.78rem',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}
+                                                >
+                                                    <BarChart3 size={13} /> Ver Métricas
+                                                </button>
+
                                                 <button
                                                     onClick={() => handleCargarDesdeHistorial(item)}
                                                     title="Cargar y abrir esta liquidación en el panel interactivo"
@@ -1299,7 +1305,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                                         gap: '4px'
                                                     }}
                                                 >
-                                                    <Eye size={13} /> Cargar en Panel
+                                                    <Eye size={13} /> Cargar
                                                 </button>
 
                                                 <button
@@ -1319,7 +1325,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                                         gap: '4px'
                                                     }}
                                                 >
-                                                    <FileText size={13} /> PDF General
+                                                    <FileText size={13} /> PDF
                                                 </button>
 
                                                 <button
@@ -1340,7 +1346,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                                         boxShadow: '0 2px 6px rgba(13,59,102,0.2)'
                                                     }}
                                                 >
-                                                    <Archive size={13} /> Prestador por Prestador (.zip)
+                                                    <Archive size={13} /> .zip
                                                 </button>
 
                                                 <button
@@ -1364,6 +1370,69 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                             })}
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Modal de Métricas Históricas */}
+            {historialMetricsModalData && (
+                <div style={{
+                    position: 'fixed',
+                    inset: 0,
+                    background: 'rgba(15, 23, 42, 0.6)',
+                    backdropFilter: 'blur(4px)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '20px',
+                    zIndex: 1000,
+                    animation: 'fadeIn 0.2s ease-out'
+                }}>
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '20px',
+                        width: '100%',
+                        maxWidth: '1100px',
+                        maxHeight: '90vh',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden',
+                        boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
+                    }}>
+                        <div style={{
+                            padding: '18px 24px',
+                            background: '#0D3B66',
+                            color: '#FFFFFF',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between'
+                        }}>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#FFFFFF' }}>
+                                    📊 Métricas Históricas · {historialMetricsModalData.periodo} (Liq. N° {historialMetricsModalData.numeroLiquidacion})
+                                </h3>
+                                <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#B4C8DC' }}>
+                                    Totales de Obras Sociales, Médicos y Estructura Financiera guardada
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setHistorialMetricsModalData(null)}
+                                style={{
+                                    padding: '8px',
+                                    background: 'rgba(255,255,255,0.15)',
+                                    border: 'none',
+                                    borderRadius: '10px',
+                                    cursor: 'pointer',
+                                    color: '#FFFFFF'
+                                }}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+                            <LiquidacionesMetricasView data={historialMetricsModalData} />
+                        </div>
+                    </div>
                 </div>
             )}
 

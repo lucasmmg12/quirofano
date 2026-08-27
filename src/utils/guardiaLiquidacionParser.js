@@ -3,6 +3,7 @@
  * Parser para planillas Excel de Guardia Pediátrica — Sanatorio Argentino
  * Lee siempre la primera hoja del libro Excel y aplica la retención del 30% (70% neto)
  * y el cálculo discriminado de adicionales por Obra Social (ej: 001 - PROVINCIA y 004 - DAMSU).
+ * Genera métricas analíticas completas por Médico y por Obra Social.
  */
 import * as XLSX from 'xlsx';
 
@@ -86,7 +87,7 @@ export function parseExcelNumber(val) {
  * SIEMPRE toma la primera hoja del libro Excel
  * @param {ArrayBuffer|Uint8Array} buffer
  * @param {Object} options - Parámetros configurables
- * @returns {Object} Datos procesados de guardia
+ * @returns {Object} Datos procesados de guardia con métricas analíticas
  */
 export function parseGuardiaExcel(buffer, options = {}) {
     // Porcentaje de retención sanatorial (por defecto 30% retención = 70% neto)
@@ -112,6 +113,9 @@ export function parseGuardiaExcel(buffer, options = {}) {
 
     // Agrupación por profesional médico
     const prestadoresMap = {};
+
+    // Mapa para métricas de Obras Sociales
+    const obrasSocialesMap = {};
 
     rawRows.forEach((r, idx) => {
         const responsableRaw = r.Responsable || r.Profesional || r.Medico || r['Médico'] || '';
@@ -142,16 +146,16 @@ export function parseGuardiaExcel(buffer, options = {}) {
                 totalImporteBruto: 0,
                 montoRetencion: 0,
                 totalHonorariosNeto: 0,
-                // Conteo por cada Obra Social con adicional
                 conteoPorOS: {},
                 totalCantidadAdicional: 0,
                 totalMontoAdicional: 0,
-                totalGeneralConAdicional: 0
+                totalGeneralConAdicional: 0,
+                obrasSocialesSet: new Set()
             };
         }
 
         const fechaFormatted = formatExcelDate(fechaRaw);
-        const cliente = String(r.Cliente || r['Obra Social'] || '').trim();
+        const cliente = String(r.Cliente || r['Obra Social'] || '').trim() || 'Sin Especificar';
         const valor = parseExcelNumber(r.Valor || r.Importe);
 
         prestadoresMap[responsable].atenciones.push({
@@ -163,6 +167,22 @@ export function parseGuardiaExcel(buffer, options = {}) {
         });
 
         prestadoresMap[responsable].totalImporteBruto += valor;
+        prestadoresMap[responsable].obrasSocialesSet.add(cliente);
+
+        // Agrupación para Métricas de Obra Social
+        if (!obrasSocialesMap[cliente]) {
+            obrasSocialesMap[cliente] = {
+                obraSocial: cliente,
+                atenciones: 0,
+                montoBruto: 0,
+                cantidadAdicional: 0,
+                montoAdicional: 0,
+                medicosSet: new Set()
+            };
+        }
+        obrasSocialesMap[cliente].atenciones++;
+        obrasSocialesMap[cliente].montoBruto += valor;
+        obrasSocialesMap[cliente].medicosSet.add(responsable);
 
         // Buscar si la obra social de la atención coincide con las configuradas para adicional
         const matchAdicional = adicionalesConfig.find(item => {
@@ -186,6 +206,9 @@ export function parseGuardiaExcel(buffer, options = {}) {
             prestadoresMap[responsable].conteoPorOS[osNombre].subtotal += osValor;
             prestadoresMap[responsable].totalCantidadAdicional++;
             prestadoresMap[responsable].totalMontoAdicional += osValor;
+
+            obrasSocialesMap[cliente].cantidadAdicional++;
+            obrasSocialesMap[cliente].montoAdicional += osValor;
         }
     });
 
@@ -193,9 +216,8 @@ export function parseGuardiaExcel(buffer, options = {}) {
     const prestadoresList = Object.values(prestadoresMap).map(p => {
         const montoRetencion = p.totalImporteBruto * (porcentajeRetencion / 100);
         const totalHonorariosNeto = p.totalImporteBruto - montoRetencion; // 70% neto
-
-        // Array discriminado de adicionales por Obra Social
         const adicionalesDiscriminados = Object.values(p.conteoPorOS);
+        const ticketPromedio = p.atenciones.length > 0 ? (p.totalImporteBruto / p.atenciones.length) : 0;
 
         return {
             ...p,
@@ -203,7 +225,10 @@ export function parseGuardiaExcel(buffer, options = {}) {
             montoRetencion,
             totalHonorariosNeto,
             adicionalesDiscriminados,
-            totalGeneralConAdicional: totalHonorariosNeto + p.totalMontoAdicional
+            totalGeneralConAdicional: totalHonorariosNeto + p.totalMontoAdicional,
+            ticketPromedio,
+            cantObrasSociales: p.obrasSocialesSet.size,
+            obrasSocialesSet: undefined // limpiar Set para JSON serialization
         };
     });
 
@@ -218,6 +243,60 @@ export function parseGuardiaExcel(buffer, options = {}) {
     const totalAdicionalesGlobal = prestadoresList.reduce((acc, p) => acc + p.totalMontoAdicional, 0);
     const granTotalGlobal = totalHonorariosNetoGlobal + totalAdicionalesGlobal;
     const totalAtenciones = prestadoresList.reduce((acc, p) => acc + p.atenciones.length, 0);
+    const ticketPromedioGlobal = totalAtenciones > 0 ? (totalFacturadoBrutoGlobal / totalAtenciones) : 0;
+    const promedioAtencionesPorMedico = prestadoresList.length > 0 ? (totalAtenciones / prestadoresList.length) : 0;
+
+    // Métricas estructuradas de Obras Sociales
+    const metricasObrasSociales = Object.values(obrasSocialesMap).map(os => {
+        const pctAtenciones = totalAtenciones > 0 ? ((os.atenciones / totalAtenciones) * 100) : 0;
+        const pctMonto = totalFacturadoBrutoGlobal > 0 ? ((os.montoBruto / totalFacturadoBrutoGlobal) * 100) : 0;
+        const montoNeto = os.montoBruto * factorHonorarios;
+        const ticketPromedioOS = os.atenciones > 0 ? (os.montoBruto / os.atenciones) : 0;
+
+        return {
+            obraSocial: os.obraSocial,
+            atenciones: os.atenciones,
+            pctAtenciones: Number(pctAtenciones.toFixed(2)),
+            montoBruto: os.montoBruto,
+            pctMonto: Number(pctMonto.toFixed(2)),
+            montoNeto,
+            cantidadAdicional: os.cantidadAdicional,
+            montoAdicional: os.montoAdicional,
+            cantMedicos: os.medicosSet.size,
+            ticketPromedio: ticketPromedioOS
+        };
+    }).sort((a, b) => b.atenciones - a.atenciones);
+
+    // Rankings de Médicos
+    const rankingMedicosPorAtenciones = [...prestadoresList]
+        .sort((a, b) => b.atenciones.length - a.atenciones.length)
+        .map((p, rank) => ({
+            rank: rank + 1,
+            id: p.id,
+            nombre: p.nombre,
+            matricula: p.matricula,
+            atenciones: p.atenciones.length,
+            pctAtenciones: totalAtenciones > 0 ? Number(((p.atenciones.length / totalAtenciones) * 100).toFixed(2)) : 0,
+            totalImporteBruto: p.totalImporteBruto,
+            totalHonorariosNeto: p.totalHonorariosNeto,
+            totalMontoAdicional: p.totalMontoAdicional,
+            totalGeneral: p.totalGeneralConAdicional,
+            ticketPromedio: p.ticketPromedio
+        }));
+
+    const rankingMedicosPorMonto = [...prestadoresList]
+        .sort((a, b) => b.totalGeneralConAdicional - a.totalGeneralConAdicional)
+        .map((p, rank) => ({
+            rank: rank + 1,
+            id: p.id,
+            nombre: p.nombre,
+            matricula: p.matricula,
+            atenciones: p.atenciones.length,
+            totalImporteBruto: p.totalImporteBruto,
+            totalHonorariosNeto: p.totalHonorariosNeto,
+            totalMontoAdicional: p.totalMontoAdicional,
+            totalGeneral: p.totalGeneralConAdicional
+        }));
 
     return {
         tipo: 'guardia_pediatrica',
@@ -235,6 +314,17 @@ export function parseGuardiaExcel(buffer, options = {}) {
         totalCantidadAdicionalesGlobal,
         totalAdicionalesGlobal,
         granTotalGlobal,
-        prestadores: prestadoresList
+        ticketPromedioGlobal,
+        promedioAtencionesPorMedico,
+        prestadores: prestadoresList,
+        // Analítica estructurada para dashboard y guardado histórico
+        analytics: {
+            totalObrasSociales: metricasObrasSociales.length,
+            metricasObrasSociales,
+            rankingMedicosPorAtenciones,
+            rankingMedicosPorMonto,
+            topObraSocial: metricasObrasSociales[0] || null,
+            topMedico: rankingMedicosPorAtenciones[0] || null
+        }
     };
 }
