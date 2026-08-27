@@ -4,7 +4,7 @@
  * Sanatorio Argentino SRL
  * 
  * Pestañas:
- * 1. 🩺 Guardia Pediátrica (Consultas Médicas)
+ * 1. 🩺 Guardia Pediátrica (Consultas Médicas: 70% Honorarios + Adicionales)
  * 2. 🏥 Instrumentadores Quirúrgicos (Procedimientos Quirúrgicos)
  * 3. 📜 Historial de Liquidaciones (Auditoría y re-descargas en .zip o PDF)
  */
@@ -16,7 +16,7 @@ import {
     Filter, Archive, RefreshCw, Eye, X, Edit2, ShieldAlert,
     AlertCircle, Sparkles, ChevronRight, Check, Plus, Trash2,
     Clock, Building, ArrowRight, Printer, History, Calendar,
-    UserCheck, FileArchive, ArrowUpRight
+    UserCheck, FileArchive, ArrowUpRight, Percent
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { parseGuardiaExcel } from '../utils/guardiaLiquidacionParser';
@@ -50,6 +50,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
     // Parámetros globales de liquidación
     const [periodo, setPeriodo] = useState('Mayo 2026');
     const [numeroLiquidacion, setNumeroLiquidacion] = useState('410');
+    const [porcentajeHonorariosGuardia, setPorcentajeHonorariosGuardia] = useState(70); // 70% por defecto
     const [valorAdicionalGuardia, setValorAdicionalGuardia] = useState(8000);
     const [obrasSocialesAdicional, setObrasSocialesAdicional] = useState(['001 - PROVINCIA', '004 - DAMSU']);
     const [nuevaOSInput, setNuevaOSInput] = useState('');
@@ -91,15 +92,15 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                 const parsed = parseGuardiaExcel(buffer, {
                     periodo,
                     liquidacion: numeroLiquidacion,
+                    porcentajeHonorarios: porcentajeHonorariosGuardia,
                     valorAdicional: valorAdicionalGuardia,
                     obrasSocialesAdicional
                 });
                 parsed.usuario = currentUser?.nombre || currentUser?.usuario || 'Administración';
                 setGuardiaData(parsed);
-                // Guardar automáticamente en historial
                 saveLiquidacionEnHistorial(parsed);
                 refreshHistorial();
-                addToast?.('Planilla de Guardia Pediátrica procesada y guardada en historial.', 'success');
+                addToast?.('Planilla de Guardia Pediátrica procesada al 70% y guardada.', 'success');
             } else if (activeTab === 'instrumentadores') {
                 const parsed = parseInstrumentadoresExcel(buffer, {
                     periodo,
@@ -107,10 +108,9 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                 });
                 parsed.usuario = currentUser?.nombre || currentUser?.usuario || 'Administración';
                 setInstrumentadoresData(parsed);
-                // Guardar automáticamente en historial
                 saveLiquidacionEnHistorial(parsed);
                 refreshHistorial();
-                addToast?.('Planilla de Instrumentadores procesada y guardada en historial.', 'success');
+                addToast?.('Planilla de Instrumentadores procesada y guardada.', 'success');
             }
         } catch (err) {
             console.error('Error procesando archivo Excel:', err);
@@ -124,6 +124,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
     // Recalcular parámetros
     const handleRecalcular = () => {
         if (activeTab === 'guardia' && guardiaData) {
+            const factor = porcentajeHonorariosGuardia / 100;
             const prestadoresActualizados = guardiaData.prestadores.map(p => {
                 let countAdic = 0;
                 const adicPorOS = {};
@@ -136,18 +137,24 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                     }
                 });
                 const totalMontoAdicional = countAdic * valorAdicionalGuardia;
+                const totalHonorariosNeto = (p.totalImporteBruto || p.totalImporte) * factor;
+
                 return {
                     ...p,
                     periodo,
                     liquidacion: numeroLiquidacion,
+                    porcentajeHonorarios: porcentajeHonorariosGuardia,
+                    totalHonorariosNeto,
                     adicionalesPorOS: adicPorOS,
                     totalCantidadAdicional: countAdic,
                     totalMontoAdicional,
-                    totalGeneralConAdicional: p.totalImporte + totalMontoAdicional
+                    totalGeneralConAdicional: totalHonorariosNeto + totalMontoAdicional
                 };
             });
 
-            const totalFacturadoGlobal = prestadoresActualizados.reduce((acc, p) => acc + p.totalImporte, 0);
+            const totalFacturadoBrutoGlobal = prestadoresActualizados.reduce((acc, p) => acc + (p.totalImporteBruto || p.totalImporte), 0);
+            const totalHonorariosNetoGlobal = prestadoresActualizados.reduce((acc, p) => acc + p.totalHonorariosNeto, 0);
+            const totalRetencionGlobal = totalFacturadoBrutoGlobal - totalHonorariosNetoGlobal;
             const totalAdicionalesGlobal = prestadoresActualizados.reduce((acc, p) => acc + p.totalMontoAdicional, 0);
             const totalCantidadAdicionalesGlobal = prestadoresActualizados.reduce((acc, p) => acc + p.totalCantidadAdicional, 0);
 
@@ -155,19 +162,23 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                 ...guardiaData,
                 periodo,
                 liquidacion: numeroLiquidacion,
+                porcentajeHonorarios: porcentajeHonorariosGuardia,
                 valorAdicional: valorAdicionalGuardia,
                 obrasSocialesAdicional,
-                totalFacturadoGlobal,
+                totalFacturadoBrutoGlobal,
+                totalFacturadoGlobal: totalFacturadoBrutoGlobal,
+                totalRetencionGlobal,
+                totalHonorariosNetoGlobal,
                 totalCantidadAdicionalesGlobal,
                 totalAdicionalesGlobal,
-                granTotalGlobal: totalFacturadoGlobal + totalAdicionalesGlobal,
+                granTotalGlobal: totalHonorariosNetoGlobal + totalAdicionalesGlobal,
                 prestadores: prestadoresActualizados
             };
 
             setGuardiaData(updatedData);
             saveLiquidacionEnHistorial(updatedData);
             refreshHistorial();
-            addToast?.('Cálculos actualizados y registrados en el historial.', 'info');
+            addToast?.('Cálculos actualizados al ' + porcentajeHonorariosGuardia + '%.', 'info');
         } else if (activeTab === 'instrumentadores' && instrumentadoresData) {
             const updated = instrumentadoresData.instrumentadores.map(inst => ({
                 ...inst,
@@ -343,6 +354,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
             setPeriodo(item.periodo);
             setNumeroLiquidacion(item.numeroLiquidacion);
             if (item.valorAdicional) setValorAdicionalGuardia(item.valorAdicional);
+            if (item.porcentajeHonorarios) setPorcentajeHonorariosGuardia(item.porcentajeHonorarios);
             if (item.obrasSocialesAdicional) setObrasSocialesAdicional(item.obrasSocialesAdicional);
             setActiveTab('guardia');
             addToast?.(`Liquidación de Guardia (${item.periodo}) cargada en el panel activo.`, 'info');
@@ -446,7 +458,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                     </div>
                 </div>
 
-                {/* Selector de Pestañas (Guardia / Instrumentadores / Historial) */}
+                {/* Selector de Pestañas */}
                 <div style={{
                     display: 'flex',
                     background: '#F1F5F9',
@@ -523,7 +535,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                     {/* Zona de Carga y Parámetros */}
                     <div style={{
                         display: 'grid',
-                        gridTemplateColumns: '1fr 380px',
+                        gridTemplateColumns: '1fr 400px',
                         gap: '20px',
                         marginBottom: '20px'
                     }}>
@@ -599,7 +611,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                             display: 'flex',
                             flexDirection: 'column',
                             justifyContent: 'space-between',
-                            gap: '12px'
+                            gap: '10px'
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#0F172A' }}>
@@ -621,7 +633,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                         gap: '4px'
                                     }}
                                 >
-                                    <RefreshCw size={12} /> Recalcular y Guardar
+                                    <RefreshCw size={12} /> Recalcular
                                 </button>
                             </div>
 
@@ -669,27 +681,55 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                             </div>
 
                             {activeTab === 'guardia' && (
-                                <div>
-                                    <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>
-                                        Valor Adicional por Consulta ($)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={valorAdicionalGuardia}
-                                        onChange={(e) => setValorAdicionalGuardia(Number(e.target.value))}
-                                        style={{
-                                            width: '100%',
-                                            padding: '6px 10px',
-                                            borderRadius: '8px',
-                                            border: '1px solid #CBD5E1',
-                                            fontSize: '0.8rem',
-                                            fontWeight: 600,
-                                            fontFamily: "'Montserrat', sans-serif",
-                                            boxSizing: 'border-box'
-                                        }}
-                                    />
+                                <>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                        <div>
+                                            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>
+                                                % Honorarios Médicos
+                                            </label>
+                                            <div style={{ position: 'relative' }}>
+                                                <input
+                                                    type="number"
+                                                    value={porcentajeHonorariosGuardia}
+                                                    onChange={(e) => setPorcentajeHonorariosGuardia(Number(e.target.value))}
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '6px 24px 6px 10px',
+                                                        borderRadius: '8px',
+                                                        border: '1px solid #CBD5E1',
+                                                        fontSize: '0.8rem',
+                                                        fontWeight: 700,
+                                                        color: '#0D3B66',
+                                                        fontFamily: "'Montserrat', sans-serif",
+                                                        boxSizing: 'border-box'
+                                                    }}
+                                                />
+                                                <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', fontWeight: 800, color: '#64748B' }}>%</span>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>
+                                                Valor Adicional ($)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={valorAdicionalGuardia}
+                                                onChange={(e) => setValorAdicionalGuardia(Number(e.target.value))}
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '6px 10px',
+                                                    borderRadius: '8px',
+                                                    border: '1px solid #CBD5E1',
+                                                    fontSize: '0.8rem',
+                                                    fontWeight: 600,
+                                                    fontFamily: "'Montserrat', sans-serif",
+                                                    boxSizing: 'border-box'
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
                                     
-                                    <div style={{ marginTop: '8px' }}>
+                                    <div>
                                         <label style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>
                                             Obras Sociales con Adicional:
                                         </label>
@@ -744,7 +784,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                             </button>
                                         </div>
                                     </div>
-                                </div>
+                                </>
                             )}
                         </div>
                     </div>
@@ -753,56 +793,76 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                     {activeData && (
                         <div style={{
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                             gap: '14px',
                             marginBottom: '20px'
                         }}>
                             <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
                                     {activeTab === 'guardia' ? 'Médicos Detectados' : 'Instrumentadores'}
                                 </div>
-                                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
+                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
                                     {activeTab === 'guardia' ? activeData.totalPrestadores : activeData.totalInstrumentadores}
                                 </div>
                             </div>
 
                             <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                    {activeTab === 'guardia' ? 'Total Consultas' : 'Total Cirugías / Procedimientos'}
+                                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                    {activeTab === 'guardia' ? 'Total Consultas' : 'Total Procedimientos'}
                                 </div>
-                                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0D3B66', marginTop: '4px' }}>
+                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0D3B66', marginTop: '4px' }}>
                                     {activeTab === 'guardia' ? activeData.totalAtenciones : activeData.totalProcedimientosGlobal}
                                 </div>
                             </div>
 
-                            <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                    Total Facturado Base
-                                </div>
-                                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#059669', marginTop: '4px' }}>
-                                    {formatCurrency(activeData.totalFacturadoGlobal)}
-                                </div>
-                            </div>
-
-                            {activeTab === 'guardia' && (
-                                <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                        Adicionales ({activeData.totalCantidadAdicionalesGlobal})
+                            {activeTab === 'guardia' ? (
+                                <>
+                                    <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                            Facturación Bruta (100%)
+                                        </div>
+                                        <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#475569', marginTop: '4px' }}>
+                                            {formatCurrency(activeData.totalFacturadoBrutoGlobal || activeData.totalFacturadoGlobal)}
+                                        </div>
                                     </div>
-                                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#7C3AED', marginTop: '4px' }}>
-                                        {formatCurrency(activeData.totalAdicionalesGlobal)}
+
+                                    <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                            Honorarios Médicos ({porcentajeHonorariosGuardia}%)
+                                        </div>
+                                        <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#059669', marginTop: '4px' }}>
+                                            {formatCurrency(activeData.totalHonorariosNetoGlobal)}
+                                        </div>
+                                    </div>
+
+                                    <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                            Adicionales ({activeData.totalCantidadAdicionalesGlobal})
+                                        </div>
+                                        <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#7C3AED', marginTop: '4px' }}>
+                                            {formatCurrency(activeData.totalAdicionalesGlobal)}
+                                        </div>
+                                    </div>
+
+                                    <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0D3B66', textTransform: 'uppercase' }}>
+                                            Gran Total a Liquidar
+                                        </div>
+                                        <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0D3B66', marginTop: '4px' }}>
+                                            {formatCurrency(activeData.granTotalGlobal)}
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                        Gran Total Liquidación
+                                    </div>
+                                    <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0D3B66', marginTop: '4px' }}>
+                                        {formatCurrency(activeData.totalFacturadoGlobal)}
                                     </div>
                                 </div>
                             )}
-
-                            <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '16px 20px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                    Gran Total Liquidación
-                                </div>
-                                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
-                                    {formatCurrency(activeTab === 'guardia' ? activeData.granTotalGlobal : activeData.totalFacturadoGlobal)}
-                                </div>
-                            </div>
                         </div>
                     )}
 
@@ -862,7 +922,6 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                     <FileText size={16} /> Descargar PDF General Consolidado
                                 </button>
 
-                                {/* Botón con indicación clara del modo .ZIP */}
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                                     <button
                                         onClick={() => handleDownloadZip()}
@@ -919,15 +978,24 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                         <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 800, color: '#334155', width: '110px' }}>
                                             {activeTab === 'guardia' ? 'Atenciones' : 'Procedimientos'}
                                         </th>
-                                        <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#334155', width: '140px' }}>
-                                            Subtotal Facturado
-                                        </th>
-                                        {activeTab === 'guardia' && (
-                                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#334155', width: '140px' }}>
-                                                Adicional ($)
+                                        {activeTab === 'guardia' ? (
+                                            <>
+                                                <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#334155', width: '140px' }}>
+                                                    Fact. Bruta (100%)
+                                                </th>
+                                                <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#059669', width: '140px' }}>
+                                                    Honorarios ({porcentajeHonorariosGuardia}%)
+                                                </th>
+                                                <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#7C3AED', width: '130px' }}>
+                                                    Adicional ($)
+                                                </th>
+                                            </>
+                                        ) : (
+                                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#334155', width: '150px' }}>
+                                                Total Procedimientos
                                             </th>
                                         )}
-                                        <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#334155', width: '150px' }}>
+                                        <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#0D3B66', width: '150px' }}>
                                             Total Liquidado
                                         </th>
                                         <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 800, color: '#334155', width: '160px' }}>Acciones</th>
@@ -981,19 +1049,28 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                                 <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 700, color: '#0D3B66' }}>
                                                     {activeTab === 'guardia' ? p.atenciones.length : p.procedimientos.length}
                                                 </td>
-                                                <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#334155' }}>
-                                                    {formatCurrency(activeTab === 'guardia' ? p.totalImporte : p.totalValor)}
-                                                </td>
-                                                {activeTab === 'guardia' && (
-                                                    <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#7C3AED' }}>
-                                                        {p.totalMontoAdicional > 0 ? (
-                                                            <span title={`${p.totalCantidadAdicional} consultas con adicional`}>
-                                                                {formatCurrency(p.totalMontoAdicional)}
-                                                            </span>
-                                                        ) : '—'}
+                                                {activeTab === 'guardia' ? (
+                                                    <>
+                                                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#64748B' }}>
+                                                            {formatCurrency(p.totalImporteBruto || p.totalImporte)}
+                                                        </td>
+                                                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>
+                                                            {formatCurrency(p.totalHonorariosNeto)}
+                                                        </td>
+                                                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#7C3AED' }}>
+                                                            {p.totalMontoAdicional > 0 ? (
+                                                                <span title={`${p.totalCantidadAdicional} consultas con adicional`}>
+                                                                    {formatCurrency(p.totalMontoAdicional)}
+                                                                </span>
+                                                            ) : '—'}
+                                                        </td>
+                                                    </>
+                                                ) : (
+                                                    <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#334155' }}>
+                                                        {formatCurrency(p.totalValor)}
                                                     </td>
                                                 )}
-                                                <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#0F172A' }}>
+                                                <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#0D3B66' }}>
                                                     {formatCurrency(totalFila)}
                                                 </td>
                                                 <td style={{ padding: '12px 16px', textAlign: 'center' }}>
@@ -1356,7 +1433,7 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                                             <th style={{ padding: '8px', textAlign: 'left' }}>Fecha</th>
                                             <th style={{ padding: '8px', textAlign: 'left' }}>Paciente</th>
                                             <th style={{ padding: '8px', textAlign: 'left' }}>Obra Social</th>
-                                            <th style={{ padding: '8px', textAlign: 'right' }}>Importe</th>
+                                            <th style={{ padding: '8px', textAlign: 'right' }}>Importe Bruto</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -1405,17 +1482,26 @@ export default function LiquidacionesPanel({ currentUser, addToast }) {
                             borderTop: '1px solid #E2E8F0',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'space-between'
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '12px'
                         }}>
                             <div>
-                                {activeTab === 'guardia' && previewPrestador.totalCantidadAdicional > 0 && (
-                                    <div style={{ fontSize: '0.8rem', color: '#7C3AED', fontWeight: 700 }}>
-                                        Adicional Guardia ({previewPrestador.totalCantidadAdicional} atenciones): {formatCurrency(previewPrestador.totalMontoAdicional)}
+                                {activeTab === 'guardia' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.8rem' }}>
+                                        <span style={{ color: '#64748B' }}>
+                                            Subtotal Facturado: <strong>{formatCurrency(previewPrestador.totalImporteBruto || previewPrestador.totalImporte)}</strong> · Honorarios ({porcentajeHonorariosGuardia}%): <strong style={{ color: '#059669' }}>{formatCurrency(previewPrestador.totalHonorariosNeto)}</strong>
+                                        </span>
+                                        {previewPrestador.totalCantidadAdicional > 0 && (
+                                            <span style={{ color: '#7C3AED', fontWeight: 700 }}>
+                                                Adicional ({previewPrestador.totalCantidadAdicional} atenciones): {formatCurrency(previewPrestador.totalMontoAdicional)}
+                                            </span>
+                                        )}
                                     </div>
                                 )}
                             </div>
-                            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
-                                Total General: {formatCurrency(activeTab === 'guardia' ? previewPrestador.totalGeneralConAdicional : previewPrestador.totalValor)}
+                            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0D3B66' }}>
+                                Gran Total: {formatCurrency(activeTab === 'guardia' ? previewPrestador.totalGeneralConAdicional : previewPrestador.totalValor)}
                             </div>
                         </div>
                     </div>

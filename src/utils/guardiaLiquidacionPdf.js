@@ -16,7 +16,7 @@ export function formatCurrency(amount) {
 }
 
 /**
- * Carga el logo y lo recorta de forma circular con un canvas (estética idéntica a Asociaciones)
+ * Carga el logo y lo recorta de forma circular con un canvas
  */
 async function loadCircularLogoBase64() {
     try {
@@ -110,12 +110,10 @@ function applyFooters(doc) {
 
     for (let p = 1; p <= totalPages; p++) {
         doc.setPage(p);
-        // Línea divisoria
         doc.setDrawColor(226, 232, 240);
         doc.setLineWidth(0.3);
         doc.line(margin, pageH - 12, pageW - margin, pageH - 12);
 
-        // Texto pie
         doc.setFontSize(6.5);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(148, 163, 184);
@@ -142,9 +140,9 @@ export async function generateGuardiaIndividualPdf(prestador, options = {}) {
     let y = 44;
 
     // 2. Info Bar (Metadata del profesional)
-    doc.setFillColor(241, 245, 249); // #F1F5F9
+    doc.setFillColor(241, 245, 249);
     doc.roundedRect(margin, y, colW, 18, 3, 3, 'F');
-    doc.setDrawColor(226, 232, 240); // #E2E8F0
+    doc.setDrawColor(226, 232, 240);
     doc.roundedRect(margin, y, colW, 18, 3, 3, 'S');
 
     const infoItems = [
@@ -180,7 +178,7 @@ export async function generateGuardiaIndividualPdf(prestador, options = {}) {
     doc.text('DETALLE DE ATENCIONES DE GUARDIA PEDIÁTRICA', margin + 6, y + 5.5);
     y += 11;
 
-    // 4. Tabla de atenciones con estilo Grid de Asociaciones
+    // 4. Tabla de atenciones con estilo Grid
     const tableBody = prestador.atenciones.map((a, idx) => [
         String(idx + 1),
         a.fecha,
@@ -189,16 +187,20 @@ export async function generateGuardiaIndividualPdf(prestador, options = {}) {
         formatCurrency(a.importe)
     ]);
 
+    const pct = prestador.porcentajeHonorarios || 70;
+    const subtotalBruto = prestador.totalImporteBruto || prestador.totalImporte || 0;
+    const honorariosNeto = prestador.totalHonorariosNeto || (subtotalBruto * (pct / 100));
+
     autoTable(doc, {
         startY: y,
         head: [['#', 'Fecha', 'Paciente', 'Obra Social', 'Importe']],
         body: tableBody,
         foot: [
-            ['', '', '', 'Subtotal Consultas:', formatCurrency(prestador.totalImporte)]
+            ['', '', '', `Subtotal Facturado (100%):`, formatCurrency(subtotalBruto)]
         ],
         theme: 'grid',
         headStyles: {
-            fillColor: [13, 59, 102], // #0D3B66
+            fillColor: [13, 59, 102],
             textColor: [255, 255, 255],
             fontSize: 7.5,
             fontStyle: 'bold',
@@ -211,7 +213,7 @@ export async function generateGuardiaIndividualPdf(prestador, options = {}) {
             textColor: [30, 30, 30],
         },
         alternateRowStyles: {
-            fillColor: [248, 250, 252], // #F8FAFC
+            fillColor: [248, 250, 252],
         },
         footStyles: {
             fillColor: [235, 243, 252],
@@ -240,40 +242,49 @@ export async function generateGuardiaIndividualPdf(prestador, options = {}) {
 
     let finalY = doc.lastAutoTable.finalY + 6;
 
-    // Verificar salto de página para bloque de adicionales
-    if (finalY + 55 > pageH - 20) {
+    // Verificar salto de página para bloque de adicionales y totales
+    if (finalY + 65 > pageH - 20) {
         doc.addPage();
         finalY = 20;
     }
 
-    // 5. Cuadro de Adicionales por Guardia Pediátrica
+    // 5. Cuadro de Liquidación Final y Adicionales
     const valorAdicional = options.valorAdicional !== undefined ? options.valorAdicional : (prestador.valorAdicional || 8000);
-    const obrasSociales = options.obrasSocialesAdicional || ['001 - PROVINCIA', '004 - DAMSU'];
+    const obrasSociales = options.obrasSocialesAdicional || prestador.obrasSocialesAdicional || ['001 - PROVINCIA', '004 - DAMSU'];
+    const cantAdic = prestador.totalCantidadAdicional || 0;
+    const montoAdic = prestador.totalMontoAdicional !== undefined ? prestador.totalMontoAdicional : (cantAdic * valorAdicional);
+    const granTotal = honorariosNeto + montoAdic;
 
     doc.setFillColor(59, 130, 246);
     doc.rect(margin, finalY, 3, 7, 'F');
     doc.setFontSize(9.5);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(13, 59, 102);
-    doc.text('ADICIONAL POR ATENCIÓN EN SERVICIO DE GUARDIA PEDIÁTRICA', margin + 6, finalY + 5.5);
+    doc.text('RESUMEN DE LIQUIDACIÓN Y ADICIONAL DE GUARDIA PEDIÁTRICA', margin + 6, finalY + 5.5);
     finalY += 10;
 
-    // Mini tabla resumen de adicionales
     autoTable(doc, {
         startY: finalY,
         margin: { left: margin, right: margin },
-        head: [['Concepto Adicional', 'Obras Sociales Alcanzadas', 'Valor Unitario', 'Cantidad', 'Total Adicional']],
+        head: [['Concepto Liquidado', 'Detalle / Obras Sociales', 'Base / Unitario', 'Cantidad / %', 'Total Liquidado']],
         body: [
+            [
+                'Honorarios Médicos de Guardia',
+                `Subtotal Consultas (${prestador.atenciones.length} atenciones)`,
+                formatCurrency(subtotalBruto),
+                `${pct}%`,
+                formatCurrency(honorariosNeto)
+            ],
             [
                 'Adicional Guardia Pediátrica',
                 obrasSociales.join(' · '),
                 formatCurrency(valorAdicional),
-                String(prestador.totalCantidadAdicional || 0),
-                formatCurrency(prestador.totalMontoAdicional || 0)
+                String(cantAdic),
+                formatCurrency(montoAdic)
             ]
         ],
         foot: [
-            ['', '', '', 'GRAN TOTAL A LIQUIDAR:', formatCurrency(prestador.totalGeneralConAdicional || (prestador.totalImporte + (prestador.totalMontoAdicional || 0)))]
+            ['', '', '', 'TOTAL GENERAL A LIQUIDAR:', formatCurrency(granTotal)]
         ],
         theme: 'grid',
         headStyles: {
@@ -296,11 +307,11 @@ export async function generateGuardiaIndividualPdf(prestador, options = {}) {
             halign: 'right'
         },
         columnStyles: {
-            0: { cellWidth: 42, fontStyle: 'bold' },
-            1: { cellWidth: 54 },
-            2: { cellWidth: 26, halign: 'right' },
+            0: { cellWidth: 46, fontStyle: 'bold' },
+            1: { cellWidth: 50 },
+            2: { cellWidth: 28, halign: 'right' },
             3: { cellWidth: 20, halign: 'center', fontStyle: 'bold', textColor: [124, 58, 237] },
-            4: { cellWidth: 40, halign: 'right', fontStyle: 'bold' }
+            4: { cellWidth: 38, halign: 'right', fontStyle: 'bold' }
         }
     });
 
@@ -330,6 +341,8 @@ export async function generateGuardiaGeneralPdf(data, options = {}) {
     doc.setDrawColor(226, 232, 240);
     doc.roundedRect(margin, y, colW, 18, 3, 3, 'S');
 
+    const pct = data.porcentajeHonorarios || 70;
+
     const infoItems = [
         { label: 'PERÍODO', value: data.periodo || 'Mayo 2026' },
         { label: 'N° LIQUIDACIÓN', value: `N° ${data.liquidacion || '410'}` },
@@ -358,7 +371,7 @@ export async function generateGuardiaGeneralPdf(data, options = {}) {
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(13, 59, 102);
-    doc.text('RESUMEN DE LIQUIDACIÓN POR PROFESIONAL MÉDICO', margin + 6, y + 5.5);
+    doc.text('RESUMEN DE LIQUIDACIÓN POR PROFESIONAL MÉDICO (70% HONORARIOS + ADICIONAL)', margin + 6, y + 5.5);
     y += 11;
 
     // 4. Tabla Consolidada
@@ -367,17 +380,17 @@ export async function generateGuardiaGeneralPdf(data, options = {}) {
         p.nombre,
         p.matricula || '—',
         String(p.atenciones.length),
-        formatCurrency(p.totalImporte),
-        String(p.totalCantidadAdicional || 0),
+        formatCurrency(p.totalImporteBruto || p.totalImporte),
+        formatCurrency(p.totalHonorariosNeto || (p.totalImporte * (pct / 100))),
         formatCurrency(p.totalMontoAdicional || 0),
-        formatCurrency(p.totalGeneralConAdicional || (p.totalImporte + p.totalMontoAdicional))
+        formatCurrency(p.totalGeneralConAdicional)
     ]);
 
     autoTable(doc, {
         startY: y,
         margin: { left: margin, right: margin },
         head: [
-            ['#', 'Profesional / Médico', 'Matr.', 'Atenc.', 'Subtotal Fact.', 'Adic. (Cant)', 'Monto Adic.', 'Total General']
+            ['#', 'Profesional / Médico', 'Matr.', 'Atenc.', 'Fact. Bruta (100%)', `Honorarios (${pct}%)`, 'Adicional ($)', 'Total Liquidado']
         ],
         body: tableBody,
         foot: [
@@ -386,20 +399,20 @@ export async function generateGuardiaGeneralPdf(data, options = {}) {
                 'TOTAL GENERAL CONSOLIDADO',
                 '',
                 String(data.totalAtenciones),
-                formatCurrency(data.totalFacturadoGlobal),
-                String(data.totalCantidadAdicionalesGlobal),
+                formatCurrency(data.totalFacturadoBrutoGlobal || data.totalFacturadoGlobal),
+                formatCurrency(data.totalHonorariosNetoGlobal),
                 formatCurrency(data.totalAdicionalesGlobal),
                 formatCurrency(data.granTotalGlobal)
             ]
         ],
         theme: 'grid',
         headStyles: {
-            fontSize: 7.2,
+            fontSize: 7,
             fontStyle: 'bold',
             fillColor: [13, 59, 102],
             textColor: [255, 255, 255],
             halign: 'center',
-            cellPadding: 2.8
+            cellPadding: 2.5
         },
         bodyStyles: {
             fontSize: 6.8,
@@ -417,13 +430,13 @@ export async function generateGuardiaGeneralPdf(data, options = {}) {
         },
         columnStyles: {
             0: { cellWidth: 7, halign: 'center', fontStyle: 'bold', textColor: [148, 163, 184] },
-            1: { cellWidth: 48, halign: 'left', fontStyle: 'bold' },
+            1: { cellWidth: 46, halign: 'left', fontStyle: 'bold' },
             2: { cellWidth: 14, halign: 'center' },
             3: { cellWidth: 13, halign: 'center', fontStyle: 'bold' },
             4: { cellWidth: 26, halign: 'right' },
-            5: { cellWidth: 18, halign: 'center', textColor: [124, 58, 237] },
-            6: { cellWidth: 26, halign: 'right' },
-            7: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
+            5: { cellWidth: 26, halign: 'right', fontStyle: 'bold', textColor: [13, 59, 102] },
+            6: { cellWidth: 24, halign: 'right', textColor: [124, 58, 237] },
+            7: { cellWidth: 26, halign: 'right', fontStyle: 'bold' }
         },
         didDrawPage: (data) => {
             if (data.pageNumber > 1) {

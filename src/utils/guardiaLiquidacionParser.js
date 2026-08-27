@@ -1,6 +1,7 @@
 /**
  * guardiaLiquidacionParser.js
  * Parser para planillas Excel de Guardia Pediátrica — Sanatorio Argentino
+ * Aplica porcentaje de honorarios médicos (70% por defecto) y adicionales por O.S. (Provincia, DAMSU)
  */
 import * as XLSX from 'xlsx';
 
@@ -41,13 +42,12 @@ export function normalizeKey(str) {
 
 /**
  * Valida si un string corresponde a un nombre legítimo de profesional médico
- * y descarta anotaciones de cuentas, fórmulas, códigos matemáticos o estadísticas.
  */
 export function isValidDoctorName(name) {
     if (!name || typeof name !== 'string') return false;
     const clean = name.trim();
     if (clean.length < 3) return false;
-    // Excluir anotaciones de fórmulas, cálculos, divisiones o barras (ej: '420006 = 232 /// 420009 = 1605')
+    // Excluir anotaciones de fórmulas, cálculos, divisiones o barras
     if (clean.includes('=') || clean.includes('///') || clean.includes('+') || clean.includes('%')) return false;
     // Excluir si es puramente numérico
     if (/^\d+$/.test(clean.replace(/[\s\-\.\/]/g, ''))) return false;
@@ -88,6 +88,8 @@ export function parseExcelNumber(val) {
  */
 export function parseGuardiaExcel(buffer, options = {}) {
     const valorAdicional = options.valorAdicional !== undefined ? options.valorAdicional : 8000;
+    const porcentajeHonorarios = options.porcentajeHonorarios !== undefined ? options.porcentajeHonorarios : 70; // 70% por defecto
+    const factorHonorarios = porcentajeHonorarios / 100;
     const obrasSocialesAdicional = options.obrasSocialesAdicional || ['001 - PROVINCIA', '004 - DAMSU'];
     const periodoDefault = options.periodo || 'Mayo 2026';
     const liquidacionDefault = options.liquidacion || '410';
@@ -107,7 +109,6 @@ export function parseGuardiaExcel(buffer, options = {}) {
         const responsableRaw = r.Responsable || r.Profesional || r.Medico || r['Médico'] || '';
         const responsable = String(responsableRaw).trim();
         
-        // Validar nombre legítimo de médico
         if (!isValidDoctorName(responsable)) return;
 
         // Validar también que la fila no sea un pie estadístico o de totales
@@ -118,7 +119,6 @@ export function parseGuardiaExcel(buffer, options = {}) {
         const paciente = String(r.Paciente || '').trim();
         if (!paciente || paciente.toLowerCase().includes('total') || paciente.toLowerCase().includes('consultas')) return;
 
-        // Si paciente es solo un número y no hay fecha serial válida, es fila estadística
         if (/^\d+$/.test(paciente) && (!fechaRaw || isNaN(Number(fechaRaw)))) return;
 
         if (!prestadoresMap[responsable]) {
@@ -128,11 +128,14 @@ export function parseGuardiaExcel(buffer, options = {}) {
                 matricula: '',
                 periodo: periodoDefault,
                 liquidacion: liquidacionDefault,
+                porcentajeHonorarios,
                 atenciones: [],
-                totalImporte: 0,
+                totalImporteBruto: 0,
+                totalHonorariosNeto: 0,
                 adicionalesPorOS: {},
                 totalCantidadAdicional: 0,
-                totalMontoAdicional: 0
+                totalMontoAdicional: 0,
+                totalGeneralConAdicional: 0
             };
         }
 
@@ -148,7 +151,7 @@ export function parseGuardiaExcel(buffer, options = {}) {
             importe: valor
         });
 
-        prestadoresMap[responsable].totalImporte += valor;
+        prestadoresMap[responsable].totalImporteBruto += valor;
 
         // Verificar si aplica adicional
         const aplicaAdicional = obrasSocialesAdicional.some(os => cliente.toLowerCase().includes(os.toLowerCase()));
@@ -199,24 +202,30 @@ export function parseGuardiaExcel(buffer, options = {}) {
         }
     });
 
-    // Calcular montos de adicionales y totales
+    // Calcular montos de adicionales y totales con el factor de honorarios médicos (70%)
     const prestadoresList = Object.values(prestadoresMap).map(p => {
+        const totalHonorariosNeto = p.totalImporteBruto * factorHonorarios;
         const totalMontoAdicional = p.totalCantidadAdicional * valorAdicional;
         return {
             ...p,
+            totalImporte: p.totalImporteBruto,
+            porcentajeHonorarios,
+            totalHonorariosNeto,
             totalMontoAdicional,
-            totalGeneralConAdicional: p.totalImporte + totalMontoAdicional
+            totalGeneralConAdicional: totalHonorariosNeto + totalMontoAdicional
         };
     });
 
     // Ordenar alfabéticamente
     prestadoresList.sort((a, b) => a.nombre.localeCompare(b.nombre));
 
-    // Métricas globales
-    const totalFacturadoGlobal = prestadoresList.reduce((acc, p) => acc + p.totalImporte, 0);
+    // Métricas globales consolidadas
+    const totalFacturadoBrutoGlobal = prestadoresList.reduce((acc, p) => acc + p.totalImporteBruto, 0);
+    const totalHonorariosNetoGlobal = prestadoresList.reduce((acc, p) => acc + p.totalHonorariosNeto, 0);
+    const totalRetencionGlobal = totalFacturadoBrutoGlobal - totalHonorariosNetoGlobal;
     const totalCantidadAdicionalesGlobal = prestadoresList.reduce((acc, p) => acc + p.totalCantidadAdicional, 0);
     const totalAdicionalesGlobal = prestadoresList.reduce((acc, p) => acc + p.totalMontoAdicional, 0);
-    const granTotalGlobal = totalFacturadoGlobal + totalAdicionalesGlobal;
+    const granTotalGlobal = totalHonorariosNetoGlobal + totalAdicionalesGlobal;
     const totalAtenciones = prestadoresList.reduce((acc, p) => acc + p.atenciones.length, 0);
 
     return {
@@ -224,10 +233,14 @@ export function parseGuardiaExcel(buffer, options = {}) {
         periodo: periodoDefault,
         numeroLiquidacion: liquidacionDefault,
         valorAdicional,
+        porcentajeHonorarios,
         obrasSocialesAdicional,
         totalPrestadores: prestadoresList.length,
         totalAtenciones,
-        totalFacturadoGlobal,
+        totalFacturadoBrutoGlobal,
+        totalFacturadoGlobal: totalFacturadoBrutoGlobal,
+        totalRetencionGlobal,
+        totalHonorariosNetoGlobal,
         totalCantidadAdicionalesGlobal,
         totalAdicionalesGlobal,
         granTotalGlobal,
