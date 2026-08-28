@@ -254,9 +254,12 @@ export default function TurnoKiosco() {
                     <div style={styles.selectContainer} className="no-print">
                         <form onSubmit={handleCreateTurno} style={{ maxWidth: '800px', margin: '0 auto', width: '100%' }}>
                             <div style={styles.dniSection}>
-                                <label style={{ ...styles.dniLabel, fontSize: '2rem', marginBottom: '16px' }}>
+                                <label style={{ ...styles.dniLabel, fontSize: '2rem', marginBottom: '8px' }}>
                                     Ingresá tu número de DNI
                                 </label>
+                                <div style={{ color: '#ef4444', fontSize: '1.3rem', fontWeight: '700', marginBottom: '24px', textAlign: 'center' }}>
+                                    Para cualquier tipo de trámite es obligatorio presentar DNI.
+                                </div>
                                 <input
                                     type="text"
                                     value={dni}
