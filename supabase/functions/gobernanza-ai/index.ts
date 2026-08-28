@@ -153,7 +153,7 @@ INSTRUCCIÓN VITAL: Al leer el texto inicial, detecta cómo se presenta cada uno
 OBJETIVOS OBLIGATORIOS:
 1. "resumen": Redacta un resumen ejecutivo de los puntos tratados (1 párrafo).
 2. "minutas": Redacta los puntos clave (bullet points) para armar diapositivas de presentación. Si se menciona a alguien, indica su nombre.
-3. "mapa_conceptual_mermaid": Crea un diagrama en código Mermaid.js que muestre las entidades y procesos técnicos mencionados en la charla (ej: graph TD; A-->B).
+3. "mapa_conceptual_mermaid": Crea un diagrama en código Mermaid.js que resuma TODA la charla de forma global (no te limites a las respuestas de las preguntas). Relaciona los conceptos principales, áreas, problemas y decisiones que surgieron espontáneamente en la conversación. (ej: graph TD; A-->B).
 4. "respuestas": Analiza qué dijo el entrevistado respecto a cada pregunta de la plantilla. Si hay un [BORRADOR MANUAL MAPEADO EN VIVO] adjunto a una pregunta, úsalo como la base principal (es el borrador que el usuario marcó en vivo como la respuesta). Pule su redacción y complétalo con la transcripción si hay más detalles. Si no respondió ni hay borrador, escribe "No especificado en el audio".
 
 PREGUNTAS DE LA PLANTILLA:
@@ -197,6 +197,8 @@ Responde ESTRICTAMENTE en este formato JSON:
                     .update({
                         transcripcion: transcript,
                         resumen: aiResponse.resumen,
+                        minutas: aiResponse.minutas,
+                        mapa_conceptual_mermaid: aiResponse.mapa_conceptual_mermaid,
                         respuestas_cuestionario: aiResponse.respuestas,
                         estado: 'completado',
                         updated_at: new Date().toISOString()
