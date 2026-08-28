@@ -60,6 +60,7 @@ import ActivosPanel from './components/ActivosPanel.jsx';
 import EquipoAuditoriaView from './components/EquipoAuditoriaView.jsx';
 import GobernanzaPanel from './components/GobernanzaPanel.jsx';
 import LiquidacionesPanel from './components/LiquidacionesPanel.jsx';
+import PublicRecordView from './components/PublicShare/PublicRecordView.jsx';
 import { startSession, endSession, trackModuleChange } from './lib/activityTracker';
 import { supabase } from './lib/supabase';
 import './App.css';
@@ -92,6 +93,11 @@ function AppRoot() {
     if (path.startsWith('/recepcion/equipo/')) {
         const equipoId = path.split('/recepcion/equipo/')[1];
         return <EquipoAuditoriaView equipoId={equipoId} />;
+    }
+
+    // Public route for Share Record View (Sider AI style)
+    if (path.startsWith('/share/')) {
+        return <PublicRecordView />;
     }
 
     // Lab Portal routes (authenticated) — /lab/aguero, /lab/cedap, /lab/cuyo

@@ -541,19 +541,37 @@ export async function generarTraspaso({ responsableEntrega, responsableRecibe, n
     if (createErr) throw createErr;
 
     // Link all items to the traspaso
-    const ids = cartItems.map(i => i.id);
-    const { error: updateErr } = await supabase
-        .from('altas_administrativas')
-        .update({
-            traspaso_id: traspaso.id,
-            traspasada_at: ahora,
-            traspasada_por: responsableEntrega,
-            en_carrito_traspaso: false,
-            estado_fac: 'Pendiente',
-        })
-        .in('id', ids);
+    const particulares = cartItems.filter(i => i.cliente === '042 - PARTICULARES');
+    const normales = cartItems.filter(i => i.cliente !== '042 - PARTICULARES');
 
-    if (updateErr) throw updateErr;
+    if (normales.length > 0) {
+        const { error: updateErr1 } = await supabase
+            .from('altas_administrativas')
+            .update({
+                traspaso_id: traspaso.id,
+                traspasada_at: ahora,
+                traspasada_por: responsableEntrega,
+                en_carrito_traspaso: false,
+                estado_fac: 'Pendiente',
+            })
+            .in('id', normales.map(i => i.id));
+        if (updateErr1) throw updateErr1;
+    }
+
+    if (particulares.length > 0) {
+        const { error: updateErr2 } = await supabase
+            .from('altas_administrativas')
+            .update({
+                traspaso_id: traspaso.id,
+                traspasada_at: ahora,
+                traspasada_por: responsableEntrega,
+                en_carrito_traspaso: false,
+                estado_fac: 'Pendiente',
+                responsable_fac: 'PARTICULAR',
+            })
+            .in('id', particulares.map(i => i.id));
+        if (updateErr2) throw updateErr2;
+    }
 
     return traspaso;
 }

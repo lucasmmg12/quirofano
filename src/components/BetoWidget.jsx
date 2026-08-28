@@ -10,12 +10,13 @@
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { Send, X, Maximize2, Minimize2, Sparkles, Loader2, Palette, BookOpen, FileSpreadsheet, Printer, Presentation, FileDown, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Send, X, Maximize2, Minimize2, Sparkles, Loader2, Palette, BookOpen, FileSpreadsheet, Printer, Presentation, FileDown, ThumbsUp, ThumbsDown, Share2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { BetoStatsCard, BetoStatusPipeline, BetoModulePreview, BetoExportBar, BetoInsightCard, BetoExcelDownload, parseRichContent } from './BetoComponents';
 import BetoPresentationMode from './BetoPresentationMode';
 import BetoTutorial from './BetoTutorial';
 import { downloadBetoReportPdf, isReportMessage } from '../utils/betoReportPdf';
+import { generateShare } from '../api/shareClient';
 
 const BETO_AVATAR = '/beto.jpg';
 const BETO_GIF = '/The_avatar_is_greetings.gif';
@@ -111,6 +112,9 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
     const [tutorialId, setTutorialId] = useState(null);
     // #6 Streaming
     const [streamingText, setStreamingText] = useState('');
+    // Share Record
+    const [isSharing, setIsSharing] = useState(false);
+    const [shareUrl, setShareUrl] = useState(null);
     // Proactive notifications
     const [proactiveNudge, setProactiveNudge] = useState(null);
     const nudgeTimerRef = useRef(null);
@@ -339,6 +343,20 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
         localStorage.setItem('beto_theme', newTheme);
         setShowThemes(false);
     }, []);
+
+    // Share Record Handler (Sider AI style)
+    const handleShareRecord = useCallback(async () => {
+        if (messages.length < 2) return; // Needs at least one user query
+        setIsSharing(true);
+        try {
+            const { public_url } = await generateShare(messages);
+            setShareUrl(public_url);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsSharing(false);
+        }
+    }, [messages]);
 
     // Feedback — thumbs up/down
     const [feedbackGiven, setFeedbackGiven] = useState({});
@@ -585,7 +603,22 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: '4px' }}>
-                    {/* #10 Theme Toggle */}
+                    <button
+                        onClick={handleShareRecord}
+                        disabled={isSharing || messages.length < 2}
+                        title="Compartir análisis profundo"
+                        style={{
+                            width: '32px', height: '32px', borderRadius: '8px',
+                            border: 'none', background: 'rgba(255,255,255,0.15)',
+                            color: 'white', cursor: (isSharing || messages.length < 2) ? 'not-allowed' : 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            transition: 'background 0.2s', opacity: (isSharing || messages.length < 2) ? 0.5 : 1
+                        }}
+                        onMouseOver={e => { if (!isSharing && messages.length >= 2) e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}}
+                        onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+                    >
+                        {isSharing ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Share2 size={15} />}
+                    </button>
                     <button
                         onClick={() => setShowThemes(p => !p)}
                         title="Cambiar tema"
@@ -653,6 +686,39 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
                                 {th.name}
                             </button>
                         ))}
+                    </div>
+                )}
+                {/* Share Link Overlay */}
+                {shareUrl && (
+                    <div style={{
+                        position: 'absolute', top: '70px', left: '20px', right: '20px',
+                        background: '#fff', borderRadius: '12px', padding: '16px',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.15)', zIndex: 20,
+                        border: '1px solid #E2E8F0', animation: 'beto-slide-down 0.2s ease-out'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <h4 style={{ margin: 0, color: '#1E293B', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Share2 size={16} color="#4F46E5" /> Enlace de Compartición
+                            </h4>
+                            <button onClick={() => setShareUrl(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94A3B8' }}><X size={16} /></button>
+                        </div>
+                        <p style={{ fontSize: '0.75rem', color: '#64748B', marginBottom: '12px', lineHeight: 1.4 }}>
+                            Cualquier persona con este enlace podrá ver el resumen profundo y los insights de esta charla.
+                        </p>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <input 
+                                type="text" 
+                                readOnly 
+                                value={shareUrl} 
+                                style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #E2E8F0', fontSize: '0.75rem', background: '#F8FAFC', color: '#334155' }}
+                            />
+                            <button 
+                                onClick={() => { navigator.clipboard.writeText(shareUrl); setShareUrl(null); }}
+                                style={{ background: '#4F46E5', color: 'white', border: 'none', borderRadius: '6px', padding: '0 12px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
+                            >
+                                Copiar
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>
