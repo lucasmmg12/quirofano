@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Play, Square, ChevronRight, Mic, Loader2, ArrowLeft, ShieldCheck, CheckCircle2, FileText, BrainCircuit, List, UploadCloud, Type, Network, Plus, Trash2, Save, MessageCircle, Send, History, CalendarDays, Download, Share2, Copy, ExternalLink } from 'lucide-react';
+import { Play, Square, Pause, ChevronRight, Mic, Loader2, ArrowLeft, ShieldCheck, CheckCircle2, FileText, BrainCircuit, List, UploadCloud, Type, Network, Plus, Trash2, Save, MessageCircle, Send, History, CalendarDays, Download, Share2, Copy, ExternalLink } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import mermaid from 'mermaid';
 import { jsPDF } from 'jspdf';
@@ -23,6 +23,7 @@ export default function GobernanzaPanel({ currentUser }) {
 
     // Recording states
     const [isRecording, setIsRecording] = useState(false);
+    const [isPaused, setIsPaused] = useState(false);
     const [duration, setDuration] = useState(0);
     const [audioUrl, setAudioUrl] = useState(null);
     
@@ -61,6 +62,7 @@ export default function GobernanzaPanel({ currentUser }) {
     const [activeEntrevistaId, setActiveEntrevistaId] = useState(null);
 
     // Refs
+    const isPausedRef = useRef(false);
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
     const canvasRef = useRef(null);
@@ -217,6 +219,8 @@ export default function GobernanzaPanel({ currentUser }) {
             }
 
             setIsRecording(true);
+            setIsPaused(false);
+            isPausedRef.current = false;
             setDuration(0);
             
             // Grabador continuo para el análisis final
@@ -234,6 +238,11 @@ export default function GobernanzaPanel({ currentUser }) {
 
             const startDiscreteChunk = () => {
                 if (!isRecordingRef.current) return;
+                
+                if (isPausedRef.current) {
+                    setTimeout(startDiscreteChunk, 1000);
+                    return;
+                }
                 
                 try {
                     const chunkRecorder = new MediaRecorder(streamRef.current, { mimeType: 'audio/webm' });
@@ -299,7 +308,11 @@ export default function GobernanzaPanel({ currentUser }) {
             // Iniciar el chopper
             startDiscreteChunk();
             
-            timerRef.current = setInterval(() => setDuration(prev => prev + 1), 1000);
+            timerRef.current = setInterval(() => {
+                if (!isPausedRef.current) {
+                    setDuration(prev => prev + 1);
+                }
+            }, 1000);
             setTimeout(() => drawWaveform(), 50);
 
         } catch (err) {
@@ -308,9 +321,25 @@ export default function GobernanzaPanel({ currentUser }) {
         }
     };
 
+    const togglePauseRecording = () => {
+        if (!mediaRecorderRef.current) return;
+        
+        if (isPaused) {
+            mediaRecorderRef.current.resume();
+            setIsPaused(false);
+            isPausedRef.current = false;
+        } else {
+            mediaRecorderRef.current.pause();
+            setIsPaused(true);
+            isPausedRef.current = true;
+        }
+    };
+
     const stopRecording = () => {
         if (isRecording) {
             setIsRecording(false);
+            setIsPaused(false);
+            isPausedRef.current = false;
             
             // Liberar WakeLock
             if (wakeLockRef.current !== null) {
@@ -491,6 +520,8 @@ export default function GobernanzaPanel({ currentUser }) {
         setResultData(null);
         setTranscriptionText("");
         setDuration(0);
+        setIsPaused(false);
+        isPausedRef.current = false;
         setSelectedFile(null);
         setManualText('');
         if (audioUrl) URL.revokeObjectURL(audioUrl);
@@ -1054,9 +1085,14 @@ export default function GobernanzaPanel({ currentUser }) {
                                                 <Play size={24} fill="white" /> Iniciar Entrevista
                                             </button>
                                         ) : (
-                                            <button onClick={stopRecording} style={{ background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', color: 'white', border: 'none', borderRadius: '40px', padding: '20px 48px', fontSize: '1.2rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.4)', animation: 'pulse 2s infinite' }}>
-                                                <Square size={24} fill="white" /> Detener y Analizar
-                                            </button>
+                                            <div style={{ display: 'flex', gap: '16px' }}>
+                                                <button onClick={togglePauseRecording} style={{ background: isPaused ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: 'white', border: 'none', borderRadius: '40px', padding: '20px 32px', fontSize: '1.2rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 10px 25px -5px rgba(0,0,0, 0.2)' }}>
+                                                    {isPaused ? <><Play size={24} fill="white" /> Reanudar</> : <><Pause size={24} fill="white" /> Pausar</>}
+                                                </button>
+                                                <button onClick={stopRecording} style={{ background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', color: 'white', border: 'none', borderRadius: '40px', padding: '20px 48px', fontSize: '1.2rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.4)', animation: isPaused ? 'none' : 'pulse 2s infinite' }}>
+                                                    <Square size={24} fill="white" /> Detener y Analizar
+                                                </button>
+                                            </div>
                                         )}
 
                                         {/* UI de Mapeo Interactivo */}
