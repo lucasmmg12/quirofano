@@ -1,5 +1,46 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { get, set, del } from 'idb-keyval';
 import { supabase } from '../lib/supabase';
+
+const MultipartAudioPlayer = ({ urls }) => {
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const audioRef = useRef(null);
+
+    useEffect(() => {
+        if (audioRef.current) {
+            audioRef.current.load();
+            if (currentIndex > 0) {
+                audioRef.current.play().catch(e => console.error("Auto-play error:", e));
+            }
+        }
+    }, [currentIndex, urls]);
+
+    const handleEnded = () => {
+        if (currentIndex < urls.length - 1) {
+            setCurrentIndex(currentIndex + 1);
+        }
+    };
+
+    if (!urls || urls.length === 0) return null;
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <audio 
+                ref={audioRef}
+                controls 
+                src={urls[currentIndex]} 
+                onEnded={handleEnded}
+                style={{ width: '100%', height: '40px' }} 
+            />
+            {urls.length > 1 && (
+                <div style={{ fontSize: '0.85rem', color: '#64748b', textAlign: 'right' }}>
+                    Reproduciendo parte {currentIndex + 1} de {urls.length}
+                </div>
+            )}
+        </div>
+    );
+};
+
 import { Play, Square, Pause, ChevronRight, Mic, Loader2, ArrowLeft, ShieldCheck, CheckCircle2, FileText, BrainCircuit, List, UploadCloud, Type, Network, Plus, Trash2, Save, MessageCircle, Send, History, CalendarDays, Download, Share2, Copy, ExternalLink } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import mermaid from 'mermaid';
@@ -236,18 +277,72 @@ export default function GobernanzaPanel({ currentUser }) {
             isPausedRef.current = false;
             setDuration(0);
             
-            // Grabador continuo para el análisis final
-            const continuousRecorder = new MediaRecorder(streamRef.current, { mimeType: 'audio/webm' });
-            mediaRecorderRef.current = continuousRecorder;
-            audioChunksRef.current = [];
-            continuousRecorder.ondataavailable = (e) => {
-                if (e.data.size > 0) audioChunksRef.current.push(e.data);
-            };
-            continuousRecorder.start();
-
-            // Referencia para saber si seguimos grabando en el loop
+            // IDB y Grabador en Partes (Streaming)
             const isRecordingRef = { current: true };
-            wsRef.current = isRecordingRef; // Reutilizamos wsRef para guardar el flag de grabación del chopper
+            wsRef.current = isRecordingRef;
+            const currentPartRef = { current: 1 };
+            audioChunksRef.current = [];
+            
+            const startContinuousChunk = () => {
+                if (!isRecordingRef.current) return;
+                
+                const recorder = new MediaRecorder(streamRef.current, { mimeType: 'audio/webm' });
+                mediaRecorderRef.current = recorder;
+                const localChunks = [];
+                
+                recorder.ondataavailable = async (e) => {
+                    if (e.data.size > 0) {
+                        localChunks.push(e.data);
+                        audioChunksRef.current.push(e.data); // Mantenemos copia en RAM corta
+                        try {
+                            await set(`gobernanza_backup_${currentEntrevistaId}_part_${currentPartRef.current}`, localChunks);
+                        } catch(err) { console.error("IDB Backup error", err); }
+                    }
+                };
+                
+                recorder.onstop = async () => {
+                    if (localChunks.length > 0) {
+                        const finalBlob = new Blob(localChunks, { type: 'audio/webm' });
+                        const partName = `${currentEntrevistaId}_part_${currentPartRef.current}_${Date.now()}.webm`;
+                        const currentPartId = currentPartRef.current; 
+                        
+                        // Subida en segundo plano silenciosa
+                        (async () => {
+                            try {
+                                const { error: uploadError } = await supabase.storage
+                                    .from('gobernanza_audios')
+                                    .upload(partName, finalBlob, { contentType: 'audio/webm' });
+                                
+                                if (!uploadError) {
+                                    const { data: dbData } = await supabase.from('gobernanza_entrevistas').select('audios_partes').eq('id', currentEntrevistaId).single();
+                                    const partes = dbData?.audios_partes || [];
+                                    partes.push(partName);
+                                    await supabase.from('gobernanza_entrevistas').update({ audios_partes: partes }).eq('id', currentEntrevistaId);
+                                    await del(`gobernanza_backup_${currentEntrevistaId}_part_${currentPartId}`);
+                                }
+                            } catch (err) {
+                                console.error("Error background upload:", err);
+                            }
+                        })();
+                    }
+                    
+                    if (isRecordingRef.current) {
+                        currentPartRef.current += 1;
+                        startContinuousChunk();
+                    }
+                };
+                
+                recorder.start(5000); 
+                
+                // Forzar corte cada 15 minutos (900000 ms)
+                setTimeout(() => {
+                    if (recorder && recorder.state === 'recording') {
+                        recorder.stop();
+                    }
+                }, 15 * 60 * 1000);
+            };
+            
+            startContinuousChunk();
 
             const startDiscreteChunk = () => {
                 if (!isRecordingRef.current) return;
@@ -377,11 +472,11 @@ export default function GobernanzaPanel({ currentUser }) {
             if (animationRef.current) cancelAnimationFrame(animationRef.current);
 
             setTimeout(async () => {
-                const finalAudioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                 if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
                 
-                await processAudioBlob(finalAudioBlob, 'webm', liveTranscriptRef.current);
-            }, 500); // Darle tiempo al continuousRecorder de hacer el último ondataavailable
+                // El onstop del recorder se encarga de subir la última parte.
+                await processAudioBlob(null, 'webm', liveTranscriptRef.current, true);
+            }, 500); // Darle tiempo al continuousRecorder de procesar el último stop
         }
     };
 
@@ -391,34 +486,39 @@ export default function GobernanzaPanel({ currentUser }) {
         }
     };
 
-    const processAudioBlob = async (blob, customExt = 'webm', liveTranscript = null) => {
+    const processAudioBlob = async (blob, customExt = 'webm', liveTranscript = null, isMultipart = false) => {
         try {
             const entrevistaId = activeEntrevistaId || uuidv4();
             const fileName = `${entrevistaId}_${Date.now()}.${customExt}`;
             const durationSecs = duration;
 
-            // 1. Upload to Storage
-            setProcessingState('uploading');
-            const { error: uploadError } = await supabase.storage
-                .from('gobernanza_audios')
-                .upload(fileName, blob, {
-                    contentType: blob.type || 'audio/webm'
-                });
-            
-            if (uploadError) throw new Error(`Error subiendo audio: ${uploadError.message}`);
+            if (!isMultipart && blob) {
+                // 1. Upload to Storage
+                setProcessingState('uploading');
+                const { error: uploadError } = await supabase.storage
+                    .from('gobernanza_audios')
+                    .upload(fileName, blob, {
+                        contentType: blob.type || 'audio/webm'
+                    });
+                
+                if (uploadError) throw new Error(`Error subiendo audio: ${uploadError.message}`);
 
-            // 2. Create Database Record (Upsert)
-            const { error: dbError } = await supabase
-                .from('gobernanza_entrevistas')
-                .upsert({
-                    id: entrevistaId,
-                    usuario_id: currentUser?.id,
-                    plantilla_id: selectedPlantilla.id,
-                    audio_url: fileName, // Mantiene la última URL
-                    estado: 'procesando'
-                }, { onConflict: 'id' });
+                // 2. Create Database Record (Upsert)
+                const { error: dbError } = await supabase
+                    .from('gobernanza_entrevistas')
+                    .upsert({
+                        id: entrevistaId,
+                        usuario_id: currentUser?.id,
+                        plantilla_id: selectedPlantilla.id,
+                        audio_url: fileName, // Mantiene la última URL
+                        estado: 'procesando'
+                    }, { onConflict: 'id' });
 
-            if (dbError) throw new Error(`Error creando registro en DB: ${dbError.message}`);
+                if (dbError) throw new Error(`Error creando registro en DB: ${dbError.message}`);
+            } else {
+                setProcessingState('uploading'); // Visual cue even if just DB update
+                await supabase.from('gobernanza_entrevistas').update({ estado: 'procesando' }).eq('id', entrevistaId);
+            }
 
             // 3. Invoke Edge Function (Backend Processing)
             setProcessingState('analyzing');
@@ -440,8 +540,20 @@ export default function GobernanzaPanel({ currentUser }) {
                 if (edgeError) throw new Error(`Error en IA: ${edgeError.message}`);
                 if (edgeData?.error) throw new Error(edgeData.error);
                 
-                const url = URL.createObjectURL(blob);
-                setAudioUrl(url);
+                if (blob) {
+                    setAudioUrl(URL.createObjectURL(blob));
+                } else {
+                    // Fetch from DB
+                    const { data } = await supabase.from('gobernanza_entrevistas').select('audios_partes, audio_url').eq('id', entrevistaId).single();
+                    let urls = [];
+                    if (data?.audios_partes && data.audios_partes.length > 0) {
+                        urls = data.audios_partes.map(p => supabase.storage.from('gobernanza_audios').getPublicUrl(p).data.publicUrl);
+                    } else if (data?.audio_url) {
+                        urls = [supabase.storage.from('gobernanza_audios').getPublicUrl(data.audio_url).data.publicUrl];
+                    }
+                    setAudioUrl(urls.length > 0 ? urls : null);
+                }
+                
                 setResultData(edgeData.aiResponse);
                 setProcessingState(null);
             } else {
@@ -456,8 +568,19 @@ export default function GobernanzaPanel({ currentUser }) {
                     if (checkData && checkData.estado === 'completado') {
                         clearInterval(pollId);
                         
-                        const url = URL.createObjectURL(blob);
-                        setAudioUrl(url);
+                        if (blob) {
+                            setAudioUrl(URL.createObjectURL(blob));
+                        } else {
+                            const { data } = await supabase.from('gobernanza_entrevistas').select('audios_partes, audio_url').eq('id', entrevistaId).single();
+                            let urls = [];
+                            if (data?.audios_partes && data.audios_partes.length > 0) {
+                                urls = data.audios_partes.map(p => supabase.storage.from('gobernanza_audios').getPublicUrl(p).data.publicUrl);
+                            } else if (data?.audio_url) {
+                                urls = [supabase.storage.from('gobernanza_audios').getPublicUrl(data.audio_url).data.publicUrl];
+                            }
+                            setAudioUrl(urls.length > 0 ? urls : null);
+                        }
+                        
                         setTranscriptionText(checkData.transcripcion || "");
                         setResultData({
                             resumen: checkData.resumen,
@@ -715,7 +838,7 @@ export default function GobernanzaPanel({ currentUser }) {
         }
     };
 
-    const openHistoryItem = (item) => {
+    const openHistoryItem = async (item) => {
         setActiveEntrevistaId(item.id);
         setSelectedPlantilla({ id: item.plantilla_id, nombre: item.gobernanza_plantillas?.nombre || 'Auditoría Pasada' });
         setTranscriptionText(item.transcripcion);
@@ -727,6 +850,20 @@ export default function GobernanzaPanel({ currentUser }) {
         });
         setChatMessages(item.chat_history || []);
         setShareUrl(null);
+
+        // Fetch audio URLs
+        try {
+            const { data } = await supabase.from('gobernanza_entrevistas').select('audio_url, audios_partes').eq('id', item.id).single();
+            let urls = [];
+            if (data?.audios_partes && data.audios_partes.length > 0) {
+                urls = data.audios_partes.map(path => supabase.storage.from('gobernanza_audios').getPublicUrl(path).data.publicUrl);
+            } else if (data?.audio_url) {
+                urls = [supabase.storage.from('gobernanza_audios').getPublicUrl(data.audio_url).data.publicUrl];
+            }
+            setAudioUrl(urls.length > 0 ? urls : null);
+        } catch (err) {
+            console.error("Error fetching audio urls:", err);
+        }
     };
 
     const handleShareMeeting = async () => {
@@ -1292,7 +1429,11 @@ export default function GobernanzaPanel({ currentUser }) {
                             
                             {audioUrl && (
                                 <div style={{ marginBottom: '16px' }}>
-                                    <audio controls src={audioUrl} style={{ width: '100%', height: '40px' }} />
+                                    {Array.isArray(audioUrl) ? (
+                                        <MultipartAudioPlayer urls={audioUrl} />
+                                    ) : (
+                                        <audio controls src={audioUrl} style={{ width: '100%', height: '40px' }} />
+                                    )}
                                 </div>
                             )}
 
