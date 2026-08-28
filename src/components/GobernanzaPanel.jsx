@@ -211,11 +211,24 @@ export default function GobernanzaPanel({ currentUser }) {
                 }
             }
 
+            let currentEntrevistaId = activeEntrevistaId;
             if (!activeEntrevistaId) {
+                currentEntrevistaId = uuidv4();
+                setActiveEntrevistaId(currentEntrevistaId);
                 liveTranscriptRef.current = "";
                 setTranscriptionText("");
                 setActiveQuestionIndex(null);
                 setManualAnswers({});
+                
+                try {
+                    supabase.from('gobernanza_entrevistas').upsert({
+                        id: currentEntrevistaId,
+                        usuario_id: currentUser?.id,
+                        plantilla_id: selectedPlantilla?.id || null,
+                        estado: 'grabando',
+                        titulo: selectedPlantilla?.nombre || 'Nueva Entrevista'
+                    }, { onConflict: 'id' }).then();
+                } catch(e) {}
             }
 
             setIsRecording(true);
@@ -272,18 +285,25 @@ export default function GobernanzaPanel({ currentUser }) {
                                             newText = newText.replace(new RegExp(frase, 'gi'), '');
                                         });
                                         newText = newText.trim();
-                                        if (newText.length > 0) {
-                                            liveTranscriptRef.current += " " + newText;
-                                            setTranscriptionText(liveTranscriptRef.current);
-                                            
-                                            // Añadir texto a la pregunta activa si existe
-                                            if (isRecordingRef.current && wsRef.current?.activeQuestion !== undefined && wsRef.current?.activeQuestion !== null) {
-                                                setManualAnswers(prev => ({
-                                                    ...prev,
-                                                    [wsRef.current.activeQuestion]: (prev[wsRef.current.activeQuestion] || '') + ' ' + newText
-                                                }));
+                                            if (newText.length > 0) {
+                                                liveTranscriptRef.current += " " + newText;
+                                                setTranscriptionText(liveTranscriptRef.current);
+                                                
+                                                // Añadir texto a la pregunta activa si existe
+                                                if (isRecordingRef.current && wsRef.current?.activeQuestion !== undefined && wsRef.current?.activeQuestion !== null) {
+                                                    setManualAnswers(prev => ({
+                                                        ...prev,
+                                                        [wsRef.current.activeQuestion]: (prev[wsRef.current.activeQuestion] || '') + ' ' + newText
+                                                    }));
+                                                }
+
+                                                // Auto-guardado en tiempo real del borrador
+                                                if (currentEntrevistaId) {
+                                                    supabase.from('gobernanza_entrevistas').update({
+                                                        transcripcion: liveTranscriptRef.current
+                                                    }).eq('id', currentEntrevistaId).then();
+                                                }
                                             }
-                                        }
                                     }
                                 };
                             } catch (err) {
