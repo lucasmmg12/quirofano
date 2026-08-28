@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Play, Square, ChevronRight, Mic, Loader2, ArrowLeft, ShieldCheck, CheckCircle2, FileText, BrainCircuit, List, UploadCloud, Type, Network, Plus, Trash2, Save, MessageCircle, Send, History, CalendarDays, Download } from 'lucide-react';
+import { Play, Square, ChevronRight, Mic, Loader2, ArrowLeft, ShieldCheck, CheckCircle2, FileText, BrainCircuit, List, UploadCloud, Type, Network, Plus, Trash2, Save, MessageCircle, Send, History, CalendarDays, Download, Share2, Copy, ExternalLink } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import mermaid from 'mermaid';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
+import { generateShareFromMeeting } from '../api/shareClient';
 
 export default function GobernanzaPanel({ currentUser }) {
     const [plantillas, setPlantillas] = useState([]);
@@ -39,6 +40,10 @@ export default function GobernanzaPanel({ currentUser }) {
     const [historialEntrevistas, setHistorialEntrevistas] = useState([]);
     const [loadingHistorial, setLoadingHistorial] = useState(false);
     
+    // Estados de Compartir (Sider AI)
+    const [isSharing, setIsSharing] = useState(false);
+    const [shareUrl, setShareUrl] = useState(null);
+
     // Estados de Chat
     const [chatMessages, setChatMessages] = useState([]);
     const [chatInput, setChatInput] = useState('');
@@ -493,6 +498,7 @@ export default function GobernanzaPanel({ currentUser }) {
         setPollIntervalId(null);
         setChatMessages([]);
         setChatInput('');
+        setShareUrl(null);
     };
 
     const handleExportPDF = async () => {
@@ -642,6 +648,21 @@ export default function GobernanzaPanel({ currentUser }) {
             respuestas: item.respuestas_cuestionario
         });
         setChatMessages([]);
+        setShareUrl(null);
+    };
+
+    const handleShareMeeting = async () => {
+        if (!resultData) return;
+        setIsSharing(true);
+        try {
+            const { public_url } = await generateShareFromMeeting(resultData);
+            setShareUrl(public_url);
+        } catch (err) {
+            console.error(err);
+            alert("Error al generar el enlace de Sider AI: " + err.message);
+        } finally {
+            setIsSharing(false);
+        }
     };
 
     const handleContinuarGrabando = () => {
@@ -907,11 +928,36 @@ export default function GobernanzaPanel({ currentUser }) {
                 </div>
                 
                 {(!isRecording && !processingState) && (
-                    <button onClick={handleExportPDF} style={{ background: '#3b82f6', color: 'white', border: 'none', borderRadius: '12px', padding: '10px 20px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 10px rgba(59,130,246,0.3)', transition: 'all 0.2s' }} onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 15px rgba(59,130,246,0.4)'; }} onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 10px rgba(59,130,246,0.3)'; }}>
-                        <Download size={18} /> Exportar PDF
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        {resultData && (
+                            <button onClick={handleShareMeeting} disabled={isSharing} style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '12px', padding: '10px 20px', fontWeight: 600, cursor: isSharing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 10px rgba(16,185,129,0.3)', transition: 'all 0.2s', opacity: isSharing ? 0.7 : 1 }}>
+                                {isSharing ? <Loader2 size={18} className="animate-spin" /> : <Share2 size={18} />}
+                                {isSharing ? 'Generando...' : 'Compartir con IA'}
+                            </button>
+                        )}
+                        <button onClick={handleExportPDF} style={{ background: '#3b82f6', color: 'white', border: 'none', borderRadius: '12px', padding: '10px 20px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 10px rgba(59,130,246,0.3)', transition: 'all 0.2s' }} onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 15px rgba(59,130,246,0.4)'; }} onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 10px rgba(59,130,246,0.3)'; }}>
+                            <Download size={18} /> Exportar PDF
+                        </button>
+                    </div>
                 )}
             </div>
+
+            {shareUrl && (
+                <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '16px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 9, animation: 'fadeIn 0.3s' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600, marginBottom: '4px' }}>Enlace público (Sider AI Clone)</span>
+                        <span style={{ fontSize: '0.9rem', color: '#0f172a' }}>{shareUrl}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => { navigator.clipboard.writeText(shareUrl); alert('¡Enlace copiado!'); }} style={{ background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 16px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Copy size={16} /> Copiar
+                        </button>
+                        <button onClick={() => window.open(shareUrl, '_blank')} style={{ background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 16px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <ExternalLink size={16} /> Abrir
+                        </button>
+                    </div>
+                </div>
+            )}
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 {!resultData ? (

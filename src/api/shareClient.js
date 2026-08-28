@@ -43,6 +43,53 @@ export async function generateShare(messages) {
 }
 
 /**
+ * Generates a deep analysis share from a recorded meeting/interview (Gobernanza).
+ * @param {Object} meetingData - The Gobernanza resultData object
+ * @returns {Promise<{ share_token: string, public_url: string }>}
+ */
+export async function generateShareFromMeeting(meetingData) {
+    await delay(1500);
+    const shareToken = crypto.randomUUID();
+    
+    const summary = meetingData.resumen || "Resumen de auditoría no disponible.";
+    const specificAnalysis = [];
+
+    // Use respuestas or minutas to fill the specific analysis
+    if (meetingData.respuestas && meetingData.respuestas.length > 0) {
+        meetingData.respuestas.forEach((item, index) => {
+            specificAnalysis.push({
+                id: index,
+                question: item.pregunta,
+                intent: "Auditoría / Mapeo",
+                insight: "Análisis extraído directamente de la reunión.",
+                ai_response_summary: item.respuesta
+            });
+        });
+    } else if (meetingData.minutas && meetingData.minutas.length > 0) {
+        meetingData.minutas.forEach((minuta, index) => {
+            specificAnalysis.push({
+                id: index,
+                question: `Minuta #${index + 1}`,
+                intent: "Punto Clave",
+                insight: "Punto destacado de la charla.",
+                ai_response_summary: minuta
+            });
+        });
+    }
+
+    MOCK_DB.set(shareToken, {
+        summary,
+        specificAnalysis,
+        createdAt: new Date().toISOString()
+    });
+
+    return {
+        share_token: shareToken,
+        public_url: `${window.location.origin}/share/${shareToken}`
+    };
+}
+
+/**
  * Retrieves the public share data by token.
  * @param {string} token 
  */
