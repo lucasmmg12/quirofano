@@ -476,6 +476,33 @@ export default function GobernanzaPanel({ currentUser }) {
         }
     };
 
+    const handleEmergencyDownload = () => {
+        if (audioChunksRef.current && audioChunksRef.current.length > 0) {
+            const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `emergencia_audio_${Date.now()}.webm`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            if (liveTranscriptRef.current) {
+                const textBlob = new Blob([liveTranscriptRef.current], { type: 'text/plain' });
+                const textUrl = URL.createObjectURL(textBlob);
+                const aText = document.createElement('a');
+                aText.href = textUrl;
+                aText.download = `emergencia_transcripcion_${Date.now()}.txt`;
+                document.body.appendChild(aText);
+                aText.click();
+                document.body.removeChild(aText);
+            }
+            alert("Se han descargado los archivos de emergencia. Podrás subirlos mediante 'Subir Audio' cuando vuelva el internet.");
+        } else {
+            alert("No hay grabación temporal en memoria para recuperar.");
+        }
+    };
+
     const handleUploadAudio = async () => {
         if (!selectedFile) return;
         const ext = selectedFile.name.split('.').pop() || 'mp3';
@@ -1022,10 +1049,16 @@ export default function GobernanzaPanel({ currentUser }) {
                         ) : (
                             <>
                                 {/* Modo Selector */}
-                                <div style={{ display: 'flex', gap: '8px', background: '#e2e8f0', padding: '4px', borderRadius: '12px', marginBottom: '40px' }}>
+                                <div style={{ display: 'flex', gap: '8px', background: '#e2e8f0', padding: '4px', borderRadius: '12px', marginBottom: '20px' }}>
                                     <button onClick={() => setInputMode('record')} style={{ padding: '8px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: inputMode === 'record' ? 'white' : 'transparent', color: inputMode === 'record' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}><Mic size={16}/> Grabar</button>
                                     <button onClick={() => setInputMode('upload')} style={{ padding: '8px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: inputMode === 'upload' ? 'white' : 'transparent', color: inputMode === 'upload' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}><UploadCloud size={16}/> Subir Audio</button>
                                     <button onClick={() => setInputMode('text')} style={{ padding: '8px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: inputMode === 'text' ? 'white' : 'transparent', color: inputMode === 'text' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}><Type size={16}/> Pegar Texto</button>
+                                </div>
+                                
+                                <div style={{ marginBottom: '40px' }}>
+                                    <button onClick={handleEmergencyDownload} style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', padding: '8px 16px', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Save size={16} /> Recuperar grabación de emergencia (Sin internet)
+                                    </button>
                                 </div>
 
                                 {/* Modo: Grabar */}
