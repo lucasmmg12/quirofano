@@ -678,7 +678,7 @@ export default function GobernanzaPanel({ currentUser }) {
             mapa_conceptual_mermaid: item.mapa_conceptual_mermaid,
             respuestas: item.respuestas_cuestionario
         });
-        setChatMessages([]);
+        setChatMessages(item.chat_history || []);
         setShareUrl(null);
     };
 
@@ -730,8 +730,23 @@ export default function GobernanzaPanel({ currentUser }) {
                 })
             });
             const data = await res.json();
+            
+            let finalMessages = [...newMessages];
             if (data.answer) {
-                setChatMessages([...newMessages, { role: 'assistant', content: data.answer }]);
+                finalMessages.push({ role: 'assistant', content: data.answer });
+                setChatMessages(finalMessages);
+            }
+            
+            // Persistir historial en DB
+            if (activeEntrevistaId) {
+                try {
+                    await supabase
+                        .from('gobernanza_entrevistas')
+                        .update({ chat_history: finalMessages })
+                        .eq('id', activeEntrevistaId);
+                } catch (dbErr) {
+                    console.error("Error guardando historial de chat:", dbErr);
+                }
             }
         } catch (err) {
             console.error("Error chat:", err);
