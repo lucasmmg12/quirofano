@@ -125,13 +125,15 @@ Deno.serve(async (req) => {
             const manual_answers = payload.manual_answers || {};
 
             // 3. Get Plantilla Questions
-            const { data: plantilla } = await supabase
-                .from('gobernanza_plantillas')
-                .select('preguntas')
-                .eq('id', plantilla_id)
-                .single();
-
-            const customQuestions = plantilla?.preguntas || [];
+            let customQuestions = [];
+            if (plantilla_id) {
+                const { data: plantilla } = await supabase
+                    .from('gobernanza_plantillas')
+                    .select('preguntas')
+                    .eq('id', plantilla_id)
+                    .single();
+                customQuestions = plantilla?.preguntas || [];
+            }
             
             // Format questions as a numbered list for GPT-4, injecting manual answers if provided
             const numberedQuestions = customQuestions.map((q, i) => {
