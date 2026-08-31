@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { UploadCloud, FileText, Image as ImageIcon, X, Download, Loader2 } from 'lucide-react';
+import { UploadCloud, FileText, Image as ImageIcon, X, Download, Loader2, Trash2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 export default function GobernanzaDocumentos({ proyectoId, currentUser }) {
@@ -87,6 +87,41 @@ export default function GobernanzaDocumentos({ proyectoId, currentUser }) {
         if (fileInputRef.current) fileInputRef.current.value = "";
     };
 
+    const handleDelete = async (e, doc) => {
+        e.stopPropagation(); // Evitar abrir el archivo
+        
+        if (!window.confirm(`¿Estás seguro de que deseas eliminar ${doc.nombre}?`)) return;
+        
+        try {
+            // 1. Extraer la ruta real en el bucket a partir de la URL pública
+            const filePath = doc.url.split('/gobernanza_documentos/')[1];
+            
+            // 2. Eliminar del Bucket de Storage
+            if (filePath) {
+                const { error: storageError } = await supabase.storage.from('gobernanza_documentos').remove([filePath]);
+                if (storageError) console.warn("Error borrando de storage (podría no existir)", storageError);
+            }
+            
+            // 3. Eliminar registro en base de datos
+            const { error: dbError } = await supabase.from('gobernanza_documentos').delete().eq('id', doc.id);
+            if (dbError) throw dbError;
+            
+            // 4. Registrar la actividad en el muro
+            await supabase.from('gobernanza_actividad').insert({
+                proyecto_id: proyectoId,
+                usuario_id: currentUser?.id,
+                accion: 'ELIMINO_DOCUMENTO',
+                detalles: { nombre: doc.nombre }
+            });
+            
+            // 5. Quitar visualmente
+            setDocumentos(prev => prev.filter(d => d.id !== doc.id));
+        } catch (err) {
+            console.error("Error eliminando documento:", err);
+            alert("No se pudo eliminar el documento.");
+        }
+    };
+
     const isViewable = (tipo) => {
         return tipo.startsWith('image/') || tipo === 'application/pdf';
     };
@@ -141,10 +176,20 @@ export default function GobernanzaDocumentos({ proyectoId, currentUser }) {
                         <div 
                             key={doc.id} 
                             onClick={() => handleFileClick(doc)}
-                            style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', cursor: 'pointer', textAlign: 'center', transition: 'transform 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}
+                            style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', cursor: 'pointer', textAlign: 'center', transition: 'transform 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', position: 'relative' }}
                             onMouseOver={e => e.currentTarget.style.transform = 'translateY(-4px)'}
                             onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
                         >
+                            <button 
+                                onClick={(e) => handleDelete(e, doc)}
+                                style={{ position: 'absolute', top: '8px', right: '8px', background: 'transparent', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: '4px' }}
+                                onMouseOver={e => e.currentTarget.style.color = '#ef4444'}
+                                onMouseOut={e => e.currentTarget.style.color = '#cbd5e1'}
+                                title="Eliminar documento"
+                            >
+                                <Trash2 size={16} />
+                            </button>
+
                             <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', marginBottom: '12px', display: 'flex', justifyContent: 'center' }}>
                                 {getIcon(doc.tipo_archivo)}
                             </div>
