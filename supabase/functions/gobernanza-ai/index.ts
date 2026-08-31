@@ -48,7 +48,15 @@ Deno.serve(async (req) => {
                 body: formData
             });
 
-            if (!whisperRes.ok) throw new Error(await whisperRes.text());
+            if (!whisperRes.ok) {
+                const errorText = await whisperRes.text();
+                // OpenAI often returns 400 for audio that is too short (only silence).
+                // Instead of failing the edge function and returning a 400 to the client, we just return empty text.
+                console.error("Whisper Error:", errorText);
+                return new Response(JSON.stringify({ success: true, text: "" }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
             const whisperData = await whisperRes.json();
             
             return new Response(JSON.stringify({ success: true, text: whisperData.text }), {
@@ -190,7 +198,10 @@ Responde ESTRICTAMENTE en este formato JSON:
                 })
             });
 
-            if (!gptRes.ok) throw new Error('GPT Error');
+            if (!gptRes.ok) {
+                const errText = await gptRes.text();
+                throw new Error(`GPT Error: ${gptRes.status} - ${errText}`);
+            }
             const gptData = await gptRes.json();
             const aiResponse = JSON.parse(gptData.choices[0].message.content);
 

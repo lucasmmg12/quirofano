@@ -42,7 +42,6 @@ const MultipartAudioPlayer = ({ urls }) => {
 };
 
 import { Play, Square, Pause, ChevronRight, Mic, Loader2, ArrowLeft, ShieldCheck, CheckCircle2, FileText, BrainCircuit, List, UploadCloud, Type, Network, Plus, Trash2, Save, MessageCircle, Send, History, CalendarDays, Download, Share2, Copy, ExternalLink } from 'lucide-react';
-import { v4 as uuidv4 } from 'uuid';
 import mermaid from 'mermaid';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
@@ -253,8 +252,8 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
             }
 
             let currentEntrevistaId = activeEntrevistaId;
-            if (!activeEntrevistaId) {
-                currentEntrevistaId = uuidv4();
+            if (!activeEntrevistaId || activeEntrevistaId === 'undefined') {
+                currentEntrevistaId = crypto.randomUUID();
                 setActiveEntrevistaId(currentEntrevistaId);
                 liveTranscriptRef.current = "";
                 setTranscriptionText("");
@@ -382,11 +381,18 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
                                             "Subtítulos", "Amara.org", "www.alimmenta.com", "Enjoy your meal", 
                                             "enjoy your hosts", "Vamos a probar", "Pronto, pronto", 
                                             "Un, dos, tres", "cuatro, cinco", "seis, siete", "ocho, nueve", 
-                                            "dieciocho", "Un saludo", "Gracias.", "Gracias"
+                                            "dieciocho", "Un saludo", "Gracias.", "Gracias",
+                                            "asociar directamente al... proceso", "Probando un guano", "guano, guano",
+                                            "Probando, probando, un guano", "Sí, tenemos otro", "Cuatrocientos",
+                                            "Yo solo quiero pegarme el anillo", "por ver el video", "guano"
                                         ];
                                         alucinaciones.forEach(frase => {
-                                            newText = newText.replace(new RegExp(frase, 'gi'), '');
+                                            // Escape dots for literal match in regex
+                                            const safeFrase = frase.replace(/\./g, '\\.');
+                                            newText = newText.replace(new RegExp(safeFrase, 'gi'), '');
                                         });
+                                        // Filtro extra para los "no, no, no" repetitivos infinitos (3 o más "no")
+                                        newText = newText.replace(/(no[,\.\s]*){3,}/gi, '');
                                         newText = newText.trim();
                                             if (newText.length > 0) {
                                                 liveTranscriptRef.current += " " + newText;
@@ -496,7 +502,8 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
 
     const processAudioBlob = async (blob, customExt = 'webm', liveTranscript = null, isMultipart = false) => {
         try {
-            const entrevistaId = activeEntrevistaId || uuidv4();
+            const tempId = activeEntrevistaId === 'undefined' ? null : activeEntrevistaId;
+            const entrevistaId = tempId || crypto.randomUUID();
             const fileName = `${entrevistaId}_${Date.now()}.${customExt}`;
             const durationSecs = duration;
 
@@ -665,7 +672,7 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
         if (!manualText.trim()) return;
         try {
             setProcessingState('analyzing');
-            const entrevistaId = uuidv4();
+            const entrevistaId = crypto.randomUUID();
             
             // Invoke Edge Function for text analysis directly
             const { data: edgeData, error: edgeError } = await supabase.functions.invoke('gobernanza-ai', {
