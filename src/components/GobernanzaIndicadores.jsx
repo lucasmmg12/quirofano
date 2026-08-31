@@ -126,6 +126,8 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
     };
 
     const getCompleteness = (ind) => {
+        if (ind.estado === 'Finalizado') return 100;
+
         const fields = [
             ind.informacion_buscada,
             ind.origen_informacion,
