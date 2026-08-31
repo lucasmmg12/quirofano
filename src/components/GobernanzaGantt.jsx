@@ -28,23 +28,49 @@ export default function GobernanzaGantt({ proyectos, onBack }) {
         );
     }
 
+    // Funciones de utilidad seguras para zonas horarias
+    const startOfDayUTC = (d) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+    const dateDiffInDays = (a, b) => Math.floor((startOfDayUTC(b) - startOfDayUTC(a)) / (1000 * 60 * 60 * 24));
+
     // Encontrar fechas extremas
     let minDate = new Date(Math.min(...validProjects.map(p => p.start)));
     let maxDate = new Date(Math.max(...validProjects.map(p => p.end)));
 
-    // Padding de 10 días antes y después para que no quede pegado a los bordes
-    minDate.setDate(minDate.getDate() - 10);
-    maxDate.setDate(maxDate.getDate() + 10);
+    // Padding de 5 días
+    minDate.setDate(minDate.getDate() - 5);
+    maxDate.setDate(maxDate.getDate() + 5);
 
-    const totalTime = maxDate.getTime() - minDate.getTime();
-
-    // Generar marcadores de meses para la cabecera
-    const months = [];
-    let currentMonth = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
-    while (currentMonth <= maxDate) {
-        months.push(new Date(currentMonth));
-        currentMonth.setMonth(currentMonth.getMonth() + 1);
+    // Generar array exacto de días
+    const days = [];
+    let d = new Date(minDate);
+    while (d <= maxDate) {
+        days.push(new Date(d));
+        d.setDate(d.getDate() + 1);
     }
+    const totalDays = days.length;
+    
+    // Ancho por día en píxeles
+    const dayWidth = 32;
+    const ganttWidth = totalDays * dayWidth;
+
+    // Agrupar días por meses para la cabecera
+    const monthsData = [];
+    let currentMonth = null;
+    
+    days.forEach(day => {
+        const monthKey = day.getFullYear() + '-' + day.getMonth();
+        if (!currentMonth || currentMonth.key !== monthKey) {
+            currentMonth = {
+                key: monthKey,
+                label: day.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }),
+                days: []
+            };
+            monthsData.push(currentMonth);
+        }
+        currentMonth.days.push(day);
+    });
+
+    const todayStr = new Date().toDateString();
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#f8fafc', fontFamily: "'Inter', sans-serif" }}>
@@ -60,77 +86,130 @@ export default function GobernanzaGantt({ proyectos, onBack }) {
                 </div>
             </div>
 
-            <div style={{ flex: 1, padding: '32px', overflow: 'auto' }}>
-                <div style={{ background: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '24px', minWidth: '800px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
+            <div style={{ flex: 1, padding: '32px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ background: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', flex: 1, boxShadow: '0 4px 6px rgba(0,0,0,0.02)', overflow: 'hidden' }}>
                     
-                    {/* Gantt Header (Months) */}
-                    <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', paddingBottom: '12px', marginBottom: '24px', position: 'relative', height: '30px' }}>
-                        {months.map((m, i) => {
-                            const monthLeft = Math.max(0, (m.getTime() - minDate.getTime()) / totalTime * 100);
-                            return (
-                                <div key={i} style={{ position: 'absolute', left: `${monthLeft}%`, transform: 'translateX(-50%)', color: '#64748b', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
-                                    {m.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
-                                    <div style={{ width: '1px', height: '12px', background: '#cbd5e1', margin: '4px auto 0' }} />
-                                </div>
-                            );
-                        })}
-                    </div>
-
-                    {/* Gantt Body (Projects) */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative' }}>
+                    {/* Contenedor Flex para separar nombres y calendario */}
+                    <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
                         
-                        {/* Líneas verticales de fondo (Grid) */}
-                        <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, pointerEvents: 'none' }}>
-                            {months.map((m, i) => {
-                                const left = Math.max(0, (m.getTime() - minDate.getTime()) / totalTime * 100);
-                                return <div key={`grid-${i}`} style={{ position: 'absolute', left: `${left}%`, top: 0, bottom: 0, width: '1px', background: '#f1f5f9' }} />;
-                            })}
-                        </div>
-
-                        {validProjects.map(p => {
-                            const left = ((p.start.getTime() - minDate.getTime()) / totalTime) * 100;
-                            const width = ((p.end.getTime() - p.start.getTime()) / totalTime) * 100;
-                            const isCompleted = p.estado === 'Activo' ? false : true;
-
-                            return (
-                                <div key={p.id} style={{ display: 'flex', alignItems: 'center', position: 'relative', height: '40px' }}>
-                                    {/* Sidebar Project Name */}
-                                    <div style={{ width: '200px', flexShrink: 0, paddingRight: '16px', fontWeight: 600, color: '#334155', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', zIndex: 2 }}>
-                                        {p.nombre}
-                                    </div>
-                                    
-                                    {/* Timeline Area */}
-                                    <div style={{ flex: 1, position: 'relative', height: '100%' }}>
-                                        <div 
-                                            style={{ 
-                                                position: 'absolute', 
-                                                left: `${left}%`, 
-                                                width: `${width}%`, 
-                                                height: '24px', 
-                                                top: '8px',
-                                                background: isCompleted ? '#dcfce7' : 'linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%)',
-                                                borderRadius: '12px',
-                                                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                padding: '0 12px',
-                                                color: isCompleted ? '#166534' : 'white',
-                                                fontSize: '0.75rem',
-                                                fontWeight: 700,
-                                                zIndex: 5,
-                                                cursor: 'pointer'
-                                            }}
-                                            title={`${p.nombre}\n${p.start.toLocaleDateString()} - ${p.end.toLocaleDateString()}`}
-                                        >
-                                            {/* Si la barra es muy pequeña, no mostramos el % dentro */}
-                                            {width > 10 && (
-                                                <span>{p.req_progress || 0}%</span>
-                                            )}
+                        {/* Columna Izquierda: Nombres de Proyectos (Fija) */}
+                        <div style={{ width: '280px', flexShrink: 0, borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', background: '#f8fafc', zIndex: 10 }}>
+                            <div style={{ height: '60px', flexShrink: 0, borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', padding: '0 16px', fontWeight: 700, color: '#475569', fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                Proyectos
+                            </div>
+                            <div style={{ flex: 1, overflowY: 'auto' }}>
+                                {validProjects.map(p => (
+                                    <div key={p.id} style={{ height: '50px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', padding: '0 16px', fontWeight: 600, color: '#0f172a', fontSize: '0.9rem' }}>
+                                        <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={p.nombre}>
+                                            {p.nombre}
                                         </div>
                                     </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Columna Derecha: Gantt Chart (Scrollable horizontal y vertical) */}
+                        <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+                            <div style={{ width: `${ganttWidth}px`, minHeight: '100%' }}>
+                                
+                                {/* Headers: Meses y Días */}
+                                <div style={{ display: 'flex', flexDirection: 'column', height: '60px', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, background: 'white', zIndex: 5 }}>
+                                    
+                                    {/* Fila Meses */}
+                                    <div style={{ display: 'flex', height: '30px', borderBottom: '1px solid #e2e8f0' }}>
+                                        {monthsData.map(m => (
+                                            <div key={m.key} style={{ width: `${m.days.length * dayWidth}px`, borderRight: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, color: '#64748b', textTransform: 'capitalize' }}>
+                                                {m.label}
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Fila Días */}
+                                    <div style={{ display: 'flex', height: '30px' }}>
+                                        {days.map((d, i) => {
+                                            const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                                            const isToday = d.toDateString() === todayStr;
+                                            return (
+                                                <div key={i} style={{ 
+                                                    width: `${dayWidth}px`, 
+                                                    borderRight: '1px solid #f1f5f9', 
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                    fontSize: '0.75rem', 
+                                                    color: isToday ? 'white' : (isWeekend ? '#94a3b8' : '#64748b'),
+                                                    background: isToday ? '#3b82f6' : (isWeekend ? '#f8fafc' : 'white'),
+                                                    fontWeight: isToday ? 700 : 500,
+                                                }}>
+                                                    {isToday ? <div style={{ background: '#3b82f6', color: 'white', width: '22px', height: '22px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{d.getDate()}</div> : d.getDate()}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
-                            );
-                        })}
+
+                                {/* Grilla y Barras (Cuerpo) */}
+                                <div style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
+                                    
+                                    {/* Fondo Grilla vertical */}
+                                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, display: 'flex', pointerEvents: 'none', zIndex: 1 }}>
+                                        {days.map((d, i) => {
+                                            const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                                            const isToday = d.toDateString() === todayStr;
+                                            return (
+                                                <div key={`bg-${i}`} style={{ 
+                                                    width: `${dayWidth}px`, 
+                                                    borderRight: '1px solid #f1f5f9', 
+                                                    background: isToday ? 'rgba(59, 130, 246, 0.05)' : (isWeekend ? '#f8fafc' : 'transparent') 
+                                                }} />
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Filas de Proyectos */}
+                                    {validProjects.map(p => {
+                                        const startDiffDays = dateDiffInDays(minDate, p.start);
+                                        const durationDays = dateDiffInDays(p.start, p.end) + 1; // +1 para que sea inclusivo
+                                        
+                                        const leftPx = startDiffDays * dayWidth;
+                                        const widthPx = durationDays * dayWidth;
+                                        
+                                        const isCompleted = p.estado === 'Finalizado';
+
+                                        return (
+                                            <div key={p.id} style={{ height: '50px', borderBottom: '1px solid #f8fafc', position: 'relative', zIndex: 2 }}>
+                                                {/* Barra */}
+                                                <div 
+                                                    style={{ 
+                                                        position: 'absolute', 
+                                                        left: `${leftPx}px`, 
+                                                        width: `${widthPx}px`, 
+                                                        height: '28px', 
+                                                        top: '11px',
+                                                        background: isCompleted ? 'linear-gradient(90deg, #10b981 0%, #34d399 100%)' : 'linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%)',
+                                                        borderRadius: '6px',
+                                                        boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        padding: '0 8px',
+                                                        color: 'white',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        overflow: 'hidden'
+                                                    }}
+                                                    title={`Inicio: ${p.start.toLocaleDateString()}\nFin: ${p.end.toLocaleDateString()}\nProgreso: ${p.req_progress || 0}%`}
+                                                >
+                                                    {widthPx > 30 && (
+                                                        <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                            {p.req_progress || 0}%
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
