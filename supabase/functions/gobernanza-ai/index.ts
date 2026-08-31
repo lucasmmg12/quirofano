@@ -39,6 +39,8 @@ Deno.serve(async (req) => {
             formData.append('file', new File([blob], 'chunk.webm', { type: 'audio/webm' }));
             formData.append('model', 'whisper-1');
             formData.append('language', 'es');
+            formData.append('temperature', '0');
+            formData.append('prompt', 'Entrevista de Gobernanza de Datos en español. (Por favor, ignora el silencio o ruido de fondo).');
             
             const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
                 method: 'POST',
