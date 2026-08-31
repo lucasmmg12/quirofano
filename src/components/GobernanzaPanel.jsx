@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { 
     Folder, Plus, LayoutDashboard, Activity, Mic, Target, 
-    FileText, ArrowLeft, Loader2, Save, ChevronRight, ListTodo
+    FileText, ArrowLeft, Loader2, Save, ChevronRight, ListTodo, Calendar, CalendarDays
 } from 'lucide-react';
 
 import GobernanzaEntrevistaGrabador from './GobernanzaEntrevistaGrabador';
@@ -10,6 +10,7 @@ import GobernanzaMuro from './GobernanzaMuro';
 import GobernanzaIndicadores from './GobernanzaIndicadores';
 import GobernanzaDocumentos from './GobernanzaDocumentos';
 import GobernanzaTareas from './GobernanzaTareas';
+import GobernanzaGantt from './GobernanzaGantt';
 
 export default function GobernanzaPanel({ currentUser }) {
     const [viewMode, setViewMode] = useState('lista'); // 'lista' | 'proyecto'
@@ -21,6 +22,8 @@ export default function GobernanzaPanel({ currentUser }) {
     const [showCreate, setShowCreate] = useState(false);
     const [newProjName, setNewProjName] = useState('');
     const [newProjDesc, setNewProjDesc] = useState('');
+    const [newProjStart, setNewProjStart] = useState('');
+    const [newProjEnd, setNewProjEnd] = useState('');
     const [creating, setCreating] = useState(false);
 
     // Pestaña activa dentro del proyecto
@@ -69,6 +72,8 @@ export default function GobernanzaPanel({ currentUser }) {
             const { data, error } = await supabase.from('gobernanza_proyectos').insert({
                 nombre: newProjName.trim(),
                 descripcion: newProjDesc.trim(),
+                fecha_desde: newProjStart || null,
+                fecha_hasta: newProjEnd || null,
                 created_by: currentUser?.id
             }).select().single();
             
@@ -85,6 +90,8 @@ export default function GobernanzaPanel({ currentUser }) {
             setShowCreate(false);
             setNewProjName('');
             setNewProjDesc('');
+            setNewProjStart('');
+            setNewProjEnd('');
             fetchProyectos();
         } catch (err) {
             console.error(err);
@@ -119,17 +126,32 @@ export default function GobernanzaPanel({ currentUser }) {
                             <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '1.1rem' }}>Gestión centralizada de requerimientos, entrevistas e indicadores.</p>
                         </div>
                     </div>
-                    <button onClick={() => setShowCreate(true)} style={{ background: '#0f172a', color: 'white', border: 'none', borderRadius: '12px', padding: '12px 24px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-                        <Plus size={20} /> Nuevo Proyecto
-                    </button>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                        <button onClick={() => setViewMode('gantt')} style={{ background: 'white', color: '#0f172a', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 20px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
+                            <CalendarDays size={20} color="#3b82f6" /> Calendario Global
+                        </button>
+                        <button onClick={() => setShowCreate(true)} style={{ background: '#0f172a', color: 'white', border: 'none', borderRadius: '12px', padding: '12px 24px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+                            <Plus size={20} /> Nuevo Proyecto
+                        </button>
+                    </div>
                 </div>
 
                 {showCreate && (
                     <div style={{ background: 'white', padding: '24px', borderRadius: '16px', marginBottom: '32px', border: '1px solid #e2e8f0', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)' }}>
                         <h3 style={{ margin: '0 0 16px', color: '#0f172a' }}>Crear Proyecto</h3>
-                        <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
-                            <input type="text" placeholder="Nombre (Ej: Métricas UCI)" value={newProjName} onChange={e => setNewProjName(e.target.value)} style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
-                            <input type="text" placeholder="Descripción breve..." value={newProjDesc} onChange={e => setNewProjDesc(e.target.value)} style={{ flex: 2, padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '16px', marginBottom: '16px' }}>
+                            <input type="text" placeholder="Nombre (Ej: Métricas UCI)" value={newProjName} onChange={e => setNewProjName(e.target.value)} style={{ padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                            <input type="text" placeholder="Descripción breve..." value={newProjDesc} onChange={e => setNewProjDesc(e.target.value)} style={{ padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>Fecha de Inicio</label>
+                                <input type="date" value={newProjStart} onChange={e => setNewProjStart(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', color: '#475569' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>Fecha Límite (Fin)</label>
+                                <input type="date" value={newProjEnd} onChange={e => setNewProjEnd(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', color: '#475569' }} />
+                            </div>
                         </div>
                         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
                             <button onClick={() => setShowCreate(false)} style={{ padding: '10px 20px', borderRadius: '8px', border: '1px solid #cbd5e1', background: 'white', cursor: 'pointer', fontWeight: 600 }}>Cancelar</button>
@@ -192,6 +214,13 @@ export default function GobernanzaPanel({ currentUser }) {
                                 <h3 style={{ margin: '0 0 8px', fontSize: '1.4rem', color: '#0f172a', fontWeight: 800 }}>
                                     {p.nombre}
                                 </h3>
+
+                                {p.fecha_desde && p.fecha_hasta && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.8rem', marginBottom: '12px', background: '#f8fafc', padding: '4px 10px', borderRadius: '6px', display: 'inline-flex' }}>
+                                        <Calendar size={14} />
+                                        <span>{new Date(p.fecha_desde).toLocaleDateString()} - {new Date(p.fecha_hasta).toLocaleDateString()}</span>
+                                    </div>
+                                )}
                                 
                                 <p style={{ margin: '0 0 24px', color: '#64748b', fontSize: '0.95rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', flex: 1 }}>
                                     {p.descripcion || 'Sin descripción'}
@@ -234,6 +263,10 @@ export default function GobernanzaPanel({ currentUser }) {
                 )}
             </div>
         );
+    }
+
+    if (viewMode === 'gantt') {
+        return <GobernanzaGantt proyectos={proyectos} onBack={() => setViewMode('lista')} />;
     }
 
     // VISTA PROYECTO
