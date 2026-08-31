@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { 
     Folder, Plus, LayoutDashboard, Activity, Mic, Target, 
-    FileText, ArrowLeft, Loader2, Save, ChevronRight
+    FileText, ArrowLeft, Loader2, Save, ChevronRight, ListTodo
 } from 'lucide-react';
 
 import GobernanzaEntrevistaGrabador from './GobernanzaEntrevistaGrabador';
 import GobernanzaMuro from './GobernanzaMuro';
 import GobernanzaIndicadores from './GobernanzaIndicadores';
 import GobernanzaDocumentos from './GobernanzaDocumentos';
+import GobernanzaTareas from './GobernanzaTareas';
 
 export default function GobernanzaPanel({ currentUser }) {
     const [viewMode, setViewMode] = useState('lista'); // 'lista' | 'proyecto'
@@ -253,6 +254,7 @@ export default function GobernanzaPanel({ currentUser }) {
             <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '0 32px', display: 'flex', gap: '32px' }}>
                 {[
                     { id: 'muro', label: 'Muro de Actividad', icon: Activity },
+                    { id: 'tareas', label: 'Tareas', icon: ListTodo },
                     { id: 'entrevistas', label: 'Auditorías de Voz', icon: Mic },
                     { id: 'indicadores', label: 'Indicadores y SQL', icon: Target },
                     { id: 'documentos', label: 'Documentos', icon: FileText }
@@ -277,6 +279,10 @@ export default function GobernanzaPanel({ currentUser }) {
             <div style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
                 {activeTab === 'muro' && (
                     <GobernanzaMuro proyectoId={selectedProyecto.id} />
+                )}
+
+                {activeTab === 'tareas' && (
+                    <GobernanzaTareas proyectoId={selectedProyecto.id} currentUser={currentUser} />
                 )}
 
                 {activeTab === 'entrevistas' && (
