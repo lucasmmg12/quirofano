@@ -837,6 +837,7 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
             const { data, error } = await supabase
                 .from('gobernanza_entrevistas')
                 .select('*, gobernanza_plantillas(nombre, preguntas)')
+                .eq('proyecto_id', proyectoId)
                 .order('created_at', { ascending: false });
             if (error) throw error;
             setHistorialEntrevistas(data || []);

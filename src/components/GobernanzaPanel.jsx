@@ -367,24 +367,11 @@ export default function GobernanzaPanel({ currentUser }) {
                 )}
 
                 {activeTab === 'entrevistas' && (
-                    isRecording ? (
-                        <GobernanzaEntrevistaGrabador 
-                            currentUser={currentUser} 
-                            proyectoId={selectedProyecto.id}
-                            onBack={() => setIsRecording(false)}
-                        />
-                    ) : (
-                        <div style={{ background: 'white', padding: '40px', borderRadius: '16px', textAlign: 'center', border: '1px dashed #cbd5e1' }}>
-                            <Mic size={48} color="#94a3b8" style={{ margin: '0 auto 16px' }} />
-                            <h3 style={{ margin: '0 0 16px', color: '#0f172a' }}>Auditorías de Voz</h3>
-                            <p style={{ color: '#64748b', marginBottom: '24px', maxWidth: '400px', margin: '0 auto 24px' }}>
-                                Realiza entrevistas a los usuarios clave y usa IA para extraer requerimientos automáticamente para este proyecto.
-                            </p>
-                            <button onClick={() => setIsRecording(true)} style={{ background: '#3b82f6', color: 'white', border: 'none', borderRadius: '12px', padding: '12px 24px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                                <Plus size={18} /> Nueva Auditoría
-                            </button>
-                        </div>
-                    )
+                    <GobernanzaEntrevistaGrabador 
+                        currentUser={currentUser} 
+                        proyectoId={selectedProyecto.id}
+                        onBack={() => {}}
+                    />
                 )}
 
                 {activeTab === 'indicadores' && (
