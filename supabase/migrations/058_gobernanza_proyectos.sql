@@ -76,7 +76,7 @@ CREATE POLICY "Todos los usuarios pueden ver e insertar actividad"
 
 -- STORAGE BUCKET: gobernanza_documentos
 INSERT INTO storage.buckets (id, name, public) 
-VALUES ('gobernanza_documentos', 'gobernanza_documentos', false)
+VALUES ('gobernanza_documentos', 'gobernanza_documentos', true)
 ON CONFLICT (id) DO NOTHING;
 
 DROP POLICY IF EXISTS "Todos pueden ver documentos" ON storage.objects;
