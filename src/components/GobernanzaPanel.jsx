@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { 
     Folder, Plus, LayoutDashboard, Activity, Mic, Target, 
-    FileText, ArrowLeft, Loader2, Save
+    FileText, ArrowLeft, Loader2, Save, ChevronRight
 } from 'lucide-react';
 
 import GobernanzaEntrevistaGrabador from './GobernanzaEntrevistaGrabador';
@@ -35,10 +35,18 @@ export default function GobernanzaPanel({ currentUser }) {
         try {
             const { data, error } = await supabase
                 .from('gobernanza_proyectos')
-                .select('*')
+                .select('*, gobernanza_indicadores(count), gobernanza_entrevistas(count)')
                 .order('created_at', { ascending: false });
             if (error) throw error;
-            setProyectos(data || []);
+            
+            // Format counts correctly
+            const formattedData = data.map(p => ({
+                ...p,
+                req_count: p.gobernanza_indicadores[0]?.count || 0,
+                entrevistas_count: p.gobernanza_entrevistas[0]?.count || 0
+            }));
+            
+            setProyectos(formattedData || []);
         } catch (err) {
             console.error("Error fetching proyectos:", err);
         } finally {
@@ -135,15 +143,70 @@ export default function GobernanzaPanel({ currentUser }) {
                 ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '24px' }}>
                         {proyectos.map(p => (
-                            <div key={p.id} onClick={() => openProject(p)} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '24px', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }} onMouseOver={e => e.currentTarget.style.transform = 'translateY(-4px)'} onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}>
+                            <div 
+                                key={p.id} 
+                                onClick={() => openProject(p)} 
+                                style={{ 
+                                    background: 'white', 
+                                    border: '1px solid #e2e8f0', 
+                                    borderLeft: '4px solid transparent', 
+                                    borderRadius: '20px', 
+                                    padding: '24px', 
+                                    cursor: 'pointer', 
+                                    transition: 'all 0.3s ease', 
+                                    boxShadow: '0 4px 6px rgba(0,0,0,0.02)', 
+                                    display: 'flex', 
+                                    flexDirection: 'column', 
+                                    height: '100%' 
+                                }} 
+                                onMouseOver={e => { 
+                                    e.currentTarget.style.transform = 'translateY(-4px)'; 
+                                    e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(59, 130, 246, 0.1), 0 10px 10px -5px rgba(59, 130, 246, 0.04)'; 
+                                    e.currentTarget.style.borderLeftColor = '#3b82f6'; 
+                                    e.currentTarget.style.borderColor = '#bfdbfe'; 
+                                }} 
+                                onMouseOut={e => { 
+                                    e.currentTarget.style.transform = 'translateY(0)'; 
+                                    e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.02)'; 
+                                    e.currentTarget.style.borderLeftColor = 'transparent'; 
+                                    e.currentTarget.style.borderColor = '#e2e8f0'; 
+                                }}
+                            >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                                     <div style={{ background: '#eff6ff', padding: '12px', borderRadius: '12px', color: '#3b82f6' }}>
                                         <Folder size={24} />
                                     </div>
-                                    <span style={{ fontSize: '0.8rem', padding: '4px 12px', borderRadius: '20px', background: p.estado === 'Activo' ? '#dcfce7' : '#f1f5f9', color: p.estado === 'Activo' ? '#166534' : '#475569', fontWeight: 600 }}>{p.estado}</span>
+                                    <span style={{ fontSize: '0.8rem', padding: '4px 12px', borderRadius: '20px', background: p.estado === 'Activo' ? '#dcfce7' : '#f1f5f9', color: p.estado === 'Activo' ? '#166534' : '#475569', fontWeight: 600 }}>
+                                        {p.estado}
+                                    </span>
                                 </div>
-                                <h3 style={{ margin: '0 0 8px', fontSize: '1.4rem', color: '#0f172a', fontWeight: 800 }}>{p.nombre}</h3>
-                                <p style={{ margin: 0, color: '#64748b', fontSize: '0.95rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.descripcion || 'Sin descripción'}</p>
+                                
+                                <h3 style={{ margin: '0 0 8px', fontSize: '1.4rem', color: '#0f172a', fontWeight: 800 }}>
+                                    {p.nombre}
+                                </h3>
+                                
+                                <p style={{ margin: '0 0 24px', color: '#64748b', fontSize: '0.95rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', flex: 1 }}>
+                                    {p.descripcion || 'Sin descripción'}
+                                </p>
+                                
+                                {/* Micro-métricas estilo Dashboard */}
+                                <div style={{ paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', gap: '16px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.85rem', fontWeight: 500 }}>
+                                            <FileText size={16} color="#94a3b8" />
+                                            <span>{p.req_count || 0} Reqs</span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.85rem', fontWeight: 500 }}>
+                                            <Mic size={16} color="#94a3b8" />
+                                            <span>{p.entrevistas_count || 0} Entrevistas</span>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Botón visual de "Ver más" */}
+                                    <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1' }}>
+                                        <ChevronRight size={16} />
+                                    </div>
+                                </div>
                             </div>
                         ))}
                     </div>
