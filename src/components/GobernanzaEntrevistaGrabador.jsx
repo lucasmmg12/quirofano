@@ -356,6 +356,8 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
                 try {
                     const chunkRecorder = new MediaRecorder(streamRef.current, { mimeType: 'audio/webm' });
                     const chunks = [];
+                    // Fijamos el ID de la pregunta al momento de crear el grabador (inicio del bloque)
+                    const chunkQuestionId = wsRef.current?.activeQuestion;
                     
                     chunkRecorder.ondataavailable = e => chunks.push(e.data);
                     chunkRecorder.onstop = async () => {
@@ -390,11 +392,11 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
                                                 liveTranscriptRef.current += " " + newText;
                                                 setTranscriptionText(liveTranscriptRef.current);
                                                 
-                                                // Añadir texto a la pregunta activa si existe
-                                                if (isRecordingRef.current && wsRef.current?.activeQuestion !== undefined && wsRef.current?.activeQuestion !== null) {
+                                                // Añadir texto a la pregunta que estaba activa durante ese chunk
+                                                if (isRecordingRef.current && chunkQuestionId !== undefined && chunkQuestionId !== null) {
                                                     setManualAnswers(prev => ({
                                                         ...prev,
-                                                        [wsRef.current.activeQuestion]: (prev[wsRef.current.activeQuestion] || '') + ' ' + newText
+                                                        [chunkQuestionId]: (prev[chunkQuestionId] || '') + ' ' + newText
                                                     }));
                                                 }
 
@@ -619,7 +621,8 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
             }
         } catch (error) {
             console.error("Error general:", error);
-            alert("Error al procesar: " + error.message + "\n\nEl backend podría continuar en 2do plano.");
+            handleEmergencyDownload();
+            alert("Error al procesar: " + error.message + "\n\nSe ha guardado automáticamente un archivo de copia de seguridad (.webm y .txt) en tu carpeta de descargas por si hubo un corte de internet.");
             setProcessingState(null);
             setDuration(0); 
         }
