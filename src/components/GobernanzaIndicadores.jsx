@@ -125,6 +125,18 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
         }, 1000);
     };
 
+    const getCompleteness = (ind) => {
+        const fields = [
+            ind.informacion_buscada,
+            ind.origen_informacion,
+            ind.ciclo_datos,
+            ind.query_sql,
+            ind.explicacion_query
+        ];
+        const filled = fields.filter(f => f && typeof f === 'string' && f.trim().length > 0).length;
+        return Math.round((filled / fields.length) * 100);
+    };
+
     if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}><Loader2 className="animate-spin" size={32} color="#94a3b8" /></div>;
 
     return (
@@ -175,7 +187,17 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
                                         <div onClick={(e) => { e.stopPropagation(); handleUpdate(ind, { estado: isCompleted ? 'Borrador' : 'Finalizado' }) }} style={{ cursor: 'pointer' }}>
                                             {isCompleted ? <CheckCircle2 size={24} color="#10b981" /> : <Circle size={24} color="#cbd5e1" />}
                                         </div>
-                                        <h4 style={{ margin: 0, fontSize: '1.1rem', color: isCompleted ? '#64748b' : '#0f172a', textDecoration: isCompleted ? 'line-through' : 'none' }}>{ind.titulo}</h4>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <h4 style={{ margin: 0, fontSize: '1.1rem', color: isCompleted ? '#64748b' : '#0f172a', textDecoration: isCompleted ? 'line-through' : 'none' }}>{ind.titulo}</h4>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <div style={{ width: '80px', height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                                                    <div style={{ width: `${getCompleteness(ind)}%`, height: '100%', background: getCompleteness(ind) === 100 ? '#10b981' : '#3b82f6', transition: 'width 0.3s ease' }} />
+                                                </div>
+                                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: getCompleteness(ind) === 100 ? '#10b981' : '#64748b' }}>
+                                                    {getCompleteness(ind)}% Completo
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
                                     <div style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         {savingId === ind.id && <Loader2 size={16} className="animate-spin" color="#3b82f6" />}
