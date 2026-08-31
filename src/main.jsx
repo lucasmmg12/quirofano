@@ -81,20 +81,14 @@ class ErrorBoundary extends React.Component {
     }
 }
 
-// Simple path-based routing without React Router
-// /recepcion → standalone reception view (no login)
-// /turno     → standalone kiosk for queue tickets (no login)
-// everything else → normal app with login
-const pathname = window.location.pathname;
-const isRecepcion = pathname === '/recepcion' || pathname === '/recepcion/';
-const isTurno = pathname === '/turno' || pathname === '/turno/';
-
-const RootComponent = isTurno ? TurnoKiosco : isRecepcion ? RecepcionView : App;
+import { BrowserRouter } from 'react-router-dom'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
         <ErrorBoundary>
-            <RootComponent />
+            <BrowserRouter>
+                <App />
+            </BrowserRouter>
         </ErrorBoundary>
     </React.StrictMode>,
 )

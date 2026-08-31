@@ -5,6 +5,7 @@ import {
     ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain, Users, PackageCheck, Microscope,
     Activity, FileSpreadsheet, BookMarked, FolderOpen, Receipt, FileCheck, Shield, Wrench, ShieldCheck,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '', onOpenBeto, currentUser, selectedModules }) {
     const isFrojo = currentUser?.usuario === 'frojo';
@@ -119,15 +120,17 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                 const Icon = item.icon;
                 const isActive = activeView === item.id;
                 return (
-                    <button
+                    <Link
                         key={item.id}
+                        to={item.id === 'inicio' ? '/' : `/${item.id}`}
                         className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
-                        onClick={() => onViewChange(item.id)}
+                        onClick={() => onViewChange && onViewChange(item.id, true)}
                         title={item.label}
+                        style={{ display: 'flex', textDecoration: 'none' }}
                     >
                         <Icon size={20} className="sidebar__item-icon" />
                         {isActive && <div className="sidebar__item-indicator" />}
-                    </button>
+                    </Link>
                 );
             });
         }
@@ -165,16 +168,17 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                             const Icon = item.icon;
                             const isActive = activeView === item.id;
                             return (
-                                <button
+                                <Link
                                     key={item.id}
+                                    to={item.id === 'inicio' ? '/' : `/${item.id}`}
                                     className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
-                                    onClick={() => onViewChange(item.id)}
-                                    style={{ paddingLeft: '14px', fontSize: '0.8rem' }}
+                                    onClick={() => onViewChange && onViewChange(item.id, true)}
+                                    style={{ paddingLeft: '14px', fontSize: '0.8rem', display: 'flex', textDecoration: 'none' }}
                                 >
                                     <Icon size={17} className="sidebar__item-icon" />
                                     <span className="sidebar__item-label">{item.label}</span>
                                     {isActive && <div className="sidebar__item-indicator" />}
-                                </button>
+                                </Link>
                             );
                         })}
                     </div>
@@ -227,15 +231,17 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                 {(() => {
                     const isActive = activeView === 'inicio';
                     return (
-                        <button
+                        <Link
+                            to="/"
                             className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
-                            onClick={() => onViewChange('inicio')}
+                            onClick={() => onViewChange && onViewChange('inicio', true)}
                             title={collapsed ? 'Inicio' : undefined}
+                            style={{ display: 'flex', textDecoration: 'none' }}
                         >
                             <Home size={20} className="sidebar__item-icon" />
                             {!collapsed && <span className="sidebar__item-label">Inicio</span>}
                             {isActive && <div className="sidebar__item-indicator" />}
-                        </button>
+                        </Link>
                     );
                 })()}
 
@@ -243,15 +249,17 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                 {isModuleVisible('gobernanza') && (() => {
                     const isActive = activeView === 'gobernanza';
                     return (
-                        <button
+                        <Link
+                            to="/gobernanza"
                             className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
-                            onClick={() => onViewChange('gobernanza')}
+                            onClick={() => onViewChange && onViewChange('gobernanza', true)}
                             title={collapsed ? 'Gobernanza' : undefined}
+                            style={{ display: 'flex', textDecoration: 'none' }}
                         >
                             <ShieldCheck size={20} className="sidebar__item-icon" />
                             {!collapsed && <span className="sidebar__item-label">Gobernanza</span>}
                             {isActive && <div className="sidebar__item-indicator" />}
-                        </button>
+                        </Link>
                     );
                 })()}
 
@@ -313,16 +321,18 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     const Icon = item.icon;
                     const isActive = activeView === item.id;
                     return (
-                        <button
+                        <Link
                             key={item.id}
+                            to={`/${item.id}`}
                             className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
-                            onClick={() => onViewChange(item.id)}
+                            onClick={() => onViewChange && onViewChange(item.id, true)}
                             title={collapsed ? item.label : undefined}
+                            style={{ display: 'flex', textDecoration: 'none' }}
                         >
                             <Icon size={20} className="sidebar__item-icon" />
                             {!collapsed && <span className="sidebar__item-label">{item.label}</span>}
                             {isActive && <div className="sidebar__item-indicator" />}
-                        </button>
+                        </Link>
                     );
                 })}
 
@@ -356,16 +366,18 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     const Icon = item.icon;
                     const isActive = activeView === item.id;
                     return (
-                        <button
+                        <Link
                             key={item.id}
+                            to={`/${item.id}`}
                             className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
-                            onClick={() => onViewChange(item.id)}
+                            onClick={() => onViewChange && onViewChange(item.id, true)}
                             title={collapsed ? item.label : undefined}
+                            style={{ display: 'flex', textDecoration: 'none' }}
                         >
                             <Icon size={20} className="sidebar__item-icon" />
                             {!collapsed && <span className="sidebar__item-label">{item.label}</span>}
                             {isActive && <div className="sidebar__item-indicator" />}
-                        </button>
+                        </Link>
                     );
                 })}
             </nav>

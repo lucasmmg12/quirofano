@@ -63,12 +63,42 @@ import LiquidacionesPanel from './components/LiquidacionesPanel.jsx';
 import PublicRecordView from './components/PublicShare/PublicRecordView.jsx';
 import { startSession, endSession, trackModuleChange } from './lib/activityTracker';
 import { supabase } from './lib/supabase';
+import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
+import RecepcionView from './components/RecepcionView.jsx';
+import TurnoKiosco from './components/TurnoKiosco.jsx';
 import './App.css';
 
-function AppRoot() {
-    const path = window.location.pathname;
-    const isPublicLab = path.startsWith('/publico/laboratorio/');
+// Wrappers for path params
+function EquipoAuditoriaViewWrapper() {
+    const { equipoId } = useParams();
+    return <EquipoAuditoriaView equipoId={equipoId} />;
+}
 
+function LegacyLabRedirect() {
+    const { hash } = useParams();
+    try {
+        const labName = decodeURIComponent(atob(hash));
+        const slugMap = {
+            'LDA - Dra. Aguero o Dra Rios': 'aguero',
+            'LAB. CEDAP': 'cedap',
+            'LAB.INST.PATOLOG.CUYO': 'cuyo',
+        };
+        const slug = slugMap[labName];
+        if (slug) {
+            return <Navigate to={`/lab/${slug}`} replace />;
+        }
+    } catch (e) {
+        // ignore
+    }
+    return <div style={{ padding: '40px', textAlign: 'center' }}>Enlace público inválido.</div>;
+}
+
+function LabPortalWrapper() {
+    const { labSlug } = useParams();
+    return <LabPortal labSlug={labSlug} />;
+}
+
+export default function AppRoot() {
     const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
 
     const handleLogin = useCallback((user) => {
@@ -84,55 +114,24 @@ function AppRoot() {
         setCurrentUser(null);
     }, [currentUser]);
 
-    // Public route for guarantees
-    if (path === '/recepcion/garantias') {
-        return <PublicRecepcionView />;
-    }
-
-    // Public route for Equipment CMMS QR audit
-    if (path.startsWith('/recepcion/equipo/')) {
-        const equipoId = path.split('/recepcion/equipo/')[1];
-        return <EquipoAuditoriaView equipoId={equipoId} />;
-    }
-
-    // Public route for Share Record View (Sider AI style)
-    if (path.startsWith('/share/')) {
-        return <PublicRecordView />;
-    }
-
-    // Lab Portal routes (authenticated) — /lab/aguero, /lab/cedap, /lab/cuyo
-    const labMatch = path.match(/^\/lab\/(aguero|cedap|cuyo)\/?$/);
-    if (labMatch) {
-        return <LabPortal labSlug={labMatch[1]} />;
-    }
-
-    // Legacy public lab routes — redirect to new authenticated portal
-    if (isPublicLab) {
-        try {
-            const hash = path.split('/publico/laboratorio/')[1];
-            const labName = decodeURIComponent(atob(hash));
-            // Map old labName to new slug
-            const slugMap = {
-                'LDA - Dra. Aguero o Dra Rios': 'aguero',
-                'LAB. CEDAP': 'cedap',
-                'LAB.INST.PATOLOG.CUYO': 'cuyo',
-            };
-            const slug = slugMap[labName];
-            if (slug) {
-                window.location.replace(`/lab/${slug}`);
-                return null;
-            }
-            return <div style={{ padding: '40px', textAlign: 'center' }}>Enlace público inválido.</div>;
-        } catch (e) {
-            return <div style={{ padding: '40px', textAlign: 'center' }}>Enlace público inválido.</div>;
-        }
-    }
-
-    if (!currentUser) {
-        return <LoginScreen onLogin={handleLogin} />;
-    }
-
-    return <App currentUser={currentUser} onLogout={handleLogout} />;
+    return (
+        <Routes>
+            <Route path="/recepcion" element={<RecepcionView />} />
+            <Route path="/turno" element={<TurnoKiosco />} />
+            <Route path="/recepcion/garantias" element={<PublicRecepcionView />} />
+            <Route path="/recepcion/equipo/:equipoId" element={<EquipoAuditoriaViewWrapper />} />
+            <Route path="/share/*" element={<PublicRecordView />} />
+            <Route path="/lab/:labSlug" element={<LabPortalWrapper />} />
+            <Route path="/publico/laboratorio/:hash" element={<LegacyLabRedirect />} />
+            <Route path="*" element={
+                !currentUser ? (
+                    <LoginScreen onLogin={handleLogin} />
+                ) : (
+                    <App currentUser={currentUser} onLogout={handleLogout} />
+                )
+            } />
+        </Routes>
+    );
 }
 
 
@@ -181,14 +180,14 @@ function App({ currentUser, onLogout }) {
     });
     // Beto widget open state (controlled from sidebar avatar)
     const [betoWidgetOpen, setBetoWidgetOpen] = useState(false);
-    const [activeView, setActiveViewRaw] = useState(() => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const paramView = urlParams.get('view');
-        if (paramView && VIEW_LABELS[paramView]) return paramView;
-        const hashView = window.location.hash.replace('#', '');
-        if (hashView && VIEW_LABELS[hashView]) return hashView;
-        return localStorage.getItem('active_view') || 'inicio';
-    });
+    // Router hooks
+    const location = useLocation();
+    const navigate = useNavigate();
+
+    // Derive activeView directly from the URL pathname
+    // If it's "/" or unrecognized, it will default to 'inicio' visually (handled below)
+    const activeView = location.pathname === '/' ? 'inicio' : location.pathname.substring(1);
+
     // Dark mode
     const [darkMode, setDarkMode] = useState(() => localStorage.getItem('dark_mode') === 'true');
     // View transition key — bumps on view change to trigger CSS animation
@@ -242,11 +241,14 @@ function App({ currentUser, onLogout }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const setActiveView = useCallback((view) => {
-        setActiveViewRaw(view);
+    const setActiveView = useCallback((view, skipNavigate = false) => {
         setViewKey(k => k + 1);
         setMobileMenuOpen(false);
-        localStorage.setItem('active_view', view);
+        // Use React Router for navigation if not triggered by Link
+        if (!skipNavigate) {
+            navigate(view === 'inicio' ? '/' : `/${view}`);
+        }
+        
         // Track module navigation
         trackModuleChange(view, VIEW_LABELS[view] || view);
         // Audit log click
@@ -1226,5 +1228,3 @@ function App({ currentUser, onLogout }) {
         </div>
     );
 }
-
-export default AppRoot;
