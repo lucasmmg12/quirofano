@@ -35,16 +35,23 @@ export default function GobernanzaPanel({ currentUser }) {
         try {
             const { data, error } = await supabase
                 .from('gobernanza_proyectos')
-                .select('*, gobernanza_indicadores(count), gobernanza_entrevistas(count)')
+                .select('*, gobernanza_indicadores(id, estado), gobernanza_entrevistas(count)')
                 .order('created_at', { ascending: false });
             if (error) throw error;
             
             // Format counts correctly
-            const formattedData = data.map(p => ({
-                ...p,
-                req_count: p.gobernanza_indicadores[0]?.count || 0,
-                entrevistas_count: p.gobernanza_entrevistas[0]?.count || 0
-            }));
+            const formattedData = data.map(p => {
+                const totalReqs = p.gobernanza_indicadores?.length || 0;
+                const completedReqs = p.gobernanza_indicadores?.filter(i => i.estado === 'Finalizado').length || 0;
+                const progress = totalReqs > 0 ? Math.round((completedReqs / totalReqs) * 100) : 0;
+
+                return {
+                    ...p,
+                    req_count: totalReqs,
+                    req_progress: progress,
+                    entrevistas_count: p.gobernanza_entrevistas[0]?.count || 0
+                };
+            });
             
             setProyectos(formattedData || []);
         } catch (err) {
@@ -188,6 +195,19 @@ export default function GobernanzaPanel({ currentUser }) {
                                 <p style={{ margin: '0 0 24px', color: '#64748b', fontSize: '0.95rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', flex: 1 }}>
                                     {p.descripcion || 'Sin descripción'}
                                 </p>
+                                
+                                {/* Barra de Progreso del Proyecto */}
+                                {p.req_count > 0 && (
+                                    <div style={{ marginBottom: '20px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                            <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Completitud</span>
+                                            <span style={{ fontSize: '0.75rem', color: p.req_progress === 100 ? '#10b981' : '#3b82f6', fontWeight: 800 }}>{p.req_progress}%</span>
+                                        </div>
+                                        <div style={{ width: '100%', height: '6px', background: '#f1f5f9', borderRadius: '3px', overflow: 'hidden' }}>
+                                            <div style={{ width: `${p.req_progress}%`, height: '100%', background: p.req_progress === 100 ? '#10b981' : '#3b82f6', transition: 'width 0.5s ease' }} />
+                                        </div>
+                                    </div>
+                                )}
                                 
                                 {/* Micro-métricas estilo Dashboard */}
                                 <div style={{ paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
