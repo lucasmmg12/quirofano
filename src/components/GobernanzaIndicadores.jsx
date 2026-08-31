@@ -15,8 +15,17 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
     const [newTitulo, setNewTitulo] = useState('');
     const [creating, setCreating] = useState(false);
 
+    // Debounce refs
+    const pendingChanges = useRef({});
+    const debounceTimers = useRef({});
+
     useEffect(() => {
         if (proyectoId) fetchIndicadores();
+        
+        // Cleanup timers on unmount
+        return () => {
+            Object.values(debounceTimers.current).forEach(timer => clearTimeout(timer));
+        };
     }, [proyectoId]);
 
     const fetchIndicadores = async () => {
@@ -69,22 +78,51 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
     };
 
     const handleUpdate = async (ind, fields) => {
+        // Actualización sincrónica para acciones instantáneas como el Check de Finalizado
+        setIndicadores(prev => prev.map(i => i.id === ind.id ? { ...i, ...fields } : i));
         setSavingId(ind.id);
         try {
             const { error } = await supabase
                 .from('gobernanza_indicadores')
                 .update({ ...fields, updated_by: currentUser?.id })
                 .eq('id', ind.id);
-            
             if (error) throw error;
-            
-            setIndicadores(indicadores.map(i => i.id === ind.id ? { ...i, ...fields } : i));
         } catch (err) {
             console.error(err);
             alert("Error al guardar");
         } finally {
             setSavingId(null);
         }
+    };
+
+    const handleFieldChange = (ind, fieldName, value) => {
+        // 1. UI Local Sync (para que no se trabe al escribir)
+        setIndicadores(prev => prev.map(i => i.id === ind.id ? { ...i, [fieldName]: value } : i));
+
+        // 2. Cola de guardado
+        if (!pendingChanges.current[ind.id]) pendingChanges.current[ind.id] = {};
+        pendingChanges.current[ind.id][fieldName] = value;
+
+        // 3. Debounce de 1000ms
+        if (debounceTimers.current[ind.id]) clearTimeout(debounceTimers.current[ind.id]);
+        
+        debounceTimers.current[ind.id] = setTimeout(async () => {
+            const fieldsToSave = { ...pendingChanges.current[ind.id] };
+            pendingChanges.current[ind.id] = {}; // Reset local buffer
+            
+            setSavingId(ind.id);
+            try {
+                const { error } = await supabase
+                    .from('gobernanza_indicadores')
+                    .update({ ...fieldsToSave, updated_by: currentUser?.id })
+                    .eq('id', ind.id);
+                if (error) throw error;
+            } catch (err) {
+                console.error("Error autoguardando:", err);
+            } finally {
+                setSavingId(null);
+            }
+        }, 1000);
     };
 
     if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}><Loader2 className="animate-spin" size={32} color="#94a3b8" /></div>;
@@ -139,7 +177,8 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
                                         </div>
                                         <h4 style={{ margin: 0, fontSize: '1.1rem', color: isCompleted ? '#64748b' : '#0f172a', textDecoration: isCompleted ? 'line-through' : 'none' }}>{ind.titulo}</h4>
                                     </div>
-                                    <div style={{ color: '#64748b' }}>
+                                    <div style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        {savingId === ind.id && <Loader2 size={16} className="animate-spin" color="#3b82f6" />}
                                         {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                                     </div>
                                 </div>
@@ -153,7 +192,7 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
                                                 <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 8px' }}>Describe la lógica de negocio detrás de este indicador.</p>
                                                 <textarea 
                                                     value={ind.informacion_buscada || ''}
-                                                    onChange={e => handleUpdate(ind, { informacion_buscada: e.target.value })}
+                                                    onChange={e => handleFieldChange(ind, 'informacion_buscada', e.target.value)}
                                                     placeholder="Ej: Queremos ver el porcentaje de ocupación de camas..."
                                                     style={{ width: '100%', minHeight: '80px', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', resize: 'vertical', outline: 'none' }}
                                                 />
@@ -164,14 +203,14 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
                                                 <input 
                                                     type="text"
                                                     value={ind.origen_informacion || ''}
-                                                    onChange={e => handleUpdate(ind, { origen_informacion: e.target.value })}
+                                                    onChange={e => handleFieldChange(ind, 'origen_informacion', e.target.value)}
                                                     placeholder="Origen (Ej: SALUS, AsisteClick)"
                                                     style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '12px', outline: 'none' }}
                                                 />
                                                 <input 
                                                     type="text"
                                                     value={ind.ciclo_datos || ''}
-                                                    onChange={e => handleUpdate(ind, { ciclo_datos: e.target.value })}
+                                                    onChange={e => handleFieldChange(ind, 'ciclo_datos', e.target.value)}
                                                     placeholder="Frecuencia (Ej: Tiempo real, Cierre Diario)"
                                                     style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
                                                 />
@@ -183,7 +222,7 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
                                             <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 8px' }}>Pega aquí el script SQL necesario para obtener este indicador.</p>
                                             <textarea 
                                                 value={ind.query_sql || ''}
-                                                onChange={e => handleUpdate(ind, { query_sql: e.target.value })}
+                                                onChange={e => handleFieldChange(ind, 'query_sql', e.target.value)}
                                                 placeholder="SELECT * FROM..."
                                                 style={{ width: '100%', minHeight: '150px', padding: '16px', borderRadius: '8px', border: '1px solid #1e293b', background: '#0f172a', color: '#38bdf8', fontFamily: 'monospace', fontSize: '0.9rem', resize: 'vertical', outline: 'none' }}
                                             />
@@ -194,7 +233,7 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
                                             <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 8px' }}>¿Qué hace exactamente la query de arriba y qué busca?</p>
                                             <textarea 
                                                 value={ind.explicacion_query || ''}
-                                                onChange={e => handleUpdate(ind, { explicacion_query: e.target.value })}
+                                                onChange={e => handleFieldChange(ind, 'explicacion_query', e.target.value)}
                                                 placeholder="La query cruza la tabla de pacientes con internaciones para..."
                                                 style={{ width: '100%', minHeight: '80px', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', resize: 'vertical', outline: 'none' }}
                                             />
