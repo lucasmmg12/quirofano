@@ -113,6 +113,23 @@ export default function GobernanzaPanel({ currentUser }) {
         setViewMode('lista');
     };
 
+    const handleProjectDateChange = async (field, value) => {
+        // Optimistic UI Update
+        const safeValue = value || null;
+        setSelectedProyecto(prev => ({ ...prev, [field]: safeValue }));
+        setProyectos(prev => prev.map(p => p.id === selectedProyecto.id ? { ...p, [field]: safeValue } : p));
+        
+        try {
+            const { error } = await supabase
+                .from('gobernanza_proyectos')
+                .update({ [field]: safeValue })
+                .eq('id', selectedProyecto.id);
+            if (error) throw error;
+        } catch (err) {
+            console.error("Error al actualizar fecha del proyecto:", err);
+        }
+    };
+
     if (viewMode === 'lista') {
         return (
             <div style={{ padding: '40px', width: '100%', fontFamily: "'Inter', sans-serif", background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', minHeight: '100vh' }}>
@@ -273,13 +290,44 @@ export default function GobernanzaPanel({ currentUser }) {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#f8fafc', fontFamily: "'Inter', sans-serif" }}>
             {/* Header Proyecto */}
-            <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '20px 32px', display: 'flex', alignItems: 'center', gap: '24px', zIndex: 10 }}>
-                <button onClick={closeProject} style={{ background: '#f1f5f9', border: 'none', borderRadius: '12px', padding: '10px', cursor: 'pointer', color: '#475569', display: 'flex', alignItems: 'center' }}>
-                    <ArrowLeft size={20} />
-                </button>
-                <div>
-                    <h2 style={{ margin: 0, fontSize: '1.5rem', color: '#0f172a', fontWeight: 800 }}>{selectedProyecto.nombre}</h2>
-                    <span style={{ fontSize: '0.9rem', color: '#64748b' }}>{selectedProyecto.descripcion}</span>
+            <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '20px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+                    <button onClick={closeProject} style={{ background: '#f1f5f9', border: 'none', borderRadius: '12px', padding: '10px', cursor: 'pointer', color: '#475569', display: 'flex', alignItems: 'center' }}>
+                        <ArrowLeft size={20} />
+                    </button>
+                    <div>
+                        <h2 style={{ margin: 0, fontSize: '1.5rem', color: '#0f172a', fontWeight: 800 }}>{selectedProyecto.nombre}</h2>
+                        <span style={{ fontSize: '0.9rem', color: '#64748b' }}>{selectedProyecto.descripcion}</span>
+                    </div>
+                </div>
+
+                {/* Inline Date Editing */}
+                <div style={{ display: 'flex', gap: '16px', background: '#f8fafc', padding: '12px 16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Inicio</label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Calendar size={14} color="#94a3b8" />
+                            <input 
+                                type="date" 
+                                value={selectedProyecto.fecha_desde || ''} 
+                                onChange={e => handleProjectDateChange('fecha_desde', e.target.value)}
+                                style={{ border: 'none', background: 'transparent', outline: 'none', color: '#334155', fontSize: '0.9rem', fontWeight: 600, padding: 0 }}
+                            />
+                        </div>
+                    </div>
+                    <div style={{ width: '1px', background: '#cbd5e1' }} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Fin</label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Calendar size={14} color="#94a3b8" />
+                            <input 
+                                type="date" 
+                                value={selectedProyecto.fecha_hasta || ''} 
+                                onChange={e => handleProjectDateChange('fecha_hasta', e.target.value)}
+                                style={{ border: 'none', background: 'transparent', outline: 'none', color: '#334155', fontSize: '0.9rem', fontWeight: 600, padding: 0 }}
+                            />
+                        </div>
+                    </div>
                 </div>
             </div>
 
