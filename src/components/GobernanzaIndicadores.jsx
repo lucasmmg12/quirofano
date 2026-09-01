@@ -2,6 +2,41 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { Plus, Target, ChevronDown, ChevronUp, Save, Loader2, CheckCircle2, Circle } from 'lucide-react';
 
+function AutoExpandTextarea({ value, onChange, placeholder, style, minHeight = 80, ...props }) {
+    const textareaRef = useRef(null);
+
+    const adjustHeight = () => {
+        const el = textareaRef.current;
+        if (el) {
+            el.style.height = 'auto';
+            const newHeight = Math.max(el.scrollHeight, minHeight);
+            el.style.height = `${newHeight + 4}px`;
+        }
+    };
+
+    useEffect(() => {
+        adjustHeight();
+    }, [value, minHeight]);
+
+    return (
+        <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={onChange}
+            onInput={adjustHeight}
+            placeholder={placeholder}
+            style={{
+                ...style,
+                minHeight: `${minHeight}px`,
+                overflowY: 'hidden',
+                boxSizing: 'border-box',
+                transition: 'height 0.1s ease',
+            }}
+            {...props}
+        />
+    );
+}
+
 export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
     const [indicadores, setIndicadores] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -142,7 +177,7 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
     if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}><Loader2 className="animate-spin" size={32} color="#94a3b8" /></div>;
 
     return (
-        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+        <div style={{ width: '100%', paddingBottom: '40px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                 <h3 style={{ margin: 0, color: '#0f172a', fontWeight: 800 }}>Indicadores y Métricas</h3>
                 <button onClick={() => setShowNew(true)} style={{ background: '#0f172a', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 16px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
@@ -214,29 +249,30 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
                                             <div>
                                                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>¿Qué información buscamos mostrar? ❓</label>
                                                 <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 8px' }}>Describe la lógica de negocio detrás de este indicador.</p>
-                                                <textarea 
+                                                <AutoExpandTextarea 
                                                     value={ind.informacion_buscada || ''}
                                                     onChange={e => handleFieldChange(ind, 'informacion_buscada', e.target.value)}
                                                     placeholder="Ej: Queremos ver el porcentaje de ocupación de camas..."
-                                                    style={{ width: '100%', minHeight: '80px', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', resize: 'vertical', outline: 'none' }}
+                                                    minHeight={110}
+                                                    style={{ width: '100%', padding: '12px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', lineHeight: '1.55', fontSize: '0.875rem', outline: 'none', resize: 'vertical' }}
                                                 />
                                             </div>
                                             <div>
                                                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>Origen y Ciclo de Datos 🔄</label>
                                                 <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 8px' }}>¿De qué sistema viene y con qué frecuencia se actualiza?</p>
                                                 <input 
-                                                    type="text"
+                                                    type="text" 
                                                     value={ind.origen_informacion || ''}
                                                     onChange={e => handleFieldChange(ind, 'origen_informacion', e.target.value)}
                                                     placeholder="Origen (Ej: SALUS, AsisteClick)"
-                                                    style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '12px', outline: 'none' }}
+                                                    style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '12px', fontSize: '0.875rem', outline: 'none' }}
                                                 />
                                                 <input 
-                                                    type="text"
+                                                    type="text" 
                                                     value={ind.ciclo_datos || ''}
                                                     onChange={e => handleFieldChange(ind, 'ciclo_datos', e.target.value)}
                                                     placeholder="Frecuencia (Ej: Tiempo real, Cierre Diario)"
-                                                    style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
+                                                    style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.875rem', outline: 'none' }}
                                                 />
                                             </div>
                                         </div>
@@ -244,22 +280,24 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
                                         <div style={{ marginBottom: '24px' }}>
                                             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>Query SQL (Tableau / Metabase) 💻</label>
                                             <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 8px' }}>Pega aquí el script SQL necesario para obtener este indicador.</p>
-                                            <textarea 
+                                            <AutoExpandTextarea 
                                                 value={ind.query_sql || ''}
                                                 onChange={e => handleFieldChange(ind, 'query_sql', e.target.value)}
                                                 placeholder="SELECT * FROM..."
-                                                style={{ width: '100%', minHeight: '150px', padding: '16px', borderRadius: '8px', border: '1px solid #1e293b', background: '#0f172a', color: '#38bdf8', fontFamily: 'monospace', fontSize: '0.9rem', resize: 'vertical', outline: 'none' }}
+                                                minHeight={180}
+                                                style={{ width: '100%', padding: '16px', borderRadius: '8px', border: '1px solid #1e293b', background: '#090d16', color: '#38bdf8', fontFamily: 'Consolas, Monaco, "Courier New", monospace', fontSize: '0.875rem', lineHeight: '1.6', outline: 'none', resize: 'vertical' }}
                                             />
                                         </div>
 
                                         <div>
                                             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>Explicación Técnica de la Query 📝</label>
                                             <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 8px' }}>¿Qué hace exactamente la query de arriba y qué busca?</p>
-                                            <textarea 
+                                            <AutoExpandTextarea 
                                                 value={ind.explicacion_query || ''}
                                                 onChange={e => handleFieldChange(ind, 'explicacion_query', e.target.value)}
                                                 placeholder="La query cruza la tabla de pacientes con internaciones para..."
-                                                style={{ width: '100%', minHeight: '80px', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', resize: 'vertical', outline: 'none' }}
+                                                minHeight={120}
+                                                style={{ width: '100%', padding: '12px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', lineHeight: '1.55', fontSize: '0.875rem', outline: 'none', resize: 'vertical' }}
                                             />
                                         </div>
                                     </div>

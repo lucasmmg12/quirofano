@@ -233,7 +233,7 @@ export default function GobernanzaPanel({ currentUser }) {
                                 </h3>
 
                                 {p.fecha_desde && p.fecha_hasta && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.8rem', marginBottom: '12px', background: '#f8fafc', padding: '4px 10px', borderRadius: '6px', display: 'inline-flex' }}>
+                                    <div style={{ alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.8rem', marginBottom: '12px', background: '#f8fafc', padding: '4px 10px', borderRadius: '6px', display: 'inline-flex' }}>
                                         <Calendar size={14} />
                                         <span>{new Date(p.fecha_desde).toLocaleDateString()} - {new Date(p.fecha_hasta).toLocaleDateString()}</span>
                                     </div>

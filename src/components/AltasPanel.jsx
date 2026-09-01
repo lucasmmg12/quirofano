@@ -896,7 +896,7 @@ export default function AltasPanel({ addToast, currentUser }) {
             return [
                 ecfg?.label || '—',
                 a.paciente || '',
-                a.numero_admision || '',
+                a.numero_admision ? a.numero_admision.replace(/-P\d*$/i, '') : '',
                 a.cliente || '',
                 a.especialidad || '',
                 a.doctor || '',
