@@ -202,6 +202,18 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const [loadingComments, setLoadingComments] = useState(false);
     const [editingCommentId, setEditingCommentId] = useState(null);
     const [editingCommentText, setEditingCommentText] = useState('');
+    const [commentTemplates, setCommentTemplates] = useState(() => {
+        try {
+            const saved = localStorage.getItem('surgery_comment_templates');
+            return saved ? JSON.parse(saved) : [];
+        } catch (e) {
+            return [];
+        }
+    });
+
+    useEffect(() => {
+        localStorage.setItem('surgery_comment_templates', JSON.stringify(commentTemplates));
+    }, [commentTemplates]);
 
     // Collapsible day groups — all collapsed by default, user expands
     const [expandedDays, setExpandedDays] = useState(new Set());
@@ -1628,7 +1640,66 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                         onFocus={e => e.target.style.borderColor = '#6366F1'}
                                         onBlur={e => e.target.style.borderColor = 'var(--neutral-200)'}
                                     />
-                                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                            {commentTemplates.length > 0 && (
+                                                <select
+                                                    onClick={e => e.stopPropagation()}
+                                                    onChange={(e) => {
+                                                        if (e.target.value) {
+                                                            setCommentText(e.target.value);
+                                                            e.target.value = '';
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        padding: '6px 10px', borderRadius: 'var(--radius-md)',
+                                                        border: '1px solid var(--neutral-200)', fontSize: '0.75rem',
+                                                        color: 'var(--neutral-600)', background: '#F8FAFC', outline: 'none'
+                                                    }}
+                                                >
+                                                    <option value="">📋 Plantillas...</option>
+                                                    {commentTemplates.map((t, i) => (
+                                                        <option key={i} value={t}>{t.length > 35 ? t.substring(0, 35) + '...' : t}</option>
+                                                    ))}
+                                                </select>
+                                            )}
+                                            
+                                            {commentText.trim() && !commentTemplates.includes(commentText.trim()) && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setCommentTemplates([...commentTemplates, commentText.trim()]);
+                                                    }}
+                                                    title="Guardar como plantilla"
+                                                    style={{
+                                                        padding: '6px 10px', borderRadius: 'var(--radius-md)',
+                                                        background: '#F1F5F9', border: '1px dashed #CBD5E1',
+                                                        color: '#64748B', fontSize: '0.72rem', cursor: 'pointer',
+                                                        display: 'flex', alignItems: 'center', gap: '4px'
+                                                    }}
+                                                >
+                                                    + Guardar
+                                                </button>
+                                            )}
+                                            
+                                            {commentTemplates.includes(commentText.trim()) && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setCommentTemplates(commentTemplates.filter(t => t !== commentText.trim()));
+                                                    }}
+                                                    title="Eliminar plantilla"
+                                                    style={{
+                                                        padding: '6px 10px', borderRadius: 'var(--radius-md)',
+                                                        background: '#FEF2F2', border: '1px dashed #FCA5A5',
+                                                        color: '#EF4444', fontSize: '0.72rem', cursor: 'pointer',
+                                                        display: 'flex', alignItems: 'center', gap: '4px'
+                                                    }}
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            )}
+                                        </div>
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleSaveComment(surgery.id, surgery.id_paciente); }}
                                             disabled={!commentText.trim() || savingComment}
