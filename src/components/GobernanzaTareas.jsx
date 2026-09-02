@@ -67,7 +67,7 @@ export default function GobernanzaTareas({ proyectoId, currentUser }) {
             setNewTitulo('');
         } catch (err) {
             console.error(err);
-            alert("Error al crear tarea");
+            alert("Error al crear tarea: " + (err.message || JSON.stringify(err)));
         } finally {
             setCreating(false);
         }
