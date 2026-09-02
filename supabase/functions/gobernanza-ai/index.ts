@@ -19,50 +19,6 @@ Deno.serve(async (req) => {
     try {
         const { action, payload } = await req.json();
 
-        // ---------------------------------------------------------
-        // LIVE TRANSCRIPTION (Chunks) - FAST WHISPER
-        // ---------------------------------------------------------
-        if (action === 'transcribe_chunk') {
-            const { chunkBase64, isMp3, isWav } = payload;
-            if (!chunkBase64) throw new Error("Falta chunkBase64");
-            
-            // Convert base64 to File
-            const byteCharacters = atob(chunkBase64);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: 'audio/webm' });
-            
-            const formData = new FormData();
-            formData.append('file', new File([blob], 'chunk.webm', { type: 'audio/webm' }));
-            formData.append('model', 'whisper-1');
-            formData.append('language', 'es');
-            formData.append('temperature', '0');
-            formData.append('prompt', 'Entrevista de Gobernanza de Datos, auditoría, historias clínicas y calidad en el Sanatorio Argentino. (Por favor, ignora el silencio o ruido de fondo).');
-            
-            const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}` },
-                body: formData
-            });
-
-            if (!whisperRes.ok) {
-                const errorText = await whisperRes.text();
-                // OpenAI often returns 400 for audio that is too short (only silence).
-                // Instead of failing the edge function and returning a 400 to the client, we just return empty text.
-                console.error("Whisper Error:", errorText);
-                return new Response(JSON.stringify({ success: true, text: "" }), {
-                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-                });
-            }
-            const whisperData = await whisperRes.json();
-            
-            return new Response(JSON.stringify({ success: true, text: whisperData.text }), {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-            });
-        }
 
         // ---------------------------------------------------------
         // FULL AUDIO ANALYSIS - DEEPGRAM DIARIZATION

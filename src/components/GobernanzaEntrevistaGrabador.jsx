@@ -344,103 +344,85 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
             
             startContinuousChunk();
 
-            const startDiscreteChunk = () => {
+            // -------------------------------------------------------------
+            // DEEPGRAM WEBSOCKET FOR LIVE TRANSCRIPTION
+            // -------------------------------------------------------------
+            const connectDeepgram = () => {
                 if (!isRecordingRef.current) return;
                 
-                if (isPausedRef.current) {
-                    setTimeout(startDiscreteChunk, 1000);
-                    return;
-                }
-                
                 try {
-                    const chunkRecorder = new MediaRecorder(streamRef.current, { mimeType: 'audio/webm' });
-                    const chunks = [];
-                    // Fijamos el ID de la pregunta al momento de crear el grabador (inicio del bloque)
-                    const chunkQuestionId = wsRef.current?.activeQuestion;
-                    
-                    chunkRecorder.ondataavailable = e => chunks.push(e.data);
-                    chunkRecorder.onstop = async () => {
-                        if (chunks.length > 0) {
-                            const blob = new Blob(chunks, { type: 'audio/webm' });
-                            try {
-                                const reader = new FileReader();
-                                reader.readAsDataURL(blob);
-                                reader.onloadend = async () => {
-                                    const base64Audio = reader.result.split(',')[1];
-                                    
-                                    const { data, error } = await supabase.functions.invoke('gobernanza-ai', {
-                                        body: {
-                                            action: 'transcribe_chunk',
-                                            payload: { chunkBase64: base64Audio }
-                                        }
-                                    });
-                                    
-                                    if (data && data.text) {
-                                        let newText = data.text.trim();
-                                        const alucinaciones = [
-                                            "Subtítulos", "Amara.org", "www.alimmenta.com", "Enjoy your meal", 
-                                            "enjoy your hosts", "Vamos a probar", "Pronto, pronto", 
-                                            "Un, dos, tres", "cuatro, cinco", "seis, siete", "ocho, nueve", 
-                                            "dieciocho", "Un saludo", "Gracias.", "Gracias",
-                                            "asociar directamente al... proceso", "Probando un guano", "guano, guano",
-                                            "Probando, probando, un guano", "Sí, tenemos otro", "Cuatrocientos",
-                                            "Yo solo quiero pegarme el anillo", "por ver el video", "guano",
-                                            "el video", "suscríbete", "dale like", "al canal", "mi canal"
-                                        ];
-                                        alucinaciones.forEach(frase => {
-                                            // Escape dots for literal match in regex
-                                            const safeFrase = frase.replace(/\./g, '\\.');
-                                            newText = newText.replace(new RegExp(safeFrase, 'gi'), '');
-                                        });
-                                        // Filtro extra para los "no, no, no" repetitivos infinitos (3 o más "no")
-                                        newText = newText.replace(/(no[,\.\s]*){3,}/gi, '');
-                                        newText = newText.replace(/(el video[,\.\s]*){2,}/gi, '');
-                                        newText = newText.replace(/(por ver el video[,\.\s]*){2,}/gi, '');
-                                        newText = newText.replace(/(gracias[,\.\s]*){2,}/gi, '');
-                                        newText = newText.trim();
-                                        
-                                        if (newText.length > 0) {
-                                                liveTranscriptRef.current += " " + newText;
-                                                setTranscriptionText(liveTranscriptRef.current);
-                                                
-                                                // Añadir texto a la pregunta que estaba activa durante ese chunk
-                                                if (isRecordingRef.current && chunkQuestionId !== undefined && chunkQuestionId !== null) {
-                                                    setManualAnswers(prev => ({
-                                                        ...prev,
-                                                        [chunkQuestionId]: (prev[chunkQuestionId] || '') + ' ' + newText
-                                                    }));
-                                                }
+                    const apiKey = import.meta.env.VITE_DEEPGRAM_API_KEY;
+                    if (!apiKey) {
+                        console.error("Deepgram API Key not found in .env");
+                        return;
+                    }
 
-                                                // Auto-guardado en tiempo real del borrador
-                                                if (currentEntrevistaId) {
-                                                    supabase.from('gobernanza_entrevistas').update({
-                                                        transcripcion: liveTranscriptRef.current
-                                                    }).eq('id', currentEntrevistaId).then();
-                                                }
-                                            }
-                                    }
-                                };
-                            } catch (err) {
-                                console.error("Error transcribiendo chunk:", err);
+                    const socket = new WebSocket('wss://api.deepgram.com/v1/listen?language=es&smart_format=true&model=nova-2', ['token', apiKey]);
+                    
+                    const dgRecorder = new MediaRecorder(streamRef.current, { mimeType: 'audio/webm' });
+
+                    socket.onopen = () => {
+                        console.log("Deepgram socket connected");
+                        dgRecorder.addEventListener('dataavailable', async (event) => {
+                            if (event.data.size > 0 && socket.readyState === 1 && !isPausedRef.current) {
+                                socket.send(event.data);
+                            }
+                        });
+                        dgRecorder.start(250); // Enviar datos cada 250ms
+                    };
+
+                    socket.onmessage = (message) => {
+                        const received = JSON.parse(message.data);
+                        const transcript = received.channel?.alternatives[0]?.transcript;
+                        
+                        if (transcript && received.is_final) {
+                            let newText = transcript.trim();
+                            if (newText.length > 0) {
+                                liveTranscriptRef.current += " " + newText;
+                                setTranscriptionText(liveTranscriptRef.current);
+                                
+                                // Añadir texto a la pregunta que estaba activa
+                                const currentQId = wsRef.current?.activeQuestion;
+                                if (isRecordingRef.current && currentQId !== undefined && currentQId !== null) {
+                                    setManualAnswers(prev => ({
+                                        ...prev,
+                                        [currentQId]: (prev[currentQId] || '') + ' ' + newText
+                                    }));
+                                }
+
+                                // Auto-guardado en tiempo real
+                                if (currentEntrevistaId) {
+                                    supabase.from('gobernanza_entrevistas').update({
+                                        transcripcion: liveTranscriptRef.current
+                                    }).eq('id', currentEntrevistaId).then();
+                                }
                             }
                         }
-                        // Lanzar el siguiente chunk si seguimos grabando
-                        if (isRecordingRef.current) {
-                            startDiscreteChunk();
+                    };
+
+                    socket.onclose = () => {
+                        console.log("Deepgram socket closed");
+                        if (dgRecorder.state !== 'inactive') dgRecorder.stop();
+                        // Reconectar si seguimos grabando
+                        if (isRecordingRef.current && !isPausedRef.current) {
+                            setTimeout(connectDeepgram, 1000);
                         }
                     };
-                    
-                    chunkRecorder.start();
-                    setTimeout(() => {
-                        if (chunkRecorder.state === 'recording') chunkRecorder.stop();
-                    }, 5000); // 5 segundos
-                } catch(e) {
-                    console.error("Error en chopper:", e);
+
+                    socket.onerror = (error) => {
+                        console.error("Deepgram socket error:", error);
+                    };
+
+                    // Guardamos referencia por si necesitamos cerrarlo al pausar/detener
+                    wsRef.current = { ...wsRef.current, socket, dgRecorder };
+
+                } catch (e) {
+                    console.error("Error connecting to Deepgram:", e);
                 }
             };
             
-            // Iniciar el chopper
-            startDiscreteChunk();
+            // Iniciar conexión a Deepgram
+            connectDeepgram();
             
             timerRef.current = setInterval(() => {
                 if (!isPausedRef.current) {
@@ -481,7 +463,13 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
                 wakeLockRef.current = null;
             }
 
-            if (wsRef.current) wsRef.current.current = false; // Detener chopper loop
+            // Cerrar WebSockets Deepgram
+            if (wsRef.current?.socket && wsRef.current.socket.readyState === 1) {
+                wsRef.current.socket.close();
+            }
+            if (wsRef.current?.dgRecorder && wsRef.current.dgRecorder.state !== 'inactive') {
+                wsRef.current.dgRecorder.stop();
+            }
             
             if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
                 mediaRecorderRef.current.stop();
