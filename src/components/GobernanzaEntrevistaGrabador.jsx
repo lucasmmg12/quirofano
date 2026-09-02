@@ -384,7 +384,8 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
                                             "dieciocho", "Un saludo", "Gracias.", "Gracias",
                                             "asociar directamente al... proceso", "Probando un guano", "guano, guano",
                                             "Probando, probando, un guano", "Sí, tenemos otro", "Cuatrocientos",
-                                            "Yo solo quiero pegarme el anillo", "por ver el video", "guano"
+                                            "Yo solo quiero pegarme el anillo", "por ver el video", "guano",
+                                            "el video", "suscríbete", "dale like", "al canal", "mi canal"
                                         ];
                                         alucinaciones.forEach(frase => {
                                             // Escape dots for literal match in regex
@@ -393,8 +394,12 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
                                         });
                                         // Filtro extra para los "no, no, no" repetitivos infinitos (3 o más "no")
                                         newText = newText.replace(/(no[,\.\s]*){3,}/gi, '');
+                                        newText = newText.replace(/(el video[,\.\s]*){2,}/gi, '');
+                                        newText = newText.replace(/(por ver el video[,\.\s]*){2,}/gi, '');
+                                        newText = newText.replace(/(gracias[,\.\s]*){2,}/gi, '');
                                         newText = newText.trim();
-                                            if (newText.length > 0) {
+                                        
+                                        if (newText.length > 0) {
                                                 liveTranscriptRef.current += " " + newText;
                                                 setTranscriptionText(liveTranscriptRef.current);
                                                 
@@ -538,42 +543,11 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
             // 3. Invoke Edge Function (Backend Processing)
             setProcessingState('analyzing');
             
-            if (liveTranscript && liveTranscript.trim().length > 0) {
-                // Ya tenemos la transcripción en vivo por WebSockets, pasamos directo al análisis
-                const { data: edgeData, error: edgeError } = await supabase.functions.invoke('gobernanza-ai', {
-                    body: { 
-                        action: 'analyze_text', 
-                        payload: {
-                            entrevista_id: entrevistaId,
-                            plantilla_id: selectedPlantilla.id,
-                            transcript_text: liveTranscript,
-                            participantes: participantes.length > 0 ? participantes.join(', ') : ''
-                        }
-                    }
-                });
-
-                if (edgeError) throw new Error(`Error en IA: ${edgeError.message}`);
-                if (edgeData?.error) throw new Error(edgeData.error);
-                
-                if (blob) {
-                    setAudioUrl(URL.createObjectURL(blob));
-                } else {
-                    // Fetch from DB
-                    const { data } = await supabase.from('gobernanza_entrevistas').select('audios_partes, audio_url').eq('id', entrevistaId).single();
-                    let urls = [];
-                    if (data?.audios_partes && data.audios_partes.length > 0) {
-                        urls = data.audios_partes.map(p => supabase.storage.from('gobernanza_audios').getPublicUrl(p).data.publicUrl);
-                    } else if (data?.audio_url) {
-                        urls = [supabase.storage.from('gobernanza_audios').getPublicUrl(data.audio_url).data.publicUrl];
-                    }
-                    setAudioUrl(urls.length > 0 ? urls : null);
-                }
-                
-                setResultData(edgeData.aiResponse);
-                setProcessingState(null);
-            } else {
-                // Fallback (ej: subida manual o WS falló)
-                const pollId = setInterval(async () => {
+            // SIEMPRE invocar análisis de audio completo por Deepgram (o Whisper en backend)
+            // Ya no dependemos de liveTranscript para el análisis final porque los chunks locales
+            // no tienen diarización (separación de voces) y acumulan alucinaciones (silencios = "el video").
+            
+            const pollId = setInterval(async () => {
                     const { data: checkData } = await supabase
                         .from('gobernanza_entrevistas')
                         .select('estado, transcripcion, resumen, respuestas_cuestionario, mapa_conceptual_mermaid')
@@ -625,7 +599,6 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
                 } catch (err) {
                     console.warn("La llamada directa a la función dio timeout o error, confiando en el polling...", err);
                 }
-            }
         } catch (error) {
             console.error("Error general:", error);
             handleEmergencyDownload();
