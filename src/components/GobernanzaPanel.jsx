@@ -73,8 +73,7 @@ export default function GobernanzaPanel({ currentUser }) {
                 nombre: newProjName.trim(),
                 descripcion: newProjDesc.trim(),
                 fecha_desde: newProjStart || null,
-                fecha_hasta: newProjEnd || null,
-                created_by: currentUser?.id
+                fecha_hasta: newProjEnd || null
             }).select().single();
             
             if (error) throw error;

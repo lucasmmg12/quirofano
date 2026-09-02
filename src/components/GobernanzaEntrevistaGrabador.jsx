@@ -962,8 +962,7 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
                 .insert({
                     id: uuidv4(),
                     nombre: newTemplateName.trim(),
-                    preguntas: validQuestions,
-                    created_by: currentUser?.id
+                    preguntas: validQuestions
                 });
             
             if (error) throw error;

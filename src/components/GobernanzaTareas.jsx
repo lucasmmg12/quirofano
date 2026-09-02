@@ -49,8 +49,7 @@ export default function GobernanzaTareas({ proyectoId, currentUser }) {
             const { data, error } = await supabase.from('gobernanza_tareas').insert({
                 proyecto_id: proyectoId,
                 titulo: newTitulo.trim(),
-                estado: 'Pendiente',
-                created_by: currentUser?.id
+                estado: 'Pendiente'
             }).select().single();
 
             if (error) throw error;

@@ -88,8 +88,7 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
             const { data, error } = await supabase.from('gobernanza_indicadores').insert({
                 proyecto_id: proyectoId,
                 titulo: newTitulo.trim(),
-                estado: 'Borrador',
-                created_by: currentUser?.id
+                estado: 'Borrador'
             }).select().single();
 
             if (error) throw error;
