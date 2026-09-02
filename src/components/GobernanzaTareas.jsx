@@ -12,6 +12,10 @@ export default function GobernanzaTareas({ proyectoId, currentUser }) {
     const [newTitulo, setNewTitulo] = useState('');
     const [creating, setCreating] = useState(false);
 
+    // Modal de Eliminación
+    const [taskToDelete, setTaskToDelete] = useState(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
     // Debounce refs
     const pendingChanges = useRef({});
     const debounceTimers = useRef({});
@@ -121,18 +125,23 @@ export default function GobernanzaTareas({ proyectoId, currentUser }) {
         }, 1000);
     };
 
-    const handleDelete = async (tareaId) => {
-        if (!window.confirm("¿Seguro que deseas eliminar esta tarea?")) return;
-        setSavingId(tareaId);
+    const handleDeleteClick = (tarea) => {
+        setTaskToDelete(tarea);
+    };
+
+    const confirmDelete = async () => {
+        if (!taskToDelete) return;
+        setIsDeleting(true);
         try {
-            const { error } = await supabase.from('gobernanza_tareas').delete().eq('id', tareaId);
+            const { error } = await supabase.from('gobernanza_tareas').delete().eq('id', taskToDelete.id);
             if (error) throw error;
-            setTareas(prev => prev.filter(t => t.id !== tareaId));
+            setTareas(prev => prev.filter(t => t.id !== taskToDelete.id));
+            setTaskToDelete(null);
         } catch (err) {
             console.error(err);
-            alert("Error al eliminar");
+            alert("Error al eliminar la tarea");
         } finally {
-            setSavingId(null);
+            setIsDeleting(false);
         }
     };
 
@@ -234,7 +243,7 @@ export default function GobernanzaTareas({ proyectoId, currentUser }) {
                                     
                                     {/* Action to delete */}
                                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                                        <button onClick={() => handleDelete(tarea.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: '0.8rem', cursor: 'pointer', opacity: 0.7 }}>
+                                        <button onClick={() => handleDeleteClick(tarea)} style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: '0.8rem', cursor: 'pointer', opacity: 0.7 }}>
                                             Eliminar
                                         </button>
                                     </div>
@@ -242,6 +251,35 @@ export default function GobernanzaTareas({ proyectoId, currentUser }) {
                             </div>
                         );
                     })}
+                </div>
+            )}
+
+            {/* Modal Custom de Eliminación */}
+            {taskToDelete && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)' }}>
+                    <div style={{ background: 'white', padding: '24px', borderRadius: '16px', maxWidth: '400px', width: '90%', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)' }}>
+                        <h3 style={{ margin: '0 0 12px 0', fontSize: '1.25rem', color: '#0f172a', fontWeight: 700 }}>¿Eliminar Tarea?</h3>
+                        <p style={{ margin: '0 0 24px 0', color: '#64748b', fontSize: '0.95rem', lineHeight: 1.5 }}>
+                            Estás a punto de eliminar la tarea <strong>"{taskToDelete.titulo}"</strong>. Esta acción no se puede deshacer.
+                        </p>
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                            <button 
+                                onClick={() => setTaskToDelete(null)}
+                                disabled={isDeleting}
+                                style={{ padding: '10px 16px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                onClick={confirmDelete}
+                                disabled={isDeleting}
+                                style={{ padding: '10px 16px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                            >
+                                {isDeleting && <Loader2 size={16} className="animate-spin" />}
+                                {isDeleting ? 'Eliminando...' : 'Sí, Eliminar'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
