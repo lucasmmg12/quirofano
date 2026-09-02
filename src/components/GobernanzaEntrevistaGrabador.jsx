@@ -1227,22 +1227,22 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
                         ) : (
                             <>
                                 {/* Modo Selector */}
-                                <div style={{ display: 'flex', gap: '8px', background: '#e2e8f0', padding: '4px', borderRadius: '12px', marginBottom: '20px' }}>
-                                    <button onClick={() => setInputMode('record')} style={{ padding: '8px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: inputMode === 'record' ? 'white' : 'transparent', color: inputMode === 'record' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}><Mic size={16}/> Grabar</button>
-                                    <button onClick={() => setInputMode('upload')} style={{ padding: '8px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: inputMode === 'upload' ? 'white' : 'transparent', color: inputMode === 'upload' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}><UploadCloud size={16}/> Subir Audio</button>
-                                    <button onClick={() => setInputMode('text')} style={{ padding: '8px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: inputMode === 'text' ? 'white' : 'transparent', color: inputMode === 'text' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}><Type size={16}/> Pegar Texto</button>
+                                <div style={{ display: 'flex', gap: '8px', background: '#e2e8f0', padding: '4px', borderRadius: '12px', marginBottom: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                                    <button onClick={() => setInputMode('record')} style={{ flex: '1 1 auto', justifyContent: 'center', padding: '8px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: inputMode === 'record' ? 'white' : 'transparent', color: inputMode === 'record' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}><Mic size={16}/> Grabar</button>
+                                    <button onClick={() => setInputMode('upload')} style={{ flex: '1 1 auto', justifyContent: 'center', padding: '8px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: inputMode === 'upload' ? 'white' : 'transparent', color: inputMode === 'upload' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}><UploadCloud size={16}/> Subir Audio</button>
+                                    <button onClick={() => setInputMode('text')} style={{ flex: '1 1 auto', justifyContent: 'center', padding: '8px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, background: inputMode === 'text' ? 'white' : 'transparent', color: inputMode === 'text' ? '#0f172a' : '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}><Type size={16}/> Pegar Texto</button>
                                 </div>
                                 
-                                <div style={{ marginBottom: '40px' }}>
-                                    <button onClick={handleEmergencyDownload} style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', padding: '8px 16px', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <Save size={16} /> Recuperar grabación de emergencia (Sin internet)
+                                <div style={{ marginBottom: '40px', width: '100%' }}>
+                                    <button onClick={handleEmergencyDownload} style={{ width: '100%', justifyContent: 'center', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', padding: '12px 16px', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', textAlign: 'center' }}>
+                                        <Save size={18} /> Recuperar grabación de emergencia (Sin internet)
                                     </button>
                                 </div>
 
                                 {/* Modo: Grabar */}
                                 {inputMode === 'record' && (
                                     <>
-                                        <div style={{ fontSize: '6rem', fontWeight: 200, color: duration > 1680 ? '#f59e0b' : isRecording ? '#ef4444' : '#0f172a', fontVariantNumeric: 'tabular-nums', letterSpacing: '-4px', marginBottom: '8px', transition: 'color 0.3s', textShadow: isRecording ? '0 8px 30px rgba(239,68,68,0.2)' : 'none' }}>
+                                        <div style={{ fontSize: 'min(5.5rem, 18vw)', fontWeight: 200, color: duration > 1680 ? '#f59e0b' : isRecording ? '#ef4444' : '#0f172a', fontVariantNumeric: 'tabular-nums', letterSpacing: '-2px', marginBottom: '8px', transition: 'color 0.3s', textShadow: isRecording ? '0 8px 30px rgba(239,68,68,0.2)' : 'none', textAlign: 'center' }}>
                                             {formatTime(duration)}
                                         </div>
                                         <div style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '32px', fontWeight: 600 }}>
@@ -1260,7 +1260,7 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
 
                                             <div style={{ width: '100%', marginBottom: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                                                 <label style={{ fontSize: '1rem', color: '#1e293b', fontWeight: 600, marginBottom: '8px' }}>Participantes de la Entrevista (Opcional)</label>
-                                                <div style={{ display: 'flex', gap: '8px', width: '100%', maxWidth: '500px', marginBottom: '12px' }}>
+                                                <div style={{ display: 'flex', gap: '8px', width: '100%', maxWidth: '500px', marginBottom: '12px', flexWrap: 'wrap' }}>
                                                     <input 
                                                         type="text" 
                                                         value={participanteInput}
@@ -1275,7 +1275,7 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
                                                             }
                                                         }}
                                                         placeholder="Ej: Lucas Marinero"
-                                                        style={{ flex: 1, padding: '14px 20px', borderRadius: '12px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '1rem', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
+                                                        style={{ flex: '1 1 200px', padding: '14px 20px', borderRadius: '12px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '1rem', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
                                                     />
                                                     <button 
                                                         onClick={() => {
@@ -1284,7 +1284,7 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
                                                                 setParticipanteInput('');
                                                             }
                                                         }}
-                                                        style={{ padding: '0 24px', borderRadius: '12px', border: 'none', background: '#3b82f6', color: 'white', fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s' }}
+                                                        style={{ flex: '1 1 100px', padding: '14px 24px', borderRadius: '12px', border: 'none', background: '#3b82f6', color: 'white', fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s', display: 'flex', justifyContent: 'center' }}
                                                     >
                                                         Agregar
                                                     </button>
@@ -1301,22 +1301,22 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
                                                         ))}
                                                     </div>
                                                 )}
-                                                <div style={{ color: '#3b82f6', fontSize: '0.85rem', background: '#eff6ff', padding: '8px 16px', borderRadius: '8px', display: 'inline-block', fontWeight: 500 }}>
+                                                <div style={{ color: '#3b82f6', fontSize: '0.85rem', background: '#eff6ff', padding: '8px 16px', borderRadius: '8px', display: 'inline-block', fontWeight: 500, textAlign: 'center' }}>
                                                     <strong>Tip:</strong> Al iniciar la grabación, que cada uno diga "Hola, soy [Nombre]".
                                                 </div>
                                             </div>
 
                                         {!isRecording ? (
-                                            <button onClick={startRecording} style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', color: 'white', border: 'none', borderRadius: '40px', padding: '20px 48px', fontSize: '1.2rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.4)', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)' }} onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 15px 30px -5px rgba(59, 130, 246, 0.5)'; }} onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(59, 130, 246, 0.4)'; }} onMouseDown={e => e.currentTarget.style.transform = 'scale(0.96)'} onMouseUp={e => e.currentTarget.style.transform = 'translateY(-2px)'}>
+                                            <button onClick={startRecording} style={{ width: '100%', maxWidth: '400px', justifyContent: 'center', background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', color: 'white', border: 'none', borderRadius: '40px', padding: '18px 32px', fontSize: '1.2rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.4)', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)' }} onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 15px 30px -5px rgba(59, 130, 246, 0.5)'; }} onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(59, 130, 246, 0.4)'; }} onMouseDown={e => e.currentTarget.style.transform = 'scale(0.96)'} onMouseUp={e => e.currentTarget.style.transform = 'translateY(-2px)'}>
                                                 <Play size={24} fill="white" /> Iniciar Entrevista
                                             </button>
                                         ) : (
-                                            <div style={{ display: 'flex', gap: '16px' }}>
-                                                <button onClick={togglePauseRecording} style={{ background: isPaused ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: 'white', border: 'none', borderRadius: '40px', padding: '20px 32px', fontSize: '1.2rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 10px 25px -5px rgba(0,0,0, 0.2)' }}>
-                                                    {isPaused ? <><Play size={24} fill="white" /> Reanudar</> : <><Pause size={24} fill="white" /> Pausar</>}
+                                            <div style={{ display: 'flex', gap: '12px', width: '100%', flexWrap: 'wrap' }}>
+                                                <button onClick={togglePauseRecording} style={{ flex: '1 1 140px', justifyContent: 'center', background: isPaused ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: 'white', border: 'none', borderRadius: '40px', padding: '16px 20px', fontSize: '1.1rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 10px 25px -5px rgba(0,0,0, 0.2)' }}>
+                                                    {isPaused ? <><Play size={20} fill="white" /> Reanudar</> : <><Pause size={20} fill="white" /> Pausar</>}
                                                 </button>
-                                                <button onClick={stopRecording} style={{ background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', color: 'white', border: 'none', borderRadius: '40px', padding: '20px 48px', fontSize: '1.2rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.4)', animation: isPaused ? 'none' : 'pulse 2s infinite' }}>
-                                                    <Square size={24} fill="white" /> Detener y Analizar
+                                                <button onClick={stopRecording} style={{ flex: '1 1 200px', justifyContent: 'center', background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', color: 'white', border: 'none', borderRadius: '40px', padding: '16px 20px', fontSize: '1.1rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.4)', animation: isPaused ? 'none' : 'pulse 2s infinite' }}>
+                                                    <Square size={20} fill="white" /> Detener y Analizar
                                                 </button>
                                             </div>
                                         )}
@@ -1330,15 +1330,15 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                                     {selectedPlantilla.preguntas.map((q, i) => (
                                                         <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '20px', border: activeQuestionIndex === i ? '2px solid #3b82f6' : '1px solid #e2e8f0', borderRadius: '12px', background: activeQuestionIndex === i ? '#eff6ff' : 'white', transition: 'all 0.2s', boxShadow: activeQuestionIndex === i ? '0 4px 12px rgba(59,130,246,0.1)' : 'none' }}>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
-                                                                <span style={{ fontWeight: 600, color: activeQuestionIndex === i ? '#1e40af' : '#1e293b', fontSize: '1.05rem', flex: 1, lineHeight: '1.5' }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
+                                                                <span style={{ fontWeight: 600, color: activeQuestionIndex === i ? '#1e40af' : '#1e293b', fontSize: '1.05rem', flex: '1 1 200px', lineHeight: '1.5' }}>
                                                                     {i + 1}. {q}
                                                                 </span>
                                                                 <button 
                                                                     onClick={() => setActiveQuestionIndex(i === activeQuestionIndex ? null : i)}
-                                                                    style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', background: activeQuestionIndex === i ? '#3b82f6' : '#f1f5f9', color: activeQuestionIndex === i ? 'white' : '#475569', fontWeight: 700, cursor: 'pointer', flexShrink: 0, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                                    style={{ flex: '1 1 100%', justifyContent: 'center', padding: '12px 16px', borderRadius: '12px', border: 'none', background: activeQuestionIndex === i ? '#3b82f6' : '#f1f5f9', color: activeQuestionIndex === i ? 'white' : '#475569', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '8px' }}
                                                                 >
-                                                                    {activeQuestionIndex === i ? <><Mic size={14} className="animate-pulse" /> Enfocando</> : 'Enfocar'}
+                                                                    {activeQuestionIndex === i ? <><Mic size={16} className="animate-pulse" /> Enfocando...</> : 'Enfocar en esta pregunta'}
                                                                 </button>
                                                             </div>
                                                             

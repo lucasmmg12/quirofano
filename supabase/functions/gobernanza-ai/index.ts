@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
             formData.append('model', 'whisper-1');
             formData.append('language', 'es');
             formData.append('temperature', '0');
-            formData.append('prompt', 'Entrevista de Gobernanza de Datos en español. (Por favor, ignora el silencio o ruido de fondo).');
+            formData.append('prompt', 'Entrevista de Gobernanza de Datos, auditoría, historias clínicas y calidad en el Sanatorio Argentino. (Por favor, ignora el silencio o ruido de fondo).');
             
             const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
                 method: 'POST',
@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
 
                 const DEEPGRAM_API_KEY = "896c8da735b5edce67498d67fc58422f11962dce";
                 
-                const deepgramRes = await fetch('https://api.deepgram.com/v1/listen?model=nova-2&language=es&diarize=true&smart_format=true', {
+                const deepgramRes = await fetch('https://api.deepgram.com/v1/listen?model=nova-2&language=es&diarize=true&smart_format=true&keywords=Sanatorio+Argentino&keywords=Auditoría&keywords=Calidad&keywords=Gobernanza&keywords=Liquidaciones&keywords=Historias+Clínicas', {
                     method: 'POST',
                     headers: {
                         'Authorization': `Token ${DEEPGRAM_API_KEY}`,
@@ -166,7 +166,7 @@ OBJETIVOS OBLIGATORIOS:
 1. "resumen": Redacta un resumen ejecutivo de los puntos tratados (1 párrafo).
 2. "minutas": Redacta los puntos clave (bullet points) para armar diapositivas de presentación. Si se menciona a alguien, indica su nombre.
 3. "mapa_conceptual_mermaid": Crea un diagrama en código Mermaid.js que resuma TODA la charla de forma global (no te limites a las respuestas de las preguntas). Relaciona los conceptos principales, áreas, problemas y decisiones que surgieron espontáneamente en la conversación. (ej: graph TD; A-->B).
-4. "respuestas": Analiza qué dijo el entrevistado respecto a cada pregunta de la plantilla. Si hay un [BORRADOR MANUAL MAPEADO EN VIVO] adjunto a una pregunta, úsalo como la base principal (es el borrador que el usuario marcó en vivo como la respuesta). Pule su redacción y complétalo con la transcripción si hay más detalles. Si no respondió ni hay borrador, escribe "No especificado en el audio".
+4. "respuestas": Analiza a fondo qué dijo el entrevistado respecto a cada pregunta de la plantilla. Extrae todos los detalles importantes, no resumas en exceso. Si la transcripción tiene palabras sueltas por ruido, infiere el contexto médico o administrativo. Si hay un [BORRADOR MANUAL MAPEADO EN VIVO] adjunto a una pregunta, úsalo como la base principal (es el borrador que el usuario marcó en vivo como la respuesta). Pule su redacción y complétalo con la transcripción. Si no respondió ni hay borrador, escribe "No especificado en el audio".
 
 PREGUNTAS DE LA PLANTILLA:
 ${numberedQuestions}
@@ -188,7 +188,7 @@ Responde ESTRICTAMENTE en este formato JSON:
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    model: 'gpt-4o-mini',
+                    model: 'gpt-4o',
                     messages: [
                         { role: 'system', content: systemPrompt },
                         { role: 'user', content: `PREGUNTAS DE LA PLANTILLA:\n${numberedQuestions}\n\nTRANSCRIPCIÓN:\n"${transcript}"` }
