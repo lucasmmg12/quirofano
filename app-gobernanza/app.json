@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Gobernanza Sanatorio",
-    "slug": "app-gobernanza",
+    "slug": "lucasmmarinero",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -38,6 +38,12 @@
           "microphonePermission": "Permite a Gobernanza Sanatorio grabar entrevistas y notas de voz para auditoría médica y análisis con IA."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "e26c9be7-e42c-4350-9988-e254ffd91e3c"
+      }
+    },
+    "owner": "lucasmmarineros-team"
   }
 }
