@@ -38,11 +38,18 @@ Deno.serve(async (req) => {
 
                 const DEEPGRAM_API_KEY = "896c8da735b5edce67498d67fc58422f11962dce";
                 
+                const ext = audio_path.split('.').pop()?.toLowerCase() || 'webm';
+                let contentType = 'audio/webm';
+                if (ext === 'm4a' || ext === 'mp4') contentType = 'audio/m4a';
+                else if (ext === 'mp3') contentType = 'audio/mp3';
+                else if (ext === 'wav') contentType = 'audio/wav';
+                else if (ext === 'ogg') contentType = 'audio/ogg';
+
                 const deepgramRes = await fetch('https://api.deepgram.com/v1/listen?model=nova-2&language=es&diarize=true&smart_format=true&keywords=Sanatorio+Argentino&keywords=Auditoría&keywords=Calidad&keywords=Gobernanza&keywords=Liquidaciones&keywords=Historias+Clínicas', {
                     method: 'POST',
                     headers: {
                         'Authorization': `Token ${DEEPGRAM_API_KEY}`,
-                        'Content-Type': 'audio/webm'
+                        'Content-Type': contentType
                     },
                     body: audioData
                 });

@@ -1,15 +1,26 @@
 {
   "expo": {
-    "name": "app-gobernanza",
+    "name": "Gobernanza Sanatorio",
     "slug": "app-gobernanza",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Permite a Gobernanza Sanatorio grabar entrevistas y notas de voz para auditoría médica y análisis con IA."
+      }
     },
     "android": {
+      "package": "com.sanatorioargentino.gobernanza",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.INTERNET",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.WAKE_LOCK",
+        "android.permission.FOREGROUND_SERVICE"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -19,6 +30,14 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Permite a Gobernanza Sanatorio grabar entrevistas y notas de voz para auditoría médica y análisis con IA."
+        }
+      ]
+    ]
   }
 }
