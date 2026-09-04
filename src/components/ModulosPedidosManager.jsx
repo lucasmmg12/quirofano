@@ -2,6 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Edit2, Save, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { PRACTICES } from '../data/nomenclador';
+import { getCurrentUser } from '../services/authService';
+
+const ENCABEZADOS = [
+    { id: 'internacion', label: 'Internación', header: 'Solicito autorización de internación en Sanatorio Argentino', hasCode: true },
+    { id: 'cirugia', label: 'Cirugía', header: 'Solicito autorización de Cirugía General en Sanatorio Argentino', hasCode: true },
+    { id: 'uci', label: 'UCI', header: 'Solicito autorización en UCI en Sanatorio Argentino', hasCode: true },
+    { id: 'utip', label: 'UTIP', header: 'Solicito autorización en UTIP en Sanatorio Argentino', hasCode: true },
+    { id: 'utin', label: 'UTIN', header: 'Solicito autorización en UTIN en Sanatorio Argentino', hasCode: true },
+    { id: 'sutura', label: 'Sutura de Herida', header: 'Solicito autorización de Sutura de Herida', hasCode: true },
+];
+
+const VIRTUAL_PRACTICES = ENCABEZADOS.map(enc => ({
+    code: `REQ-${enc.id.toUpperCase()}`,
+    name: enc.header,
+    category: 'internacion',
+    isVirtual: true,
+}));
+
+const ALL_PRACTICES = [...VIRTUAL_PRACTICES, ...PRACTICES];
 
 export default function ModulosPedidosManager({ isOpen, onClose, onModuleAdded }) {
     const [modulos, setModulos] = useState([]);
@@ -57,14 +76,18 @@ export default function ModulosPedidosManager({ isOpen, onClose, onModuleAdded }
 
     const handleSave = async () => {
         if (!editName.trim()) return;
+        const user = getCurrentUser();
         try {
             if (editingId === 'new') {
                 const { data, error } = await supabase.from('pedidos_modulos').insert({
                     nombre: editName,
-                    items: editItems
+                    items: editItems,
+                    user_id: user?.id
                 }).select();
                 if (error) throw error;
-                setModulos([...modulos, data[0]]);
+                if (data && data.length > 0) {
+                    setModulos([...modulos, data[0]]);
+                }
             } else {
                 const { error } = await supabase.from('pedidos_modulos').update({
                     nombre: editName,
@@ -77,6 +100,7 @@ export default function ModulosPedidosManager({ isOpen, onClose, onModuleAdded }
             onModuleAdded(); // Refresh parent
         } catch (err) {
             console.error(err);
+            alert("Error al guardar el módulo:\n" + (err.message || JSON.stringify(err)) + "\n\nAsegúrate de tener permisos o haber iniciado sesión correctamente.");
         }
     };
 
@@ -88,7 +112,7 @@ export default function ModulosPedidosManager({ isOpen, onClose, onModuleAdded }
         }
     };
 
-    const filteredPractices = PRACTICES.filter(p => 
+    const filteredPractices = ALL_PRACTICES.filter(p => 
         p.name.toLowerCase().includes(search.toLowerCase()) || 
         p.code.toLowerCase().includes(search.toLowerCase())
     );
@@ -181,7 +205,12 @@ export default function ModulosPedidosManager({ isOpen, onClose, onModuleAdded }
                                                 {isSelected && <Check size={14} color="#fff" />}
                                             </div>
                                             <div style={{ flex: 1, fontSize: '0.85rem', color: isSelected ? '#166534' : '#334155', lineHeight: '1.2' }}>
-                                                <span style={{ fontWeight: 600 }}>{p.code}</span> - {p.name}
+                                                {p.isVirtual ? (
+                                                    <span style={{ fontWeight: 700, color: '#7C3AED' }}>[PEDIDO ESPECIAL] </span>
+                                                ) : (
+                                                    <span style={{ fontWeight: 600 }}>{p.code} - </span>
+                                                )}
+                                                {p.name}
                                             </div>
                                         </div>
                                     );

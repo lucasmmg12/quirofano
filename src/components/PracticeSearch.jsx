@@ -97,8 +97,32 @@ export default function PracticeSearch({ onAddToCart }) {
     };
 
     const handleAddModule = (mod) => {
-        const items = mod.items.map(code => PRACTICES.find(p => p.code === code)).filter(Boolean);
-        items.forEach(item => onAddToCart(item));
+        mod.items.forEach(code => {
+            if (code.startsWith('REQ-')) {
+                const type = code.replace('REQ-', '').toLowerCase();
+                const ENCABEZADOS = [
+                    { id: 'internacion', header: 'Solicito autorización de internación en Sanatorio Argentino' },
+                    { id: 'cirugia', header: 'Solicito autorización de Cirugía General en Sanatorio Argentino' },
+                    { id: 'uci', header: 'Solicito autorización en UCI en Sanatorio Argentino' },
+                    { id: 'utip', header: 'Solicito autorización en UTIP en Sanatorio Argentino' },
+                    { id: 'utin', header: 'Solicito autorización en UTIN en Sanatorio Argentino' },
+                    { id: 'sutura', header: 'Solicito autorización de Sutura de Herida' },
+                ];
+                const enc = ENCABEZADOS.find(e => e.id === type);
+                if (enc) {
+                    onAddToCart({
+                        code: '—',
+                        name: enc.header,
+                        category: 'internacion',
+                        encabezado: enc.header,
+                        isInternacion: true,
+                    });
+                }
+            } else {
+                const p = PRACTICES.find(p => p.code === code);
+                if (p) onAddToCart(p);
+            }
+        });
     };
 
     return (
