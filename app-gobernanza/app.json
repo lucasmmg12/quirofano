@@ -33,7 +33,7 @@
     },
     "plugins": [
       [
-        "expo-av",
+        "expo-audio",
         {
           "microphonePermission": "Permite a Gobernanza Sanatorio grabar entrevistas y notas de voz para auditoría médica y análisis con IA."
         }

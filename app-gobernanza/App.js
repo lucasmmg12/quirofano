@@ -13,7 +13,12 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
-import { Audio } from 'expo-av';
+import {
+  useAudioRecorder,
+  RecordingPresets,
+  setAudioModeAsync,
+  requestRecordingPermissionsAsync,
+} from 'expo-audio';
 import {
   Mic,
   Square,
@@ -41,32 +46,6 @@ import {
 
 const { width } = Dimensions.get('window');
 
-// Opciones personalizadas de alta calidad compatibles con Android/iOS
-const RECORDING_OPTIONS = {
-  android: {
-    extension: '.m4a',
-    outputFormat: Audio.AndroidOutputFormat.MPEG_4,
-    audioEncoder: Audio.AndroidAudioEncoder.AAC,
-    sampleRate: 44100,
-    numberOfChannels: 2,
-    bitRate: 128000,
-  },
-  ios: {
-    extension: '.m4a',
-    audioQuality: Audio.IOSAudioQuality.HIGH,
-    sampleRate: 44100,
-    numberOfChannels: 2,
-    bitRate: 128000,
-    linearPCMBitDepth: 16,
-    linearPCMIsBigEndian: false,
-    linearPCMIsFloat: false,
-  },
-  web: {
-    mimeType: 'audio/webm',
-    bitsPerSecond: 128000,
-  },
-};
-
 export default function App() {
   // Pestañas principales: 'grabar' | 'historial'
   const [activeTab, setActiveTab] = useState('grabar');
@@ -81,9 +60,8 @@ export default function App() {
   const [selectedPlantilla, setSelectedPlantilla] = useState(null);
   const [showQuestions, setShowQuestions] = useState(false);
 
-  // Grabación
-  const [recording, setRecording] = useState(null);
-  const [permissionResponse, requestPermission] = Audio.usePermissions();
+  // Grabador expo-audio nativo
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -217,45 +195,36 @@ export default function App() {
   // Iniciar grabación
   async function startRecording() {
     try {
-      if (!permissionResponse || permissionResponse.status !== 'granted') {
-        const response = await requestPermission();
-        if (response.status !== 'granted') {
-          Alert.alert('Permiso Denegado', 'Se requiere acceso al micrófono para grabar la entrevista.');
-          return;
-        }
+      const response = await requestRecordingPermissionsAsync();
+      if (!response.granted) {
+        Alert.alert('Permiso Denegado', 'Se requiere acceso al micrófono para grabar la entrevista.');
+        return;
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        shouldPlayInBackground: true,
       });
 
-      const { recording: newRecording } = await Audio.Recording.createAsync(
-        RECORDING_OPTIONS
-      );
-
-      setRecording(newRecording);
+      await recorder.record();
       setIsRecording(true);
       setIsPaused(false);
       setDuration(0);
     } catch (err) {
       console.error('Error al iniciar grabación:', err);
-      Alert.alert('Error', 'No se pudo iniciar la grabación del micrófono.');
+      Alert.alert('Error', 'No se pudo iniciar la grabación del micrófono: ' + err.message);
     }
   }
 
   // Pausar / Reanudar grabación
-  async function togglePauseRecording() {
-    if (!recording) return;
+  function togglePauseRecording() {
     try {
       if (isPaused) {
-        await recording.startAsync();
+        recorder.record();
         setIsPaused(false);
       } else {
-        await recording.pauseAsync();
+        recorder.pause();
         setIsPaused(true);
       }
     } catch (e) {
@@ -265,19 +234,12 @@ export default function App() {
 
   // Detener grabación y procesar con Supabase e IA
   async function stopRecording() {
-    if (!recording) return;
-
     try {
       setIsRecording(false);
       setIsPaused(false);
 
-      await recording.stopAndUnloadAsync();
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-      });
-
-      const uri = recording.getURI();
-      setRecording(null);
+      await recorder.stop();
+      const uri = recorder.uri;
 
       if (!uri) {
         Alert.alert('Error', 'No se encontró el archivo de audio grabado.');
@@ -353,12 +315,9 @@ export default function App() {
           text: 'Descartar',
           style: 'destructive',
           onPress: async () => {
-            if (recording) {
-              try {
-                await recording.stopAndUnloadAsync();
-              } catch (e) {}
-              setRecording(null);
-            }
+            try {
+              await recorder.stop();
+            } catch (e) {}
             setIsRecording(false);
             setIsPaused(false);
             setDuration(0);
