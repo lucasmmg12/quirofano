@@ -59,6 +59,7 @@ export default function App() {
   // Selección y flujo de grabación
   const [selectedPlantilla, setSelectedPlantilla] = useState(null);
   const [showQuestions, setShowQuestions] = useState(false);
+  const [focusedQuestionIndex, setFocusedQuestionIndex] = useState(null);
 
   // Grabador expo-audio nativo
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -207,6 +208,8 @@ export default function App() {
         shouldPlayInBackground: true,
       });
 
+      // ¡Importante para expo-audio! Preparar antes de grabar
+      await recorder.prepareToRecordAsync();
       await recorder.record();
       setIsRecording(true);
       setIsPaused(false);
@@ -494,12 +497,19 @@ export default function App() {
 
             {showQuestions && (
               <ScrollView style={styles.questionsList} nestedScrollEnabled>
-                {preguntas.map((q, idx) => (
-                  <View key={idx} style={styles.questionCard}>
-                    <Text style={styles.questionIndex}>{idx + 1}</Text>
-                    <Text style={styles.questionText}>{q}</Text>
-                  </View>
-                ))}
+                {preguntas.map((q, idx) => {
+                  const isFocused = focusedQuestionIndex === idx;
+                  return (
+                    <TouchableOpacity 
+                      key={idx} 
+                      style={[styles.questionCard, isFocused && styles.questionCardFocused]}
+                      onPress={() => setFocusedQuestionIndex(isFocused ? null : idx)}
+                    >
+                      <Text style={[styles.questionIndex, isFocused && styles.questionIndexFocused]}>{idx + 1}</Text>
+                      <Text style={[styles.questionText, isFocused && styles.questionTextFocused]}>{q}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
             )}
           </View>

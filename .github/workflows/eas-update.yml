@@ -1,0 +1,39 @@
+name: EAS Update on Push
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    
+    # IMPORTANTE: Definimos el directorio de trabajo porque la app móvil 
+    # está en la subcarpeta "app-gobernanza" y no en la raíz del repositorio.
+    defaults:
+      run:
+        working-directory: ./app-gobernanza
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.x
+          cache: npm
+          cache-dependency-path: app-gobernanza/package-lock.json # Indicamos dónde está el lockfile
+          
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+          
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Publish update
+        run: eas update --auto --branch main
