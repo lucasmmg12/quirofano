@@ -31,6 +31,13 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const [altasOpen, setAltasOpen] = useState(false);
     const [cirugiasOpen, setCirugiasOpen] = useState(false);
     const [simonOpen, setSimonOpen] = useState(false);
+    const [gobernanzaOpen, setGobernanzaOpen] = useState(false);
+
+    // Sub-items dentro de "Gobernanza"
+    const gobernanzaSubItems = [
+        { id: 'gobernanza', label: 'Audios / IA', icon: ShieldCheck },
+        { id: 'gobernanza_indicadores', label: 'Indicadores', icon: BarChart3 },
+    ].filter(i => isModuleVisible(i.id));
 
     // Sub-items dentro de "Simon IA"
     const simonSubItems = [
@@ -246,22 +253,14 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                 })()}
 
                 {/* ─── Gobernanza ─── */}
-                {isModuleVisible('gobernanza') && (() => {
-                    const isActive = activeView === 'gobernanza';
-                    return (
-                        <Link
-                            to="/gobernanza"
-                            className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
-                            onClick={() => onViewChange && onViewChange('gobernanza', true)}
-                            title={collapsed ? 'Gobernanza' : undefined}
-                            style={{ display: 'flex', textDecoration: 'none' }}
-                        >
-                            <ShieldCheck size={20} className="sidebar__item-icon" />
-                            {!collapsed && <span className="sidebar__item-label">Gobernanza</span>}
-                            {isActive && <div className="sidebar__item-indicator" />}
-                        </Link>
-                    );
-                })()}
+                {isModuleVisible('gobernanza') && renderGroup({
+                    label: 'Gobernanza',
+                    icon: ShieldCheck,
+                    isOpen: gobernanzaOpen,
+                    setOpen: setGobernanzaOpen,
+                    isGroupActive: activeView === 'gobernanza' || activeView === 'gobernanza_indicadores',
+                    subItems: gobernanzaSubItems,
+                })}
 
                 {/* ─── Mensajería (grupo colapsable) ─── */}
                 {renderGroup({

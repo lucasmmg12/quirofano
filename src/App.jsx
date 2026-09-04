@@ -59,6 +59,7 @@ import FrojoCelebration from './components/FrojoCelebration.jsx';
 import ActivosPanel from './components/ActivosPanel.jsx';
 import EquipoAuditoriaView from './components/EquipoAuditoriaView.jsx';
 import GobernanzaPanel from './components/GobernanzaPanel.jsx';
+import GobernanzaIndicadoresPanel from './components/Gobernanza/GobernanzaIndicadoresPanel.jsx';
 import LiquidacionesPanel from './components/LiquidacionesPanel.jsx';
 import PublicRecordView from './components/PublicShare/PublicRecordView.jsx';
 import { startSession, endSession, trackModuleChange } from './lib/activityTracker';
@@ -1034,6 +1035,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'gobernanza' && (
                     <GobernanzaPanel currentUser={currentUser} />
+                )}
+
+                {activeView === 'gobernanza_indicadores' && (
+                    <GobernanzaIndicadoresPanel currentUser={currentUser} addToast={addToast} />
                 )}
             </main>
 
