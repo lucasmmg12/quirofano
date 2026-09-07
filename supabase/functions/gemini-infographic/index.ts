@@ -72,8 +72,7 @@ serve(async (req) => {
           model: "dall-e-3",
           prompt: prompt,
           n: 1,
-          size: "1024x1024",
-          response_format: "b64_json"
+          size: "1024x1024"
         })
       })
 
@@ -85,7 +84,21 @@ serve(async (req) => {
       const data = await response.json()
       if (!data.data || data.data.length === 0) throw new Error('La API de DALL-E no devolvió ninguna imagen.')
       
-      imageBase64 = data.data[0].b64_json
+      const imageUrl = data.data[0].url
+      if (!imageUrl) throw new Error('OpenAI no devolvió una URL válida.')
+
+      const imgResponse = await fetch(imageUrl)
+      const imgBlob = await imgResponse.blob()
+      const arrayBuffer = await imgBlob.arrayBuffer()
+      const uint8Array = new Uint8Array(arrayBuffer)
+      
+      // Convert Uint8Array to base64 safely
+      let binary = ''
+      const len = uint8Array.byteLength
+      for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(uint8Array[i])
+      }
+      imageBase64 = btoa(binary)
 
     } else if (engine === 'google') {
       const credsJson = Deno.env.get('VERTEX_AI_CREDENTIALS')
