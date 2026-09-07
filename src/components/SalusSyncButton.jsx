@@ -10,6 +10,7 @@ import { checkSalusHealth } from '../services/salusSync';
 import { getCurrentUser } from '../services/authService';
 
 const SYNC_MODULES = {
+    uci: { label: 'T. Intensiva (UCI)', icon: '🫁' },
     cirugias: { label: 'Cirugías', icon: '🔪' },
     presupuestos: { label: 'Presupuestos', icon: '💰' },
     deudas: { label: 'Deudas', icon: '📊' },
@@ -235,6 +236,7 @@ export default function SalusSyncButton({ onComplete, addToast }) {
                     </div>
                     <div style={{ fontSize: '0.7rem', color: '#6B7280', marginTop: '3px', lineHeight: 1.4 }}>
                         {isError ? `❌ ${r.error}` : (
+                            key === 'uci' ? `${r.total} registros → ${r.inserted} nuevos, ${r.updated} actualizados` :
                             key === 'cirugias' ? `${r.total} registros → ${r.inserted} nuevos, ${r.updated} actualizados` :
                             key === 'presupuestos' ? `${r.total} filas → ${r.presupuestos} presupuestos, ${r.items} ítems` :
                             key === 'altas' ? `${r.total} registros → ${r.inserted} nuevas, ${r.updated} actualizadas` :

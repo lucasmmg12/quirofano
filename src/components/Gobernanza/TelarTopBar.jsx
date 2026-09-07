@@ -1,5 +1,6 @@
 import React from 'react';
 import { LayoutDashboard, Calendar, Sparkles } from 'lucide-react';
+import SalusSyncButton from '../SalusSyncButton';
 
 export default function TelarTopBar({ dateFilter, setDateFilter, onOpenInfografia }) {
     const filters = [
@@ -28,6 +29,11 @@ export default function TelarTopBar({ dateFilter, setDateFilter, onOpenInfografi
                         {f.label}
                     </button>
                 ))}
+                
+                <div style={{ width: '1px', height: '24px', background: 'var(--neutral-200)', margin: '0 8px' }}></div>
+
+                {/* Sincronización */}
+                <SalusSyncButton />
                 
                 <div style={{ width: '1px', height: '24px', background: 'var(--neutral-200)', margin: '0 8px' }}></div>
                 

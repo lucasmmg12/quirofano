@@ -133,6 +133,93 @@ function normalizePhone(raw, areaCode = '264') {
 const EXCLUDED_MODULES = ['Transferencia embrionaria', 'Fertilidad', 'Bloque Médico'];
 const EXCLUDED_NAME_PREFIXES = ['BLOQUE'];
 
+// ============================================================================
+// SYNC UCI (TERAPIA INTENSIVA) — SQL Server → Supabase
+// ============================================================================
+async function syncUci(db) {
+    console.log('🫁 [0/X] Extrayendo indicadores de UCI (Terapia Intensiva)...');
+    
+    // Usar la query proveída por el usuario
+    const result = await db.request().query(`
+        SELECT 
+            [Número admisión],
+            [Fecha ingreso],
+            [Fecha alta],
+            Especialidad,
+            Procedencia,
+            NHC,
+            Paciente,
+            [Motivo de alta],
+            Cliente,
+            idAdmision,
+            [Estado Conceptos],
+            Servicio,
+            Proceso,
+            Edad,
+            [Motivo Alta],
+            [Control ADM finalizado]
+        FROM TABLEAU_Admisiones
+        WHERE Especialidad = 'TERAPIA INTENSIVA'
+          AND YEAR([Fecha ingreso]) IN (2022, 2023, 2024, 2025, 2026)
+        ORDER BY [Fecha ingreso] DESC
+    `);
+
+    const records = result.recordset;
+    console.log(`   📥 ${records.length} registros extraídos de Terapia Intensiva`);
+
+    if (records.length === 0) {
+        return { total: 0, inserted: 0, updated: 0, skipped: 0 };
+    }
+
+    // Mapear los datos para el formato de Supabase
+    const dataToUpsert = records.map(r => ({
+        id_admision: r.idAdmision,
+        numero_admision: r['Número admisión'] ? String(r['Número admisión']).trim() : null,
+        fecha_ingreso: formatDate(r['Fecha ingreso']),
+        fecha_alta: formatDate(r['Fecha alta']),
+        especialidad: r.Especialidad ? String(r.Especialidad).trim() : null,
+        procedencia: r.Procedencia ? String(r.Procedencia).trim() : null,
+        nhc: r.NHC ? String(r.NHC).trim() : null,
+        paciente: r.Paciente ? String(r.Paciente).trim() : null,
+        motivo_de_alta: r['Motivo de alta'] ? String(r['Motivo de alta']).trim() : null,
+        cliente: r.Cliente ? String(r.Cliente).trim() : null,
+        estado_conceptos: r['Estado Conceptos'] ? String(r['Estado Conceptos']).trim() : null,
+        servicio: r.Servicio ? String(r.Servicio).trim() : null,
+        proceso: r.Proceso ? String(r.Proceso).trim() : null,
+        edad: typeof r.Edad === 'number' ? r.Edad : parseInt(r.Edad, 10) || null,
+        motivo_alta_2: r['Motivo Alta'] ? String(r['Motivo Alta']).trim() : null,
+        control_adm_finalizado: r['Control ADM finalizado'] ? String(r['Control ADM finalizado']).trim() : null,
+        updated_at: new Date().toISOString()
+    }));
+
+    // Lotes de 500 para evitar timeout en la API
+    const BATCH_SIZE = 500;
+    let inserted = 0, updated = 0, skipped = 0;
+
+    for (let i = 0; i < dataToUpsert.length; i += BATCH_SIZE) {
+        const batch = dataToUpsert.slice(i, i + BATCH_SIZE);
+        const { data, error } = await supabase
+            .from('calidad_uci_admisiones')
+            .upsert(batch, { onConflict: 'id_admision', ignoreDuplicates: false })
+            .select('id_admision, created_at, updated_at');
+        
+        if (error) {
+            console.error(`   ❌ Error en el lote ${i/BATCH_SIZE + 1}:`, error.message);
+            skipped += batch.length;
+        } else if (data) {
+            data.forEach(d => {
+                const isNew = Math.abs(new Date(d.created_at) - new Date(d.updated_at)) < 2000;
+                if (isNew) inserted++;
+                else updated++;
+            });
+        }
+    }
+
+    const summary = { total: records.length, inserted, updated, skipped };
+    console.log(`   –… UCI: ${inserted} nuevos, ${updated} actualizados, ${skipped} errores`);
+    return summary;
+}
+
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // SYNC CIRUGÍAS — SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -2490,6 +2577,13 @@ app.get('/api/salus/sync-all', async (req, res) => {
         }
 
         try {
+            results.uci = await syncUci(db);
+        } catch (err) {
+            console.error('❌ Error en UCI:', err.message);
+            results.uci = { error: err.message };
+        }
+
+        try {
             results.fojaQuirurgica = await syncFojaQuirurgica(db);
         } catch (err) {
             console.error('❌ Error en foja quirúrgica:', err.message);
@@ -2592,6 +2686,11 @@ app.get('/api/salus/sync-all', async (req, res) => {
 });
 
 // â”€â”€ Endpoints individuales â”€â”€
+app.get('/api/salus/sync/uci', async (req, res) => {
+    try { const db = await getPool(); res.json({ success: true, results: await syncUci(db) }); }
+    catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
 app.get('/api/salus/sync/cirugias', async (req, res) => {
     try { const db = await getPool(); res.json({ success: true, results: await syncCirugias(db) }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
