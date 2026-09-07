@@ -1,45 +1,24 @@
 import React, { useState } from 'react';
 import { BarChart3, PieChart, LineChart, ChevronDown, ChevronRight, Plus } from 'lucide-react';
 
-// MOCK DATA: Catálogo de Sectores e Indicadores
+// MOCK DATA REMOVED: Catálogo Real de Sectores e Indicadores
 const CATALOGO = [
     {
-        id: 'quirofano',
-        label: 'Quirófano',
+        id: 'uci',
+        label: 'Terapia Intensiva (UCI)',
         indicadores: [
-            { id: 'q_ocupacion', label: 'Tasa de Ocupación', type: 'line' },
-            { id: 'q_cirugias', label: 'Cirugías por Especialidad', type: 'bar' },
-            { id: 'q_suspensiones', label: 'Motivos de Suspensión', type: 'pie' }
-        ]
-    },
-    {
-        id: 'internacion',
-        label: 'Internación',
-        indicadores: [
-            { id: 'i_promedio', label: 'Promedio Días Estada', type: 'line' },
-            { id: 'i_altas', label: 'Altas Diarias', type: 'bar' }
-        ]
-    },
-    {
-        id: 'calidad',
-        label: 'Calidad',
-        indicadores: [
-            { id: 'c_incidentes', label: 'Incidentes Reportados', type: 'bar' },
-            { id: 'c_resolucion', label: 'Tiempos de Resolución', type: 'line' }
-        ]
-    },
-    {
-        id: 'facturacion',
-        label: 'Auditoría / Facturación',
-        indicadores: [
-            { id: 'f_rechazos', label: 'Tasa de Rechazo (Débitos)', type: 'pie' },
-            { id: 'f_tiempos', label: 'Días de Cierre de Lote', type: 'line' }
+            { id: 'uci_volumen', label: 'Volumen de Ingresos', type: 'kpi_users' },
+            { id: 'uci_alos', label: 'Promedio de Estancia (ALOS)', type: 'kpi_clock' },
+            { id: 'uci_mortalidad', label: 'Mortalidad Cruda', type: 'kpi_alert' },
+            { id: 'uci_derivacion', label: 'Tasa de Derivación', type: 'kpi_arrow' },
+            { id: 'uci_procedencia', label: 'Procedencia del Paciente', type: 'bar' },
+            { id: 'uci_motivo_alta', label: 'Motivo de Alta', type: 'pie' }
         ]
     }
 ];
 
 export default function TelarSidebar({ onAddIndicator, activeIndicators }) {
-    const [expandedSectors, setExpandedSectors] = useState({ quirofano: true });
+    const [expandedSectors, setExpandedSectors] = useState({ uci: true });
 
     const toggleSector = (sectorId) => {
         setExpandedSectors(prev => ({ ...prev, [sectorId]: !prev[sectorId] }));

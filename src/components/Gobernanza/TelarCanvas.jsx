@@ -1,98 +1,189 @@
-import React, { useState } from 'react';
-import { X, Maximize2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Maximize2, Users, Clock, AlertTriangle, ArrowRightCircle, Loader2 } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import TelarDataModal from './TelarDataModal';
+import { supabase } from '../../lib/supabase';
 
-// Mock Data para Gráficos
-const mockDataBar = [
-    { name: 'Lun', valor: 12 }, { name: 'Mar', valor: 19 },
-    { name: 'Mié', valor: 15 }, { name: 'Jue', valor: 22 },
-    { name: 'Vie', valor: 28 }, { name: 'Sáb', valor: 10 },
-];
-
-const mockDataLine = [
-    { name: 'Sem 1', valor: 80 }, { name: 'Sem 2', valor: 85 },
-    { name: 'Sem 3', valor: 82 }, { name: 'Sem 4', valor: 90 },
-];
-
-const mockDataPie = [
-    { name: 'Falta de Ayuno', value: 30 },
-    { name: 'Llegada Tarde', value: 45 },
-    { name: 'Causas Médicas', value: 25 },
-];
-const COLORS = ['#3B82F6', '#10B981', '#F43F5E', '#8B5CF6'];
+const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1'];
 
 export default function TelarCanvas({ activeIndicators, onRemoveIndicator, dateFilter }) {
     const [selectedIndicator, setSelectedIndicator] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [uciData, setUciData] = useState([]);
+    const [metrics, setMetrics] = useState({});
 
-    // Componente interno para renderizar el gráfico correcto según el tipo
-    const renderChart = (type) => {
-        switch(type) {
-            case 'bar':
+    useEffect(() => {
+        // Solo obtener los datos de UCI si hay algún indicador activo (optimización)
+        if (activeIndicators.length > 0) {
+            fetchUciData();
+        }
+    }, [activeIndicators, dateFilter]);
+
+    const fetchUciData = async () => {
+        setLoading(true);
+        try {
+            // Se puede agregar lógica de filtros por fecha aquí utilizando dateFilter
+            const { data, error } = await supabase.from('calidad_uci_admisiones').select('*');
+            if (error) throw error;
+            if (data) {
+                setUciData(data);
+                calculateMetrics(data);
+            }
+        } catch (err) {
+            console.error('Error fetching UCI data:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const calculateMetrics = (data) => {
+        const total = data.length;
+
+        // Mortalidad
+        const fallecidos = data.filter(d => d.motivo_de_alta === 'Defunción').length;
+        const mortalityRate = total > 0 ? ((fallecidos / total) * 100).toFixed(1) : 0;
+
+        // ALOS
+        let totalDays = 0;
+        let validAlosCount = 0;
+        data.forEach(d => {
+            if (d.fecha_ingreso && d.fecha_alta) {
+                const start = new Date(d.fecha_ingreso);
+                const end = new Date(d.fecha_alta);
+                const diffTime = Math.abs(end - start);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                totalDays += diffDays;
+                validAlosCount++;
+            }
+        });
+        const alos = validAlosCount > 0 ? (totalDays / validAlosCount).toFixed(1) : 0;
+
+        // Derivaciones
+        const traslados = data.filter(d => 
+            d.motivo_de_alta === 'Traslado a Otro Hospital' || 
+            d.motivo_de_alta === 'Traslado a Otro Sanatorio/Clinica'
+        ).length;
+        const transferRate = total > 0 ? ((traslados / total) * 100).toFixed(1) : 0;
+
+        // Procedencia
+        const procCount = {};
+        data.forEach(d => {
+            const p = d.procedencia || 'Sin Datos';
+            procCount[p] = (procCount[p] || 0) + 1;
+        });
+        const procArray = Object.keys(procCount).map(k => ({ name: k, value: procCount[k] }));
+        procArray.sort((a, b) => b.value - a.value);
+
+        // Motivos de Alta
+        const motivoCount = {};
+        data.forEach(d => {
+            const m = d.motivo_de_alta || 'En Curso / Sin Datos';
+            motivoCount[m] = (motivoCount[m] || 0) + 1;
+        });
+        const motivoArray = Object.keys(motivoCount).map(k => ({ name: k, value: motivoCount[k] }));
+        motivoArray.sort((a, b) => b.value - a.value);
+
+        setMetrics({
+            total,
+            mortalityRate,
+            alos,
+            transferRate,
+            procedencia: procArray.slice(0, 6),
+            motivoAlta: motivoArray
+        });
+    };
+
+    // Componente interno para renderizar el gráfico o KPI correcto según el indicador
+    const renderIndicatorContent = (ind) => {
+        if (loading) {
+            return (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#64748b' }}>
+                    <Loader2 className="animate-spin" size={24} />
+                </div>
+            );
+        }
+
+        switch(ind.id) {
+            case 'uci_volumen':
+                return (
+                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', padding: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                            <h4 style={{ margin: 0, color: '#64748b', fontSize: '0.875rem', fontWeight: 600 }}>Volumen de Ingresos</h4>
+                            <Users size={20} color="#3b82f6" />
+                        </div>
+                        <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0f172a' }}>{metrics.total}</div>
+                        <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>Pacientes admitidos</div>
+                    </div>
+                );
+            case 'uci_alos':
+                return (
+                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', padding: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                            <h4 style={{ margin: 0, color: '#64748b', fontSize: '0.875rem', fontWeight: 600 }}>Promedio de Estancia</h4>
+                            <Clock size={20} color="#f59e0b" />
+                        </div>
+                        <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0f172a' }}>{metrics.alos} <span style={{ fontSize: '1.2rem', color: '#94a3b8' }}>días</span></div>
+                        <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>Tiempo medio de hospitalización</div>
+                    </div>
+                );
+            case 'uci_mortalidad':
+                return (
+                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', padding: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                            <h4 style={{ margin: 0, color: '#64748b', fontSize: '0.875rem', fontWeight: 600 }}>Mortalidad Cruda</h4>
+                            <AlertTriangle size={20} color="#ef4444" />
+                        </div>
+                        <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0f172a' }}>{metrics.mortalityRate}%</div>
+                        <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>Porcentaje de defunciones</div>
+                    </div>
+                );
+            case 'uci_derivacion':
+                return (
+                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', padding: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                            <h4 style={{ margin: 0, color: '#64748b', fontSize: '0.875rem', fontWeight: 600 }}>Tasa de Derivación</h4>
+                            <ArrowRightCircle size={20} color="#8b5cf6" />
+                        </div>
+                        <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0f172a' }}>{metrics.transferRate}%</div>
+                        <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>Traslados a otros centros</div>
+                    </div>
+                );
+            case 'uci_procedencia':
                 return (
                     <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={mockDataBar} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                            <defs>
-                                <linearGradient id="colorBar" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.9}/>
-                                    <stop offset="95%" stopColor="#2563EB" stopOpacity={0.7}/>
-                                </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B', fontWeight: 500 }} />
-                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B', fontWeight: 500 }} />
-                            <Tooltip 
-                                cursor={{ fill: '#F8FAFC' }} 
-                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                            />
-                            <Bar dataKey="valor" fill="url(#colorBar)" radius={[6, 6, 0, 0]} />
+                        <BarChart data={metrics.procedencia || []} layout="vertical" margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                            <XAxis type="number" />
+                            <YAxis dataKey="name" type="category" width={120} tick={{fontSize: 11}} />
+                            <Tooltip cursor={{fill: '#f1f5f9'}} />
+                            <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} />
                         </BarChart>
                     </ResponsiveContainer>
                 );
-            case 'line':
-                return (
-                    <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={mockDataLine} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                            <defs>
-                                <linearGradient id="colorLine" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
-                                    <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
-                                </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B', fontWeight: 500 }} />
-                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B', fontWeight: 500 }} />
-                            <Tooltip 
-                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                            />
-                            <Line type="monotone" dataKey="valor" stroke="#10B981" strokeWidth={3} dot={{ r: 4, fill: '#fff', strokeWidth: 2 }} activeDot={{ r: 6, strokeWidth: 0, fill: '#059669' }} />
-                        </LineChart>
-                    </ResponsiveContainer>
-                );
-            case 'pie':
+            case 'uci_motivo_alta':
                 return (
                     <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                             <Pie
-                                data={mockDataPie}
+                                data={metrics.motivoAlta || []}
                                 cx="50%"
                                 cy="50%"
                                 innerRadius={60}
-                                outerRadius={80}
+                                outerRadius={90}
                                 paddingAngle={5}
                                 dataKey="value"
                             >
-                                {mockDataPie.map((entry, index) => (
+                                {(metrics.motivoAlta || []).map((entry, index) => (
                                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                 ))}
                             </Pie>
                             <Tooltip />
-                            <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '12px' }}/>
+                            <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: '11px' }} />
                         </PieChart>
                     </ResponsiveContainer>
                 );
             default:
-                return null;
+                return <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>Visualización no disponible</div>;
         }
     };
 
@@ -138,7 +229,7 @@ export default function TelarCanvas({ activeIndicators, onRemoveIndicator, dateF
                                 onClick={() => setSelectedIndicator(ind)}
                                 style={{ cursor: 'pointer' }}
                             >
-                                {renderChart(ind.type)}
+                                {renderIndicatorContent(ind)}
                             </div>
                         </div>
                     ))}
