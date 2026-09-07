@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { indicators, exportType } = await req.json()
+    const { indicators, exportType, theme = 'institutional_blue' } = await req.json()
     const apiKey = Deno.env.get('GEMINI_API_KEY')
 
     if (!apiKey) {
@@ -31,15 +31,35 @@ serve(async (req) => {
     const dataContext = JSON.stringify(indicators, null, 2);
 
     let systemInstruction = "";
+    
+    // Configurar instrucciones por tipo y tema
+    const themeContext = theme === 'institutional_blue' ? 'Usa una estética corporativa y confiable con tonos azules.' :
+                         theme === 'surgical_green' ? 'Usa una estética operativa y dinámica con tonos verdes.' :
+                         'Usa una estética limpia, minimalista y de alto contraste en blanco y negro.';
+
+    const logoContext = "IMPORTANTE: Integra en tu diseño/guión la marca 'Sanatorio Argentino'.";
+
     if (exportType === 'conceptual_map') {
-        systemInstruction = "Eres un experto en estructuración de información. Tu objetivo es generar UNICAMENTE código Mermaid JS (diagrama de flujo o grafo conceptual) que represente las relaciones, métricas y conceptos clave de los datos proporcionados. No devuelvas NADA MÁS que el bloque de código Mermaid empezando por 'graph TD' o similar. No uses comillas tipográficas dentro de los nodos de mermaid.";
+        const colorHex = theme === 'institutional_blue' ? '#1E40AF,stroke:#BFDBFE' : theme === 'surgical_green' ? '#166534,stroke:#BBF7D0' : '#1E293B,stroke:#E2E8F0';
+        systemInstruction = `Eres un experto en estructuración de información. Tu objetivo es generar UNICAMENTE código Mermaid JS (diagrama de flujo o grafo conceptual) que represente las relaciones, métricas exactas y conceptos clave de los datos proporcionados. ${logoContext} Aplica el siguiente estilo de colores a los nodos principales: style NodeID fill:${colorHex.split(',')[0]},stroke:${colorHex.split(',')[1]}. No devuelvas NADA MÁS que el bloque de código Mermaid empezando por 'graph TD'. No uses comillas tipográficas dentro de los nodos de mermaid.`;
     } else if (exportType === 'speech_script') {
-        systemInstruction = "Eres un orador experto y consultor de salud. Escribe un guión de discurso persuasivo, elocuente y formal en formato Markdown basado en los datos proporcionados. Dirígete a la junta directiva del sanatorio. Destaca los hallazgos críticos. Usa encabezados, viñetas y texto en negrita. Mantén un tono profesional e institucional.";
+        systemInstruction = `Eres un orador experto y consultor de salud. Escribe un guión de discurso persuasivo y formal en formato Markdown basado en los datos proporcionados. ${themeContext} ${logoContext} Dirígete a la junta directiva del sanatorio. Destaca los números críticos EXACTOS. Mantén un tono institucional.`;
     } else if (exportType === 'presentation') {
-        systemInstruction = "Eres un analista de datos diseñando una presentación ejecutiva. Genera un esquema estructurado diapositiva por diapositiva en formato Markdown. Para cada diapositiva indica: Título, Puntos Clave, y Datos de soporte. Hazlo profesional y listo para ser trasladado a PowerPoint.";
+        systemInstruction = `Eres un analista de datos diseñando una presentación ejecutiva. DEBES devolver ÚNICAMENTE un objeto JSON válido con el siguiente formato exacto:
+{
+  "slides": [
+    {
+      "title": "Título de la diapositiva",
+      "subtitle": "Subtítulo opcional",
+      "bullets": ["Punto 1 con valor exacto", "Punto 2"],
+      "notes": "Notas del orador"
+    }
+  ]
+}
+Asegúrate de incluir una diapositiva inicial de Portada (con el nombre Sanatorio Argentino) y diapositivas de contenido usando los NÚMEROS EXACTOS de los datos proporcionados. No devuelvas Markdown, SOLO JSON.`;
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`
     
     const payload = {
       system_instruction: {
@@ -54,7 +74,8 @@ serve(async (req) => {
         }
       ],
       generationConfig: {
-        temperature: 0.3
+        temperature: 0.3,
+        response_mime_type: exportType === 'presentation' ? "application/json" : "text/plain"
       }
     }
 

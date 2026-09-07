@@ -21,6 +21,7 @@
     "mermaid": "^11.17.2",
     "mssql": "^12.7.0",
     "pdfjs-dist": "^6.0.227",
+    "pptxgenjs": "^4.0.1",
     "qrcode.react": "^4.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
