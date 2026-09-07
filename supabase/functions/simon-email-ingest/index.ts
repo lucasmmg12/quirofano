@@ -14,8 +14,8 @@ const MELISSA_EMAIL = Deno.env.get('MELISSA_EMAIL') || 'melissa@example.com'
 // Supabase Configuración
 // ==========================================
 // (Se inicializa dentro del handler para evitar errores de Cold Start)
- * Obtiene el token de acceso de Google usando el Refresh Token de OAuth2
- */
+
+/**
 async function getGoogleAccessToken() {
     if (!GCP_CLIENT_ID || !GCP_CLIENT_SECRET || !GCP_REFRESH_TOKEN) {
         throw new Error("Faltan credenciales de Google OAuth (GCP_CLIENT_ID, GCP_CLIENT_SECRET, GCP_REFRESH_TOKEN)")

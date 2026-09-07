@@ -43,7 +43,7 @@ export default function TelarTopBar({ dateFilter, setDateFilter, onOpenInfografi
                     }}
                 >
                     <Sparkles size={14} />
-                    Infografía AI
+                    Exportación Inteligente
                 </button>
             </div>
         </div>

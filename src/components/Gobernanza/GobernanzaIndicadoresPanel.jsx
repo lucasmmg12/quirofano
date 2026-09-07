@@ -3,7 +3,7 @@ import { Settings, Download, Search } from 'lucide-react';
 import TelarTopBar from './TelarTopBar';
 import TelarSidebar from './TelarSidebar';
 import TelarCanvas from './TelarCanvas';
-import TelarInfografiaModal from './TelarInfografiaModal';
+import TelarExportModal from './TelarExportModal';
 import { useTelarStore } from '../../store/telarStore';
 import './Gobernanza.css';
 
@@ -65,7 +65,7 @@ export default function GobernanzaIndicadoresPanel({ currentUser, addToast }) {
 
             {/* Modal de Infografía AI */}
             {isInfografiaModalOpen && (
-                <TelarInfografiaModal 
+                <TelarExportModal 
                     activeIndicators={activeIndicators} 
                     onClose={() => setIsInfografiaModalOpen(false)} 
                 />
