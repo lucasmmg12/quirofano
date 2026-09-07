@@ -11,6 +11,7 @@ export default function TelarExportModal({ activeIndicators, onClose }) {
     const [imageStatus, setImageStatus] = useState('idle');
     const [imageSrc, setImageSrc] = useState(null);
     const [imageError, setImageError] = useState('');
+    const [selectedEngine, setSelectedEngine] = useState('openai'); // 'openai' | 'google'
 
     // Estados para OmniFlash (Texto/Mermaid)
     const [flashStatus, setFlashStatus] = useState('idle');
@@ -48,7 +49,7 @@ export default function TelarExportModal({ activeIndicators, onClose }) {
             setImageStatus('generating');
             setImageError('');
             const { data, error } = await supabase.functions.invoke('gemini-infographic', {
-                body: { indicators: activeIndicators }
+                body: { indicators: activeIndicators, engine: selectedEngine }
             });
             if (error) throw new Error(error.message);
             if (!data.success) throw new Error(data.error);
@@ -163,14 +164,47 @@ export default function TelarExportModal({ activeIndicators, onClose }) {
 
                     <div style={{ flex: 1, overflow: 'auto', padding: '24px', backgroundColor: '#F1F5F9', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                         {/* ESTADOS DE CARGA Y ERROR PARA INFOGRAFIA VISUAL */}
+                        {/* SELECTOR DE MOTOR (SOLO PARA INFOGRAFIA) */}
+                        {selectedTab === 'infographic' && imageStatus !== 'generating' && (
+                            <div style={{ marginBottom: '24px', display: 'flex', gap: '12px', background: '#fff', padding: '8px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                                <button
+                                    onClick={() => setSelectedEngine('openai')}
+                                    style={{
+                                        padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600,
+                                        background: selectedEngine === 'openai' ? '#10B981' : 'transparent',
+                                        color: selectedEngine === 'openai' ? 'white' : '#64748B',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    DALL-E 3 (OpenAI)
+                                </button>
+                                <button
+                                    onClick={() => setSelectedEngine('google')}
+                                    style={{
+                                        padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600,
+                                        background: selectedEngine === 'google' ? '#3B82F6' : 'transparent',
+                                        color: selectedEngine === 'google' ? 'white' : '#64748B',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    Imagen 3 (Google)
+                                </button>
+                            </div>
+                        )}
+
                         {selectedTab === 'infographic' && imageStatus === 'generating' && (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '16px', color: '#4F46E5' }}>
                                 <Loader2 size={48} style={{ animation: 'spin 1.5s linear infinite' }} />
-                                <h3>Dibujando con Imagen 3...</h3>
+                                <h3>Dibujando con {selectedEngine === 'openai' ? 'DALL-E 3' : 'Imagen 3'}...</h3>
                             </div>
                         )}
-                        {selectedTab === 'infographic' && imageStatus === 'error' && (
-                            <div style={{ color: '#EF4444' }}>{imageError} <button onClick={generateInfographic}>Reintentar</button></div>
+                        {selectedTab === 'infographic' && (imageStatus === 'error' || imageStatus === 'idle') && (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+                                {imageStatus === 'error' && <div style={{ color: '#EF4444' }}>{imageError}</div>}
+                                <button onClick={generateInfographic} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', background: '#4F46E5', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
+                                    <Sparkles size={18} /> Generar Infografía
+                                </button>
+                            </div>
                         )}
                         {selectedTab === 'infographic' && imageStatus === 'success' && imageSrc && (
                             <div style={{ width: '100%', maxWidth: '600px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
