@@ -22,7 +22,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         }
         
         // Normal users always see config, manual, actividad_usuarios, Simon IA and Gobernanza
-        if (['config', 'manual', 'actividad_usuarios', 'beto', 'beto_rules', 'beto_analytics', 'simon', 'gobernanza'].includes(id)) return true;
+        if (['config', 'manual', 'actividad_usuarios', 'beto', 'beto_rules', 'beto_analytics', 'simon', 'gobernanza', 'gobernanza_indicadores'].includes(id)) return true;
         
         return selectedModules.includes(id);
     };
