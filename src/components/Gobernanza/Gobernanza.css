@@ -142,11 +142,11 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: box-shadow 0.2s ease;
+    resize: both;
 }
 
 .telar-card:hover {
-    transform: translateY(-2px);
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
     border-color: #DBEAFE;
 }
@@ -176,8 +176,23 @@
 
 .telar-card__content {
     padding: 16px;
-    height: 250px; /* Fixed height for charts */
+    flex: 1;
+    min-height: 250px;
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.telar-kpi-card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+}
+
+.telar-kpi-card-hover .kpi-actions {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.telar-kpi-card-hover:hover .kpi-actions {
+    opacity: 1;
 }

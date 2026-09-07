@@ -111,46 +111,50 @@ export default function TelarCanvas({ activeIndicators, onRemoveIndicator, dateF
         switch(ind.id) {
             case 'uci_volumen':
                 return (
-                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', padding: '16px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                            <h4 style={{ margin: 0, color: '#64748b', fontSize: '0.875rem', fontWeight: 600 }}>Volumen de Ingresos</h4>
-                            <Users size={20} color="#3b82f6" />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '12px', height: '100%' }}>
+                        <div style={{ background: '#eff6ff', padding: '10px', borderRadius: '10px', display: 'flex' }}>
+                            <Users size={24} color="#3b82f6" />
                         </div>
-                        <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0f172a' }}>{metrics.total}</div>
-                        <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>Pacientes admitidos</div>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <h4 style={{ margin: 0, color: '#64748b', fontSize: '0.8rem', fontWeight: 600 }}>Volumen de Ingresos</h4>
+                            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', lineHeight: '1.2' }}>{metrics.total}</div>
+                        </div>
                     </div>
                 );
             case 'uci_alos':
                 return (
-                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', padding: '16px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                            <h4 style={{ margin: 0, color: '#64748b', fontSize: '0.875rem', fontWeight: 600 }}>Promedio de Estancia</h4>
-                            <Clock size={20} color="#f59e0b" />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '12px', height: '100%' }}>
+                        <div style={{ background: '#fffbeb', padding: '10px', borderRadius: '10px', display: 'flex' }}>
+                            <Clock size={24} color="#f59e0b" />
                         </div>
-                        <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0f172a' }}>{metrics.alos} <span style={{ fontSize: '1.2rem', color: '#94a3b8' }}>días</span></div>
-                        <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>Tiempo medio de hospitalización</div>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <h4 style={{ margin: 0, color: '#64748b', fontSize: '0.8rem', fontWeight: 600 }}>Promedio de Estancia</h4>
+                            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', lineHeight: '1.2' }}>{metrics.alos} <span style={{ fontSize: '0.9rem', color: '#94a3b8' }}>días</span></div>
+                        </div>
                     </div>
                 );
             case 'uci_mortalidad':
                 return (
-                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', padding: '16px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                            <h4 style={{ margin: 0, color: '#64748b', fontSize: '0.875rem', fontWeight: 600 }}>Mortalidad Cruda</h4>
-                            <AlertTriangle size={20} color="#ef4444" />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '12px', height: '100%' }}>
+                        <div style={{ background: '#fef2f2', padding: '10px', borderRadius: '10px', display: 'flex' }}>
+                            <AlertTriangle size={24} color="#ef4444" />
                         </div>
-                        <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0f172a' }}>{metrics.mortalityRate}%</div>
-                        <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>Porcentaje de defunciones</div>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <h4 style={{ margin: 0, color: '#64748b', fontSize: '0.8rem', fontWeight: 600 }}>Mortalidad Cruda</h4>
+                            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', lineHeight: '1.2' }}>{metrics.mortalityRate}%</div>
+                        </div>
                     </div>
                 );
             case 'uci_derivacion':
                 return (
-                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', padding: '16px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                            <h4 style={{ margin: 0, color: '#64748b', fontSize: '0.875rem', fontWeight: 600 }}>Tasa de Derivación</h4>
-                            <ArrowRightCircle size={20} color="#8b5cf6" />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '12px', height: '100%' }}>
+                        <div style={{ background: '#f5f3ff', padding: '10px', borderRadius: '10px', display: 'flex' }}>
+                            <ArrowRightCircle size={24} color="#8b5cf6" />
                         </div>
-                        <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0f172a' }}>{metrics.transferRate}%</div>
-                        <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>Traslados a otros centros</div>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <h4 style={{ margin: 0, color: '#64748b', fontSize: '0.8rem', fontWeight: 600 }}>Tasa de Derivación</h4>
+                            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', lineHeight: '1.2' }}>{metrics.transferRate}%</div>
+                        </div>
                     </div>
                 );
             case 'uci_procedencia':
@@ -192,6 +196,85 @@ export default function TelarCanvas({ activeIndicators, onRemoveIndicator, dateF
         }
     };
 
+    const numericIndicators = activeIndicators.filter(ind => ind.type?.startsWith('kpi_'));
+    const chartIndicators = activeIndicators.filter(ind => !ind.type?.startsWith('kpi_'));
+
+    const renderNumericSection = () => {
+        if (numericIndicators.length === 0) return null;
+        
+        // Agrupar por sector
+        const bySector = {};
+        numericIndicators.forEach(ind => {
+            if (!bySector[ind.sector]) bySector[ind.sector] = [];
+            bySector[ind.sector].push(ind);
+        });
+
+        const kpiColors = {
+            'uci_volumen': '#3b82f6',
+            'uci_alos': '#f59e0b',
+            'uci_mortalidad': '#ef4444',
+            'uci_derivacion': '#8b5cf6'
+        };
+
+        return Object.keys(bySector).map(sector => (
+            <div key={sector} style={{ marginBottom: '32px' }} className="animate-fade-in">
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '16px', borderBottom: '2px solid #e2e8f0', paddingBottom: '8px' }}>
+                    <h3 style={{ fontSize: '1.2rem', color: '#1e293b', margin: 0, fontWeight: 700 }}>
+                        {sector}
+                    </h3>
+                    <span style={{ color: '#64748b', fontSize: '0.9rem', fontWeight: 500, marginLeft: '8px', borderLeft: '1px solid #cbd5e1', paddingLeft: '8px' }}>
+                        Indicadores Clave de Rendimiento
+                    </span>
+                    <span style={{ marginLeft: 'auto', background: '#EEF2FF', color: '#4F46E5', fontSize: '0.75rem', fontWeight: 600, padding: '4px 10px', borderRadius: '12px' }}>
+                        {dateFilter.label || dateFilter.type.replace(/_/g, ' ')}
+                    </span>
+                </div>
+                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                    {bySector[sector].map(ind => (
+                        <div key={ind.id} style={{ 
+                            flex: '1 1 180px', 
+                            minWidth: '180px', 
+                            background: '#fff', 
+                            borderRadius: '12px', 
+                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
+                            borderTop: `4px solid ${kpiColors[ind.id] || '#cbd5e1'}`,
+                            position: 'relative',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            display: 'flex',
+                            flexDirection: 'column'
+                        }}
+                        className="telar-kpi-card-hover"
+                        onClick={() => setSelectedIndicator(ind)}
+                        >
+                            {/* Acciones Hover (Quitar/Expandir) */}
+                            <div className="kpi-actions" style={{ position: 'absolute', top: '10px', right: '10px', display: 'flex', gap: '4px', zIndex: 10 }}>
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); setSelectedIndicator(ind); }}
+                                    title="Ver Tabla de Datos"
+                                    style={{ background: 'rgba(255,255,255,0.8)', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                >
+                                    <Maximize2 size={14} />
+                                </button>
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); onRemoveIndicator(ind.id); }}
+                                    title="Quitar del Telar"
+                                    style={{ background: 'rgba(255,255,255,0.8)', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                >
+                                    <X size={14} />
+                                </button>
+                            </div>
+                            {/* Contenido KPI */}
+                            <div style={{ flex: 1 }}>
+                                {renderIndicatorContent(ind)}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        ));
+    };
+
     return (
         <div style={{ position: 'relative', minHeight: '100%' }}>
             {activeIndicators.length === 0 ? (
@@ -201,43 +284,51 @@ export default function TelarCanvas({ activeIndicators, onRemoveIndicator, dateF
                     <p style={{ fontSize: '0.9rem' }}>Selecciona indicadores desde el catálogo a la izquierda</p>
                 </div>
             ) : (
-                <div className="telar-grid animate-fade-in">
-                    {activeIndicators.map(ind => (
-                        <div key={ind.id} className="telar-card">
-                            <div className="telar-card__header">
-                                <div>
-                                    <div className="telar-card__title">{ind.label}</div>
-                                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                                        <span className="telar-card__badge">{ind.sector}</span>
-                                        <span className="telar-card__badge" style={{ background: '#EEF2FF', color: '#4F46E5' }}>{dateFilter.label || dateFilter.type.replace(/_/g, ' ')}</span>
+                <div className="animate-fade-in">
+                    {/* SECCIÓN 1: KPIs Numéricos (estilo Scorecards de Tableau) */}
+                    {renderNumericSection()}
+
+                    {/* SECCIÓN 2: Gráficos y Tablas Detalladas */}
+                    {chartIndicators.length > 0 && (
+                        <div className="telar-grid">
+                            {chartIndicators.map(ind => (
+                                <div key={ind.id} className="telar-card">
+                                    <div className="telar-card__header">
+                                        <div>
+                                            <div className="telar-card__title">{ind.label}</div>
+                                            <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                                                <span className="telar-card__badge">{ind.sector}</span>
+                                                <span className="telar-card__badge" style={{ background: '#EEF2FF', color: '#4F46E5' }}>{dateFilter.label || dateFilter.type.replace(/_/g, ' ')}</span>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <button 
+                                                onClick={() => setSelectedIndicator(ind)}
+                                                title="Ver Tabla de Datos"
+                                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--neutral-400)', padding: '4px' }}
+                                            >
+                                                <Maximize2 size={16} />
+                                            </button>
+                                            <button 
+                                                onClick={() => onRemoveIndicator(ind.id)}
+                                                title="Quitar del Telar"
+                                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--neutral-400)', padding: '4px' }}
+                                            >
+                                                <X size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div 
+                                        className="telar-card__content"
+                                        onClick={() => setSelectedIndicator(ind)}
+                                        style={{ cursor: 'pointer' }}
+                                    >
+                                        {renderIndicatorContent(ind)}
                                     </div>
                                 </div>
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                    <button 
-                                        onClick={() => setSelectedIndicator(ind)}
-                                        title="Ver Tabla de Datos"
-                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--neutral-400)', padding: '4px' }}
-                                    >
-                                        <Maximize2 size={16} />
-                                    </button>
-                                    <button 
-                                        onClick={() => onRemoveIndicator(ind.id)}
-                                        title="Quitar del Telar"
-                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--neutral-400)', padding: '4px' }}
-                                    >
-                                        <X size={16} />
-                                    </button>
-                                </div>
-                            </div>
-                            <div 
-                                className="telar-card__content"
-                                onClick={() => setSelectedIndicator(ind)}
-                                style={{ cursor: 'pointer' }}
-                            >
-                                {renderIndicatorContent(ind)}
-                            </div>
+                            ))}
                         </div>
-                    ))}
+                    )}
                 </div>
             )}
 
