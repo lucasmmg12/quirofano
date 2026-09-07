@@ -253,32 +253,44 @@ export function BetoExcelDownload({ excelData }) {
         setDownloading(true);
         try {
             const XLSX = await import('xlsx');
-
-            // Build header row with filters subtitle
-            const headerRows = [];
-            if (excelData.filters) {
-                headerRows.push([`Reporte: ${excelData.reportName || 'Datos'}`]);
-                headerRows.push([`Filtros: ${excelData.filters}`]);
-                headerRows.push([`Generado: ${new Date().toLocaleDateString('es-AR')} por Beto IA`]);
-                headerRows.push([]); // Empty row separator
-            }
-            headerRows.push(excelData.columns);
-
-            // Build worksheet data
-            const wsData = [...headerRows, ...excelData.data];
-            const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-            // Style column widths based on header lengths
-            ws['!cols'] = excelData.columns.map((col, i) => {
-                const maxLen = Math.max(
-                    col.length,
-                    ...excelData.data.slice(0, 50).map(row => String(row[i] || '').length)
-                );
-                return { wch: Math.min(Math.max(maxLen + 2, 10), 40) };
-            });
-
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, excelData.sheetName || 'Datos');
+
+            const processSheet = (sheetData, index) => {
+                const headerRows = [];
+                if (excelData.filters || sheetData.filters) {
+                    if (index === 0) { // Only put report title in the first sheet if global, or in all if needed. Usually just the first sheet is fine.
+                        headerRows.push([`Reporte: ${excelData.reportName || sheetData.reportName || 'Datos'}`]);
+                    }
+                    headerRows.push([`Filtros: ${sheetData.filters || excelData.filters}`]);
+                    headerRows.push([`Generado: ${new Date().toLocaleDateString('es-AR')} por Beto IA`]);
+                    headerRows.push([]); // Empty row separator
+                }
+                headerRows.push(sheetData.columns || []);
+
+                const wsData = [...headerRows, ...(sheetData.data || [])];
+                const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+                // Style column widths based on header lengths
+                if (sheetData.columns && sheetData.data) {
+                    ws['!cols'] = sheetData.columns.map((col, i) => {
+                        const maxLen = Math.max(
+                            col.length,
+                            ...sheetData.data.slice(0, 50).map(row => String(row[i] || '').length)
+                        );
+                        return { wch: Math.min(Math.max(maxLen + 2, 10), 40) };
+                    });
+                }
+                
+                XLSX.utils.book_append_sheet(wb, ws, sheetData.sheetName || `Datos ${index + 1}`);
+            };
+
+            if (excelData.sheets && Array.isArray(excelData.sheets)) {
+                // Multi-sheet mode
+                excelData.sheets.forEach((sheet, idx) => processSheet(sheet, idx));
+            } else {
+                // Single-sheet mode (Legacy)
+                processSheet(excelData, 0);
+            }
 
             const fileName = `${excelData.reportName || 'Reporte_Beto'}_${new Date().toISOString().split('T')[0]}.xlsx`;
             XLSX.writeFile(wb, fileName);

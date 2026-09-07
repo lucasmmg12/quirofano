@@ -3,6 +3,7 @@ import { Settings, Download, Search } from 'lucide-react';
 import TelarTopBar from './TelarTopBar';
 import TelarSidebar from './TelarSidebar';
 import TelarCanvas from './TelarCanvas';
+import { useTelarStore } from '../../store/telarStore';
 import './Gobernanza.css';
 
 export default function GobernanzaIndicadoresPanel({ currentUser, addToast }) {
@@ -16,12 +17,12 @@ export default function GobernanzaIndicadoresPanel({ currentUser, addToast }) {
     });
 
     // 2. Indicadores activos en el Telar (lista de objetos con id, sector, tipo)
-    const [activeIndicators, setActiveIndicators] = useState([]);
+    const { activeIndicators, addIndicator, removeIndicator } = useTelarStore();
 
     // Handlers
     const handleAddIndicator = (indicator) => {
         if (!activeIndicators.find(i => i.id === indicator.id)) {
-            setActiveIndicators(prev => [...prev, indicator]);
+            addIndicator(indicator);
             addToast(`Indicador "${indicator.label}" añadido al telar`, 'success');
         } else {
             addToast('El indicador ya está en el telar', 'info');
@@ -29,7 +30,7 @@ export default function GobernanzaIndicadoresPanel({ currentUser, addToast }) {
     };
 
     const handleRemoveIndicator = (indicatorId) => {
-        setActiveIndicators(prev => prev.filter(i => i.id !== indicatorId));
+        removeIndicator(indicatorId);
     };
 
     return (

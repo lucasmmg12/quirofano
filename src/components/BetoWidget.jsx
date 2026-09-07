@@ -17,6 +17,7 @@ import BetoPresentationMode from './BetoPresentationMode';
 import BetoTutorial from './BetoTutorial';
 import { downloadBetoReportPdf, isReportMessage } from '../utils/betoReportPdf';
 import { generateShare } from '../api/shareClient';
+import { useTelarStore } from '../store/telarStore';
 
 const BETO_AVATAR = '/beto.jpg';
 const BETO_GIF = '/The_avatar_is_greetings.gif';
@@ -33,6 +34,7 @@ const SMART_SUGGESTIONS = {
     metricas: ['📊 Resumen mensual', '📈 Comparar con mes anterior', '🏥 Métricas por especialidad', '📥 Exportar métricas a Excel'],
     auditoria_historias: ['📊 ¿Cómo auditar historias clínicas?', '📋 Explicar pipeline de auditoría', '💡 ¿Qué significa Sin Fecha de Alta?', '🧭 Llevame a Inicio'],
     facturacion: ['🧾 Fichas pendientes de facturar', '📊 Resumen de facturación del mes', '🔙 Fichas devueltas', '📚 Enseñame facturación'],
+    gobernanza_indicadores: ['📊 Analizar indicadores del Telar', '⬇️ Exportar Telar a Excel', '📄 Generar Reporte PDF', '💡 ¿Qué vemos aquí?'],
     default: ['🔔 ¿Qué hay pendiente?', '📊 Reporte del día', '📥 Exportar datos a Excel', '❓ ¿Cómo funciona esto?'],
 };
 
@@ -115,6 +117,8 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
     // Share Record
     const [isSharing, setIsSharing] = useState(false);
     const [shareUrl, setShareUrl] = useState(null);
+    // Telar Context
+    const { activeIndicators } = useTelarStore();
     // Proactive notifications
     const [proactiveNudge, setProactiveNudge] = useState(null);
     const nudgeTimerRef = useRef(null);
@@ -268,6 +272,7 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
                     messages: apiMessages,
                     user: currentUser ? { nombre: currentUser.nombre, usuario: currentUser.usuario } : null,
                     currentModule: currentModule || 'inicio',
+                    moduleContext: currentModule === 'gobernanza_indicadores' ? activeIndicators : null,
                     stream: true,
                 }),
             });

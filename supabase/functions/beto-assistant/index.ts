@@ -366,6 +366,7 @@ const SYSTEM_PROMPT_BASE = `Eres **Beto**, el asistente virtual de inteligencia 
 13. **🔍 Auditoría de Historias Clínicas** — Auditoría de planillas de evolución médica y alta de SALUS (análisis temporal en memoria).
 14. **📚 Manual de Procedimientos** — Instructivos institucionales normativos con formato oficial del SGC / ITAES elaborado por Lucas Marinero.
 15. **⚙️ Configuración y Gobernanza** — Gestión de usuarios, roles, líneas de WhatsApp y parámetros del sistema.
+16. **📈 Gobernanza de Indicadores (Telar)** — Dashboard dinámico que muestra indicadores visuales y KPIs del sanatorio en tiempo real. En este módulo, recibís el contexto visual exacto de lo que el usuario está viendo (el \`moduleContext\`).
 
 ## CÓMO BUSCAR DATOS
 - Usá la tool \`query_database\` para CUALQUIER consulta de datos. Generá SQL SELECT válido.
@@ -487,6 +488,11 @@ Cuando el usuario pida exportar datos a Excel, descargar un reporte, o diga cosa
 ### Formato del bloque beto-excel:
 \`\`\`beto-excel
 {"reportName": "Deudas_OSDE_Mayo2026", "sheetName": "Datos", "columns": ["Paciente", "NHC", "Deuda Total", "Cobertura"], "data": [["PEREZ, JUAN", "12345", 150000, "OSDE"], ["GARCIA, ANA", "67890", 85000, "OSDE"]], "filters": "Obra Social: OSDE | Período: Mayo 2026"}
+\`\`\`
+
+Si necesitás exportar MÚLTIPLES pestañas (por ejemplo, exportando los indicadores del Telar), usá el array \`sheets\`:
+\`\`\`beto-excel
+{"reportName": "Telar_Indicadores", "filters": "Exportación múltiple", "sheets": [{"sheetName": "Métrica1", "columns": ["A", "B"], "data": [["1", "2"]]}, {"sheetName": "Métrica2", "columns": ["C", "D"], "data": [["3", "4"]]}]}
 \`\`\`
 
 **REGLAS para Excel:**
@@ -1421,7 +1427,7 @@ Deno.serve(async (req) => {
     }
 
     try {
-        const { messages, user, currentModule, stream } = await req.json();
+        const { messages, user, currentModule, moduleContext, stream } = await req.json();
         const startTime = Date.now(); // #12 analytics
 
         if (!messages || !Array.isArray(messages)) {
@@ -1464,15 +1470,20 @@ NO te excedas — una o dos referencias por respuesta, bien colocadas.`;
             turnos: 'Cola de Turnos', deudas: 'Deudas', cirugias: 'Cirugías',
             beto: 'Beto IA', configuracion: 'Configuración',
             auditoria_historias: 'Auditoría de Historias Clínicas',
+            gobernanza_indicadores: 'Gobernanza de Indicadores (Telar)'
         };
         const screenContext = currentModule
             ? `\nEl usuario está actualmente en el módulo: **${moduleNames[currentModule] || currentModule}**. Si pregunta "qué veo acá" o "qué es esto", explicale ese módulo.`
             : '';
 
+        const extraContext = moduleContext
+            ? `\n\n📌 **DATOS ACTIVOS EN PANTALLA (Telar/Contexto)**:\nEl usuario está viendo los siguientes datos. Podés usarlos para responder preguntas, hacer resúmenes o exportarlos a Excel si te lo pide:\n${JSON.stringify(moduleContext)}`
+            : '';
+
         const contextInfo = `
 
 Fecha y hora actual: ${fechaHoy} (${now.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}).
-${user ? `Usuario actual: ${user.nombre} (${user.usuario}). Tratalo por su nombre.` : ''}${screenContext}
+${user ? `Usuario actual: ${user.nombre} (${user.usuario}). Tratalo por su nombre.` : ''}${screenContext}${extraContext}
 ${personalityBoost}
 
 ${schemaContext}`;
