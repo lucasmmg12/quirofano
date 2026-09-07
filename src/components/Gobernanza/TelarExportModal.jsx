@@ -20,7 +20,7 @@ export default function TelarExportModal({ activeIndicators, onClose }) {
 
     // Opciones del menú
     const tabs = [
-        { id: 'infographic', label: 'Infografía Visual', icon: <ImageIcon size={18} />, description: 'Diseño clínico generado por Imagen 3' },
+        { id: 'infographic', label: 'Infografía Visual', icon: <ImageIcon size={18} />, description: 'Diseño clínico generado por DALL-E / Gemini 3.1' },
         { id: 'conceptual_map', label: 'Mapa Conceptual', icon: <Map size={18} />, description: 'Grafo de métricas (Mermaid)' },
         { id: 'presentation', label: 'Presentación', icon: <Presentation size={18} />, description: 'Estructura para diapositivas' },
         { id: 'speech_script', label: 'Guión de Discurso', icon: <FileText size={18} />, description: 'Discurso profesional (Markdown)' },
@@ -187,7 +187,7 @@ export default function TelarExportModal({ activeIndicators, onClose }) {
                                         transition: 'all 0.2s'
                                     }}
                                 >
-                                    Imagen 3 (Google)
+                                    Gemini 3.1 Image (Google)
                                 </button>
                             </div>
                         )}
@@ -195,7 +195,7 @@ export default function TelarExportModal({ activeIndicators, onClose }) {
                         {selectedTab === 'infographic' && imageStatus === 'generating' && (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '16px', color: '#4F46E5' }}>
                                 <Loader2 size={48} style={{ animation: 'spin 1.5s linear infinite' }} />
-                                <h3>Dibujando con {selectedEngine === 'openai' ? 'DALL-E 3' : 'Imagen 3'}...</h3>
+                                <h3>Dibujando con {selectedEngine === 'openai' ? 'DALL-E 3' : 'Gemini 3.1'}...</h3>
                             </div>
                         )}
                         {selectedTab === 'infographic' && (imageStatus === 'error' || imageStatus === 'idle') && (

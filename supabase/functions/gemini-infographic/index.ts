@@ -1,44 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import * as jose from "https://deno.land/x/jose@v4.14.4/index.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
-
-async function getVertexAccessToken(credentialsJsonStr: string) {
-  const credentials = JSON.parse(credentialsJsonStr)
-  
-  const privateKeyEnv = credentials.private_key.replace(/\\n/g, '\n')
-  const privateKey = await jose.importPKCS8(privateKeyEnv, 'RS256')
-
-  const jwt = await new jose.SignJWT({
-    iss: credentials.client_email,
-    scope: 'https://www.googleapis.com/auth/cloud-platform',
-    aud: credentials.token_uri,
-  })
-    .setProtectedHeader({ alg: 'RS256' })
-    .setIssuedAt()
-    .setExpirationTime('1h')
-    .sign(privateKey)
-
-  const response = await fetch(credentials.token_uri, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Error obteniendo Google Access Token: ${response.status} - ${errorText}`)
-  }
-
-  const data = await response.json()
-  return {
-    accessToken: data.access_token,
-    projectId: credentials.project_id
-  }
 }
 
 serve(async (req) => {
@@ -92,7 +57,6 @@ serve(async (req) => {
       const arrayBuffer = await imgBlob.arrayBuffer()
       const uint8Array = new Uint8Array(arrayBuffer)
       
-      // Convert Uint8Array to base64 safely
       let binary = ''
       const len = uint8Array.byteLength
       for (let i = 0; i < len; i++) {
@@ -101,44 +65,47 @@ serve(async (req) => {
       imageBase64 = btoa(binary)
 
     } else if (engine === 'google') {
-      const credsJson = Deno.env.get('VERTEX_AI_CREDENTIALS')
-      if (!credsJson) throw new Error('VERTEX_AI_CREDENTIALS no configurada.')
+      const apiKey = Deno.env.get('GEMINI_API_KEY')
+      if (!apiKey) throw new Error('GEMINI_API_KEY no configurada.')
 
-      const { accessToken, projectId } = await getVertexAccessToken(credsJson)
-      const location = "us-central1"
-      
-      // Imagen 3 on Vertex AI Endpoint
-      const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagen-3.0-generate-001:predict`
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${apiKey}`
 
       const payload = {
-        instances: [ { prompt: prompt } ],
-        parameters: {
-          sampleCount: 1,
-          aspectRatio: "3:4",
-          outputOptions: { mimeType: "image/jpeg" }
-        }
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: prompt }
+            ]
+          }
+        ]
       }
 
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
       })
 
       if (!response.ok) {
         const errText = await response.text()
-        throw new Error(`Error de Vertex AI: ${response.status} - ${errText}`)
+        throw new Error(`Error de Google AI Studio: ${response.status} - ${errText}`)
       }
 
       const data = await response.json()
-      if (!data.predictions || data.predictions.length === 0) {
-        throw new Error('La API de Imagen 3 no devolvió ninguna predicción.')
+      
+      if (!data.candidates || data.candidates.length === 0) {
+        throw new Error('La API de Gemini no devolvió ninguna predicción.')
       }
 
-      imageBase64 = data.predictions[0].bytesBase64Encoded
+      const inlineData = data.candidates[0]?.content?.parts?.[0]?.inlineData
+      if (!inlineData || !inlineData.data) {
+        throw new Error('La respuesta de Gemini no incluyó una imagen válida.')
+      }
+
+      imageBase64 = inlineData.data
       
     } else {
       throw new Error(`Motor de IA no soportado: ${engine}`)
