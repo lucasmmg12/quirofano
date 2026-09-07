@@ -4,9 +4,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
 // ==========================================
 // Google / Gmail API - Configuración (OAuth2)
 // ==========================================
-const GCP_CLIENT_ID = Deno.env.get('GCP_CLIENT_ID')
-const GCP_CLIENT_SECRET = Deno.env.get('GCP_CLIENT_SECRET')
-const GCP_REFRESH_TOKEN = Deno.env.get('GCP_REFRESH_TOKEN')
 const TARGET_MAILBOX = "me" 
 const MELISSA_EMAIL = Deno.env.get('MELISSA_EMAIL') || 'melissa@example.com'
 
@@ -19,6 +16,10 @@ const MELISSA_EMAIL = Deno.env.get('MELISSA_EMAIL') || 'melissa@example.com'
  * Obtiene el token de acceso de Google usando el Refresh Token de OAuth2
  */
 async function getGoogleAccessToken() {
+    const GCP_CLIENT_ID = Deno.env.get('GCP_CLIENT_ID')
+    const GCP_CLIENT_SECRET = Deno.env.get('GCP_CLIENT_SECRET')
+    const GCP_REFRESH_TOKEN = Deno.env.get('GCP_REFRESH_TOKEN')
+
     if (!GCP_CLIENT_ID || !GCP_CLIENT_SECRET || !GCP_REFRESH_TOKEN) {
         throw new Error("Faltan credenciales de Google OAuth (GCP_CLIENT_ID, GCP_CLIENT_SECRET, GCP_REFRESH_TOKEN)")
     }
