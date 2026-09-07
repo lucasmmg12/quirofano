@@ -110,6 +110,7 @@ export default function ActivosPanel({ currentUser, addToast }) {
             case 'En Mantenimiento': return { bg: '#ffedd5', text: '#ea580c' };
             case 'En Revisión': return { bg: '#ffedd5', text: '#ea580c' };
             case 'En Calibración': return { bg: '#e0e7ff', text: '#4f46e5' };
+            case 'Baja Definitiva': return { bg: '#94a3b8', text: '#ffffff' }; // Gris oscuro / blanco para baja
             default: return { bg: '#f1f5f9', text: '#64748b' };
         }
     };
@@ -521,6 +522,7 @@ function AltaEquipoModal({ sedes, currentUser, equipoToEdit, onClose, onSuccess,
                                 <option value="Operativo">Operativo</option>
                                 <option value="En Revisión">En Revisión</option>
                                 <option value="Fuera de Servicio (Taller)">Fuera de Servicio (Taller)</option>
+                                <option value="Baja Definitiva">Baja Definitiva</option>
                             </select>
                         </div>
                         <div style={{ flex: '1 1 200px' }}>
@@ -623,6 +625,7 @@ function IntervencionModal({ equipo, currentUser, onClose, onSuccess, addToast }
                                 <option value="Operativo">Operativo (Quedó OK)</option>
                                 <option value="En Revisión">En Revisión (En progreso)</option>
                                 <option value="Fuera de Servicio (Taller)">Fuera de Servicio (Taller)</option>
+                                <option value="Baja Definitiva">Baja Definitiva (Retirado)</option>
                             </select>
                         </div>
                     </div>
