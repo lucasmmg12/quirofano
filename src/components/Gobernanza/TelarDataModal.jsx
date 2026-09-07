@@ -2,7 +2,7 @@ import React from 'react';
 import { X, FileSpreadsheet, FileText } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 const mockTableData = [
     { id: 1, fecha: '2026-09-01', sector: 'Quirófano', detalle: 'Cirugía General', valor: 45 },
@@ -30,7 +30,7 @@ export default function TelarDataModal({ indicator, onClose, dateFilter }) {
             tableRows.push([row.id, row.fecha, row.sector, row.detalle, row.valor]);
         });
 
-        doc.autoTable({
+        autoTable(doc, {
             head: [tableColumn],
             body: tableRows,
             startY: 30,

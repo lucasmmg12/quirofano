@@ -13,11 +13,7 @@ const MELISSA_EMAIL = Deno.env.get('MELISSA_EMAIL') || 'melissa@example.com'
 // ==========================================
 // Supabase Configuración
 // ==========================================
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!)
-
-/**
+// (Se inicializa dentro del handler para evitar errores de Cold Start)
  * Obtiene el token de acceso de Google usando el Refresh Token de OAuth2
  */
 async function getGoogleAccessToken() {
@@ -69,6 +65,15 @@ serve(async (req) => {
 
     try {
         console.log("Iniciando ingestión de correos desde Gmail (Simon IA)...")
+        
+        const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
+        const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+        
+        if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+            throw new Error('Faltan variables de entorno de Supabase (SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY).')
+        }
+        
+        const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
         const token = await getGoogleAccessToken()
         
