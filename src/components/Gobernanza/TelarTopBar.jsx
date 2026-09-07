@@ -1,7 +1,7 @@
 import React from 'react';
-import { LayoutDashboard, Calendar } from 'lucide-react';
+import { LayoutDashboard, Calendar, Sparkles } from 'lucide-react';
 
-export default function TelarTopBar({ dateFilter, setDateFilter }) {
+export default function TelarTopBar({ dateFilter, setDateFilter, onOpenInfografia }) {
     const filters = [
         { id: 'this_month', label: 'Este Mes' },
         { id: 'last_month', label: 'Mes Anterior' },
@@ -28,6 +28,23 @@ export default function TelarTopBar({ dateFilter, setDateFilter }) {
                         {f.label}
                     </button>
                 ))}
+                
+                <div style={{ width: '1px', height: '24px', background: 'var(--neutral-200)', margin: '0 8px' }}></div>
+                
+                <button
+                    className="telar-filter-btn"
+                    onClick={onOpenInfografia}
+                    style={{ 
+                        background: 'linear-gradient(135deg, #4F46E5, #7C3AED)', 
+                        color: 'white', 
+                        border: 'none',
+                        fontWeight: 600,
+                        gap: '6px'
+                    }}
+                >
+                    <Sparkles size={14} />
+                    Infografía AI
+                </button>
             </div>
         </div>
     );

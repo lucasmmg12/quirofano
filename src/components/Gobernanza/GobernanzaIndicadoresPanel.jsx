@@ -3,6 +3,7 @@ import { Settings, Download, Search } from 'lucide-react';
 import TelarTopBar from './TelarTopBar';
 import TelarSidebar from './TelarSidebar';
 import TelarCanvas from './TelarCanvas';
+import TelarInfografiaModal from './TelarInfografiaModal';
 import { useTelarStore } from '../../store/telarStore';
 import './Gobernanza.css';
 
@@ -18,6 +19,9 @@ export default function GobernanzaIndicadoresPanel({ currentUser, addToast }) {
 
     // 2. Indicadores activos en el Telar (lista de objetos con id, sector, tipo)
     const { activeIndicators, addIndicator, removeIndicator } = useTelarStore();
+
+    // 3. Estado del Modal de Infografía AI
+    const [isInfografiaModalOpen, setIsInfografiaModalOpen] = useState(false);
 
     // Handlers
     const handleAddIndicator = (indicator) => {
@@ -39,6 +43,7 @@ export default function GobernanzaIndicadoresPanel({ currentUser, addToast }) {
             <TelarTopBar 
                 dateFilter={dateFilter} 
                 setDateFilter={setDateFilter} 
+                onOpenInfografia={() => setIsInfografiaModalOpen(true)}
             />
 
             <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -57,6 +62,14 @@ export default function GobernanzaIndicadoresPanel({ currentUser, addToast }) {
                     />
                 </div>
             </div>
+
+            {/* Modal de Infografía AI */}
+            {isInfografiaModalOpen && (
+                <TelarInfografiaModal 
+                    activeIndicators={activeIndicators} 
+                    onClose={() => setIsInfografiaModalOpen(false)} 
+                />
+            )}
         </div>
     );
 }
