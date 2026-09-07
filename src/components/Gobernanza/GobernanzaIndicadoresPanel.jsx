@@ -23,6 +23,9 @@ export default function GobernanzaIndicadoresPanel({ currentUser, addToast }) {
     // 3. Estado del Modal de Infografía AI
     const [isInfografiaModalOpen, setIsInfografiaModalOpen] = useState(false);
 
+    // 4. Métricas calculadas por los Canvas
+    const [globalMetrics, setGlobalMetrics] = useState({});
+
     // Handlers
     const handleAddIndicator = (indicator) => {
         if (!activeIndicators.find(i => i.id === indicator.id)) {
@@ -35,6 +38,10 @@ export default function GobernanzaIndicadoresPanel({ currentUser, addToast }) {
 
     const handleRemoveIndicator = (indicatorId) => {
         removeIndicator(indicatorId);
+    };
+
+    const handleMetricsUpdate = (newMetrics) => {
+        setGlobalMetrics(prev => ({ ...prev, ...newMetrics }));
     };
 
     return (
@@ -59,6 +66,7 @@ export default function GobernanzaIndicadoresPanel({ currentUser, addToast }) {
                         activeIndicators={activeIndicators}
                         onRemoveIndicator={handleRemoveIndicator}
                         dateFilter={dateFilter}
+                        onMetricsUpdate={handleMetricsUpdate}
                     />
                 </div>
             </div>
@@ -67,6 +75,7 @@ export default function GobernanzaIndicadoresPanel({ currentUser, addToast }) {
             {isInfografiaModalOpen && (
                 <TelarExportModal 
                     activeIndicators={activeIndicators} 
+                    globalMetrics={globalMetrics}
                     onClose={() => setIsInfografiaModalOpen(false)} 
                 />
             )}

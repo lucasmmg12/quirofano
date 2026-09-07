@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabase';
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1'];
 
-export default function TelarCanvas({ activeIndicators, onRemoveIndicator, dateFilter }) {
+export default function TelarCanvas({ activeIndicators, onRemoveIndicator, dateFilter, onMetricsUpdate }) {
     const [selectedIndicator, setSelectedIndicator] = useState(null);
     const [loading, setLoading] = useState(true);
     const [uciData, setUciData] = useState([]);
@@ -83,14 +83,19 @@ export default function TelarCanvas({ activeIndicators, onRemoveIndicator, dateF
         const motivoArray = Object.keys(motivoCount).map(k => ({ name: k, value: motivoCount[k] }));
         motivoArray.sort((a, b) => b.value - a.value);
 
-        setMetrics({
+        const calculatedMetrics = {
             total,
             mortalityRate,
             alos,
             transferRate,
             procedencia: procArray.slice(0, 6),
             motivoAlta: motivoArray
-        });
+        };
+        
+        setMetrics(calculatedMetrics);
+        if (onMetricsUpdate) {
+            onMetricsUpdate({ uci: calculatedMetrics });
+        }
     };
 
     // Componente interno para renderizar el gráfico o KPI correcto según el indicador
@@ -242,6 +247,7 @@ export default function TelarCanvas({ activeIndicators, onRemoveIndicator, dateF
                     indicator={selectedIndicator} 
                     onClose={() => setSelectedIndicator(null)} 
                     dateFilter={dateFilter}
+                    rawData={uciData}
                 />
             )}
         </div>

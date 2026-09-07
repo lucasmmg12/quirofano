@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import MermaidRenderer from './MermaidRenderer';
 import pptxgen from 'pptxgenjs';
 
-export default function TelarExportModal({ activeIndicators, onClose }) {
+export default function TelarExportModal({ activeIndicators, globalMetrics, onClose }) {
     const [selectedTab, setSelectedTab] = useState('infographic');
     const [selectedTheme, setSelectedTheme] = useState('institutional_blue');
     
@@ -50,7 +50,7 @@ export default function TelarExportModal({ activeIndicators, onClose }) {
             setImageStatus('generating');
             setImageError('');
             const { data, error } = await supabase.functions.invoke('gemini-infographic', {
-                body: { indicators: activeIndicators, engine: 'google', theme: selectedTheme }
+                body: { indicators: activeIndicators, metrics: globalMetrics, engine: 'google', theme: selectedTheme }
             });
             if (error) throw new Error(error.message);
             if (!data.success) throw new Error(data.error);
@@ -129,7 +129,7 @@ export default function TelarExportModal({ activeIndicators, onClose }) {
             setFlashContent('');
             
             const { data, error } = await supabase.functions.invoke('gemini-omniflash', {
-                body: { indicators: activeIndicators, exportType: type, theme: selectedTheme }
+                body: { indicators: activeIndicators, metrics: globalMetrics, exportType: type, theme: selectedTheme }
             });
 
             if (error) throw new Error(error.message);
