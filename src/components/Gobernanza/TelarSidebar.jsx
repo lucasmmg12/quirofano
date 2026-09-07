@@ -27,6 +27,14 @@ const CATALOGO = [
             { id: 'c_incidentes', label: 'Incidentes Reportados', type: 'bar' },
             { id: 'c_resolucion', label: 'Tiempos de Resolución', type: 'line' }
         ]
+    },
+    {
+        id: 'facturacion',
+        label: 'Auditoría / Facturación',
+        indicadores: [
+            { id: 'f_rechazos', label: 'Tasa de Rechazo (Débitos)', type: 'pie' },
+            { id: 'f_tiempos', label: 'Días de Cierre de Lote', type: 'line' }
+        ]
     }
 ];
 

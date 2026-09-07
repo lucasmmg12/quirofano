@@ -20,7 +20,7 @@ const mockDataPie = [
     { name: 'Llegada Tarde', value: 45 },
     { name: 'Causas Médicas', value: 25 },
 ];
-const COLORS = ['#60A5FA', '#34D399', '#F87171'];
+const COLORS = ['#3B82F6', '#10B981', '#F43F5E', '#8B5CF6'];
 
 export default function TelarCanvas({ activeIndicators, onRemoveIndicator, dateFilter }) {
     const [selectedIndicator, setSelectedIndicator] = useState(null);
@@ -32,11 +32,20 @@ export default function TelarCanvas({ activeIndicators, onRemoveIndicator, dateF
                 return (
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={mockDataBar} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
-                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
-                            <Tooltip cursor={{ fill: '#F1F5F9' }} />
-                            <Bar dataKey="valor" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                            <defs>
+                                <linearGradient id="colorBar" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.9}/>
+                                    <stop offset="95%" stopColor="#2563EB" stopOpacity={0.7}/>
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B', fontWeight: 500 }} />
+                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B', fontWeight: 500 }} />
+                            <Tooltip 
+                                cursor={{ fill: '#F8FAFC' }} 
+                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                            />
+                            <Bar dataKey="valor" fill="url(#colorBar)" radius={[6, 6, 0, 0]} />
                         </BarChart>
                     </ResponsiveContainer>
                 );
@@ -44,11 +53,19 @@ export default function TelarCanvas({ activeIndicators, onRemoveIndicator, dateF
                 return (
                     <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={mockDataLine} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
-                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
-                            <Tooltip />
-                            <Line type="monotone" dataKey="valor" stroke="#10B981" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                            <defs>
+                                <linearGradient id="colorLine" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
+                                    <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B', fontWeight: 500 }} />
+                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B', fontWeight: 500 }} />
+                            <Tooltip 
+                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                            />
+                            <Line type="monotone" dataKey="valor" stroke="#10B981" strokeWidth={3} dot={{ r: 4, fill: '#fff', strokeWidth: 2 }} activeDot={{ r: 6, strokeWidth: 0, fill: '#059669' }} />
                         </LineChart>
                     </ResponsiveContainer>
                 );
