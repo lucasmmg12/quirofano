@@ -385,7 +385,26 @@ export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
             }
         }
     }
-    allData = Array.from(mapByAdmision.values());
+    // Deduplicación preventiva de prórrogas/cortes de mes (-P1, -P2):
+    // Si la admisión base ya está presente y facturada (o tiene facturas), descartar el registro duplicado -P no facturado
+    const baseFacturadas = new Set(
+        allData
+            .filter(r => r.facturada || (r.cantidad_facturas && r.cantidad_facturas > 0))
+            .map(r => (r.numero_admision || '').trim().toUpperCase())
+    );
+
+    allData = allData.filter(row => {
+        const num = (row.numero_admision || '').trim().toUpperCase();
+        const pMatch = num.match(/^(.+)-P\d+$/i);
+        if (pMatch) {
+            const baseNum = pMatch[1];
+            // Si la base ya existe y está facturada, y este -P no está facturado, se descarta para evitar duplicidad
+            if (baseFacturadas.has(baseNum) && !row.facturada) {
+                return false;
+            }
+        }
+        return true;
+    });
 
     if (search) {
         const s = search.toLowerCase().trim();
