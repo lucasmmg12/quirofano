@@ -29,6 +29,12 @@ export default defineConfig({
           });
         },
       },
+      // Proxy para Simon IA RAG API
+      '/rag-api': {
+        target: 'https://contactcenter-1.onrender.com/api',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/rag-api/, ''),
+      },
     },
   },
 })

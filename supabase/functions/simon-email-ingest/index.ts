@@ -93,7 +93,18 @@ serve(async (req) => {
         }
 
         // 2. Buscar últimos correos en la bandeja (Filtrados por remitente)
-        const query = `from:lucasmmarinero@gmail.com OR from:malbarracin@sanatorioargentino.com.ar`
+        const defaultSenders = [
+            'lucasmmarinero@gmail.com',
+            'malbarracin@sanatorioargentino.com.ar',
+            'rescanuela@sanatorioargentino.com.ar'
+        ]
+        const customSenders = (Deno.env.get('ALLOWED_EMAIL_SENDERS') || '')
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean)
+
+        const allSenders = Array.from(new Set([...defaultSenders, ...customSenders]))
+        const query = allSenders.map(email => `from:${email}`).join(' OR ')
         const searchUrl = `https://gmail.googleapis.com/gmail/v1/users/${TARGET_MAILBOX}/messages?q=${encodeURIComponent(query)}&maxResults=10`
         
         const searchResp = await fetch(searchUrl, {
@@ -111,7 +122,7 @@ serve(async (req) => {
         // Filtrar los que ya procesamos
         messages = messages.filter(m => !processedIds.includes(m.id))
 
-        console.log(`Se encontraron ${messages.length} correos nuevos.`)
+        console.log(`Se encontraron ${messages.length} correos nuevos para remitentes: ${allSenders.join(', ')}`)
 
         const processedResults = []
 
@@ -126,11 +137,13 @@ serve(async (req) => {
             })
             const msg = await msgResp.json()
 
-            // Extraer asunto (Subject)
+            // Extraer asunto (Subject) y remitente (From)
             const subjectHeader = msg.payload?.headers?.find((h: any) => h.name.toLowerCase() === 'subject')
             const subject = subjectHeader ? subjectHeader.value : 'Sin Asunto'
+            const fromHeader = msg.payload?.headers?.find((h: any) => h.name.toLowerCase() === 'from')
+            const senderEmail = fromHeader ? fromHeader.value : 'Desconocido'
             
-            console.log(`Procesando mensaje ID: ${msgId} | Asunto: ${subject}`)
+            console.log(`Procesando mensaje ID: ${msgId} | De: ${senderEmail} | Asunto: ${subject}`)
 
             // Extraer el texto (body)
             let rawBody = ''
@@ -214,7 +227,7 @@ serve(async (req) => {
 
             // Insertar como Regla en el RAG API (estado pending para validación embebido en el texto)
             const baseText = cleanText || '(Correo solo con adjuntos)'
-            const finalRuleText = `[ESTADO: pendiente]\n[AUTOR: Ingestión Automática (Melissa)]\n${baseText}${attachmentNotes ? '\n\n--- Reporte de Adjuntos ---\n' + attachmentNotes : ''}`
+            const finalRuleText = `[ESTADO: pendiente]\n[REMITENTE: ${senderEmail}]\n[AUTOR: Ingestión Automática]\n${baseText}${attachmentNotes ? '\n\n--- Reporte de Adjuntos ---\n' + attachmentNotes : ''}`
             
             if (ragApiUrl && finalRuleText.length > 10) {
                 try {
