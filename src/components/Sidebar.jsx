@@ -36,7 +36,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     // Sub-items dentro de "Gobernanza"
     const gobernanzaSubItems = [
         { id: 'gobernanza', label: 'Audios / IA', icon: ShieldCheck },
-        { id: 'gobernanza_indicadores', label: 'Indicadores', icon: BarChart3 },
+        { id: 'gobernanza_indicadores', label: 'Dashboard', icon: BarChart3 },
     ].filter(i => isModuleVisible(i.id));
 
     // Sub-items dentro de "Simon IA"

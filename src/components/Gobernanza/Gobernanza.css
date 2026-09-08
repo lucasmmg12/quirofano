@@ -176,11 +176,12 @@
 
 .telar-card__content {
     padding: 16px;
-    flex: 1;
-    min-height: 250px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 100%;
+    height: 280px;
+    min-height: 280px;
+    box-sizing: border-box;
+    position: relative;
+    display: block;
 }
 
 .telar-kpi-card-hover:hover {

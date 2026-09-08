@@ -159,37 +159,41 @@ export default function TelarCanvas({ activeIndicators, onRemoveIndicator, dateF
                 );
             case 'uci_procedencia':
                 return (
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={metrics.procedencia || []} layout="vertical" margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
-                            <XAxis type="number" />
-                            <YAxis dataKey="name" type="category" width={120} tick={{fontSize: 11}} />
-                            <Tooltip cursor={{fill: '#f1f5f9'}} />
-                            <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} />
-                        </BarChart>
-                    </ResponsiveContainer>
+                    <div style={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0 }}>
+                        <ResponsiveContainer width="100%" height={240}>
+                            <BarChart data={metrics.procedencia || []} layout="vertical" margin={{ top: 10, right: 25, left: 10, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                                <XAxis type="number" />
+                                <YAxis dataKey="name" type="category" width={120} tick={{fontSize: 11}} />
+                                <Tooltip cursor={{fill: '#f1f5f9'}} />
+                                <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
                 );
             case 'uci_motivo_alta':
                 return (
-                    <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                            <Pie
-                                data={metrics.motivoAlta || []}
-                                cx="50%"
-                                cy="50%"
-                                innerRadius={60}
-                                outerRadius={90}
-                                paddingAngle={5}
-                                dataKey="value"
-                            >
-                                {(metrics.motivoAlta || []).map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                ))}
-                            </Pie>
-                            <Tooltip />
-                            <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: '11px' }} />
-                        </PieChart>
-                    </ResponsiveContainer>
+                    <div style={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0 }}>
+                        <ResponsiveContainer width="100%" height={240}>
+                            <PieChart>
+                                <Pie
+                                    data={metrics.motivoAlta || []}
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={55}
+                                    outerRadius={85}
+                                    paddingAngle={5}
+                                    dataKey="value"
+                                >
+                                    {(metrics.motivoAlta || []).map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                    ))}
+                                </Pie>
+                                <Tooltip />
+                                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: '11px' }} />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </div>
                 );
             default:
                 return <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>Visualización no disponible</div>;
@@ -258,7 +262,7 @@ export default function TelarCanvas({ activeIndicators, onRemoveIndicator, dateF
                                 </button>
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); onRemoveIndicator(ind.id); }}
-                                    title="Quitar del Telar"
+                                    title="Quitar del Dashboard"
                                     style={{ background: 'rgba(255,255,255,0.8)', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                 >
                                     <X size={14} />
@@ -280,7 +284,7 @@ export default function TelarCanvas({ activeIndicators, onRemoveIndicator, dateF
             {activeIndicators.length === 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--neutral-400)', marginTop: '100px' }}>
                     <Maximize2 size={48} strokeWidth={1} style={{ marginBottom: '16px' }} />
-                    <h3 style={{ margin: 0, fontWeight: 500, color: 'var(--neutral-500)' }}>El Telar está vacío</h3>
+                    <h3 style={{ margin: 0, fontWeight: 500, color: 'var(--neutral-500)' }}>El Dashboard está vacío</h3>
                     <p style={{ fontSize: '0.9rem' }}>Selecciona indicadores desde el catálogo a la izquierda</p>
                 </div>
             ) : (
@@ -311,7 +315,7 @@ export default function TelarCanvas({ activeIndicators, onRemoveIndicator, dateF
                                             </button>
                                             <button 
                                                 onClick={() => onRemoveIndicator(ind.id)}
-                                                title="Quitar del Telar"
+                                                title="Quitar del Dashboard"
                                                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--neutral-400)', padding: '4px' }}
                                             >
                                                 <X size={16} />

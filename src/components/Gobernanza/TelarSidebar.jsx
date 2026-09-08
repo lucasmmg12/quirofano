@@ -62,7 +62,7 @@ export default function TelarSidebar({ onAddIndicator, activeIndicators }) {
                                         {ind.label}
                                     </div>
                                     {!isActive && (
-                                        <button className="telar-indicator-item__add" title="Añadir al Telar">
+                                        <button className="telar-indicator-item__add" title="Añadir al Dashboard">
                                             <Plus size={12} />
                                         </button>
                                     )}
