@@ -191,12 +191,21 @@ export const INDICADORES_CATALOGO = [
 
     // ─── GRUPO 5: ESTUDIOS Y PRUEBAS CLÍNICAS (VLISE) ───
     {
+        id: 'kpi_intensidad_diagnostica',
+        label: 'Intensidad Diagnóstica (Estudios / Cama-Día)',
+        grupo: 'Estudios y Pruebas Clínicas',
+        tipo: 'kpi',
+        icon: 'Activity',
+        descripcion: 'Promedio de estudios diagnósticos solicitados por cada día-cama ocupado en la unidad.',
+        isDefault: true,
+    },
+    {
         id: 'chart_produccion_origen',
-        label: 'Producción por Origen (Ambulatorio vs Hospitalización)',
+        label: 'Producción por Origen y Reclasificación Forense',
         grupo: 'Estudios y Pruebas Clínicas',
         tipo: 'donut',
         icon: 'PieChart',
-        descripcion: 'Distribución institucional global de estudios clínicos por origen (Query 2: 75.7% Ambulatorio vs 24.3% Hospitalización).',
+        descripcion: 'Distribución institucional global con visión dual: Nominal SALUS (75.7% vs 24.3%) y Gobernanza Reclasificada (rescate de 30.743 estudios de internación/guardia).',
         isDefault: true,
     },
     {
@@ -205,7 +214,16 @@ export const INDICADORES_CATALOGO = [
         grupo: 'Estudios y Pruebas Clínicas',
         tipo: 'bar_horizontal',
         icon: 'Activity',
-        descripcion: 'Ranking de los estudios más solicitados (Hemograma, Gases en sangre, Ionograma, Glucemia, Ácido Láctico, etc.).',
+        descripcion: 'Ranking de los estudios más solicitados (Hemograma, Gases en sangre, Ionograma, Ecografías, TAC, etc.).',
+        isDefault: true,
+    },
+    {
+        id: 'chart_estudios_por_box',
+        label: 'Distribución de Estudios por Box / Cama',
+        grupo: 'Estudios y Pruebas Clínicas',
+        tipo: 'bar',
+        icon: 'Bed',
+        descripcion: 'Demanda de estudios diagnósticos desagregada por Box de Terapia Intensiva y Unidades de Terapia Intermedia.',
         isDefault: true,
     },
     {
@@ -223,7 +241,7 @@ export const INDICADORES_CATALOGO = [
         grupo: 'Estudios y Pruebas Clínicas',
         tipo: 'table',
         icon: 'FileText',
-        descripcion: 'Trazabilidad detallada de peticiones por paciente, fecha, estudio, habitación y solicitante.',
+        descripcion: 'Trazabilidad detallada de peticiones por paciente, fecha, estudio, modalidad, habitación y solicitante.',
         isDefault: false,
     }
 ];
@@ -231,3 +249,4 @@ export const INDICADORES_CATALOGO = [
 export const DEFAULT_ACTIVE_INDICATOR_IDS = INDICADORES_CATALOGO
     .filter(i => i.isDefault)
     .map(i => i.id);
+
