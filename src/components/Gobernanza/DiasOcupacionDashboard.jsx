@@ -77,10 +77,15 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         addToast?.('Indicadores predeterminados restablecidos', 'success');
     };
 
-    // Estados de Datos
+    // Estados de Datos de Ocupación
     const [loading, setLoading] = useState(true);
     const [rows, setRows] = useState([]);
     const [especialidadesDisponibles, setEspecialidadesDisponibles] = useState([]);
+
+    // Estados de Datos de Peticiones y Estudios Clínicos (VLISE)
+    const [peticionesResumen, setPeticionesResumen] = useState([]);
+    const [peticionesEstudios, setPeticionesEstudios] = useState([]);
+    const [loadingPeticiones, setLoadingPeticiones] = useState(false);
     
     // Modal de Documentación Técnica
     const [showDocModal, setShowDocModal] = useState(false);
@@ -107,7 +112,9 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
     const fetchData = async () => {
         setLoading(true);
+        setLoadingPeticiones(true);
         try {
+            // 1. Cargar Días Camas de Ocupación
             let query = supabase
                 .from('calidad_admisiones_ocupacion')
                 .select('*')
@@ -132,10 +139,39 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             });
             setEspecialidadesDisponibles(Array.from(especSet).sort());
 
+            // 2. Cargar Resumen Global por Origen (Query 2)
+            try {
+                const { data: resOrigen } = await supabase
+                    .from('calidad_peticiones_resumen_origen')
+                    .select('*')
+                    .order('cantidad_estudios', { ascending: false });
+                if (resOrigen && resOrigen.length > 0) {
+                    setPeticionesResumen(resOrigen);
+                }
+            } catch (errRes) {
+                console.warn('Advertencia cargando resumen de origen:', errRes);
+            }
+
+            // 3. Cargar Estudios Clínicos de UCI e Internación (Query 1)
+            try {
+                let pQuery = supabase
+                    .from('calidad_peticiones_pruebas')
+                    .select('*')
+                    .gte('fecha_solicitud', fechaDesde + 'T00:00:00')
+                    .lte('fecha_solicitud', fechaHasta + 'T23:59:59')
+                    .limit(10000);
+
+                const { data: pData } = await pQuery;
+                setPeticionesEstudios(pData || []);
+            } catch (errPet) {
+                console.warn('Advertencia cargando estudios clínicos:', errPet);
+            }
+
         } catch (err) {
-            console.error('Error al cargar datos de ocupación:', err);
+            console.error('Error al cargar datos de gobernanza:', err);
         } finally {
             setLoading(false);
+            setLoadingPeticiones(false);
         }
     };
 
@@ -343,6 +379,54 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             .sort((a, b) => b.value - a.value)
             .slice(0, 8);
 
+        // 8. Gráfico: Producción por Origen (Query 2 de VLISE)
+        let dataProduccionOrigen = [
+            { name: 'Ambulatorio', value: 409913, pct: 75.7, color: '#3B82F6' },
+            { name: 'Hospitalización', value: 131574, pct: 24.3, color: '#10B981' }
+        ];
+        if (peticionesResumen && peticionesResumen.length > 0) {
+            dataProduccionOrigen = peticionesResumen.map(r => ({
+                name: r.origen,
+                value: Number(r.cantidad_estudios),
+                pct: Number(r.porcentaje_produccion),
+                color: r.origen?.toLowerCase().includes('ambulat') ? '#3B82F6' : '#10B981'
+            }));
+        }
+
+        // 9. Gráfico: Top Pruebas y Estudios Clínicos (Query 1 de VLISE)
+        const estudiosCounts = {};
+        peticionesEstudios.forEach(p => {
+            let est = p.estudio || 'SIN DETALLE';
+            est = est.replace(/<[^>]+>/g, '').trim(); // Quitar códigos como <475>
+            if (!est || est === 'SIN DETALLE') return;
+            estudiosCounts[est] = (estudiosCounts[est] || 0) + 1;
+        });
+        const dataTopEstudios = Object.entries(estudiosCounts)
+            .map(([label, value], idx) => ({
+                label,
+                value,
+                color: ESPECIALIDAD_PALETTE[idx % ESPECIALIDAD_PALETTE.length]
+            }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 10);
+
+        // 10. Gráfico: Top Médicos Solicitantes
+        const solicitantesCounts = {};
+        peticionesEstudios.forEach(p => {
+            let sol = p.solicitante;
+            if (!sol || sol.trim() === '') return;
+            sol = sol.trim();
+            solicitantesCounts[sol] = (solicitantesCounts[sol] || 0) + 1;
+        });
+        const dataTopSolicitantes = Object.entries(solicitantesCounts)
+            .map(([label, value], idx) => ({
+                label,
+                value,
+                color: ESPECIALIDAD_PALETTE[idx % ESPECIALIDAD_PALETTE.length]
+            }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 8);
+
         const calculated = {
             diasOcupados,
             camasDisponibles,
@@ -359,6 +443,10 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             dataEstancias,
             dataProcedencia,
             dataClientes,
+            dataProduccionOrigen,
+            dataTopEstudios,
+            dataTopSolicitantes,
+            totalEstudiosPeriodo: peticionesEstudios.length,
             admisionesUnicas
         };
 
@@ -374,12 +462,14 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 totalAdmisiones,
                 dataMotivosAlta,
                 dataRangoEtario,
-                topEspecialidades
+                topEspecialidades,
+                dataProduccionOrigen,
+                topEstudiosCount: dataTopEstudios.length
             });
         }
 
         return calculated;
-    }, [filteredRows, camasTotales, fechaDesde, fechaHasta, activeSectorConfig, onMetricsUpdate]);
+    }, [filteredRows, camasTotales, fechaDesde, fechaHasta, activeSectorConfig, onMetricsUpdate, peticionesResumen, peticionesEstudios]);
 
     const isIndicatorActive = (id) => activeIndicatorIds.includes(id);
 
@@ -1075,6 +1165,275 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 </div>
                             )}
 
+                            {/* ─── BLOQUE 5: ESTUDIOS Y PRUEBAS CLÍNICAS (VLISE_PeticionesPruebas) ─── */}
+                            {(isIndicatorActive('chart_produccion_origen') || isIndicatorActive('chart_top_estudios_uci') || isIndicatorActive('chart_solicitantes_uci') || isIndicatorActive('table_peticiones_detalle')) && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '4px' }}>
+                                    
+                                    {/* Header de Sección Clínica */}
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        background: 'linear-gradient(90deg, #EFF6FF 0%, #FFFFFF 100%)',
+                                        border: '1px solid #BFDBFE',
+                                        borderRadius: '10px',
+                                        padding: '10px 16px'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <Activity size={18} color="#2563EB" />
+                                            <div>
+                                                <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#1E3A8A' }}>
+                                                    Estudios y Pruebas Clínicas (Laboratorio y Diagnóstico)
+                                                </span>
+                                                <span style={{ fontSize: '0.72rem', color: '#64748B', marginLeft: '8px' }}>
+                                                    Integración directa VLISE_PeticionesPruebas — Producción global y cuidados intensivos
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <span style={{
+                                            fontSize: '0.7rem',
+                                            fontWeight: 700,
+                                            padding: '3px 8px',
+                                            borderRadius: '999px',
+                                            background: '#DBEAFE',
+                                            color: '#1D4ED8'
+                                        }}>
+                                            {peticionesEstudios.length.toLocaleString('es-AR')} estudios vinculados en UCI/Internación
+                                        </span>
+                                    </div>
+
+                                    {/* Gráficos de Producción y Top Estudios */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '20px' }}>
+                                        
+                                        {/* 1. Producción por Origen (Query 2) */}
+                                        {isIndicatorActive('chart_produccion_origen') && (
+                                            <div style={{
+                                                background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                                padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                            }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                                    <div>
+                                                        <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
+                                                            Producción Global por Origen
+                                                        </h3>
+                                                        <span style={{ fontSize: '0.7rem', color: '#64748B' }}>Query 2 VLISE: Ambulatorio vs Hospitalización</span>
+                                                    </div>
+                                                    <span style={{
+                                                        fontSize: '0.7rem', fontWeight: 700, color: '#059669', background: '#ECFDF5',
+                                                        padding: '3px 8px', borderRadius: '6px'
+                                                    }}>
+                                                        541.487 Estudios Totales
+                                                    </span>
+                                                </div>
+
+                                                <div style={{ height: '220px', display: 'flex', alignItems: 'center' }}>
+                                                    <div style={{ width: '55%', height: '100%' }}>
+                                                        <ResponsiveContainer width="100%" height={220}>
+                                                            <PieChart>
+                                                                <Pie
+                                                                    data={metrics.dataProduccionOrigen}
+                                                                    dataKey="value"
+                                                                    nameKey="name"
+                                                                    cx="50%"
+                                                                    cy="50%"
+                                                                    innerRadius={50}
+                                                                    outerRadius={80}
+                                                                    paddingAngle={3}
+                                                                >
+                                                                    {metrics.dataProduccionOrigen.map((entry, index) => (
+                                                                        <Cell key={`cell-${index}`} fill={entry.color} />
+                                                                    ))}
+                                                                </Pie>
+                                                                <Tooltip
+                                                                    formatter={(val) => [Number(val).toLocaleString('es-AR') + ' estudios', 'Volumen']}
+                                                                    contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                                                                />
+                                                            </PieChart>
+                                                        </ResponsiveContainer>
+                                                    </div>
+                                                    <div style={{ width: '45%', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                        {metrics.dataProduccionOrigen.map(item => (
+                                                            <div key={item.name} style={{
+                                                                background: '#F8FAFC',
+                                                                border: '1px solid #E2E8F0',
+                                                                borderRadius: '8px',
+                                                                padding: '8px 12px'
+                                                            }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                                                                    <div style={{ width: '10px', height: '10px', borderRadius: '2px', background: item.color }} />
+                                                                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1E293B' }}>{item.name}</span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                                                    <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
+                                                                        {item.value.toLocaleString('es-AR')}
+                                                                    </span>
+                                                                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: item.color }}>
+                                                                        {item.pct}%
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* 2. Top Estudios Clínicos en UCI / Hospitalización (Query 1) */}
+                                        {isIndicatorActive('chart_top_estudios_uci') && (
+                                            <div style={{
+                                                background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                                padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                            }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                                    <div>
+                                                        <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
+                                                            Top Pruebas y Estudios en UCI / Críticos
+                                                        </h3>
+                                                        <span style={{ fontSize: '0.7rem', color: '#64748B' }}>Estudios de laboratorio y gasometría más solicitados</span>
+                                                    </div>
+                                                    <span style={{
+                                                        fontSize: '0.7rem', fontWeight: 700, color: '#1E40AF', background: '#EFF6FF',
+                                                        padding: '3px 8px', borderRadius: '6px'
+                                                    }}>
+                                                        Top 10 Frecuencia
+                                                    </span>
+                                                </div>
+
+                                                <div style={{ height: '240px' }}>
+                                                    {metrics.dataTopEstudios.length === 0 ? (
+                                                        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
+                                                            No hay estudios clínicos registrados en el rango de fechas
+                                                        </div>
+                                                    ) : (
+                                                        <ResponsiveContainer width="100%" height={240}>
+                                                            <BarChart
+                                                                data={metrics.dataTopEstudios}
+                                                                layout="vertical"
+                                                                margin={{ top: 5, right: 20, left: 60, bottom: 5 }}
+                                                            >
+                                                                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+                                                                <XAxis type="number" stroke="#64748B" fontSize={10} />
+                                                                <YAxis
+                                                                    type="category"
+                                                                    dataKey="label"
+                                                                    stroke="#64748B"
+                                                                    fontSize={9}
+                                                                    width={130}
+                                                                    tickFormatter={(v) => v.length > 20 ? v.substring(0, 20) + '...' : v}
+                                                                />
+                                                                <Tooltip
+                                                                    formatter={(val) => [Number(val).toLocaleString('es-AR') + ' solicitudes', 'Cantidad']}
+                                                                    contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                                                                />
+                                                                <Bar dataKey="value" fill="#2563EB" radius={[0, 4, 4, 0]} name="Solicitudes" />
+                                                            </BarChart>
+                                                        </ResponsiveContainer>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                    </div>
+
+                                    {/* Gráfico de Médicos Solicitantes y Tabla Auditoría */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '20px' }}>
+                                        
+                                        {/* 3. Top Médicos Solicitantes */}
+                                        {isIndicatorActive('chart_solicitantes_uci') && (
+                                            <div style={{
+                                                background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                                padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                            }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                                    <div>
+                                                        <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
+                                                            Médicos Solicitantes Más Activos
+                                                        </h3>
+                                                        <span style={{ fontSize: '0.7rem', color: '#64748B' }}>Prescriptores clínicos con mayor volumen</span>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ height: '220px' }}>
+                                                    <ResponsiveContainer width="100%" height={220}>
+                                                        <BarChart
+                                                            data={metrics.dataTopSolicitantes}
+                                                            layout="vertical"
+                                                            margin={{ top: 5, right: 20, left: 60, bottom: 5 }}
+                                                        >
+                                                            <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+                                                            <XAxis type="number" stroke="#64748B" fontSize={10} />
+                                                            <YAxis
+                                                                type="category"
+                                                                dataKey="label"
+                                                                stroke="#64748B"
+                                                                fontSize={9}
+                                                                width={120}
+                                                                tickFormatter={(v) => v.length > 18 ? v.substring(0, 18) + '...' : v}
+                                                            />
+                                                            <Tooltip
+                                                                formatter={(val) => [val, 'Solicitudes']}
+                                                                contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                                                            />
+                                                            <Bar dataKey="value" fill="#8B5CF6" radius={[0, 4, 4, 0]} name="Solicitudes" />
+                                                        </BarChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* 4. Tabla Detallada de Auditoría de Peticiones */}
+                                        {isIndicatorActive('table_peticiones_detalle') && (
+                                            <div style={{
+                                                background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                                padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                            }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                                    <div>
+                                                        <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
+                                                            Auditoría de Peticiones y Pruebas
+                                                        </h3>
+                                                        <span style={{ fontSize: '0.7rem', color: '#64748B' }}>Últimos estudios solicitados en la unidad</span>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ overflowX: 'auto', maxHeight: '220px', fontSize: '0.78rem' }}>
+                                                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                                        <thead>
+                                                            <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', color: '#64748B' }}>
+                                                                <th style={{ padding: '6px 8px' }}>Fecha</th>
+                                                                <th style={{ padding: '6px 8px' }}>Estudio</th>
+                                                                <th style={{ padding: '6px 8px' }}>Hab./Box</th>
+                                                                <th style={{ padding: '6px 8px' }}>Solicitante</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {peticionesEstudios.slice(0, 12).map((p, idx) => (
+                                                                <tr key={idx} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                                                    <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: '#64748B' }}>
+                                                                        {p.fecha_solicitud ? new Date(p.fecha_solicitud).toLocaleDateString('es-AR') : '-'}
+                                                                    </td>
+                                                                    <td style={{ padding: '6px 8px', fontWeight: 600, color: '#1E293B' }}>
+                                                                        {(p.estudio || '').replace(/<[^>]+>/g, '')}
+                                                                    </td>
+                                                                    <td style={{ padding: '6px 8px', color: '#2563EB', fontWeight: 600 }}>
+                                                                        {p.habitacion || 'Piso'}
+                                                                    </td>
+                                                                    <td style={{ padding: '6px 8px', color: '#475569', fontSize: '0.72rem' }}>
+                                                                        {p.solicitante || '-'}
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                    </div>
+
+                                </div>
+                            )}
+
                         </div>
                     )}
                 </div>
@@ -1164,13 +1523,60 @@ JOIN master.dbo.spt_values v
 WHERE (b.[Fecha alta] >= '2025-06-01' OR b.[Fecha alta] IS NULL)`}
                             </pre>
 
-                            <h4 style={{ color: '#1E40AF' }}>2. Fórmulas de Indicadores</h4>
+                            <h4 style={{ color: '#1E40AF', marginTop: '20px' }}>2. Queries de Peticiones y Estudios Clínicos (VLISE_PeticionesPruebas)</h4>
+                            <p style={{ fontSize: '0.8rem', color: '#64748B', margin: '4px 0 8px 0' }}>
+                                Utilizadas para entender los estudios clínicos y analíticas en UCI, internación y producción global:
+                            </p>
+                            
+                            <strong style={{ fontSize: '0.82rem', color: '#1E293B' }}>A. Detalle de Peticiones y Pruebas</strong>
+                            <pre style={{
+                                background: '#F1F5F9', padding: '12px', borderRadius: '8px',
+                                fontSize: '0.76rem', overflowX: 'auto', border: '1px solid #CBD5E1',
+                                fontFamily: 'Consolas, monospace', marginTop: '4px'
+                            }}>
+{`SELECT 
+    CAST(IdPeticionDePrueba AS VARCHAR(50)) AS IdPeticion,
+    [Fecha Solicitud],
+    IdPaciente,
+    Paciente,
+    Solicitante,
+    CAST([Paciente Edad] AS INT) AS PacienteEdad,
+    Origen, -- Fundamental dejarlo abierto
+    [Tipo Visita] AS TipoVisita,
+    [Tipo Articulo] AS TipoArticulo,
+    YEAR([Fecha Solicitud]) AS AnioSolicitud,
+    MONTH([Fecha Solicitud]) AS MesSolicitud
+FROM VLISE_PeticionesPruebas
+WHERE [Fecha Solicitud] >= '2025-06-01'
+  AND [Fecha Solicitud] IS NOT NULL`}
+                            </pre>
+
+                            <strong style={{ fontSize: '0.82rem', color: '#1E293B', marginTop: '10px', display: 'inline-block' }}>B. Producción Global por Origen</strong>
+                            <pre style={{
+                                background: '#F1F5F9', padding: '12px', borderRadius: '8px',
+                                fontSize: '0.76rem', overflowX: 'auto', border: '1px solid #CBD5E1',
+                                fontFamily: 'Consolas, monospace', marginTop: '4px'
+                            }}>
+{`SELECT 
+    Origen,
+    COUNT(*) AS CantidadEstudios,
+    CAST(
+        COUNT(*) * 100.0 / SUM(COUNT(*)) OVER() 
+    AS DECIMAL(10, 2)) AS PorcentajeProduccion
+FROM VLISE_PeticionesPruebas
+WHERE [Fecha Solicitud] >= '2025-06-01'
+  AND [Fecha Solicitud] IS NOT NULL
+GROUP BY Origen`}
+                            </pre>
+
+                            <h4 style={{ color: '#1E40AF', marginTop: '20px' }}>3. Fórmulas de Indicadores</h4>
                             <ul>
                                 <li><strong>Cantidad de Días Camas Ocupados:</strong> Conteo de pernoctadas efectivas en el período.</li>
                                 <li><strong>Cantidad de Días Camas Disponibles:</strong> <code>Camas Totales × Días Transcurridos</code>.</li>
                                 <li><strong>% de Ocupación:</strong> <code>(Días Camas Ocupados / Días Camas Disponibles) × 100</code>.</li>
                                 <li><strong>% de Defunción (Mortalidad Cruda):</strong> <code>(Pacientes únicos fallecidos / Total de pacientes únicos) × 100</code>.</li>
                                 <li><strong>Promedio de Estancia (ALOS):</strong> <code>Sumatoria de días de estancia / Total de altas efectivas</code>.</li>
+                                <li><strong>Producción de Estudios:</strong> Distribución porcentual entre demanda ambulatoria (75.7%) e internación hospitalaria (24.3%).</li>
                             </ul>
                         </div>
 

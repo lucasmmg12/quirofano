@@ -187,6 +187,44 @@ export const INDICADORES_CATALOGO = [
         icon: 'FileText',
         descripcion: 'Grilla de datos detallada de admisiones con buscador y exportación.',
         isDefault: false,
+    },
+
+    // ─── GRUPO 5: ESTUDIOS Y PRUEBAS CLÍNICAS (VLISE) ───
+    {
+        id: 'chart_produccion_origen',
+        label: 'Producción por Origen (Ambulatorio vs Hospitalización)',
+        grupo: 'Estudios y Pruebas Clínicas',
+        tipo: 'donut',
+        icon: 'PieChart',
+        descripcion: 'Distribución institucional global de estudios clínicos por origen (Query 2: 75.7% Ambulatorio vs 24.3% Hospitalización).',
+        isDefault: true,
+    },
+    {
+        id: 'chart_top_estudios_uci',
+        label: 'Top Estudios Clínicos Solicitados',
+        grupo: 'Estudios y Pruebas Clínicas',
+        tipo: 'bar_horizontal',
+        icon: 'Activity',
+        descripcion: 'Ranking de los estudios más solicitados (Hemograma, Gases en sangre, Ionograma, Glucemia, Ácido Láctico, etc.).',
+        isDefault: true,
+    },
+    {
+        id: 'chart_solicitantes_uci',
+        label: 'Médicos Solicitantes Más Activos',
+        grupo: 'Estudios y Pruebas Clínicas',
+        tipo: 'bar_horizontal',
+        icon: 'Users',
+        descripcion: 'Profesionales médicos con mayor volumen de solicitudes de estudios clínicos.',
+        isDefault: false,
+    },
+    {
+        id: 'table_peticiones_detalle',
+        label: 'Auditoría de Peticiones y Pruebas',
+        grupo: 'Estudios y Pruebas Clínicas',
+        tipo: 'table',
+        icon: 'FileText',
+        descripcion: 'Trazabilidad detallada de peticiones por paciente, fecha, estudio, habitación y solicitante.',
+        isDefault: false,
     }
 ];
 

@@ -318,6 +318,48 @@ Cada biopsia tiene una "acción" que se determina cruzando Obra Social + Laborat
 - Obras sociales principales: PROVINCIA (~34%), OSDE BINARIO (~15%), JERARQUICOS (~7%)
 - Promedio: ~195 consultas/día
 - Los datos son de guardias (consultas ambulatorias de emergencia)
+
+### \`calidad_admisiones_ocupacion\` (Días Camas y Ocupación Hospitalaria del Telar)
+- \`id\` (bigint PK)
+- \`id_admision\` (bigint) — ID Admisión en SALUS
+- \`numero_admision\` (text) — Número de admisión
+- \`fecha_ocupacion\` (date) — Fecha del día censal ocupado
+- \`fecha_ingreso\` (timestamptz) — Fecha de ingreso del paciente
+- \`fecha_alta\` (timestamptz) — Fecha de egreso/alta
+- \`especialidad\` (text) — Especialidad tratante (CLINICA MEDICA, CIRUGIA, etc.)
+- \`servicio\` (text) — UCI, TERAPIA INTERMEDIA, NEONATOLOGÍA, INTERNADO, PEDIATRÍA
+- \`paciente\` (text) — Nombre del paciente
+- \`nhc\` (text) — Número de historia clínica
+- \`motivo_de_alta\` (text) — Motivo de egreso (Alta Médica, Defunción, Traslado, etc.)
+- \`cliente\` (text) — Obra social / financiador
+- \`procedencia\` (text) — Urgencias, Quirófano, Consultorios Externos
+- \`edad\` (int) — Edad del paciente
+
+### \`calidad_peticiones_resumen_origen\` (Producción Global de Estudios por Origen - VLISE)
+- \`id\` (serial PK)
+- \`origen\` (text) — 'Ambulatorio' (75.7%) vs 'Hospitalización' (24.3%)
+- \`cantidad_estudios\` (bigint) — Volumen total de estudios
+- \`porcentaje_produccion\` (numeric) — Porcentaje de producción del total sanatorial
+- \`updated_at\` (timestamptz)
+
+### \`calidad_peticiones_pruebas\` (Detalle de Estudios y Pruebas Clínicas en UCI e Internación - VLISE)
+- \`id\` (bigint PK)
+- \`id_peticion\` (text) — ID de la petición de prueba en SALUS
+- \`fecha_solicitud\` (timestamptz) — Fecha y hora de solicitud del estudio
+- \`id_paciente\` (text)
+- \`paciente\` (text) — Nombre del paciente
+- \`solicitante\` (text) — Médico solicitante del estudio
+- \`paciente_edad\` (int) — Edad del paciente
+- \`origen\` (text) — 'Hospitalización', 'Ambulatorio'
+- \`tipo_visita\` (text) — (LAB) LABORATORIO, etc.
+- \`tipo_articulo\` (text) — Petición Analítica, etc.
+- \`estudio\` (text) — Nombre exacto del estudio (HEMOGRAMA COMPLETO, GASES EN SANGRE, IONOGRAMA, GLUCEMIA, ACIDO LACTICO, etc.)
+- \`habitacion\` (text) — Habitación o Box (Box 1 a Box 8 para UCI, 222, 228, etc.)
+- \`cama\` (text) — Cama asignada
+- \`prioridad\` (text) — Prioridad (Alta, Normal, Urgente)
+- \`seccion\` (text) — Laboratorio, Imágenes, etc.
+- \`anio_solicitud\` (int)
+- \`mes_solicitud\` (int)
 `;
 }
 
