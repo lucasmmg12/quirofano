@@ -433,6 +433,18 @@ export function parseRichContent(text, onNavigate) {
         } catch (e) { /* ignore */ }
     }
 
+    // Parse ```beto-chart JSON blocks
+    const chartRegex = /```(?:beto-chart|chart|json\s*beto-chart)\s*\n([\s\S]*?)\n\s*```/g;
+    while ((match = chartRegex.exec(text)) !== null) {
+        try {
+            const data = JSON.parse(match[1].trim());
+            if (data.data || data.title) {
+                richBlocks.push({ type: 'chart', data, position: match.index });
+                cleanText = cleanText.replace(match[0], '');
+            }
+        } catch (e) { /* ignore */ }
+    }
+
     // Parse ```beto-excel JSON blocks (handles variations: beto-excel, json beto-excel, etc.)
     const excelRegex = /```(?:beto-excel|json\s*beto-excel|beto-excel\s*json)\s*\n([\s\S]*?)\n\s*```/g;
     while ((match = excelRegex.exec(text)) !== null) {

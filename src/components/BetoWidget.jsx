@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase';
 import { Send, X, Maximize2, Minimize2, Sparkles, Loader2, Palette, BookOpen, FileSpreadsheet, Printer, Presentation, FileDown, ThumbsUp, ThumbsDown, Share2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { BetoStatsCard, BetoStatusPipeline, BetoModulePreview, BetoExportBar, BetoInsightCard, BetoExcelDownload, parseRichContent } from './BetoComponents';
+import BetoChartCard from './BetoChartCard';
 import BetoPresentationMode from './BetoPresentationMode';
 import BetoTutorial from './BetoTutorial';
 import { downloadBetoReportPdf, isReportMessage } from '../utils/betoReportPdf';
@@ -34,7 +35,7 @@ const SMART_SUGGESTIONS = {
     metricas: ['📊 Resumen mensual', '📈 Comparar con mes anterior', '🏥 Métricas por especialidad', '📥 Exportar métricas a Excel'],
     auditoria_historias: ['📊 ¿Cómo auditar historias clínicas?', '📋 Explicar pipeline de auditoría', '💡 ¿Qué significa Sin Fecha de Alta?', '🧭 Llevame a Inicio'],
     facturacion: ['🧾 Fichas pendientes de facturar', '📊 Resumen de facturación del mes', '🔙 Fichas devueltas', '📚 Enseñame facturación'],
-    gobernanza_indicadores: ['📊 Analizar indicadores del Dashboard', '⬇️ Exportar Dashboard a Excel', '📄 Generar Reporte PDF', '💡 ¿Qué vemos aquí?'],
+    gobernanza_indicadores: ['🏥 Resumen de ocupación en UCI', '📊 Gráfico de admisiones por especialidad', '📉 Mortalidad y motivos de alta', '📥 Exportar admisiones de UCI a Excel'],
     default: ['🔔 ¿Qué hay pendiente?', '📊 Reporte del día', '📥 Exportar datos a Excel', '❓ ¿Cómo funciona esto?'],
 };
 
@@ -784,6 +785,7 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
                                     )}
                                     {/* #2 Rich blocks (text-parsed fallback) */}
                                     {richBlocks.map((block, j) => {
+                                        if (block.type === 'chart') return <BetoChartCard key={j} chartData={block.data} />;
                                         if (block.type === 'stats') return <BetoStatsCard key={j} stats={block.data} />;
                                         if (block.type === 'pipeline') return <BetoStatusPipeline key={j} pipeline={block.data} />;
                                         if (block.type === 'insight') return <BetoInsightCard key={j} insight={block.data} />;

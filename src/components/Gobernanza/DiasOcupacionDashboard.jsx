@@ -8,9 +8,12 @@ import {
     BookOpen, Filter, Calendar, Bed, Activity, Users, 
     AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, RotateCcw, 
     X, FileText, Layers, PanelLeftClose, PanelLeftOpen, LayoutDashboard, 
-    Sparkles, RefreshCw
+    Sparkles, RefreshCw, Sliders, Table, Eye, Download, Clock, HeartHandshake
 } from 'lucide-react';
 import SalusSyncButton from '../SalusSyncButton';
+import TelarCatalogoDrawer from './TelarCatalogoDrawer';
+import TelarDataModal from './TelarDataModal';
+import { SECTORES_CONFIG, INDICADORES_CATALOGO, DEFAULT_ACTIVE_INDICATOR_IDS } from './telarConfig';
 
 const COLORS_ETARIO = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444'];
 const COLORS_MOTIVO = ['#F97316', '#EF4444', '#06B6D4', '#8B5CF6', '#10B981', '#6B7280'];
@@ -26,39 +29,72 @@ const ESPECIALIDAD_PALETTE = [
     '#A855F7', '#EAB308', '#64748B', '#D946EF', '#0EA5E9'
 ];
 
-// Servicios principales del Sanatorio con sus camas de referencia
-const SERVICIOS_CONFIG = [
-    { id: 'UCI', label: 'Terapia Intensiva (UCI)', icon: '🏥', camasDefault: 11 },
-    { id: 'NEONATOLOGÍA', label: 'Neonatología', icon: '👶', camasDefault: 20 },
-    { id: 'INTERNADO', label: 'Internación Clínica', icon: '🛏️', camasDefault: 45 },
-    { id: 'PEDIATRÍA', label: 'Pediatría', icon: '🧸', camasDefault: 15 },
-    { id: 'CIRUGIA PEDIATRICA', label: 'Cirugía Pediátrica', icon: '🩺', camasDefault: 10 },
-    { id: 'QUIROFANOS CENTRALES', label: 'Quirófanos Centrales', icon: '🔪', camasDefault: 6 },
-    { id: 'TODOS', label: 'Todos los Servicios', icon: '🌐', camasDefault: 107 }
-];
-
 export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpdate, addToast }) {
-    // === ESTADOS DE NAVEGACIÓN Y FILTROS ===
+    // === ESTADOS DE NAVEGACIÓN Y SECTOR ===
     const [sidebarOpen, setSidebarOpen] = useState(true);
-    const [servicio, setServicio] = useState('UCI');
+    const [sectorId, setSectorId] = useState('UCI');
     const [especialidad, setEspecialidad] = useState('TODOS');
     const [camasTotales, setCamasTotales] = useState(11);
     const [fechaDesde, setFechaDesde] = useState('2025-06-01');
     const [fechaHasta, setFechaHasta] = useState(() => new Date().toISOString().split('T')[0]);
+
+    // === ESTADOS MODULARES DE INDICADORES ===
+    const [activeIndicatorIds, setActiveIndicatorIds] = useState(() => {
+        try {
+            const saved = localStorage.getItem('telar_active_indicators_v2');
+            return saved ? JSON.parse(saved) : DEFAULT_ACTIVE_INDICATOR_IDS;
+        } catch {
+            return DEFAULT_ACTIVE_INDICATOR_IDS;
+        }
+    });
+
+    const [isCatalogoOpen, setIsCatalogoOpen] = useState(false);
+    const [inspectDataIndicator, setInspectDataIndicator] = useState(null);
+
+    // Guardar indicadores activos en localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('telar_active_indicators_v2', JSON.stringify(activeIndicatorIds));
+        } catch {}
+    }, [activeIndicatorIds]);
+
+    const handleToggleIndicator = (id) => {
+        setActiveIndicatorIds(prev => {
+            if (prev.includes(id)) {
+                if (prev.length <= 1) {
+                    addToast?.('Debe haber al menos un indicador activo en el Telar', 'info');
+                    return prev;
+                }
+                return prev.filter(item => item !== id);
+            } else {
+                return [...prev, id];
+            }
+        });
+    };
+
+    const handleResetDefaults = () => {
+        setActiveIndicatorIds(DEFAULT_ACTIVE_INDICATOR_IDS);
+        addToast?.('Indicadores predeterminados restablecidos', 'success');
+    };
 
     // Estados de Datos
     const [loading, setLoading] = useState(true);
     const [rows, setRows] = useState([]);
     const [especialidadesDisponibles, setEspecialidadesDisponibles] = useState([]);
     
-    // Modal de Documentación
+    // Modal de Documentación Técnica
     const [showDocModal, setShowDocModal] = useState(false);
 
-    // Cuando cambia el servicio, actualizar las camas por defecto si no fueron cambiadas manualmente
-    const handleSelectServicio = (servId) => {
-        setServicio(servId);
+    // Configuración del sector activo
+    const activeSectorConfig = useMemo(() => {
+        return SECTORES_CONFIG.find(s => s.id === sectorId) || SECTORES_CONFIG[0];
+    }, [sectorId]);
+
+    // Cuando cambia el sector, actualizar camas por defecto
+    const handleSelectSector = (sId) => {
+        setSectorId(sId);
         setEspecialidad('TODOS');
-        const cfg = SERVICIOS_CONFIG.find(s => s.id === servId);
+        const cfg = SECTORES_CONFIG.find(s => s.id === sId);
         if (cfg) {
             setCamasTotales(cfg.camasDefault);
         }
@@ -67,7 +103,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     // Cargar datos desde Supabase
     useEffect(() => {
         fetchData();
-    }, [servicio, fechaDesde, fechaHasta]);
+    }, [sectorId, fechaDesde, fechaHasta]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -78,8 +114,10 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 .gte('fecha_ocupacion', fechaDesde)
                 .lte('fecha_ocupacion', fechaHasta);
 
-            if (servicio && servicio !== 'TODOS') {
-                query = query.eq('servicio', servicio);
+            if (sectorId === 'CRITICOS_CONSOLIDADO') {
+                query = query.in('servicio', ['UCI', 'TERAPIA INTERMEDIA']);
+            } else if (sectorId && sectorId !== 'TODOS') {
+                query = query.eq('servicio', sectorId);
             }
 
             const { data, error } = await query;
@@ -107,8 +145,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         return rows.filter(r => r.especialidad && r.especialidad.trim() === especialidad.trim());
     }, [rows, especialidad]);
 
-    // === CÁLCULO DE KPIS SUPERIORES ===
-    const kpis = useMemo(() => {
+    // === CÁLCULO DE KPIS E INDICADORES ===
+    const metrics = useMemo(() => {
         const diasOcupados = filteredRows.length;
 
         // Calcular días del período
@@ -118,267 +156,344 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         const diasPeriodo = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)) + 1);
 
         const camasDisponibles = Number(camasTotales || 0) * diasPeriodo;
-        const ocupacionPct = camasDisponibles > 0 ? ((diasOcupados / camasDisponibles) * 100).toFixed(2) : '0.00';
+        const porcOcupacion = camasDisponibles > 0 
+            ? ((diasOcupados / camasDisponibles) * 100).toFixed(1) 
+            : '0.0';
 
-        // Pacientes únicos (agrupados por id_admision)
+        // Admisiones únicas en el período filtrado
         const admisionesMap = new Map();
         filteredRows.forEach(r => {
-            if (!admisionesMap.has(r.id_admision)) {
-                admisionesMap.set(r.id_admision, r);
+            const key = r.id_admision || r.numero_admision;
+            if (!admisionesMap.has(key)) {
+                admisionesMap.set(key, r);
             }
         });
-        const totalPacientesUnicos = admisionesMap.size;
+        const admisionesUnicas = Array.from(admisionesMap.values());
+        const totalAdmisiones = admisionesUnicas.length;
 
-        let defunciones = 0;
-        admisionesMap.forEach(r => {
-            if (r.motivo_de_alta && r.motivo_de_alta.toLowerCase().includes('defunci')) {
-                defunciones++;
+        // Tasa de defunción (% defunción sobre egresos/admisiones únicas)
+        const defunciones = admisionesUnicas.filter(r => {
+            const m = (r.motivo_de_alta || '').toLowerCase();
+            return m.includes('defunci') || m.includes('fallecid') || m.includes('obito');
+        }).length;
+
+        const porcDefuncion = totalAdmisiones > 0 
+            ? ((defunciones / totalAdmisiones) * 100).toFixed(1) 
+            : '0.0';
+
+        // Promedio de Estancia (ALOS)
+        let sumEstancia = 0;
+        let countEstancia = 0;
+        admisionesUnicas.forEach(r => {
+            if (r.fecha_ingreso && r.fecha_alta) {
+                const diffTime = Math.abs(new Date(r.fecha_alta) - new Date(r.fecha_ingreso));
+                const days = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+                sumEstancia += days;
+                countEstancia++;
+            }
+        });
+        const alos = countEstancia > 0 ? (sumEstancia / countEstancia).toFixed(1) : '—';
+
+        // 1. Gráfico: Admisiones por Especialidad por Mes
+        const mesesSet = new Set();
+        filteredRows.forEach(r => {
+            if (r.fecha_ocupacion) {
+                mesesSet.add(r.fecha_ocupacion.substring(0, 7));
+            }
+        });
+        const mesesSorted = Array.from(mesesSet).sort();
+
+        const especialidadPorMes = {};
+        mesesSorted.forEach(m => {
+            especialidadPorMes[m] = {};
+        });
+
+        const topEspecialidadesSet = new Set();
+        filteredRows.forEach(r => {
+            const m = r.fecha_ocupacion?.substring(0, 7);
+            const esp = r.especialidad ? r.especialidad.trim() : 'Sin Especialidad';
+            if (m && especialidadPorMes[m]) {
+                especialidadPorMes[m][esp] = (especialidadPorMes[m][esp] || 0) + 1;
+                topEspecialidadesSet.add(esp);
             }
         });
 
-        const defuncionPct = totalPacientesUnicos > 0 
-            ? ((defunciones / totalPacientesUnicos) * 100).toFixed(2) 
-            : '0.00';
+        const topEspecialidades = Array.from(topEspecialidadesSet).slice(0, 15);
+        const dataEspecialidades = mesesSorted.map(m => {
+            const dObj = new Date(m + '-01T12:00:00');
+            const mesNombre = dObj.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' });
+            const item = { mesKey: m, mes: mesNombre };
+            topEspecialidades.forEach(esp => {
+                item[esp] = especialidadPorMes[m][esp] || 0;
+            });
+            return item;
+        });
 
-        const metricsObj = {
-            diasOcupados: diasOcupados.toLocaleString('es-AR'),
-            camasDisponibles: camasDisponibles.toLocaleString('es-AR'),
-            ocupacionPct,
-            defuncionPct,
-            totalPacientesUnicos,
-            diasPeriodo
+        // 2. Gráfico: Admisiones Totales por Mes
+        const admisionesPorMesMap = {};
+        admisionesUnicas.forEach(r => {
+            const m = r.fecha_ingreso ? r.fecha_ingreso.substring(0, 7) : null;
+            if (m) {
+                admisionesPorMesMap[m] = (admisionesPorMesMap[m] || 0) + 1;
+            }
+        });
+        const dataAdmisionesTotales = mesesSorted.map(m => {
+            const dObj = new Date(m + '-01T12:00:00');
+            const mesNombre = dObj.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' });
+            return {
+                mesKey: m,
+                mes: mesNombre,
+                total: admisionesPorMesMap[m] || 0
+            };
+        });
+
+        // 3. Gráfico: Motivos de Alta
+        const motivosMap = {};
+        admisionesUnicas.forEach(r => {
+            let m = (r.motivo_de_alta || 'Sin Alta Registrada').trim();
+            if (m.toLowerCase().includes('alta m')) m = 'Alta médica';
+            else if (m.toLowerCase().includes('traslado a otro')) m = 'Traslado a otro centro';
+            else if (m.toLowerCase().includes('defunci')) m = 'Defunción';
+            else if (m.toLowerCase().includes('voluntari')) m = 'Alta voluntaria';
+            motivosMap[m] = (motivosMap[m] || 0) + 1;
+        });
+        const dataMotivosAlta = Object.keys(motivosMap)
+            .map((k, idx) => ({
+                label: k,
+                value: motivosMap[k],
+                color: COLORS_MOTIVO[idx % COLORS_MOTIVO.length]
+            }))
+            .sort((a, b) => b.value - a.value);
+
+        // 4. Gráfico: Rango Etario
+        const etarioMap = { 'Pediátrico (0-17)': 0, 'Adulto Joven (18-45)': 0, 'Adulto (46-65)': 0, 'Mayor (>65)': 0 };
+        admisionesUnicas.forEach(r => {
+            const edad = Number(r.edad);
+            if (isNaN(edad)) return;
+            if (edad <= 17) etarioMap['Pediátrico (0-17)']++;
+            else if (edad <= 45) etarioMap['Adulto Joven (18-45)']++;
+            else if (edad <= 65) etarioMap['Adulto (46-65)']++;
+            else etarioMap['Mayor (>65)']++;
+        });
+        const dataRangoEtario = Object.keys(etarioMap).map((k, idx) => ({
+            label: k,
+            value: etarioMap[k],
+            color: COLORS_ETARIO[idx % COLORS_ETARIO.length]
+        }));
+
+        // 5. Gráfico: Categorías de Estancias
+        const estanciasPorMes = {};
+        mesesSorted.forEach(m => {
+            estanciasPorMes[m] = { corta: 0, media: 0, larga: 0 };
+        });
+        admisionesUnicas.forEach(r => {
+            if (r.fecha_ingreso) {
+                const m = r.fecha_ingreso.substring(0, 7);
+                if (estanciasPorMes[m]) {
+                    let dias = 1;
+                    if (r.fecha_alta) {
+                        const diffTime = Math.abs(new Date(r.fecha_alta) - new Date(r.fecha_ingreso));
+                        dias = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+                    }
+                    if (dias <= 2) estanciasPorMes[m].corta++;
+                    else if (dias <= 7) estanciasPorMes[m].media++;
+                    else estanciasPorMes[m].larga++;
+                }
+            }
+        });
+        const dataEstancias = mesesSorted.map(m => {
+            const dObj = new Date(m + '-01T12:00:00');
+            const mesNombre = dObj.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' });
+            return {
+                mesKey: m,
+                mes: mesNombre,
+                corta: estanciasPorMes[m].corta,
+                media: estanciasPorMes[m].media,
+                larga: estanciasPorMes[m].larga
+            };
+        });
+
+        // 6. Gráfico: Procedencia
+        const procedenciaMap = {};
+        admisionesUnicas.forEach(r => {
+            const p = (r.procedencia || 'Sin Procedencia').trim();
+            procedenciaMap[p] = (procedenciaMap[p] || 0) + 1;
+        });
+        const dataProcedencia = Object.keys(procedenciaMap)
+            .map((k, idx) => ({
+                label: k,
+                value: procedenciaMap[k],
+                color: ESPECIALIDAD_PALETTE[idx % ESPECIALIDAD_PALETTE.length]
+            }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 6);
+
+        // 7. Gráfico: Obras Sociales / Clientes
+        const clientesMap = {};
+        admisionesUnicas.forEach(r => {
+            const c = (r.cliente || 'Particular').trim();
+            clientesMap[c] = (clientesMap[c] || 0) + 1;
+        });
+        const dataClientes = Object.keys(clientesMap)
+            .map((k, idx) => ({
+                label: k,
+                value: clientesMap[k],
+                color: ESPECIALIDAD_PALETTE[idx % ESPECIALIDAD_PALETTE.length]
+            }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 8);
+
+        const calculated = {
+            diasOcupados,
+            camasDisponibles,
+            porcOcupacion,
+            porcDefuncion,
+            alos,
+            totalAdmisiones,
+            defunciones,
+            dataEspecialidades,
+            topEspecialidades,
+            dataAdmisionesTotales,
+            dataMotivosAlta,
+            dataRangoEtario,
+            dataEstancias,
+            dataProcedencia,
+            dataClientes,
+            admisionesUnicas
         };
 
         if (onMetricsUpdate) {
-            onMetricsUpdate({ [servicio]: metricsObj });
+            onMetricsUpdate({
+                sector: activeSectorConfig.label,
+                camasTotales,
+                diasOcupados,
+                camasDisponibles,
+                porcOcupacion,
+                porcDefuncion,
+                alos,
+                totalAdmisiones,
+                dataMotivosAlta,
+                dataRangoEtario,
+                topEspecialidades
+            });
         }
 
-        return metricsObj;
-    }, [filteredRows, camasTotales, fechaDesde, fechaHasta, servicio]);
+        return calculated;
+    }, [filteredRows, camasTotales, fechaDesde, fechaHasta, activeSectorConfig, onMetricsUpdate]);
 
-    // === ADMISIONES ÚNICAS PARA GRÁFICOS DE EGRESO, EDAD Y ESTANCIAS ===
-    const admisionesUnicas = useMemo(() => {
-        const map = new Map();
-        filteredRows.forEach(r => {
-            if (!map.has(r.id_admision)) {
-                let diasEstancia = 1;
-                if (r.fecha_ingreso && r.fecha_alta) {
-                    const fi = new Date(r.fecha_ingreso);
-                    const fa = new Date(r.fecha_alta);
-                    diasEstancia = Math.max(1, Math.ceil((fa - fi) / (1000 * 60 * 60 * 24)));
-                } else if (r.fecha_ingreso) {
-                    const fi = new Date(r.fecha_ingreso);
-                    const fa = new Date();
-                    diasEstancia = Math.max(1, Math.ceil((fa - fi) / (1000 * 60 * 60 * 24)));
-                }
-
-                let catEstancia = '1. Estancia Corta (1-2 d)';
-                if (diasEstancia >= 3 && diasEstancia <= 7) {
-                    catEstancia = '2. Estancia Media (3-7 d)';
-                } else if (diasEstancia > 7) {
-                    catEstancia = '3. Estancia Larga (>7 d)';
-                }
-
-                const edad = r.edad || 0;
-                let grupoEtario = '4. Mayor (>65)';
-                if (edad <= 17) grupoEtario = '1. Pediátrico (0-17)';
-                else if (edad <= 45) grupoEtario = '2. Adulto Joven (18-45)';
-                else if (edad <= 65) grupoEtario = '3. Adulto (46-65)';
-
-                let mesIngreso = 'Sin Fecha';
-                if (r.fecha_ingreso) {
-                    const d = new Date(r.fecha_ingreso);
-                    mesIngreso = d.toLocaleDateString('es-AR', { month: 'short', year: 'numeric' });
-                }
-
-                const dObj = r.fecha_ingreso ? new Date(r.fecha_ingreso) : new Date(0);
-                const sortKey = `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, '0')}`;
-
-                map.set(r.id_admision, {
-                    ...r,
-                    diasEstancia,
-                    catEstancia,
-                    grupoEtario,
-                    mesIngreso,
-                    sortKey
-                });
-            }
-        });
-        return Array.from(map.values());
-    }, [filteredRows]);
-
-    // === 1 & 2. ADMISIONES TOTALES Y POR ESPECIALIDAD (MENSUAL) ===
-    const { seriesEspecialidad, mesesData, todasEspecialidades } = useMemo(() => {
-        const mesesMap = {};
-        const espSet = new Set();
-
-        admisionesUnicas.forEach(adm => {
-            const mKey = adm.sortKey;
-            const mLabel = adm.mesIngreso;
-            const esp = adm.especialidad || 'OTRAS';
-            espSet.add(esp);
-
-            if (!mesesMap[mKey]) {
-                mesesMap[mKey] = {
-                    key: mKey,
-                    mes: mLabel,
-                    total: 0
-                };
-            }
-            mesesMap[mKey].total = (mesesMap[mKey].total || 0) + 1;
-            mesesMap[mKey][esp] = (mesesMap[mKey][esp] || 0) + 1;
-        });
-
-        const sortedMeses = Object.values(mesesMap).sort((a, b) => a.key.localeCompare(b.key));
-        return {
-            seriesEspecialidad: sortedMeses,
-            mesesData: sortedMeses,
-            todasEspecialidades: Array.from(espSet)
-        };
-    }, [admisionesUnicas]);
-
-    // === 3. MOTIVOS DE ALTA (DONUT) ===
-    const dataMotivosAlta = useMemo(() => {
-        const counts = {};
-        admisionesUnicas.forEach(adm => {
-            const m = adm.motivo_de_alta ? adm.motivo_de_alta.trim() : 'En Curso / Sin Datos';
-            counts[m] = (counts[m] || 0) + 1;
-        });
-        return Object.keys(counts)
-            .map(k => ({ name: k, value: counts[k] }))
-            .sort((a, b) => b.value - a.value);
-    }, [admisionesUnicas]);
-
-    // === 4. RANGO ETARIO (DONUT) ===
-    const dataRangoEtario = useMemo(() => {
-        const counts = {
-            '1. Pediátrico (0-17)': 0,
-            '2. Adulto Joven (18-45)': 0,
-            '3. Adulto (46-65)': 0,
-            '4. Mayor (>65)': 0
-        };
-        admisionesUnicas.forEach(adm => {
-            if (counts[adm.grupoEtario] !== undefined) {
-                counts[adm.grupoEtario]++;
-            }
-        });
-        return Object.keys(counts)
-            .filter(k => counts[k] > 0)
-            .map(k => ({ name: k, value: counts[k] }));
-    }, [admisionesUnicas]);
-
-    // === 5. CATEGORÍAS DE ESTANCIAS (MENSUAL APILADO) ===
-    const dataCategoriasEstancias = useMemo(() => {
-        const mesesMap = {};
-        admisionesUnicas.forEach(adm => {
-            const mKey = adm.sortKey;
-            const mLabel = adm.mesIngreso;
-            if (!mesesMap[mKey]) {
-                mesesMap[mKey] = {
-                    key: mKey,
-                    mes: mLabel,
-                    corta: 0,
-                    media: 0,
-                    larga: 0
-                };
-            }
-            if (adm.catEstancia.includes('Corta')) mesesMap[mKey].corta++;
-            else if (adm.catEstancia.includes('Media')) mesesMap[mKey].media++;
-            else mesesMap[mKey].larga++;
-        });
-        return Object.values(mesesMap).sort((a, b) => a.key.localeCompare(b.key));
-    }, [admisionesUnicas]);
+    const isIndicatorActive = (id) => activeIndicatorIds.includes(id);
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: '#F8FAFC' }}>
+        <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            height: '100%',
+            background: '#F8FAFC',
+            fontFamily: "'Inter', sans-serif"
+        }}>
             
-            {/* ─── UNIFIED TOPBAR: CONTROLES, FILTROS Y ACCIONES ─── */}
+            {/* ─── BARRA SUPERIOR UNIFICADA ─── */}
             <div style={{
                 background: '#FFFFFF',
                 borderBottom: '1px solid #E2E8F0',
-                padding: '10px 16px',
+                padding: '12px 24px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
+                gap: '16px',
                 flexWrap: 'wrap',
-                gap: '12px',
                 zIndex: 10
             }}>
-                {/* Lado Izquierdo: Toggle Sidebar + Título + Documentación */}
+                {/* Lado Izquierdo: Toggle Sidebar + Título del Sector */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <button
                         onClick={() => setSidebarOpen(prev => !prev)}
-                        title={sidebarOpen ? "Ocultar Catálogo de Servicios" : "Mostrar Catálogo de Servicios"}
+                        title={sidebarOpen ? "Ocultar panel de sectores" : "Mostrar panel de sectores"}
                         style={{
                             background: '#F1F5F9',
                             border: '1px solid #CBD5E1',
                             borderRadius: '8px',
-                            padding: '6px',
+                            padding: '7px',
                             cursor: 'pointer',
-                            color: '#1E293B',
+                            color: '#475569',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'all 0.2s'
+                            justifyContent: 'center'
                         }}
                     >
                         {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
                     </button>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <LayoutDashboard size={20} color="#1E40AF" />
-                        <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0F172A', whiteSpace: 'nowrap' }}>
-                            Dashboard de Indicadores
+                    <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '1.2rem' }}>{activeSectorConfig.icon}</span>
+                            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F172A' }}>
+                                {activeSectorConfig.label}
+                            </h2>
+                            <span style={{
+                                fontSize: '0.72rem',
+                                background: '#EFF6FF',
+                                color: '#1E40AF',
+                                padding: '2px 8px',
+                                borderRadius: '12px',
+                                fontWeight: 700,
+                                border: '1px solid #BFDBFE'
+                            }}>
+                                {activeIndicatorIds.length} Indicadores
+                            </span>
+                        </div>
+                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                            {activeSectorConfig.descripcion}
                         </span>
                     </div>
+                </div>
 
+                {/* Filtros Paramétricos Centrales */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    
+                    {/* Botón Catálogo de Indicadores */}
                     <button
-                        onClick={() => setShowDocModal(true)}
+                        onClick={() => setIsCatalogoOpen(true)}
                         style={{
-                            background: '#1E40AF',
-                            color: '#FFFFFF',
-                            border: 'none',
-                            borderRadius: '6px',
+                            background: '#FFFFFF',
+                            border: '1px solid #2563EB',
+                            color: '#1E40AF',
+                            borderRadius: '8px',
                             padding: '6px 12px',
-                            fontWeight: 600,
                             fontSize: '0.8rem',
+                            fontWeight: 700,
                             display: 'flex',
                             alignItems: 'center',
                             gap: '6px',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap'
+                            cursor: 'pointer'
                         }}
                     >
-                        <BookOpen size={14} />
-                        Documentación
+                        <Sliders size={15} />
+                        Catálogo ({activeIndicatorIds.length})
                     </button>
-                </div>
 
-                {/* Centro: Filtros Interactivos */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    
-                    {/* Filtro Servicio */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>Servicio:</span>
-                        <select
-                            value={servicio}
-                            onChange={(e) => handleSelectServicio(e.target.value)}
-                            style={{
-                                padding: '5px 8px',
-                                borderRadius: '6px',
-                                border: '1px solid #CBD5E1',
-                                fontSize: '0.8rem',
-                                color: '#1E293B',
-                                background: '#FFFFFF',
-                                fontWeight: 600,
-                                cursor: 'pointer'
-                            }}
-                        >
-                            {SERVICIOS_CONFIG.map(s => (
-                                <option key={s.id} value={s.id}>{s.icon} {s.label}</option>
-                            ))}
-                        </select>
-                    </div>
+                    {/* Botón Documentación Técnica */}
+                    <button
+                        onClick={() => setShowDocModal(true)}
+                        style={{
+                            background: '#F1F5F9',
+                            border: '1px solid #CBD5E1',
+                            color: '#334155',
+                            borderRadius: '8px',
+                            padding: '6px 12px',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        <BookOpen size={15} color="#1E40AF" />
+                        Fórmulas & SQL
+                    </button>
+
+                    <div style={{ height: '24px', width: '1px', background: '#E2E8F0' }} />
 
                     {/* Filtro Especialidad */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -393,12 +508,10 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 fontSize: '0.8rem',
                                 color: '#1E293B',
                                 background: '#FFFFFF',
-                                fontWeight: 500,
-                                cursor: 'pointer',
-                                maxWidth: '170px'
+                                maxWidth: '160px'
                             }}
                         >
-                            <option value="TODOS">(Todo)</option>
+                            <option value="TODOS">(Todas)</option>
                             {especialidadesDisponibles.map(esp => (
                                 <option key={esp} value={esp}>{esp}</option>
                             ))}
@@ -411,7 +524,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         <input
                             type="number"
                             min="1"
-                            max="200"
+                            max="300"
                             value={camasTotales}
                             onChange={(e) => setCamasTotales(Number(e.target.value))}
                             style={{
@@ -459,7 +572,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
                 </div>
 
-                {/* Lado Derecho: Sincronización y Exportación */}
+                {/* Sincronización y Exportación IA */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <SalusSyncButton />
                     
@@ -470,8 +583,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 background: 'linear-gradient(135deg, #4F46E5, #7C3AED)',
                                 color: '#FFFFFF',
                                 border: 'none',
-                                borderRadius: '6px',
-                                padding: '6px 12px',
+                                borderRadius: '8px',
+                                padding: '7px 12px',
                                 fontWeight: 600,
                                 fontSize: '0.8rem',
                                 display: 'flex',
@@ -481,19 +594,19 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             }}
                         >
                             <Sparkles size={14} />
-                            Exportación IA
+                            Infografía AI
                         </button>
                     )}
                 </div>
             </div>
 
-            {/* ─── CUERPO UNIFICADO: SIDEBAR DE SERVICIOS + DASHBOARD CENTRAL ─── */}
+            {/* ─── CUERPO UNIFICADO: SIDEBAR DE SECTORES + LIENZO MODULAR DEL TELAR ─── */}
             <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
                 
-                {/* SIDEBAR LATERAL: CATÁLOGO DE SERVICIOS Y NAVEGACIÓN */}
+                {/* SIDEBAR LATERAL: SECTORES HOSPITALARIOS */}
                 {sidebarOpen && (
                     <div style={{
-                        width: '240px',
+                        width: '250px',
                         background: '#FFFFFF',
                         borderRight: '1px solid #E2E8F0',
                         display: 'flex',
@@ -501,405 +614,519 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         overflowY: 'auto'
                     }}>
                         <div style={{
-                            padding: '12px 16px',
+                            padding: '14px 16px',
                             borderBottom: '1px solid #F1F5F9',
                             fontSize: '0.75rem',
-                            fontWeight: 700,
+                            fontWeight: 800,
                             color: '#64748B',
                             textTransform: 'uppercase',
-                            letterSpacing: '0.5px'
+                            letterSpacing: '0.6px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between'
                         }}>
-                            Servicios del Sanatorio
+                            <span>Sectores / Áreas</span>
+                            <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>{SECTORES_CONFIG.length}</span>
                         </div>
 
                         <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {SERVICIOS_CONFIG.map(s => {
-                                const isSelected = servicio === s.id;
+                            {SECTORES_CONFIG.map(s => {
+                                const isSelected = sectorId === s.id;
                                 return (
                                     <button
                                         key={s.id}
-                                        onClick={() => handleSelectServicio(s.id)}
+                                        onClick={() => handleSelectSector(s.id)}
                                         style={{
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'space-between',
                                             padding: '10px 12px',
                                             borderRadius: '8px',
-                                            border: 'none',
+                                            border: isSelected ? '1px solid #BFDBFE' : '1px solid transparent',
                                             background: isSelected ? '#EFF6FF' : 'transparent',
                                             color: isSelected ? '#1E40AF' : '#334155',
                                             fontWeight: isSelected ? 700 : 500,
-                                            fontSize: '0.85rem',
+                                            fontSize: '0.82rem',
                                             cursor: 'pointer',
                                             textAlign: 'left',
                                             transition: 'all 0.15s ease'
                                         }}
+                                        onMouseOver={e => {
+                                            if (!isSelected) e.currentTarget.style.background = '#F8FAFC';
+                                        }}
+                                        onMouseOut={e => {
+                                            if (!isSelected) e.currentTarget.style.background = 'transparent';
+                                        }}
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span>{s.icon}</span>
-                                            <span>{s.label}</span>
+                                            <span style={{ fontSize: '1.1rem' }}>{s.icon}</span>
+                                            <div>
+                                                <div>{s.shortLabel}</div>
+                                                <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>{s.camasDefault} camas</span>
+                                            </div>
                                         </div>
-                                        <span style={{
-                                            fontSize: '0.7rem',
-                                            color: isSelected ? '#2563EB' : '#94A3B8',
-                                            background: isSelected ? '#DBEAFE' : '#F1F5F9',
-                                            padding: '2px 6px',
-                                            borderRadius: '10px',
-                                            fontWeight: 600
-                                        }}>
-                                            {s.camasDefault} c
-                                        </span>
+                                        {isSelected && <ChevronRight size={16} color="#2563EB" />}
                                     </button>
                                 );
                             })}
                         </div>
-
-                        {/* Ficha rápida de Gobernanza */}
-                        <div style={{
-                            margin: 'auto 12px 12px 12px',
-                            padding: '12px',
-                            background: '#F8FAFC',
-                            borderRadius: '8px',
-                            border: '1px solid #E2E8F0',
-                            fontSize: '0.75rem',
-                            color: '#64748B'
-                        }}>
-                            <div style={{ fontWeight: 700, color: '#1E40AF', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <Layers size={13} />
-                                Gobernanza Activa
-                            </div>
-                            <div>Origen: <strong>SALUS SQL</strong></div>
-                            <div>Unidad: <strong>Día Cama</strong></div>
-                            <div>Sincronización: <strong>Automática</strong></div>
-                        </div>
                     </div>
                 )}
 
-                {/* ÁREA CENTRAL: SCORECARDS + 5 GRÁFICOS */}
-                <div style={{ flex: 1, padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    
-                    {/* TOP 4 SCORECARDS */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
-                        
-                        {/* 1. Días Camas Ocupados */}
-                        <div style={{
-                            background: '#FFFFFF',
-                            borderRadius: '12px',
-                            padding: '16px 18px',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                            border: '1px solid #E2E8F0',
-                            borderTop: '4px solid #1E40AF',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '4px'
-                        }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>Días Camas Ocupados</span>
-                            <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0F172A', letterSpacing: '-0.5px' }}>
-                                {kpis.diasOcupados}
-                            </div>
-                            <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>{kpis.totalPacientesUnicos} pacientes únicos</span>
+                {/* LIENZO PRINCIPAL DEL TELAR (MODULAR) */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+                    {loading ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '350px', flexDirection: 'column', gap: '12px' }}>
+                            <RefreshCw className="animate-spin" size={36} color="#2563EB" />
+                            <span style={{ color: '#64748B', fontSize: '0.9rem', fontWeight: 600 }}>
+                                Cargando indicadores del sector {activeSectorConfig.label}...
+                            </span>
                         </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                            
+                            {/* ─── BLOQUE 1: SCORECARDS EJECUTIVOS ─── */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                                
+                                {/* 1. Días Camas Ocupados */}
+                                {isIndicatorActive('kpi_dias_ocupados') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)', position: 'relative'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                Días Camas Ocupados
+                                            </span>
+                                            <button 
+                                                onClick={() => setInspectDataIndicator({ id: 'kpi_dias_ocupados', label: 'Días Camas Ocupados', sector: activeSectorConfig.label })}
+                                                title="Ver datos tabulados"
+                                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                                            >
+                                                <Eye size={15} />
+                                            </button>
+                                        </div>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#1E293B', margin: '8px 0' }}>
+                                            {metrics.diasOcupados.toLocaleString('es-AR')}
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: '#10B981', fontWeight: 600 }}>
+                                            ✓ Total pernoctadas / camas consumidas
+                                        </span>
+                                    </div>
+                                )}
 
-                        {/* 2. Días Camas Disponibles */}
-                        <div style={{
-                            background: '#FFFFFF',
-                            borderRadius: '12px',
-                            padding: '16px 18px',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                            border: '1px solid #E2E8F0',
-                            borderTop: '4px solid #0284C7',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '4px'
-                        }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>Días Camas Disponibles</span>
-                            <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0F172A', letterSpacing: '-0.5px' }}>
-                                {kpis.camasDisponibles}
+                                {/* 2. Días Camas Disponibles */}
+                                {isIndicatorActive('kpi_dias_disponibles') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                Días Camas Disponibles
+                                            </span>
+                                            <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>{camasTotales} camas</span>
+                                        </div>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#1E293B', margin: '8px 0' }}>
+                                            {metrics.camasDisponibles.toLocaleString('es-AR')}
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                            Capacidad instalada del sector
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* 3. % de Ocupación */}
+                                {isIndicatorActive('kpi_porc_ocupacion') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                % de Ocupación
+                                            </span>
+                                            <span style={{
+                                                width: '10px', height: '10px', borderRadius: '50%',
+                                                background: Number(metrics.porcOcupacion) > 95 ? '#EF4444' : Number(metrics.porcOcupacion) > 85 ? '#F59E0B' : '#10B981'
+                                            }} />
+                                        </div>
+                                        <div style={{
+                                            fontSize: '2.2rem', fontWeight: 800, margin: '8px 0',
+                                            color: Number(metrics.porcOcupacion) > 95 ? '#EF4444' : Number(metrics.porcOcupacion) > 85 ? '#D97706' : '#10B981'
+                                        }}>
+                                            {metrics.porcOcupacion}%
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                            {Number(metrics.porcOcupacion) > 95 ? '⚠️ Alta Saturación' : 'Normal operativa'}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* 4. % de Defunción */}
+                                {isIndicatorActive('kpi_porc_defuncion') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                % de Defunción
+                                            </span>
+                                            <button 
+                                                onClick={() => setInspectDataIndicator({ id: 'kpi_porc_defuncion', label: 'Mortalidad y Egresos', sector: activeSectorConfig.label })}
+                                                title="Ver datos tabulados"
+                                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                                            >
+                                                <Eye size={15} />
+                                            </button>
+                                        </div>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#EF4444', margin: '8px 0' }}>
+                                            {metrics.porcDefuncion}%
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                            {metrics.defunciones} de {metrics.totalAdmisiones} admisiones únicas
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* 5. Promedio de Estancia (ALOS) - Activado o desde catálogo */}
+                                {isIndicatorActive('kpi_alos') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                Promedio de Estancia
+                                            </span>
+                                            <Clock size={16} color="#2563EB" />
+                                        </div>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#2563EB', margin: '8px 0' }}>
+                                            {metrics.alos} <span style={{ fontSize: '1rem', fontWeight: 600 }}>días</span>
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                            Rotación media por paciente
+                                        </span>
+                                    </div>
+                                )}
+
                             </div>
-                            <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>{camasTotales} camas × {kpis.diasPeriodo} días</span>
+
+                            {/* ─── BLOQUE 2: ADMISIONES POR ESPECIALIDAD Y TOTALES ─── */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '20px' }}>
+                                
+                                {/* Gráfico: Admisiones por Especialidad */}
+                                {isIndicatorActive('chart_especialidades') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#1E293B' }}>
+                                                Cantidad de Admisiones por Especialidad
+                                            </h3>
+                                            <button 
+                                                onClick={() => setInspectDataIndicator({ id: 'chart_especialidades', label: 'Admisiones por Especialidad', sector: activeSectorConfig.label })}
+                                                style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                            >
+                                                <Eye size={13} /> Ver datos
+                                            </button>
+                                        </div>
+
+                                        <div style={{ height: '260px' }}>
+                                            <ResponsiveContainer width="100%" height={260}>
+                                                <BarChart data={metrics.dataEspecialidades} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                                                    <XAxis dataKey="mes" stroke="#64748B" fontSize={11} />
+                                                    <YAxis stroke="#64748B" fontSize={11} />
+                                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
+                                                    <Legend wrapperStyle={{ fontSize: '0.7rem', paddingTop: '8px' }} />
+                                                    {metrics.topEspecialidades.map((esp, i) => (
+                                                        <Bar key={esp} dataKey={esp} stackId="a" fill={ESPECIALIDAD_PALETTE[i % ESPECIALIDAD_PALETTE.length]} name={esp} />
+                                                    ))}
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Gráfico: Admisiones Totales por Mes */}
+                                {isIndicatorActive('chart_admisiones_totales') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#1E293B' }}>
+                                                Cantidad de Admisiones Totales
+                                            </h3>
+                                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                                Evolución mensual del sector
+                                            </span>
+                                        </div>
+
+                                        <div style={{ height: '260px' }}>
+                                            <ResponsiveContainer width="100%" height={260}>
+                                                <BarChart data={metrics.dataAdmisionesTotales} margin={{ top: 15, right: 10, left: -15, bottom: 0 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                                                    <XAxis dataKey="mes" stroke="#64748B" fontSize={11} />
+                                                    <YAxis stroke="#64748B" fontSize={11} />
+                                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
+                                                    <Bar dataKey="total" fill="#1E40AF" radius={[4, 4, 0, 0]} name="Admisiones" />
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                )}
+
+                            </div>
+
+                            {/* ─── BLOQUE 3: MOTIVOS DE ALTA, RANGO ETARIO Y ESTANCIAS ─── */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+                                
+                                {/* 1. Motivos de Alta */}
+                                {isIndicatorActive('chart_motivos_alta') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                            <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
+                                                Motivos de Alta
+                                            </h3>
+                                            <button 
+                                                onClick={() => setInspectDataIndicator({ id: 'chart_motivos_alta', label: 'Motivos de Alta', sector: activeSectorConfig.label })}
+                                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                                            >
+                                                <Eye size={15} />
+                                            </button>
+                                        </div>
+
+                                        <div style={{ height: '230px' }}>
+                                            <ResponsiveContainer width="100%" height={230}>
+                                                <PieChart>
+                                                    <Pie
+                                                        data={metrics.dataMotivosAlta}
+                                                        dataKey="value"
+                                                        nameKey="label"
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        innerRadius={45}
+                                                        outerRadius={75}
+                                                        paddingAngle={2}
+                                                    >
+                                                        {metrics.dataMotivosAlta.map((entry, index) => (
+                                                            <Cell key={`cell-${index}`} fill={entry.color} />
+                                                        ))}
+                                                    </Pie>
+                                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
+                                                    <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* 2. Rango Etario */}
+                                {isIndicatorActive('chart_rango_etario') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                            <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
+                                                Rango Etario
+                                            </h3>
+                                            <button 
+                                                onClick={() => setInspectDataIndicator({ id: 'chart_rango_etario', label: 'Rango Etario', sector: activeSectorConfig.label })}
+                                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                                            >
+                                                <Eye size={15} />
+                                            </button>
+                                        </div>
+
+                                        <div style={{ height: '230px' }}>
+                                            <ResponsiveContainer width="100%" height={230}>
+                                                <PieChart>
+                                                    <Pie
+                                                        data={metrics.dataRangoEtario}
+                                                        dataKey="value"
+                                                        nameKey="label"
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        innerRadius={45}
+                                                        outerRadius={75}
+                                                        paddingAngle={2}
+                                                    >
+                                                        {metrics.dataRangoEtario.map((entry, index) => (
+                                                            <Cell key={`cell-${index}`} fill={entry.color} />
+                                                        ))}
+                                                    </Pie>
+                                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
+                                                    <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* 3. Categorías de Estancias */}
+                                {isIndicatorActive('chart_estancias') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                            <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
+                                                Categorías de Estancias
+                                            </h3>
+                                            <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>Corta / Media / Larga</span>
+                                        </div>
+
+                                        <div style={{ height: '230px' }}>
+                                            <ResponsiveContainer width="100%" height={230}>
+                                                <BarChart data={metrics.dataEstancias} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                                                    <XAxis dataKey="mes" stroke="#64748B" fontSize={10} />
+                                                    <YAxis stroke="#64748B" fontSize={10} />
+                                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
+                                                    <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
+                                                    <Bar dataKey="corta" stackId="s" fill={COLORS_ESTANCIA.corta} name="1-2 días" />
+                                                    <Bar dataKey="media" stackId="s" fill={COLORS_ESTANCIA.media} name="3-7 días" />
+                                                    <Bar dataKey="larga" stackId="s" fill={COLORS_ESTANCIA.larga} name=">7 días" />
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                )}
+
+                            </div>
+
+                            {/* ─── BLOQUE 4: INDICADORES MODULARES ADICIONALES (Procedencia y Financiadores) ─── */}
+                            {(isIndicatorActive('chart_procedencia') || isIndicatorActive('chart_clientes')) && (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px' }}>
+                                    
+                                    {isIndicatorActive('chart_procedencia') && (
+                                        <div style={{
+                                            background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                            padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                        }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                                                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
+                                                    Canal de Procedencia del Paciente
+                                                </h3>
+                                                <button 
+                                                    onClick={() => setInspectDataIndicator({ id: 'chart_procedencia', label: 'Procedencia de Ingreso', sector: activeSectorConfig.label })}
+                                                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                                                >
+                                                    <Eye size={15} />
+                                                </button>
+                                            </div>
+                                            <div style={{ height: '220px' }}>
+                                                <ResponsiveContainer width="100%" height={220}>
+                                                    <BarChart data={metrics.dataProcedencia} layout="vertical" margin={{ top: 5, right: 15, left: 40, bottom: 5 }}>
+                                                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+                                                        <XAxis type="number" stroke="#64748B" fontSize={10} />
+                                                        <YAxis type="category" dataKey="label" stroke="#64748B" fontSize={10} width={90} />
+                                                        <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
+                                                        <Bar dataKey="value" fill="#3B82F6" radius={[0, 4, 4, 0]} name="Pacientes" />
+                                                    </BarChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {isIndicatorActive('chart_clientes') && (
+                                        <div style={{
+                                            background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                            padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                        }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                                                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
+                                                    Top Obras Sociales y Financiadores
+                                                </h3>
+                                                <button 
+                                                    onClick={() => setInspectDataIndicator({ id: 'chart_clientes', label: 'Financiadores y Clientes', sector: activeSectorConfig.label })}
+                                                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                                                >
+                                                    <Eye size={15} />
+                                                </button>
+                                            </div>
+                                            <div style={{ height: '220px' }}>
+                                                <ResponsiveContainer width="100%" height={220}>
+                                                    <BarChart data={metrics.dataClientes} layout="vertical" margin={{ top: 5, right: 15, left: 40, bottom: 5 }}>
+                                                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+                                                        <XAxis type="number" stroke="#64748B" fontSize={10} />
+                                                        <YAxis type="category" dataKey="label" stroke="#64748B" fontSize={10} width={90} />
+                                                        <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
+                                                        <Bar dataKey="value" fill="#10B981" radius={[0, 4, 4, 0]} name="Pacientes" />
+                                                    </BarChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                </div>
+                            )}
+
                         </div>
-
-                        {/* 3. % de Ocupación */}
-                        <div style={{
-                            background: '#FFFFFF',
-                            borderRadius: '12px',
-                            padding: '16px 18px',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                            border: '1px solid #E2E8F0',
-                            borderTop: `4px solid ${Number(kpis.ocupacionPct) > 95 ? '#EF4444' : Number(kpis.ocupacionPct) > 85 ? '#F59E0B' : '#10B981'}`,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '4px'
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>% de Ocupación</span>
-                                <span style={{
-                                    fontSize: '0.68rem',
-                                    fontWeight: 700,
-                                    padding: '2px 6px',
-                                    borderRadius: '10px',
-                                    background: Number(kpis.ocupacionPct) > 95 ? '#FEF2F2' : '#ECFDF5',
-                                    color: Number(kpis.ocupacionPct) > 95 ? '#DC2626' : '#059669'
-                                }}>
-                                    {Number(kpis.ocupacionPct) > 95 ? 'Sobreocupación' : 'Normal'}
-                                </span>
-                            </div>
-                            <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0F172A', letterSpacing: '-0.5px' }}>
-                                {kpis.ocupacionPct}%
-                            </div>
-                            <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Ocupados vs. Capacidad</span>
-                        </div>
-
-                        {/* 4. % de Defunción */}
-                        <div style={{
-                            background: '#FFFFFF',
-                            borderRadius: '12px',
-                            padding: '16px 18px',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                            border: '1px solid #E2E8F0',
-                            borderTop: '4px solid #EF4444',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '4px'
-                        }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>% de Defunción</span>
-                            <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#DC2626', letterSpacing: '-0.5px' }}>
-                                {kpis.defuncionPct}%
-                            </div>
-                            <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Mortalidad cruda sobre admisiones</span>
-                        </div>
-
-                    </div>
-
-                    {/* FILA 1: ADMISIONES POR ESPECIALIDAD (APILADO) Y MOTIVOS DE ALTA (DONUT) */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '16px' }}>
-                        
-                        {/* Gráfico 1: Cantidad de Admisiones por Especialidad */}
-                        <div style={{
-                            background: '#FFFFFF',
-                            borderRadius: '12px',
-                            padding: '18px',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                            border: '1px solid #E2E8F0',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gridColumn: 'span 2'
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: '#1E293B' }}>
-                                    Cantidad de Admisiones por Especialidad
-                                </h3>
-                                <span style={{ fontSize: '0.72rem', color: '#64748B' }}>Mes de Fecha ingreso</span>
-                            </div>
-                            <div style={{ width: '100%', height: '280px', minWidth: 0 }}>
-                                <ResponsiveContainer width="100%" height={280}>
-                                    <BarChart data={seriesEspecialidad} margin={{ top: 10, right: 15, left: 0, bottom: 25 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                                        <XAxis dataKey="mes" tick={{ fontSize: 10, fill: '#64748B' }} angle={-25} textAnchor="end" />
-                                        <YAxis tick={{ fontSize: 10, fill: '#64748B' }} />
-                                        <Tooltip />
-                                        {todasEspecialidades.slice(0, 10).map((esp, idx) => (
-                                            <Bar 
-                                                key={esp} 
-                                                dataKey={esp} 
-                                                stackId="a" 
-                                                fill={ESPECIALIDAD_PALETTE[idx % ESPECIALIDAD_PALETTE.length]} 
-                                            />
-                                        ))}
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-
-                        {/* Gráfico 3: Motivos de Alta (Donut) */}
-                        <div style={{
-                            background: '#FFFFFF',
-                            borderRadius: '12px',
-                            padding: '18px',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                            border: '1px solid #E2E8F0',
-                            display: 'flex',
-                            flexDirection: 'column'
-                        }}>
-                            <h3 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', fontWeight: 700, color: '#1E293B' }}>
-                                Motivos de Alta
-                            </h3>
-                            <div style={{ width: '100%', height: '250px', minWidth: 0 }}>
-                                <ResponsiveContainer width="100%" height={250}>
-                                    <PieChart>
-                                        <Pie
-                                            data={dataMotivosAlta}
-                                            cx="50%"
-                                            cy="50%"
-                                            innerRadius={50}
-                                            outerRadius={75}
-                                            paddingAngle={4}
-                                            dataKey="value"
-                                        >
-                                            {dataMotivosAlta.map((entry, index) => (
-                                                <Cell key={`cell-${index}`} fill={COLORS_MOTIVO[index % COLORS_MOTIVO.length]} />
-                                            ))}
-                                        </Pie>
-                                        <Tooltip />
-                                        <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
-                                    </PieChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-
-                    </div>
-
-                    {/* FILA 2: ADMISIONES TOTALES, GRUPO ETARIO Y ESTANCIAS */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
-                        
-                        {/* Gráfico 2: Cantidad de Admisiones Totales (Mensual) */}
-                        <div style={{
-                            background: '#FFFFFF',
-                            borderRadius: '12px',
-                            padding: '18px',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                            border: '1px solid #E2E8F0',
-                            display: 'flex',
-                            flexDirection: 'column'
-                        }}>
-                            <h3 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', fontWeight: 700, color: '#1E293B' }}>
-                                Cantidad de Admisiones Totales
-                            </h3>
-                            <div style={{ width: '100%', height: '250px', minWidth: 0 }}>
-                                <ResponsiveContainer width="100%" height={250}>
-                                    <BarChart data={mesesData} margin={{ top: 15, right: 10, left: -10, bottom: 25 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                                        <XAxis dataKey="mes" tick={{ fontSize: 10, fill: '#64748B' }} angle={-25} textAnchor="end" />
-                                        <YAxis tick={{ fontSize: 10, fill: '#64748B' }} />
-                                        <Tooltip />
-                                        <Bar dataKey="total" fill="#1E40AF" radius={[4, 4, 0, 0]} label={{ position: 'top', fontSize: 10, fill: '#1E40AF' }} />
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-
-                        {/* Gráfico 4: Rango Etario (Donut) */}
-                        <div style={{
-                            background: '#FFFFFF',
-                            borderRadius: '12px',
-                            padding: '18px',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                            border: '1px solid #E2E8F0',
-                            display: 'flex',
-                            flexDirection: 'column'
-                        }}>
-                            <h3 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', fontWeight: 700, color: '#1E293B' }}>
-                                Rango Etario
-                            </h3>
-                            <div style={{ width: '100%', height: '250px', minWidth: 0 }}>
-                                <ResponsiveContainer width="100%" height={250}>
-                                    <PieChart>
-                                        <Pie
-                                            data={dataRangoEtario}
-                                            cx="50%"
-                                            cy="50%"
-                                            innerRadius={45}
-                                            outerRadius={70}
-                                            paddingAngle={4}
-                                            dataKey="value"
-                                        >
-                                            {dataRangoEtario.map((entry, index) => (
-                                                <Cell key={`cell-age-${index}`} fill={COLORS_ETARIO[index % COLORS_ETARIO.length]} />
-                                            ))}
-                                        </Pie>
-                                        <Tooltip />
-                                        <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: '10px' }} />
-                                    </PieChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-
-                        {/* Gráfico 5: Categorías de Estancias (Barras Apiladas) */}
-                        <div style={{
-                            background: '#FFFFFF',
-                            borderRadius: '12px',
-                            padding: '18px',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                            border: '1px solid #E2E8F0',
-                            display: 'flex',
-                            flexDirection: 'column'
-                        }}>
-                            <h3 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', fontWeight: 700, color: '#1E293B' }}>
-                                Categorías de Estancias
-                            </h3>
-                            <div style={{ width: '100%', height: '250px', minWidth: 0 }}>
-                                <ResponsiveContainer width="100%" height={250}>
-                                    <BarChart data={dataCategoriasEstancias} margin={{ top: 15, right: 10, left: -10, bottom: 25 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                                        <XAxis dataKey="mes" tick={{ fontSize: 10, fill: '#64748B' }} angle={-25} textAnchor="end" />
-                                        <YAxis tick={{ fontSize: 10, fill: '#64748B' }} />
-                                        <Tooltip />
-                                        <Bar dataKey="corta" name="1. Corta (1-2 d)" stackId="st" fill={COLORS_ESTANCIA.corta} />
-                                        <Bar dataKey="media" name="2. Media (3-7 d)" stackId="st" fill={COLORS_ESTANCIA.media} />
-                                        <Bar dataKey="larga" name="3. Larga (>7 d)" stackId="st" fill={COLORS_ESTANCIA.larga} />
-                                        <Legend wrapperStyle={{ fontSize: '9px' }} />
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-
-                    </div>
-
+                    )}
                 </div>
 
             </div>
 
-            {/* ─── MODAL DE DOCUMENTACIÓN INTERACTIVO ─── */}
+            {/* ─── MODAL DE AUDITORÍA TABULAR DE DATOS ─── */}
+            {inspectDataIndicator && (
+                <TelarDataModal
+                    indicator={inspectDataIndicator}
+                    rawData={filteredRows}
+                    onClose={() => setInspectDataIndicator(null)}
+                />
+            )}
+
+            {/* ─── DRAWER DEL CATÁLOGO MODULAR DE INDICADORES ─── */}
+            <TelarCatalogoDrawer
+                isOpen={isCatalogoOpen}
+                onClose={() => setIsCatalogoOpen(false)}
+                activeIds={activeIndicatorIds}
+                onToggleIndicator={handleToggleIndicator}
+                onResetDefaults={handleResetDefaults}
+                sectorLabel={activeSectorConfig.label}
+            />
+
+            {/* ─── MODAL DE DOCUMENTACIÓN TÉCNICA ─── */}
             {showDocModal && (
                 <div style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: 'rgba(15, 23, 42, 0.6)',
-                    backdropFilter: 'blur(4px)',
-                    zIndex: 9999,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '20px'
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(15, 23, 42, 0.5)', backdropFilter: 'blur(3px)',
+                    zIndex: 12000, display: 'flex', alignItems: 'center', justifyContent: 'center'
                 }}>
                     <div style={{
-                        background: '#FFFFFF',
-                        borderRadius: '16px',
-                        maxWidth: '850px',
-                        width: '100%',
-                        maxHeight: '90vh',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                        background: '#FFFFFF', borderRadius: '16px', width: '90%', maxWidth: '800px',
+                        maxHeight: '85vh', display: 'flex', flexDirection: 'column',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #E2E8F0',
                         overflow: 'hidden'
                     }}>
                         <div style={{
-                            padding: '16px 24px',
-                            background: '#1E40AF',
-                            color: '#FFFFFF',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between'
+                            padding: '18px 24px', borderBottom: '1px solid #E2E8F0',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            background: '#F8FAFC'
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <BookOpen size={20} />
-                                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>
-                                    Ficha Técnica & Gobernanza: Días Ocupación
+                                <BookOpen size={20} color="#1E40AF" />
+                                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0F172A' }}>
+                                    Documentación Técnica y Metodología de Ocupación
                                 </h3>
                             </div>
                             <button
                                 onClick={() => setShowDocModal(false)}
-                                style={{
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: '#FFFFFF',
-                                    cursor: 'pointer',
-                                    padding: '4px',
-                                    borderRadius: '6px'
-                                }}
+                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748B' }}
                             >
                                 <X size={20} />
                             </button>
@@ -908,12 +1135,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         <div style={{ padding: '24px', overflowY: 'auto', fontSize: '0.88rem', color: '#334155', lineHeight: 1.6 }}>
                             <h4 style={{ color: '#1E40AF', marginTop: 0 }}>1. Query Canónica de Extracción (SALUS SQL Server)</h4>
                             <pre style={{
-                                background: '#F1F5F9',
-                                padding: '12px',
-                                borderRadius: '8px',
-                                fontSize: '0.78rem',
-                                overflowX: 'auto',
-                                border: '1px solid #CBD5E1',
+                                background: '#F1F5F9', padding: '12px', borderRadius: '8px',
+                                fontSize: '0.78rem', overflowX: 'auto', border: '1px solid #CBD5E1',
                                 fontFamily: 'Consolas, monospace'
                             }}>
 {`SELECT 
@@ -943,36 +1166,20 @@ WHERE (b.[Fecha alta] >= '2025-06-01' OR b.[Fecha alta] IS NULL)`}
 
                             <h4 style={{ color: '#1E40AF' }}>2. Fórmulas de Indicadores</h4>
                             <ul>
-                                <li><strong>Cantidad de Días Camas Ocupados:</strong> Conteo de filas en el rango de fechas para el servicio/especialidad filtrado.</li>
-                                <li><strong>Cantidad de Días Camas Disponibles:</strong> <code>Camas Totales × Días Transcurridos</code> en el período.</li>
+                                <li><strong>Cantidad de Días Camas Ocupados:</strong> Conteo de pernoctadas efectivas en el período.</li>
+                                <li><strong>Cantidad de Días Camas Disponibles:</strong> <code>Camas Totales × Días Transcurridos</code>.</li>
                                 <li><strong>% de Ocupación:</strong> <code>(Días Camas Ocupados / Días Camas Disponibles) × 100</code>.</li>
-                                <li><strong>% de Defunción:</strong> <code>(Pacientes únicos con egreso por Defunción / Total Pacientes únicos) × 100</code>.</li>
+                                <li><strong>% de Defunción (Mortalidad Cruda):</strong> <code>(Pacientes únicos fallecidos / Total de pacientes únicos) × 100</code>.</li>
+                                <li><strong>Promedio de Estancia (ALOS):</strong> <code>Sumatoria de días de estancia / Total de altas efectivas</code>.</li>
                             </ul>
-
-                            <h4 style={{ color: '#1E40AF' }}>3. Grupos Etarios y Estancias</h4>
-                            <ul>
-                                <li><strong>Pediátrico:</strong> 0 a 17 años</li>
-                                <li><strong>Adulto Joven:</strong> 18 a 45 años</li>
-                                <li><strong>Adulto:</strong> 46 a 65 años</li>
-                                <li><strong>Mayor:</strong> Más de 65 años</li>
-                                <li><strong>Estancia Corta:</strong> 1 a 2 días | <strong>Media:</strong> 3 a 7 días | <strong>Larga:</strong> Más de 7 días</li>
-                            </ul>
-
-                            <h4 style={{ color: '#1E40AF' }}>4. Servicios Cubiertos</h4>
-                            <p>Esta base de datos soporta análisis transversal para: <strong>UCI (Terapia Intensiva), Neonatología, Internado Clínico, Pediatría, Cirugía Pediátrica, Quirófanos y Urgencias</strong>.</p>
                         </div>
 
                         <div style={{ padding: '12px 24px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end' }}>
                             <button
                                 onClick={() => setShowDocModal(false)}
                                 style={{
-                                    padding: '8px 16px',
-                                    borderRadius: '6px',
-                                    border: '1px solid #CBD5E1',
-                                    background: '#FFFFFF',
-                                    color: '#334155',
-                                    fontWeight: 600,
-                                    cursor: 'pointer'
+                                    padding: '8px 16px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                    background: '#FFFFFF', color: '#334155', fontWeight: 600, cursor: 'pointer'
                                 }}
                             >
                                 Cerrar

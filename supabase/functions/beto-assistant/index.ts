@@ -43,7 +43,8 @@ async function getSchemaContext(): Promise<string> {
                 'altas_administrativas', 'altas_traspasos', 'altas_asignacion',
                 'whatsapp_messages', 'whatsapp_templates',
                 'consultas_guardia', 'consultas_imports',
-                'garantias_rendiciones', 'pedidos_modulos'
+                'garantias_rendiciones', 'pedidos_modulos',
+                'calidad_admisiones_ocupacion'
             ];
             const filtered = columns.filter((c: any) => relevantTables.includes(c.table_name));
             schemaCache = formatSchemaFromColumns(filtered);
@@ -562,7 +563,24 @@ Cuando generes reportes o resúmenes, podés usar bloques especiales que el fron
 {"type": "positive|warning|negative|info", "title": "Tendencia positiva", "description": "Las confirmaciones aumentaron un 15% respecto al mes pasado."}
 \`\`\`
 
-Usá estos bloques cuando muestres datos de cirugías, deudas o estadísticas. El frontend los detecta y los renderiza como componentes visuales interactivos. Incluilos ADEMÁS del texto normal de tu respuesta.`;
+### Gráficos Interactivos Expandibles (Beto Chart)
+Usá este bloque para graficar automáticamente comparativas, distribuciones por especialidad, motivos de alta o rangos etarios. El usuario puede tocar el gráfico para expandirlo en pantalla completa con zoom o descargarlo en PDF.
+\`\`\`beto-chart
+{
+  "type": "bar",
+  "title": "Admisiones por Especialidad en UCI",
+  "unit": "admisiones",
+  "data": [
+    {"label": "Terapia Intensiva", "value": 645},
+    {"label": "Cardiología", "value": 7},
+    {"label": "Clínica Médica", "value": 4},
+    {"label": "Hemodinamia", "value": 4}
+  ]
+}
+\`\`\`
+Tipos soportados: \`"bar"\` (barras), \`"line"\` (líneas), \`"donut"\` (anillo), \`"pie"\` (torta).
+
+Usá estos bloques cuando muestres datos de cirugías, deudas, ocupación o estadísticas. El frontend los detecta y los renderiza como componentes visuales interactivos. Incluilos ADEMÁS del texto normal de tu respuesta.`;
 
 // ═══════════════════════════════════════
 // TOOLS — Simplified RAG Architecture
@@ -1202,8 +1220,31 @@ Gestión de pedidos médicos con nomenclador integrado.
 
 Soporta prácticas ambulatorias e internación.`,
 
-        altas: `## 📤 Altas Administrativas
-Control de altas administrativas de internación hospitalaria.
+        altas: `### \`calidad_admisiones_ocupacion\` (Ocupación Hospitalaria y Días Cama de SALUS — ~90.000 registros)
+- \`id\` (uuid PK)
+- \`numero_admision\` (text) — Código de admisión (ej: UCI000813, I052850)
+- \`fecha_ocupacion\` (date) — Fecha calendario de cada día/noche internado
+- \`especialidad\` (text) — Especialidad médica tratante
+- \`id_admision\` (text) — ID único de la internación en SALUS
+- \`fecha_ingreso\` (timestamptz) — Momento de ingreso del paciente
+- \`fecha_alta\` (timestamptz) — Momento de egreso (null = sigue internado)
+- \`procedencia\` (text) — Canal de ingreso (Urgencias, Quirófano, Derivación Externa, etc.)
+- \`nhc\` (text) — Número de historia clínica
+- \`paciente\` (text) — Nombre del paciente (MAYÚSCULAS)
+- \`motivo_de_alta\` (text) — Alta médica, Defunción, Traslado, etc.
+- \`cliente\` (text) — Obra social / Financiador (001 - PROVINCIA, etc.)
+- \`servicio\` (text) — Sector: 'UCI', 'TERAPIA INTERMEDIA', 'NEONATOLOGÍA', 'INTERNADO', 'PEDIATRÍA', etc.
+- \`proceso\` (text) — Procedimiento o proceso asignado
+- \`edad\` (integer) — Edad del paciente
+
+**MÉTRICAS CLÍNICAS DE OCUPACIÓN:**
+- **Días Camas Ocupados**: COUNT(*) en el rango de \`fecha_ocupacion\`.
+- **Días Camas Disponibles**: \`Camas_Totales × Días_del_período\` (UCI tiene 11 camas por defecto, Intermedia 8 camas).
+- **% de Ocupación**: (Días Camas Ocupados / Días Camas Disponibles) × 100.
+- **Tasa de Mortalidad / % Defunción**: (Pacientes únicos con motivo_de_alta LIKE '%Defunción%' / Total admisiones únicas) × 100.
+- **Promedio de Estancia (ALOS)**: AVG(DATEDIFF(fecha_alta - fecha_ingreso)).
+
+### \`altas_administrativas\` (Control de altas administrativas — ~6790 registros)ernación hospitalaria.
 
 **Tabla principal:** \`altas_administrativas\`
 
