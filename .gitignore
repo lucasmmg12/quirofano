@@ -37,5 +37,6 @@ migrate_body.json
 
 # Temp patch scripts
 patch_surgery.*
+supabase/.temp/
 
 .vercel
