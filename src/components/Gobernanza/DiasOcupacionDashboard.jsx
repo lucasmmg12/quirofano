@@ -151,27 +151,46 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         setLoading(true);
         setLoadingPeticiones(true);
         try {
-            // 1. Cargar Días Camas de Ocupación con columnas optimizadas
-            let query = supabase
-                .from('calidad_admisiones_ocupacion')
-                .select('id, id_admision, numero_admision, fecha_ocupacion, fecha_ingreso, fecha_alta, especialidad, servicio, habitacion, paciente, nhc, motivo_de_alta, cliente, procedencia, edad')
-                .gte('fecha_ocupacion', fechaDesde)
-                .lte('fecha_ocupacion', fechaHasta);
+            // 1. Cargar Días Camas de Ocupación (paginado para superar límite de 1000 registros de Supabase)
+            let allRows = [];
+            let page = 0;
+            const pageSize = 1000;
+            let hasMore = true;
 
-            if (sectorId === 'UCI') {
-                query = query.in('servicio', ['UCI', 'TERAPIA INTERMEDIA']);
-            } else if (sectorId && sectorId !== 'TODOS') {
-                query = query.eq('servicio', sectorId);
+            while (hasMore) {
+                let q = supabase
+                    .from('calidad_admisiones_ocupacion')
+                    .select('id, id_admision, numero_admision, fecha_ocupacion, fecha_ingreso, fecha_alta, especialidad, servicio, paciente, nhc, motivo_de_alta, cliente, procedencia, edad')
+                    .gte('fecha_ocupacion', fechaDesde)
+                    .lte('fecha_ocupacion', fechaHasta)
+                    .range(page * pageSize, (page + 1) * pageSize - 1);
+
+                if (sectorId === 'UCI') {
+                    q = q.in('servicio', ['UCI', 'TERAPIA INTERMEDIA']);
+                } else if (sectorId && sectorId !== 'TODOS') {
+                    q = q.eq('servicio', sectorId);
+                }
+
+                const { data: pageData, error } = await q;
+                if (error) throw error;
+
+                if (pageData && pageData.length > 0) {
+                    allRows = allRows.concat(pageData);
+                    if (pageData.length < pageSize || allRows.length >= 25000) {
+                        hasMore = false;
+                    } else {
+                        page++;
+                    }
+                } else {
+                    hasMore = false;
+                }
             }
 
-            const { data, error } = await query;
-            if (error) throw error;
-
-            setRows(data || []);
+            setRows(allRows);
 
             // Extraer especialidades dinámicas
             const especSet = new Set();
-            data?.forEach(r => {
+            allRows.forEach(r => {
                 if (r.especialidad) especSet.add(r.especialidad.trim());
             });
             setEspecialidadesDisponibles(Array.from(especSet).sort());

@@ -60,6 +60,7 @@ import ActivosPanel from './components/ActivosPanel.jsx';
 import EquipoAuditoriaView from './components/EquipoAuditoriaView.jsx';
 import GobernanzaPanel from './components/GobernanzaPanel.jsx';
 import GobernanzaIndicadoresPanel from './components/Gobernanza/GobernanzaIndicadoresPanel.jsx';
+import BetoGuidePopup from './components/Gobernanza/BetoGuidePopup.jsx';
 import LiquidacionesPanel from './components/LiquidacionesPanel.jsx';
 import PublicRecordView from './components/PublicShare/PublicRecordView.jsx';
 import { startSession, endSession, trackModuleChange } from './lib/activityTracker';
@@ -1123,6 +1124,9 @@ function App({ currentUser, onLogout }) {
                 externalOpen={betoWidgetOpen}
                 onExternalClose={() => setBetoWidgetOpen(false)}
             />
+
+            {/* Beto Guide Popup on Dashboard & Gobernanza entry */}
+            <BetoGuidePopup activeView={activeView} />
 
             {/* #4 — Command Palette (Ctrl+K) */}
             <CommandPalette

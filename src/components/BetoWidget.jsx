@@ -147,6 +147,24 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
         }
     }, [externalOpen]);
 
+    // Custom window event 'open-beto' para dispararlo desde popups o botones
+    useEffect(() => {
+        const handleCustomOpen = (e) => {
+            setIsOpen(true);
+            setShowGreeting(false);
+            if (e.detail?.query) {
+                setInput(e.detail.query);
+                if (e.detail?.autoSend) {
+                    setTimeout(() => {
+                        handleSend(e.detail.query);
+                    }, 300);
+                }
+            }
+        };
+        window.addEventListener('open-beto', handleCustomOpen);
+        return () => window.removeEventListener('open-beto', handleCustomOpen);
+    }, [messages, currentModule, activeIndicators]);
+
     // ─── Proactive nudge system ───
     useEffect(() => {
         // Don't show nudges if chat is open
