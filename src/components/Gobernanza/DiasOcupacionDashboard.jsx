@@ -9,13 +9,97 @@ import {
     AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, RotateCcw, 
     X, FileText, Layers, PanelLeftClose, PanelLeftOpen, LayoutDashboard, 
     Sparkles, RefreshCw, Sliders, Table, Eye, Download, Clock, HeartHandshake,
-    Check, Maximize2
+    Check, Maximize2, CheckSquare, Square, GripVertical, Move
 } from 'lucide-react';
 import SalusSyncButton from '../SalusSyncButton';
 import TelarCatalogoDrawer from './TelarCatalogoDrawer';
 import TelarDataModal from './TelarDataModal';
 import UciGanttChart from './UciGanttChart';
+import DraggableChartCard from './DraggableChartCard';
 import { SECTORES_CONFIG, INDICADORES_CATALOGO, DEFAULT_ACTIVE_INDICATOR_IDS } from './telarConfig';
+
+const SIDEBAR_INDICATOR_GROUPS = [
+    {
+        id: 'kpis',
+        title: 'Métricas Clave & KPIs',
+        icon: '📌',
+        badge: 'Scorecards',
+        ids: [
+            'kpi_dias_ocupados',
+            'kpi_dias_disponibles',
+            'kpi_porc_ocupacion',
+            'kpi_alos',
+            'kpi_porc_defuncion',
+            'kpi_intensidad_diagnostica'
+        ]
+    },
+    {
+        id: 'gestion',
+        title: 'Gráficos de Gestión Hospitalaria',
+        icon: '📊',
+        badge: 'Admisiones',
+        ids: [
+            'chart_especialidades',
+            'chart_admisiones_totales',
+            'chart_motivos_alta',
+            'chart_rango_etario',
+            'chart_estancias',
+            'chart_procedencia',
+            'chart_clientes'
+        ]
+    },
+    {
+        id: 'diagnostico',
+        title: 'Soporte Diagnóstico (VLISE)',
+        icon: '🔬',
+        badge: 'Laboratorio / RX',
+        ids: [
+            'chart_produccion_origen',
+            'chart_estudios_por_box',
+            'chart_top_estudios_uci',
+            'chart_solicitantes_uci'
+        ]
+    },
+    {
+        id: 'auditoria',
+        title: 'Auditoría y Trazabilidad',
+        icon: '📋',
+        badge: 'Datos Crudos',
+        ids: [
+            'table_peticiones_detalle'
+        ]
+    }
+];
+
+const DEFAULT_CHART_ORDER = [
+    'chart_especialidades',
+    'chart_admisiones_totales',
+    'chart_motivos_alta',
+    'chart_rango_etario',
+    'chart_estancias',
+    'chart_procedencia',
+    'chart_clientes',
+    'chart_produccion_origen',
+    'chart_estudios_por_box',
+    'chart_top_estudios_uci',
+    'chart_solicitantes_uci',
+    'table_peticiones_detalle'
+];
+
+const DEFAULT_CHART_SIZES = {
+    chart_especialidades: { width: 'half', height: 260 },
+    chart_admisiones_totales: { width: 'half', height: 260 },
+    chart_motivos_alta: { width: 'half', height: 240 },
+    chart_rango_etario: { width: 'half', height: 240 },
+    chart_estancias: { width: 'half', height: 250 },
+    chart_procedencia: { width: 'half', height: 240 },
+    chart_clientes: { width: 'half', height: 240 },
+    chart_produccion_origen: { width: 'half', height: 250 },
+    chart_estudios_por_box: { width: 'half', height: 250 },
+    chart_top_estudios_uci: { width: 'half', height: 250 },
+    chart_solicitantes_uci: { width: 'half', height: 250 },
+    table_peticiones_detalle: { width: 'full', height: 320 }
+};
 
 const COLORS_ETARIO = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444'];
 const COLORS_MOTIVO = ['#F97316', '#EF4444', '#06B6D4', '#8B5CF6', '#10B981', '#6B7280'];
@@ -57,6 +141,33 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const [isCatalogoOpen, setIsCatalogoOpen] = useState(false);
     const [inspectDataIndicator, setInspectDataIndicator] = useState(null);
 
+    // === ESTADOS DE REORDENAMIENTO Y REDIMENSIONAMIENTO DE GRÁFICOS ===
+    const [chartOrder, setChartOrder] = useState(() => {
+        try {
+            const saved = localStorage.getItem('telar_chart_order_v2');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                const missing = DEFAULT_CHART_ORDER.filter(id => !parsed.includes(id));
+                return [...parsed, ...missing];
+            }
+            return DEFAULT_CHART_ORDER;
+        } catch {
+            return DEFAULT_CHART_ORDER;
+        }
+    });
+
+    const [chartSizes, setChartSizes] = useState(() => {
+        try {
+            const saved = localStorage.getItem('telar_chart_sizes_v2');
+            return saved ? JSON.parse(saved) : DEFAULT_CHART_SIZES;
+        } catch {
+            return DEFAULT_CHART_SIZES;
+        }
+    });
+
+    const [draggedChartId, setDraggedChartId] = useState(null);
+    const [dragOverChartId, setDragOverChartId] = useState(null);
+
     // Guardar indicadores activos en localStorage
     useEffect(() => {
         try {
@@ -73,14 +184,107 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 }
                 return prev.filter(item => item !== id);
             } else {
+                if (!chartOrder.includes(id)) {
+                    setChartOrder(curr => [...curr, id]);
+                }
                 return [...prev, id];
             }
         });
     };
 
+    const handleSelectAllIndicators = () => {
+        const allIds = INDICADORES_CATALOGO.map(i => i.id);
+        setActiveIndicatorIds(allIds);
+        addToast?.('Todos los indicadores activados en el Telar', 'success');
+    };
+
     const handleResetDefaults = () => {
         setActiveIndicatorIds(DEFAULT_ACTIVE_INDICATOR_IDS);
         addToast?.('Indicadores predeterminados restablecidos', 'success');
+    };
+
+    const handleChartSizeChange = (id, newSize) => {
+        setChartSizes(prev => {
+            const updated = { ...prev, [id]: { ...(prev[id] || {}), ...newSize } };
+            try {
+                localStorage.setItem('telar_chart_sizes_v2', JSON.stringify(updated));
+            } catch {}
+            return updated;
+        });
+    };
+
+    const handleDragStartChart = (e, id) => {
+        setDraggedChartId(id);
+        e.dataTransfer.setData('text/plain', id);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDragOverChart = (e, id) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (dragOverChartId !== id) {
+            setDragOverChartId(id);
+        }
+    };
+
+    const handleDragLeaveChart = (e, id) => {
+        if (dragOverChartId === id) {
+            setDragOverChartId(null);
+        }
+    };
+
+    const handleDropChart = (targetId) => {
+        if (!draggedChartId || draggedChartId === targetId) {
+            setDraggedChartId(null);
+            setDragOverChartId(null);
+            return;
+        }
+        setChartOrder(prev => {
+            const oldIndex = prev.indexOf(draggedChartId);
+            const newIndex = prev.indexOf(targetId);
+            if (oldIndex === -1 || newIndex === -1) return prev;
+            const updated = [...prev];
+            const [removed] = updated.splice(oldIndex, 1);
+            updated.splice(newIndex, 0, removed);
+            try {
+                localStorage.setItem('telar_chart_order_v2', JSON.stringify(updated));
+            } catch {}
+            return updated;
+        });
+        setDraggedChartId(null);
+        setDragOverChartId(null);
+    };
+
+    const handleDragEndChart = () => {
+        setDraggedChartId(null);
+        setDragOverChartId(null);
+    };
+
+    const handleMoveChart = (id, direction) => {
+        setChartOrder(prev => {
+            const idx = prev.indexOf(id);
+            if (idx === -1) return prev;
+            const newIdx = idx + direction;
+            if (newIdx < 0 || newIdx >= prev.length) return prev;
+            const updated = [...prev];
+            const temp = updated[idx];
+            updated[idx] = updated[newIdx];
+            updated[newIdx] = temp;
+            try {
+                localStorage.setItem('telar_chart_order_v2', JSON.stringify(updated));
+            } catch {}
+            return updated;
+        });
+    };
+
+    const handleResetChartLayout = () => {
+        setChartOrder(DEFAULT_CHART_ORDER);
+        setChartSizes(DEFAULT_CHART_SIZES);
+        try {
+            localStorage.removeItem('telar_chart_order_v2');
+            localStorage.removeItem('telar_chart_sizes_v2');
+        } catch {}
+        addToast?.('Disposición y tamaños de gráficos restablecidos', 'success');
     };
 
     // Estados de Datos de Ocupación
@@ -799,6 +1003,797 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
     const isIndicatorActive = (id) => activeIndicatorIds.includes(id);
 
+    const renderChartCard = (chartId, index) => {
+        const cardSize = chartSizes[chartId] || DEFAULT_CHART_SIZES[chartId] || { width: 'half', height: 260 };
+        const isFirst = index === 0;
+        const isLast = index === chartOrder.length - 1;
+
+        switch (chartId) {
+            case 'chart_especialidades':
+                return (
+                    <DraggableChartCard
+                        key={chartId}
+                        id={chartId}
+                        title="Cantidad de Admisiones por Especialidad"
+                        subtitle="Evolución mensual segmentada por especialidad"
+                        size={cardSize}
+                        onSizeChange={handleChartSizeChange}
+                        onDragStart={handleDragStartChart}
+                        onDragOver={handleDragOverChart}
+                        onDragLeave={handleDragLeaveChart}
+                        onDrop={handleDropChart}
+                        onDragEnd={handleDragEndChart}
+                        onMoveLeft={() => handleMoveChart(chartId, -1)}
+                        onMoveRight={() => handleMoveChart(chartId, 1)}
+                        isFirst={isFirst}
+                        isLast={isLast}
+                        isDragging={draggedChartId === chartId}
+                        isDropTarget={dragOverChartId === chartId}
+                        actions={
+                            <button 
+                                onClick={() => setInspectDataIndicator({ id: 'chart_especialidades', label: 'Admisiones por Especialidad', sector: activeSectorConfig.label, chartData: metrics.dataEspecialidades, dataType: 'admisiones' })}
+                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                title="Expandir gráfico y exportar a Excel"
+                            >
+                                <Maximize2 size={13} /> Expandir / Excel
+                            </button>
+                        }
+                    >
+                        {({ height }) => (
+                            <ResponsiveContainer width="100%" height={height}>
+                                <BarChart data={metrics.dataEspecialidades} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                                    <XAxis dataKey="mes" stroke="#64748B" fontSize={11} />
+                                    <YAxis stroke="#64748B" fontSize={11} />
+                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
+                                    <Legend wrapperStyle={{ fontSize: '0.7rem', paddingTop: '8px' }} />
+                                    {metrics.topEspecialidades.map((esp, i) => (
+                                        <Bar key={esp} dataKey={esp} stackId="a" fill={ESPECIALIDAD_PALETTE[i % ESPECIALIDAD_PALETTE.length]} name={esp} />
+                                    ))}
+                                </BarChart>
+                            </ResponsiveContainer>
+                        )}
+                    </DraggableChartCard>
+                );
+
+            case 'chart_admisiones_totales':
+                return (
+                    <DraggableChartCard
+                        key={chartId}
+                        id={chartId}
+                        title="Cantidad de Admisiones Totales"
+                        subtitle="Evolución mensual del sector"
+                        size={cardSize}
+                        onSizeChange={handleChartSizeChange}
+                        onDragStart={handleDragStartChart}
+                        onDragOver={handleDragOverChart}
+                        onDragLeave={handleDragLeaveChart}
+                        onDrop={handleDropChart}
+                        onDragEnd={handleDragEndChart}
+                        onMoveLeft={() => handleMoveChart(chartId, -1)}
+                        onMoveRight={() => handleMoveChart(chartId, 1)}
+                        isFirst={isFirst}
+                        isLast={isLast}
+                        isDragging={draggedChartId === chartId}
+                        isDropTarget={dragOverChartId === chartId}
+                        actions={
+                            <button 
+                                onClick={() => setInspectDataIndicator({ id: 'chart_admisiones_totales', label: 'Cantidad de Admisiones Totales', sector: activeSectorConfig.label, chartData: metrics.dataAdmisionesTotales, dataType: 'admisiones' })}
+                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                title="Expandir gráfico y exportar a Excel"
+                            >
+                                <Maximize2 size={13} /> Expandir / Excel
+                            </button>
+                        }
+                    >
+                        {({ height }) => (
+                            <ResponsiveContainer width="100%" height={height}>
+                                <BarChart data={metrics.dataAdmisionesTotales} margin={{ top: 15, right: 10, left: -15, bottom: 0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                                    <XAxis dataKey="mes" stroke="#64748B" fontSize={11} />
+                                    <YAxis stroke="#64748B" fontSize={11} />
+                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
+                                    <Bar dataKey="total" fill="#1E40AF" radius={[4, 4, 0, 0]} name="Admisiones" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        )}
+                    </DraggableChartCard>
+                );
+
+            case 'chart_motivos_alta':
+                return (
+                    <DraggableChartCard
+                        key={chartId}
+                        id={chartId}
+                        title="Motivos de Alta / Egreso"
+                        subtitle="Desenlace clínico de las altas"
+                        size={cardSize}
+                        onSizeChange={handleChartSizeChange}
+                        onDragStart={handleDragStartChart}
+                        onDragOver={handleDragOverChart}
+                        onDragLeave={handleDragLeaveChart}
+                        onDrop={handleDropChart}
+                        onDragEnd={handleDragEndChart}
+                        onMoveLeft={() => handleMoveChart(chartId, -1)}
+                        onMoveRight={() => handleMoveChart(chartId, 1)}
+                        isFirst={isFirst}
+                        isLast={isLast}
+                        isDragging={draggedChartId === chartId}
+                        isDropTarget={dragOverChartId === chartId}
+                        actions={
+                            <button 
+                                onClick={() => setInspectDataIndicator({ id: 'chart_motivos_alta', label: 'Motivos de Alta', sector: activeSectorConfig.label, chartData: metrics.dataMotivosAlta, dataType: 'admisiones' })}
+                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                title="Expandir gráfico y exportar a Excel"
+                            >
+                                <Maximize2 size={13} /> Expandir / Excel
+                            </button>
+                        }
+                    >
+                        {({ height }) => (
+                            <ResponsiveContainer width="100%" height={height}>
+                                <PieChart>
+                                    <Pie
+                                        data={metrics.dataMotivosAlta}
+                                        dataKey="value"
+                                        nameKey="label"
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={Math.round(height * 0.18)}
+                                        outerRadius={Math.round(height * 0.34)}
+                                        paddingAngle={2}
+                                    >
+                                        {metrics.dataMotivosAlta.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={entry.color} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
+                                    <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        )}
+                    </DraggableChartCard>
+                );
+
+            case 'chart_rango_etario':
+                return (
+                    <DraggableChartCard
+                        key={chartId}
+                        id={chartId}
+                        title="Distribución por Rango Etario"
+                        subtitle="Proporción según grupo etario"
+                        size={cardSize}
+                        onSizeChange={handleChartSizeChange}
+                        onDragStart={handleDragStartChart}
+                        onDragOver={handleDragOverChart}
+                        onDragLeave={handleDragLeaveChart}
+                        onDrop={handleDropChart}
+                        onDragEnd={handleDragEndChart}
+                        onMoveLeft={() => handleMoveChart(chartId, -1)}
+                        onMoveRight={() => handleMoveChart(chartId, 1)}
+                        isFirst={isFirst}
+                        isLast={isLast}
+                        isDragging={draggedChartId === chartId}
+                        isDropTarget={dragOverChartId === chartId}
+                        actions={
+                            <button 
+                                onClick={() => setInspectDataIndicator({ id: 'chart_rango_etario', label: 'Rango Etario de Pacientes', sector: activeSectorConfig.label, chartData: metrics.dataRangoEtario, dataType: 'admisiones' })}
+                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                title="Expandir gráfico y exportar a Excel"
+                            >
+                                <Maximize2 size={13} /> Expandir / Excel
+                            </button>
+                        }
+                    >
+                        {({ height }) => (
+                            <ResponsiveContainer width="100%" height={height}>
+                                <PieChart>
+                                    <Pie
+                                        data={metrics.dataRangoEtario}
+                                        dataKey="value"
+                                        nameKey="label"
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={Math.round(height * 0.18)}
+                                        outerRadius={Math.round(height * 0.34)}
+                                        paddingAngle={2}
+                                    >
+                                        {metrics.dataRangoEtario.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={entry.color} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
+                                    <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        )}
+                    </DraggableChartCard>
+                );
+
+            case 'chart_estancias':
+                return (
+                    <DraggableChartCard
+                        key={chartId}
+                        id={chartId}
+                        title="Categorías de Estancias"
+                        subtitle="Corta (1-2d) / Media (3-7d) / Larga (>7d)"
+                        size={cardSize}
+                        onSizeChange={handleChartSizeChange}
+                        onDragStart={handleDragStartChart}
+                        onDragOver={handleDragOverChart}
+                        onDragLeave={handleDragLeaveChart}
+                        onDrop={handleDropChart}
+                        onDragEnd={handleDragEndChart}
+                        onMoveLeft={() => handleMoveChart(chartId, -1)}
+                        onMoveRight={() => handleMoveChart(chartId, 1)}
+                        isFirst={isFirst}
+                        isLast={isLast}
+                        isDragging={draggedChartId === chartId}
+                        isDropTarget={dragOverChartId === chartId}
+                        actions={
+                            <button 
+                                onClick={() => setInspectDataIndicator({ id: 'chart_estancias', label: 'Categorías de Estancias', sector: activeSectorConfig.label, chartData: metrics.dataEstancias, dataType: 'admisiones' })}
+                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                title="Expandir gráfico y exportar a Excel"
+                            >
+                                <Maximize2 size={13} /> Expandir / Excel
+                            </button>
+                        }
+                    >
+                        {({ height }) => (
+                            <ResponsiveContainer width="100%" height={height}>
+                                <BarChart data={metrics.dataEstancias} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                                    <XAxis dataKey="mes" stroke="#64748B" fontSize={10} />
+                                    <YAxis stroke="#64748B" fontSize={10} />
+                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
+                                    <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
+                                    <Bar dataKey="corta" stackId="s" fill={COLORS_ESTANCIA.corta} name="1-2 días" />
+                                    <Bar dataKey="media" stackId="s" fill={COLORS_ESTANCIA.media} name="3-7 días" />
+                                    <Bar dataKey="larga" stackId="s" fill={COLORS_ESTANCIA.larga} name=">7 días" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        )}
+                    </DraggableChartCard>
+                );
+
+            case 'chart_procedencia':
+                return (
+                    <DraggableChartCard
+                        key={chartId}
+                        id={chartId}
+                        title="Canal de Procedencia del Paciente"
+                        subtitle="Origen del ingreso a la institución"
+                        size={cardSize}
+                        onSizeChange={handleChartSizeChange}
+                        onDragStart={handleDragStartChart}
+                        onDragOver={handleDragOverChart}
+                        onDragLeave={handleDragLeaveChart}
+                        onDrop={handleDropChart}
+                        onDragEnd={handleDragEndChart}
+                        onMoveLeft={() => handleMoveChart(chartId, -1)}
+                        onMoveRight={() => handleMoveChart(chartId, 1)}
+                        isFirst={isFirst}
+                        isLast={isLast}
+                        isDragging={draggedChartId === chartId}
+                        isDropTarget={dragOverChartId === chartId}
+                        actions={
+                            <button 
+                                onClick={() => setInspectDataIndicator({ id: 'chart_procedencia', label: 'Procedencia de Ingreso', sector: activeSectorConfig.label, chartData: metrics.dataProcedencia, dataType: 'admisiones' })}
+                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                title="Expandir gráfico y exportar a Excel"
+                            >
+                                <Maximize2 size={13} /> Expandir / Excel
+                            </button>
+                        }
+                    >
+                        {({ height }) => (
+                            <ResponsiveContainer width="100%" height={height}>
+                                <BarChart data={metrics.dataProcedencia} layout="vertical" margin={{ top: 5, right: 15, left: 40, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+                                    <XAxis type="number" stroke="#64748B" fontSize={10} />
+                                    <YAxis type="category" dataKey="label" stroke="#64748B" fontSize={10} width={90} />
+                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
+                                    <Bar dataKey="value" fill="#3B82F6" radius={[0, 4, 4, 0]} name="Pacientes" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        )}
+                    </DraggableChartCard>
+                );
+
+            case 'chart_clientes':
+                return (
+                    <DraggableChartCard
+                        key={chartId}
+                        id={chartId}
+                        title="Top Obras Sociales y Financiadores"
+                        subtitle="Distribución por financiador principal"
+                        size={cardSize}
+                        onSizeChange={handleChartSizeChange}
+                        onDragStart={handleDragStartChart}
+                        onDragOver={handleDragOverChart}
+                        onDragLeave={handleDragLeaveChart}
+                        onDrop={handleDropChart}
+                        onDragEnd={handleDragEndChart}
+                        onMoveLeft={() => handleMoveChart(chartId, -1)}
+                        onMoveRight={() => handleMoveChart(chartId, 1)}
+                        isFirst={isFirst}
+                        isLast={isLast}
+                        isDragging={draggedChartId === chartId}
+                        isDropTarget={dragOverChartId === chartId}
+                        actions={
+                            <button 
+                                onClick={() => setInspectDataIndicator({ id: 'chart_clientes', label: 'Financiadores y Clientes', sector: activeSectorConfig.label, chartData: metrics.dataClientes, dataType: 'admisiones' })}
+                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                title="Expandir gráfico y exportar a Excel"
+                            >
+                                <Maximize2 size={13} /> Expandir / Excel
+                            </button>
+                        }
+                    >
+                        {({ height }) => (
+                            <ResponsiveContainer width="100%" height={height}>
+                                <BarChart data={metrics.dataClientes} layout="vertical" margin={{ top: 5, right: 15, left: 40, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+                                    <XAxis type="number" stroke="#64748B" fontSize={10} />
+                                    <YAxis type="category" dataKey="label" stroke="#64748B" fontSize={10} width={90} />
+                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
+                                    <Bar dataKey="value" fill="#10B981" radius={[0, 4, 4, 0]} name="Pacientes" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        )}
+                    </DraggableChartCard>
+                );
+
+            case 'chart_produccion_origen':
+                return (
+                    <DraggableChartCard
+                        key={chartId}
+                        id={chartId}
+                        title="Composición Diagnóstica en UCI"
+                        subtitle="Modalidades de estudio según período y filtros"
+                        badge={`${metrics.totalBaseUci.toLocaleString('es-AR')} Estudios`}
+                        size={cardSize}
+                        onSizeChange={handleChartSizeChange}
+                        onDragStart={handleDragStartChart}
+                        onDragOver={handleDragOverChart}
+                        onDragLeave={handleDragLeaveChart}
+                        onDrop={handleDropChart}
+                        onDragEnd={handleDragEndChart}
+                        onMoveLeft={() => handleMoveChart(chartId, -1)}
+                        onMoveRight={() => handleMoveChart(chartId, 1)}
+                        isFirst={isFirst}
+                        isLast={isLast}
+                        isDragging={draggedChartId === chartId}
+                        isDropTarget={dragOverChartId === chartId}
+                        actions={
+                            <button 
+                                onClick={() => setInspectDataIndicator({
+                                    id: 'chart_produccion_origen',
+                                    label: 'Composición Diagnóstica en UCI',
+                                    sector: activeSectorConfig.label,
+                                    chartData: metrics.dataModalidadesUci,
+                                    dataType: 'peticiones',
+                                    rawData: metrics.peticionesFiltradas
+                                })}
+                                style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer' }}
+                                title="Expandir gráfico y exportar a Excel"
+                            >
+                                <Maximize2 size={13} /> Expandir / Excel
+                            </button>
+                        }
+                    >
+                        {({ height }) => (
+                            <div style={{ height: `${height}px`, display: 'flex', alignItems: 'center' }}>
+                                {metrics.dataModalidadesUci.length === 0 ? (
+                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
+                                        No hay estudios registrados para este sector o período
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div style={{ width: '48%', height: '100%' }}>
+                                            <ResponsiveContainer width="100%" height={height}>
+                                                <PieChart>
+                                                    <Pie
+                                                        data={metrics.dataModalidadesUci}
+                                                        dataKey="count"
+                                                        nameKey="modalidad"
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        innerRadius={Math.round(height * 0.18)}
+                                                        outerRadius={Math.round(height * 0.34)}
+                                                        paddingAngle={3}
+                                                    >
+                                                        {metrics.dataModalidadesUci.map((entry, index) => (
+                                                            <Cell key={`cell-${index}`} fill={entry.color} />
+                                                        ))}
+                                                    </Pie>
+                                                    <Tooltip
+                                                        formatter={(val, name, item) => [
+                                                            `${Number(val).toLocaleString('es-AR')} estudios (${item.payload.porcentaje}%)`,
+                                                            item.payload.modalidad
+                                                        ]}
+                                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                                                    />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                        <div style={{ width: '52%', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '8px' }}>
+                                            {metrics.dataModalidadesUci.map((m, idx) => (
+                                                <div 
+                                                    key={idx} 
+                                                    onClick={() => setModalidadFiltro(m.modalidad)}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        padding: '5px 8px',
+                                                        borderRadius: '6px',
+                                                        background: modalidadFiltro === m.modalidad ? '#EFF6FF' : '#F8FAFC',
+                                                        border: modalidadFiltro === m.modalidad ? '1px solid #2563EB' : '1px solid #E2E8F0',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: m.color }} />
+                                                        <span style={{ fontSize: '0.74rem', fontWeight: 600, color: '#334155' }}>
+                                                            {m.modalidad}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#0F172A' }}>
+                                                            {m.count.toLocaleString('es-AR')}
+                                                        </span>
+                                                        <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                                            ({m.porcentaje}%)
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </DraggableChartCard>
+                );
+
+            case 'chart_estudios_por_box':
+                return (
+                    <DraggableChartCard
+                        key={chartId}
+                        id={chartId}
+                        title="Distribución de Estudios por Box / Cama"
+                        subtitle="Demanda diagnóstica por unidad (clic para filtrar box)"
+                        badge="VLISE"
+                        size={cardSize}
+                        onSizeChange={handleChartSizeChange}
+                        onDragStart={handleDragStartChart}
+                        onDragOver={handleDragOverChart}
+                        onDragLeave={handleDragLeaveChart}
+                        onDrop={handleDropChart}
+                        onDragEnd={handleDragEndChart}
+                        onMoveLeft={() => handleMoveChart(chartId, -1)}
+                        onMoveRight={() => handleMoveChart(chartId, 1)}
+                        isFirst={isFirst}
+                        isLast={isLast}
+                        isDragging={draggedChartId === chartId}
+                        isDropTarget={dragOverChartId === chartId}
+                        actions={
+                            <button 
+                                onClick={() => setInspectDataIndicator({
+                                    id: 'chart_estudios_por_box',
+                                    label: 'Distribución de Estudios por Box / Cama en UCI',
+                                    sector: activeSectorConfig.label,
+                                    chartData: metrics.dataEstudiosPorBox,
+                                    dataType: 'peticiones',
+                                    rawData: metrics.peticionesFiltradas
+                                })}
+                                style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer' }}
+                                title="Expandir gráfico y exportar a Excel"
+                            >
+                                <Maximize2 size={13} /> Expandir / Excel
+                            </button>
+                        }
+                    >
+                        {({ height }) => (
+                            metrics.dataEstudiosPorBox.length === 0 ? (
+                                <div style={{ height: `${height}px`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
+                                    No hay desglose de boxes registrado para este sector o período
+                                </div>
+                            ) : (
+                                <ResponsiveContainer width="100%" height={height}>
+                                    <BarChart
+                                        data={metrics.dataEstudiosPorBox.slice(0, 10)}
+                                        margin={{ top: 10, right: 10, left: -10, bottom: 20 }}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                                        <XAxis
+                                            dataKey="box"
+                                            stroke="#64748B"
+                                            fontSize={9}
+                                            angle={-25}
+                                            textAnchor="end"
+                                        />
+                                        <YAxis stroke="#64748B" fontSize={10} />
+                                        <Tooltip
+                                            formatter={(val, name, item) => [
+                                                `${Number(val).toLocaleString('es-AR')} estudios (${item.payload.porcentaje}%)`,
+                                                'Demanda'
+                                            ]}
+                                            contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                                        />
+                                        <Bar
+                                            dataKey="count"
+                                            fill="#2563EB"
+                                            radius={[4, 4, 0, 0]}
+                                            cursor="pointer"
+                                            onClick={(entry) => setBoxFiltro(entry.box)}
+                                        >
+                                            {metrics.dataEstudiosPorBox.slice(0, 10).map((entry, index) => (
+                                                <Cell
+                                                    key={`box-cell-${index}`}
+                                                    fill={boxFiltro === entry.box ? '#1E40AF' : entry.color}
+                                                />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            )
+                        )}
+                    </DraggableChartCard>
+                );
+
+            case 'chart_top_estudios_uci':
+                return (
+                    <DraggableChartCard
+                        key={chartId}
+                        id={chartId}
+                        title={`Top Estudios Solicitados en ${activeSectorConfig.shortLabel}`}
+                        subtitle={modalidadFiltro === 'TODAS' ? 'Laboratorio, gasometría e imágenes' : `Filtro activo: ${modalidadFiltro}`}
+                        badge="Top 10"
+                        size={cardSize}
+                        onSizeChange={handleChartSizeChange}
+                        onDragStart={handleDragStartChart}
+                        onDragOver={handleDragOverChart}
+                        onDragLeave={handleDragLeaveChart}
+                        onDrop={handleDropChart}
+                        onDragEnd={handleDragEndChart}
+                        onMoveLeft={() => handleMoveChart(chartId, -1)}
+                        onMoveRight={() => handleMoveChart(chartId, 1)}
+                        isFirst={isFirst}
+                        isLast={isLast}
+                        isDragging={draggedChartId === chartId}
+                        isDropTarget={dragOverChartId === chartId}
+                        actions={
+                            <button 
+                                onClick={() => setInspectDataIndicator({
+                                    id: 'chart_top_estudios_uci',
+                                    label: 'Top Estudios Solicitados en UCI',
+                                    sector: activeSectorConfig.label,
+                                    chartData: metrics.dataTopEstudios,
+                                    dataType: 'peticiones',
+                                    rawData: metrics.peticionesFiltradas
+                                })}
+                                style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer' }}
+                                title="Expandir gráfico y exportar a Excel"
+                            >
+                                <Maximize2 size={13} /> Expandir / Excel
+                            </button>
+                        }
+                    >
+                        {({ height }) => (
+                            metrics.dataTopEstudios.length === 0 ? (
+                                <div style={{ height: `${height}px`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
+                                    No hay estudios registrados con los filtros seleccionados
+                                </div>
+                            ) : (
+                                <ResponsiveContainer width="100%" height={height}>
+                                    <BarChart
+                                        data={metrics.dataTopEstudios}
+                                        layout="vertical"
+                                        margin={{ top: 5, right: 20, left: 60, bottom: 5 }}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+                                        <XAxis type="number" stroke="#64748B" fontSize={10} />
+                                        <YAxis
+                                            type="category"
+                                            dataKey="label"
+                                            stroke="#64748B"
+                                            fontSize={9}
+                                            width={130}
+                                            tickFormatter={(v) => v.length > 20 ? v.substring(0, 20) + '...' : v}
+                                        />
+                                        <Tooltip
+                                            formatter={(val) => [Number(val).toLocaleString('es-AR') + ' solicitudes', 'Cantidad']}
+                                            contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                                        />
+                                        <Bar dataKey="value" fill="#2563EB" radius={[0, 4, 4, 0]} name="Solicitudes" />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            )
+                        )}
+                    </DraggableChartCard>
+                );
+
+            case 'chart_solicitantes_uci':
+                return (
+                    <DraggableChartCard
+                        key={chartId}
+                        id={chartId}
+                        title="Médicos Solicitantes Más Activos"
+                        subtitle="Prescriptores con mayor volumen de estudios"
+                        badge="VLISE"
+                        size={cardSize}
+                        onSizeChange={handleChartSizeChange}
+                        onDragStart={handleDragStartChart}
+                        onDragOver={handleDragOverChart}
+                        onDragLeave={handleDragLeaveChart}
+                        onDrop={handleDropChart}
+                        onDragEnd={handleDragEndChart}
+                        onMoveLeft={() => handleMoveChart(chartId, -1)}
+                        onMoveRight={() => handleMoveChart(chartId, 1)}
+                        isFirst={isFirst}
+                        isLast={isLast}
+                        isDragging={draggedChartId === chartId}
+                        isDropTarget={dragOverChartId === chartId}
+                        actions={
+                            <button 
+                                onClick={() => setInspectDataIndicator({
+                                    id: 'chart_solicitantes_uci',
+                                    label: 'Médicos Solicitantes Más Activos en UCI',
+                                    sector: activeSectorConfig.label,
+                                    chartData: metrics.dataTopSolicitantes,
+                                    dataType: 'peticiones',
+                                    rawData: metrics.peticionesFiltradas
+                                })}
+                                style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer' }}
+                                title="Expandir gráfico y exportar a Excel"
+                            >
+                                <Maximize2 size={13} /> Expandir / Excel
+                            </button>
+                        }
+                    >
+                        {({ height }) => (
+                            metrics.dataTopSolicitantes.length === 0 ? (
+                                <div style={{ height: `${height}px`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
+                                    No hay solicitantes registrados con los filtros seleccionados
+                                </div>
+                            ) : (
+                                <ResponsiveContainer width="100%" height={height}>
+                                    <BarChart
+                                        data={metrics.dataTopSolicitantes}
+                                        layout="vertical"
+                                        margin={{ top: 5, right: 20, left: 60, bottom: 5 }}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+                                        <XAxis type="number" stroke="#64748B" fontSize={10} />
+                                        <YAxis
+                                            type="category"
+                                            dataKey="label"
+                                            stroke="#64748B"
+                                            fontSize={9}
+                                            width={120}
+                                            tickFormatter={(v) => v.length > 18 ? v.substring(0, 18) + '...' : v}
+                                        />
+                                        <Tooltip
+                                            formatter={(val) => [val, 'Solicitudes']}
+                                            contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                                        />
+                                        <Bar dataKey="value" fill="#8B5CF6" radius={[0, 4, 4, 0]} name="Solicitudes" />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            )
+                        )}
+                    </DraggableChartCard>
+                );
+
+            case 'table_peticiones_detalle':
+                return (
+                    <DraggableChartCard
+                        key={chartId}
+                        id={chartId}
+                        title="Auditoría y Trazabilidad de Peticiones y Pruebas"
+                        subtitle="Estudios solicitados con paciente, modalidad diagnóstica y origen clasificado"
+                        badge={`${metrics.peticionesFiltradas.length.toLocaleString('es-AR')} registros`}
+                        size={cardSize}
+                        onSizeChange={handleChartSizeChange}
+                        onDragStart={handleDragStartChart}
+                        onDragOver={handleDragOverChart}
+                        onDragLeave={handleDragLeaveChart}
+                        onDrop={handleDropChart}
+                        onDragEnd={handleDragEndChart}
+                        onMoveLeft={() => handleMoveChart(chartId, -1)}
+                        onMoveRight={() => handleMoveChart(chartId, 1)}
+                        isFirst={isFirst}
+                        isLast={isLast}
+                        isDragging={draggedChartId === chartId}
+                        isDropTarget={dragOverChartId === chartId}
+                        actions={
+                            <button 
+                                onClick={() => setInspectDataIndicator({
+                                    id: 'table_peticiones_detalle',
+                                    label: 'Auditoría Completa de Peticiones y Pruebas en UCI',
+                                    sector: activeSectorConfig.label,
+                                    dataType: 'peticiones',
+                                    rawData: metrics.peticionesFiltradas
+                                })}
+                                style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#EFF6FF', border: '1px solid #93C5FD', borderRadius: '6px', padding: '4px 10px', fontSize: '0.74rem', fontWeight: 700, color: '#1E40AF', cursor: 'pointer' }}
+                                title="Expandir tabla completa y exportar a Excel"
+                            >
+                                <Maximize2 size={13} /> Expandir / Excel
+                            </button>
+                        }
+                    >
+                        {({ height }) => (
+                            <div style={{ overflowX: 'auto', maxHeight: `${height}px`, fontSize: '0.78rem' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                    <thead>
+                                        <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #CBD5E1', color: '#475569', position: 'sticky', top: 0, zIndex: 1 }}>
+                                            <th style={{ padding: '8px 10px' }}>Fecha</th>
+                                            <th style={{ padding: '8px 10px' }}>Paciente</th>
+                                            <th style={{ padding: '8px 10px' }}>Estudio / Prueba</th>
+                                            <th style={{ padding: '8px 10px' }}>Modalidad</th>
+                                            <th style={{ padding: '8px 10px' }}>Hab./Box</th>
+                                            <th style={{ padding: '8px 10px' }}>Origen Clasificado</th>
+                                            <th style={{ padding: '8px 10px' }}>Solicitante</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {metrics.peticionesFiltradas.slice(0, 30).map((p, idx) => (
+                                            <tr key={idx} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                                <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', color: '#64748B' }}>
+                                                    {p.fecha_solicitud ? new Date(p.fecha_solicitud).toLocaleDateString('es-AR') : '-'}
+                                                </td>
+                                                <td style={{ padding: '8px 10px', fontWeight: 600, color: '#0F172A' }}>
+                                                    {p.paciente || `ID ${p.id_paciente || '-'}`}
+                                                </td>
+                                                <td style={{ padding: '8px 10px', fontWeight: 600, color: '#1E293B' }}>
+                                                    {(p.estudio || '').replace(/<[^>]+>/g, '')}
+                                                </td>
+                                                <td style={{ padding: '8px 10px' }}>
+                                                    <span style={{
+                                                        padding: '2px 8px',
+                                                        borderRadius: '12px',
+                                                        fontSize: '0.7rem',
+                                                        fontWeight: 700,
+                                                        background: p.modalidad === 'Imágenes' ? '#FAF5FF' : '#EFF6FF',
+                                                        color: p.modalidad === 'Imágenes' ? '#7E22CE' : '#1D4ED8',
+                                                        border: p.modalidad === 'Imágenes' ? '1px solid #E9D5FF' : '1px solid #BFDBFE'
+                                                    }}>
+                                                        {p.modalidad || 'Laboratorio'}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '8px 10px', color: '#2563EB', fontWeight: 700 }}>
+                                                    {p.habitacion || (p.cama ? `Cama ${p.cama}` : 'Piso')}
+                                                </td>
+                                                <td style={{ padding: '8px 10px', color: '#475569', fontSize: '0.72rem' }}>
+                                                    <span style={{
+                                                        background: '#F1F5F9',
+                                                        padding: '2px 6px',
+                                                        borderRadius: '4px',
+                                                        fontWeight: 600
+                                                    }}>
+                                                        {p.origen_gobernanza || p.origen || 'Hospitalización'}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '8px 10px', color: '#475569', fontSize: '0.72rem' }}>
+                                                    {p.solicitante || '-'}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </DraggableChartCard>
+                );
+
+            default:
+                return null;
+        }
+    };
+
     return (
         <div style={{
             display: 'flex',
@@ -1320,139 +2315,261 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             {/* ─── CUERPO UNIFICADO: SIDEBAR DE SECTORES + LIENZO MODULAR DEL TELAR ─── */}
             <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
                 
-                {/* SIDEBAR LATERAL: SECTORES HOSPITALARIOS */}
+                {/* SIDEBAR LATERAL: SECTOR > UCI > LISTA DE INDICADORES CON CHECKLIST */}
                 {sidebarOpen && (
                     <div style={{
-                        width: '250px',
+                        width: '300px',
+                        minWidth: '300px',
                         background: '#FFFFFF',
                         borderRight: '1px solid #E2E8F0',
                         display: 'flex',
                         flexDirection: 'column',
                         overflowY: 'auto'
                     }}>
+                        {/* Nivel 1: Sector */}
                         <div style={{
-                            padding: '14px 16px',
+                            padding: '12px 16px',
                             borderBottom: '1px solid #F1F5F9',
-                            fontSize: '0.75rem',
-                            fontWeight: 800,
-                            color: '#64748B',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.6px',
+                            background: '#F8FAFC',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between'
                         }}>
-                            <span>Sector Activo</span>
-                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1E40AF', background: '#DBEAFE', padding: '1px 6px', borderRadius: '6px' }}>1 Sector</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    Sector
+                                </span>
+                            </div>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1E40AF', background: '#DBEAFE', padding: '2px 7px', borderRadius: '6px' }}>
+                                Sanatorio Argentino
+                            </span>
                         </div>
 
-                        <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            {SECTORES_CONFIG.map(s => {
+                        {/* Nivel 2: UCI */}
+                        <div style={{ padding: '12px', borderBottom: '1px solid #F1F5F9' }}>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '10px 12px',
+                                borderRadius: '8px',
+                                background: '#EFF6FF',
+                                border: '1px solid #BFDBFE',
+                                color: '#1E40AF'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '1.2rem' }}>🏥</span>
+                                    <div>
+                                        <div style={{ fontWeight: 800, fontSize: '0.88rem' }}>UCI</div>
+                                        <div style={{ fontSize: '0.68rem', color: '#3B82F6' }}>16 camas operativas</div>
+                                    </div>
+                                </div>
+                                <span style={{
+                                    fontSize: '0.7rem',
+                                    background: '#2563EB',
+                                    color: '#FFFFFF',
+                                    padding: '2px 8px',
+                                    borderRadius: '10px',
+                                    fontWeight: 800
+                                }}>
+                                    {activeIndicatorIds.length} activos
+                                </span>
+                            </div>
+
+                            {/* Sub-selector de UCI (Consolidado vs Intensiva vs Intermedia) */}
+                            <div style={{
+                                marginTop: '10px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '4px',
+                                paddingLeft: '8px',
+                                borderLeft: '2px solid #DBEAFE'
+                            }}>
+                                <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                    Nivel Asistencial:
+                                </span>
+                                <div style={{ display: 'flex', gap: '3px' }}>
+                                    {[
+                                        { id: 'CONSOLIDADO', label: 'Total 16', color: '#2563EB' },
+                                        { id: 'INTENSIVA', label: 'UTI (8)', color: '#DC2626' },
+                                        { id: 'INTERMEDIA', label: 'UTIN (8)', color: '#D97706' }
+                                    ].map(sub => {
+                                        const isSel = uciSubNivel === sub.id;
+                                        return (
+                                            <button
+                                                key={sub.id}
+                                                type="button"
+                                                onClick={() => handleSelectUciSubNivel(sub.id)}
+                                                style={{
+                                                    flex: 1,
+                                                    padding: '5px 2px',
+                                                    borderRadius: '6px',
+                                                    border: isSel ? `1px solid ${sub.color}` : '1px solid #CBD5E1',
+                                                    background: isSel ? '#FFFFFF' : '#F8FAFC',
+                                                    color: isSel ? sub.color : '#64748B',
+                                                    fontWeight: isSel ? 800 : 500,
+                                                    fontSize: '0.68rem',
+                                                    cursor: 'pointer',
+                                                    boxShadow: isSel ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                                                    transition: 'all 0.15s ease'
+                                                }}
+                                            >
+                                                {sub.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Nivel 3: Lista de Indicadores con botoncito de checklist */}
+                        <div style={{ padding: '12px 14px', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                                    Indicadores UCI ({activeIndicatorIds.length})
+                                </span>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                    <button
+                                        type="button"
+                                        onClick={handleSelectAllIndicators}
+                                        style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: '#2563EB',
+                                            fontSize: '0.68rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            padding: '1px 4px'
+                                        }}
+                                    >
+                                        Todos
+                                    </button>
+                                    <span style={{ color: '#CBD5E1' }}>|</span>
+                                    <button
+                                        type="button"
+                                        onClick={handleResetDefaults}
+                                        style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: '#64748B',
+                                            fontSize: '0.68rem',
+                                            fontWeight: 600,
+                                            cursor: 'pointer',
+                                            padding: '1px 4px'
+                                        }}
+                                    >
+                                        Predeterminados
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Grupos de Indicadores */}
+                            {SIDEBAR_INDICATOR_GROUPS.map(group => {
+                                const groupIndicators = INDICADORES_CATALOGO.filter(i => group.ids.includes(i.id));
+                                if (groupIndicators.length === 0) return null;
+
+                                const activeCountInGroup = groupIndicators.filter(i => activeIndicatorIds.includes(i.id)).length;
+
                                 return (
-                                    <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        <div
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between',
-                                                padding: '10px 12px',
-                                                borderRadius: '8px',
-                                                border: '1px solid #BFDBFE',
-                                                background: '#EFF6FF',
-                                                color: '#1E40AF',
-                                                fontWeight: 700,
-                                                fontSize: '0.82rem',
-                                            }}
-                                        >
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <span style={{ fontSize: '1.2rem' }}>🏥</span>
-                                                <div>
-                                                    <div style={{ fontWeight: 800, color: '#1E40AF' }}>{s.label}</div>
-                                                    <span style={{ fontSize: '0.7rem', color: '#3B82F6' }}>16 camas operativas</span>
-                                                </div>
+                                    <div key={group.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            padding: '2px 4px',
+                                            borderBottom: '1px solid #F1F5F9',
+                                            marginBottom: '2px'
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                <span>{group.icon}</span>
+                                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>
+                                                    {group.title}
+                                                </span>
                                             </div>
-                                            <CheckCircle2 size={16} color="#2563EB" />
+                                            <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748B' }}>
+                                                {activeCountInGroup}/{groupIndicators.length}
+                                            </span>
                                         </div>
 
-                                        {/* Sub-niveles de UCI: Intensiva vs Intermedia */}
-                                        <div style={{
-                                            marginLeft: '12px',
-                                            paddingLeft: '10px',
-                                            borderLeft: '2px solid #DBEAFE',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            gap: '3px',
-                                            marginTop: '4px'
-                                        }}>
-                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: '2px' }}>
-                                                Nivel Asistencial:
-                                            </span>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                            {groupIndicators.map(ind => {
+                                                const isChecked = activeIndicatorIds.includes(ind.id);
+                                                return (
+                                                    <div
+                                                        key={ind.id}
+                                                        onClick={() => handleToggleIndicator(ind.id)}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            padding: '6px 8px',
+                                                            borderRadius: '6px',
+                                                            cursor: 'pointer',
+                                                            background: isChecked ? '#EFF6FF' : 'transparent',
+                                                            border: isChecked ? '1px solid #BFDBFE' : '1px solid transparent',
+                                                            transition: 'all 0.12s ease'
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            if (!isChecked) e.currentTarget.style.background = '#F8FAFC';
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            if (!isChecked) e.currentTarget.style.background = 'transparent';
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleToggleIndicator(ind.id);
+                                                                }}
+                                                                style={{
+                                                                    background: 'transparent',
+                                                                    border: 'none',
+                                                                    padding: 0,
+                                                                    cursor: 'pointer',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    color: isChecked ? '#1E40AF' : '#94A3B8'
+                                                                }}
+                                                                title={isChecked ? "Desactivar del dashboard" : "Enviar al dashboard"}
+                                                            >
+                                                                {isChecked ? (
+                                                                    <CheckSquare size={16} color="#1E40AF" />
+                                                                ) : (
+                                                                    <Square size={16} color="#94A3B8" />
+                                                                )}
+                                                            </button>
 
-                                            <button
-                                                onClick={() => handleSelectUciSubNivel('CONSOLIDADO')}
-                                                style={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'space-between',
-                                                    padding: '6px 10px',
-                                                    borderRadius: '6px',
-                                                    border: uciSubNivel === 'CONSOLIDADO' ? '1px solid #93C5FD' : '1px solid transparent',
-                                                    background: uciSubNivel === 'CONSOLIDADO' ? '#DBEAFE' : 'transparent',
-                                                    color: uciSubNivel === 'CONSOLIDADO' ? '#1E40AF' : '#475569',
-                                                    fontWeight: uciSubNivel === 'CONSOLIDADO' ? 700 : 500,
-                                                    fontSize: '0.76rem',
-                                                    cursor: 'pointer',
-                                                    textAlign: 'left',
-                                                    transition: 'all 0.15s ease'
-                                                }}
-                                            >
-                                                <span>⚡ UCI Total (16 camas)</span>
-                                                {uciSubNivel === 'CONSOLIDADO' && <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2563EB' }} />}
-                                            </button>
+                                                            <span style={{
+                                                                fontSize: '0.74rem',
+                                                                fontWeight: isChecked ? 700 : 500,
+                                                                color: isChecked ? '#1E293B' : '#475569',
+                                                                whiteSpace: 'nowrap',
+                                                                overflow: 'hidden',
+                                                                textOverflow: 'ellipsis'
+                                                            }}
+                                                            title={ind.descripcion}
+                                                            >
+                                                                {ind.label}
+                                                            </span>
+                                                        </div>
 
-                                            <button
-                                                onClick={() => handleSelectUciSubNivel('INTENSIVA')}
-                                                style={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'space-between',
-                                                    padding: '6px 10px',
-                                                    borderRadius: '6px',
-                                                    border: uciSubNivel === 'INTENSIVA' ? '1px solid #FECACA' : '1px solid transparent',
-                                                    background: uciSubNivel === 'INTENSIVA' ? '#FEE2E2' : 'transparent',
-                                                    color: uciSubNivel === 'INTENSIVA' ? '#991B1B' : '#475569',
-                                                    fontWeight: uciSubNivel === 'INTENSIVA' ? 700 : 500,
-                                                    fontSize: '0.76rem',
-                                                    cursor: 'pointer',
-                                                    textAlign: 'left',
-                                                    transition: 'all 0.15s ease'
-                                                }}
-                                            >
-                                                <span>🔴 Terapia Intensiva (8 camas)</span>
-                                                {uciSubNivel === 'INTENSIVA' && <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#DC2626' }} />}
-                                            </button>
-
-                                            <button
-                                                onClick={() => handleSelectUciSubNivel('INTERMEDIA')}
-                                                style={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'space-between',
-                                                    padding: '6px 10px',
-                                                    borderRadius: '6px',
-                                                    border: uciSubNivel === 'INTERMEDIA' ? '1px solid #FEF08A' : '1px solid transparent',
-                                                    background: uciSubNivel === 'INTERMEDIA' ? '#FEF9C3' : 'transparent',
-                                                    color: uciSubNivel === 'INTERMEDIA' ? '#854D0E' : '#475569',
-                                                    fontWeight: uciSubNivel === 'INTERMEDIA' ? 700 : 500,
-                                                    fontSize: '0.76rem',
-                                                    cursor: 'pointer',
-                                                    textAlign: 'left',
-                                                    transition: 'all 0.15s ease'
-                                                }}
-                                            >
-                                                <span>🟡 Terapia Intermedia (8 camas)</span>
-                                                {uciSubNivel === 'INTERMEDIA' && <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#CA8A04' }} />}
-                                            </button>
+                                                        <span style={{
+                                                            fontSize: '0.6rem',
+                                                            fontWeight: 700,
+                                                            padding: '1px 4px',
+                                                            borderRadius: '4px',
+                                                            background: ind.tipo === 'kpi' ? '#DBEAFE' : ind.tipo === 'table' ? '#D1FAE5' : '#F1F5F9',
+                                                            color: ind.tipo === 'kpi' ? '#1E40AF' : ind.tipo === 'table' ? '#065F46' : '#475569',
+                                                            flexShrink: 0
+                                                        }}>
+                                                            {ind.tipo === 'kpi' ? 'KPI' : ind.tipo === 'table' ? 'Tabla' : 'Gráfico'}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 );
@@ -1695,873 +2812,97 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
                             </div>
 
-                            {/* ─── BLOQUE 2: ADMISIONES POR ESPECIALIDAD Y TOTALES ─── */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '20px' }}>
-                                
-                                {/* Gráfico: Admisiones por Especialidad */}
-                                {isIndicatorActive('chart_especialidades') && (
-                                    <div style={{
-                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                        padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                    }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#1E293B' }}>
-                                                Cantidad de Admisiones por Especialidad
-                                            </h3>
-                                            <button 
-                                                onClick={() => setInspectDataIndicator({ id: 'chart_especialidades', label: 'Admisiones por Especialidad', sector: activeSectorConfig.label, chartData: metrics.dataEspecialidades, dataType: 'admisiones' })}
-                                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                                title="Expandir gráfico y exportar a Excel"
-                                            >
-                                                <Maximize2 size={13} /> Expandir / Excel
-                                            </button>
-                                        </div>
-
-                                        <div style={{ height: '260px' }}>
-                                            <ResponsiveContainer width="100%" height={260}>
-                                                <BarChart data={metrics.dataEspecialidades} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
-                                                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                                                    <XAxis dataKey="mes" stroke="#64748B" fontSize={11} />
-                                                    <YAxis stroke="#64748B" fontSize={11} />
-                                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
-                                                    <Legend wrapperStyle={{ fontSize: '0.7rem', paddingTop: '8px' }} />
-                                                    {metrics.topEspecialidades.map((esp, i) => (
-                                                        <Bar key={esp} dataKey={esp} stackId="a" fill={ESPECIALIDAD_PALETTE[i % ESPECIALIDAD_PALETTE.length]} name={esp} />
-                                                    ))}
-                                                </BarChart>
-                                            </ResponsiveContainer>
-                                        </div>
+                            {/* ─── BARRA DE CONTROL DEL LIENZO DE GRÁFICOS (REORDENABLES Y REDIMENSIONABLES) ─── */}
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '10px 16px',
+                                background: '#FFFFFF',
+                                border: '1px solid #E2E8F0',
+                                borderRadius: '10px',
+                                flexWrap: 'wrap',
+                                gap: '10px'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div style={{ background: '#EFF6FF', color: '#1E40AF', padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Move size={15} />
                                     </div>
-                                )}
-
-                                {/* Gráfico: Admisiones Totales por Mes */}
-                                {isIndicatorActive('chart_admisiones_totales') && (
-                                    <div style={{
-                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                        padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                    }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                            <div>
-                                                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#1E293B' }}>
-                                                    Cantidad de Admisiones Totales
-                                                </h3>
-                                                <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                                    Evolución mensual del sector
-                                                </span>
-                                            </div>
-                                            <button 
-                                                onClick={() => setInspectDataIndicator({ id: 'chart_admisiones_totales', label: 'Cantidad de Admisiones Totales', sector: activeSectorConfig.label, chartData: metrics.dataAdmisionesTotales, dataType: 'admisiones' })}
-                                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                                title="Expandir gráfico y exportar a Excel"
-                                            >
-                                                <Maximize2 size={13} /> Expandir / Excel
-                                            </button>
+                                    <div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#1E293B' }}>
+                                            Lienzo Dinámico de Gráficos & Auditoría
                                         </div>
-
-                                        <div style={{ height: '260px' }}>
-                                            <ResponsiveContainer width="100%" height={260}>
-                                                <BarChart data={metrics.dataAdmisionesTotales} margin={{ top: 15, right: 10, left: -15, bottom: 0 }}>
-                                                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                                                    <XAxis dataKey="mes" stroke="#64748B" fontSize={11} />
-                                                    <YAxis stroke="#64748B" fontSize={11} />
-                                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
-                                                    <Bar dataKey="total" fill="#1E40AF" radius={[4, 4, 0, 0]} name="Admisiones" />
-                                                </BarChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    </div>
-                                )}
-
-                            </div>
-
-                            {/* ─── BLOQUE 3: MOTIVOS DE ALTA, RANGO ETARIO Y ESTANCIAS ─── */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-                                
-                                {/* 1. Motivos de Alta */}
-                                {isIndicatorActive('chart_motivos_alta') && (
-                                    <div style={{
-                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                        padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                    }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                            <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
-                                                Motivos de Alta
-                                            </h3>
-                                            <button 
-                                                onClick={() => setInspectDataIndicator({ id: 'chart_motivos_alta', label: 'Motivos de Alta', sector: activeSectorConfig.label, chartData: metrics.dataMotivosAlta, dataType: 'admisiones' })}
-                                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                                title="Expandir gráfico y exportar a Excel"
-                                            >
-                                                <Maximize2 size={13} /> Expandir / Excel
-                                            </button>
-                                        </div>
-
-                                        <div style={{ height: '230px' }}>
-                                            <ResponsiveContainer width="100%" height={230}>
-                                                <PieChart>
-                                                    <Pie
-                                                        data={metrics.dataMotivosAlta}
-                                                        dataKey="value"
-                                                        nameKey="label"
-                                                        cx="50%"
-                                                        cy="50%"
-                                                        innerRadius={45}
-                                                        outerRadius={75}
-                                                        paddingAngle={2}
-                                                    >
-                                                        {metrics.dataMotivosAlta.map((entry, index) => (
-                                                            <Cell key={`cell-${index}`} fill={entry.color} />
-                                                        ))}
-                                                    </Pie>
-                                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
-                                                    <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
-                                                </PieChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* 2. Rango Etario */}
-                                {isIndicatorActive('chart_rango_etario') && (
-                                    <div style={{
-                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                        padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                    }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                            <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
-                                                Rango Etario
-                                            </h3>
-                                            <button 
-                                                onClick={() => setInspectDataIndicator({ id: 'chart_rango_etario', label: 'Rango Etario de Pacientes', sector: activeSectorConfig.label, chartData: metrics.dataRangoEtario, dataType: 'admisiones' })}
-                                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                                title="Expandir gráfico y exportar a Excel"
-                                            >
-                                                <Maximize2 size={13} /> Expandir / Excel
-                                            </button>
-                                        </div>
-
-                                        <div style={{ height: '230px' }}>
-                                            <ResponsiveContainer width="100%" height={230}>
-                                                <PieChart>
-                                                    <Pie
-                                                        data={metrics.dataRangoEtario}
-                                                        dataKey="value"
-                                                        nameKey="label"
-                                                        cx="50%"
-                                                        cy="50%"
-                                                        innerRadius={45}
-                                                        outerRadius={75}
-                                                        paddingAngle={2}
-                                                    >
-                                                        {metrics.dataRangoEtario.map((entry, index) => (
-                                                            <Cell key={`cell-${index}`} fill={entry.color} />
-                                                        ))}
-                                                    </Pie>
-                                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
-                                                    <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
-                                                </PieChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* 3. Categorías de Estancias */}
-                                {isIndicatorActive('chart_estancias') && (
-                                    <div style={{
-                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                        padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                    }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                            <div>
-                                                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
-                                                    Categorías de Estancias
-                                                </h3>
-                                                <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>Corta / Media / Larga</span>
-                                            </div>
-                                            <button 
-                                                onClick={() => setInspectDataIndicator({ id: 'chart_estancias', label: 'Categorías de Estancias', sector: activeSectorConfig.label, chartData: metrics.dataEstancias, dataType: 'admisiones' })}
-                                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                                title="Expandir gráfico y exportar a Excel"
-                                            >
-                                                <Maximize2 size={13} /> Expandir / Excel
-                                            </button>
-                                        </div>
-
-                                        <div style={{ height: '230px' }}>
-                                            <ResponsiveContainer width="100%" height={230}>
-                                                <BarChart data={metrics.dataEstancias} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                                                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                                                    <XAxis dataKey="mes" stroke="#64748B" fontSize={10} />
-                                                    <YAxis stroke="#64748B" fontSize={10} />
-                                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
-                                                    <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
-                                                    <Bar dataKey="corta" stackId="s" fill={COLORS_ESTANCIA.corta} name="1-2 días" />
-                                                    <Bar dataKey="media" stackId="s" fill={COLORS_ESTANCIA.media} name="3-7 días" />
-                                                    <Bar dataKey="larga" stackId="s" fill={COLORS_ESTANCIA.larga} name=">7 días" />
-                                                </BarChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    </div>
-                                )}
-
-                            </div>
-
-                            {/* ─── BLOQUE 4: INDICADORES MODULARES ADICIONALES (Procedencia y Financiadores) ─── */}
-                            {(isIndicatorActive('chart_procedencia') || isIndicatorActive('chart_clientes')) && (
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px' }}>
-                                    
-                                    {isIndicatorActive('chart_procedencia') && (
-                                        <div style={{
-                                            background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                            padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                        }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                                                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
-                                                    Canal de Procedencia del Paciente
-                                                </h3>
-                                                <button 
-                                                    onClick={() => setInspectDataIndicator({ id: 'chart_procedencia', label: 'Procedencia de Ingreso', sector: activeSectorConfig.label, chartData: metrics.dataProcedencia, dataType: 'admisiones' })}
-                                                    style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                                    title="Expandir gráfico y exportar a Excel"
-                                                >
-                                                    <Maximize2 size={13} /> Expandir / Excel
-                                                </button>
-                                            </div>
-                                            <div style={{ height: '220px' }}>
-                                                <ResponsiveContainer width="100%" height={220}>
-                                                    <BarChart data={metrics.dataProcedencia} layout="vertical" margin={{ top: 5, right: 15, left: 40, bottom: 5 }}>
-                                                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
-                                                        <XAxis type="number" stroke="#64748B" fontSize={10} />
-                                                        <YAxis type="category" dataKey="label" stroke="#64748B" fontSize={10} width={90} />
-                                                        <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
-                                                        <Bar dataKey="value" fill="#3B82F6" radius={[0, 4, 4, 0]} name="Pacientes" />
-                                                    </BarChart>
-                                                </ResponsiveContainer>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {isIndicatorActive('chart_clientes') && (
-                                        <div style={{
-                                            background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                            padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                        }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                                                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
-                                                    Top Obras Sociales y Financiadores
-                                                </h3>
-                                                <button 
-                                                    onClick={() => setInspectDataIndicator({ id: 'chart_clientes', label: 'Financiadores y Clientes', sector: activeSectorConfig.label, chartData: metrics.dataClientes, dataType: 'admisiones' })}
-                                                    style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                                    title="Expandir gráfico y exportar a Excel"
-                                                >
-                                                    <Maximize2 size={13} /> Expandir / Excel
-                                                </button>
-                                            </div>
-                                            <div style={{ height: '220px' }}>
-                                                <ResponsiveContainer width="100%" height={220}>
-                                                    <BarChart data={metrics.dataClientes} layout="vertical" margin={{ top: 5, right: 15, left: 40, bottom: 5 }}>
-                                                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
-                                                        <XAxis type="number" stroke="#64748B" fontSize={10} />
-                                                        <YAxis type="category" dataKey="label" stroke="#64748B" fontSize={10} width={90} />
-                                                        <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
-                                                        <Bar dataKey="value" fill="#10B981" radius={[0, 4, 4, 0]} name="Pacientes" />
-                                                    </BarChart>
-                                                </ResponsiveContainer>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                </div>
-                            )}
-
-                            {/* ─── BLOQUE 5: ESTUDIOS Y PRUEBAS CLÍNICAS (VLISE_PeticionesPruebas) ─── */}
-                            {(isIndicatorActive('chart_produccion_origen') || isIndicatorActive('chart_top_estudios_uci') || isIndicatorActive('chart_estudios_por_box') || isIndicatorActive('chart_solicitantes_uci') || isIndicatorActive('table_peticiones_detalle')) && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '8px' }}>
-                                    
-                                    {/* Header de Sección Clínica */}
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        background: 'linear-gradient(90deg, #EFF6FF 0%, #FFFFFF 100%)',
-                                        border: '1px solid #BFDBFE',
-                                        borderRadius: '12px',
-                                        padding: '14px 20px',
-                                        flexWrap: 'wrap',
-                                        gap: '12px'
-                                    }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                            <div style={{
-                                                background: '#2563EB',
-                                                color: '#FFFFFF',
-                                                borderRadius: '8px',
-                                                padding: '6px',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center'
-                                            }}>
-                                                <Activity size={20} />
-                                            </div>
-                                            <div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1E3A8A' }}>
-                                                        Estudios y Soporte Diagnóstico en UCI
-                                                    </span>
-                                                    <span style={{
-                                                        fontSize: '0.7rem',
-                                                        fontWeight: 700,
-                                                        background: '#DBEAFE',
-                                                        color: '#1E40AF',
-                                                        padding: '2px 8px',
-                                                        borderRadius: '12px'
-                                                    }}>
-                                                        VLISE Activo
-                                                    </span>
-                                                </div>
-                                                <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
-                                                    Demanda diagnóstica vinculada a camas de {uciSubNivel === 'INTENSIVA' ? 'Terapia Intensiva (Boxes 1-8)' : uciSubNivel === 'INTERMEDIA' ? 'Terapia Intermedia (Unidades 01-05)' : 'UCI Consolidada'}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                            <span style={{
-                                                fontSize: '0.75rem',
-                                                fontWeight: 700,
-                                                color: '#1E40AF',
-                                                background: '#EFF6FF',
-                                                border: '1px solid #BFDBFE',
-                                                padding: '5px 12px',
-                                                borderRadius: '8px'
-                                            }}>
-                                                {metrics.totalBaseUci.toLocaleString('es-AR')} estudios en período
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {/* Fila 1: Donut de Composición Diagnóstica y Distribución de Estudios por Box */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(440px, 1fr))', gap: '20px' }}>
-                                        
-                                        {/* 1. Composición Diagnóstica en UCI (Dinámica según Filtros) */}
-                                        {isIndicatorActive('chart_produccion_origen') && (
-                                            <div style={{
-                                                background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                                padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                            }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                                    <div>
-                                                        <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
-                                                            Composición Diagnóstica en UCI
-                                                        </h3>
-                                                        <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                                            Modalidades de estudio según período y subnivel seleccionado
-                                                        </span>
-                                                    </div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{
-                                                            fontSize: '0.7rem', fontWeight: 700, color: '#1E40AF', background: '#EFF6FF',
-                                                            padding: '3px 8px', borderRadius: '6px'
-                                                        }}>
-                                                            {metrics.totalBaseUci.toLocaleString('es-AR')} Estudios
-                                                        </span>
-                                                        <button 
-                                                            onClick={() => setInspectDataIndicator({
-                                                                id: 'chart_produccion_origen',
-                                                                label: 'Composición Diagnóstica en UCI',
-                                                                sector: activeSectorConfig.label,
-                                                                chartData: metrics.dataModalidadesUci,
-                                                                dataType: 'peticiones',
-                                                                rawData: metrics.peticionesFiltradas
-                                                            })}
-                                                            style={{
-                                                                display: 'flex', alignItems: 'center', gap: '4px',
-                                                                background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px',
-                                                                padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF',
-                                                                cursor: 'pointer'
-                                                            }}
-                                                            title="Expandir gráfico y exportar a Excel"
-                                                        >
-                                                            <Maximize2 size={13} /> Expandir / Excel
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                <div style={{ height: '230px', display: 'flex', alignItems: 'center' }}>
-                                                    {metrics.dataModalidadesUci.length === 0 ? (
-                                                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
-                                                            No hay estudios registrados para este sector o período
-                                                        </div>
-                                                    ) : (
-                                                        <>
-                                                            <div style={{ width: '48%', height: '100%' }}>
-                                                                <ResponsiveContainer width="100%" height={230}>
-                                                                    <PieChart>
-                                                                        <Pie
-                                                                            data={metrics.dataModalidadesUci}
-                                                                            dataKey="value"
-                                                                            nameKey="name"
-                                                                            cx="50%"
-                                                                            cy="50%"
-                                                                            innerRadius={48}
-                                                                            outerRadius={78}
-                                                                            paddingAngle={3}
-                                                                        >
-                                                                            {metrics.dataModalidadesUci.map((entry, index) => (
-                                                                                <Cell key={`cell-mod-${index}`} fill={entry.color} />
-                                                                            ))}
-                                                                        </Pie>
-                                                                        <Tooltip
-                                                                            formatter={(val) => [Number(val).toLocaleString('es-AR') + ' estudios', 'Demanda']}
-                                                                            contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
-                                                                        />
-                                                                    </PieChart>
-                                                                </ResponsiveContainer>
-                                                            </div>
-                                                            <div style={{ width: '52%', display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '220px' }}>
-                                                                {metrics.dataModalidadesUci.map(item => (
-                                                                    <div key={item.name} style={{
-                                                                        background: '#F8FAFC',
-                                                                        border: '1px solid #E2E8F0',
-                                                                        borderRadius: '8px',
-                                                                        padding: '8px 10px'
-                                                                    }}>
-                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
-                                                                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: item.color }} />
-                                                                            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#1E293B' }} title={item.name}>
-                                                                                {item.name}
-                                                                            </span>
-                                                                        </div>
-                                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                                                                            <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0F172A' }}>
-                                                                                {item.value.toLocaleString('es-AR')}
-                                                                            </span>
-                                                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: item.color }}>
-                                                                                {item.pct}%
-                                                                            </span>
-                                                                        </div>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* 2. Distribución de Estudios por Box / Cama en UCI */}
-                                        {isIndicatorActive('chart_estudios_por_box') && (
-                                            <div style={{
-                                                background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                                padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                            }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                                    <div>
-                                                        <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
-                                                            Distribución de Estudios por Box / Cama
-                                                        </h3>
-                                                        <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                                            Demanda diagnóstica según ubicación del paciente en {activeSectorConfig.shortLabel}
-                                                        </span>
-                                                    </div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        {boxFiltro !== 'TODOS' && (
-                                                            <button
-                                                                onClick={() => setBoxFiltro('TODOS')}
-                                                                style={{
-                                                                    background: '#EFF6FF',
-                                                                    border: '1px solid #BFDBFE',
-                                                                    color: '#1E40AF',
-                                                                    borderRadius: '6px',
-                                                                    padding: '3px 8px',
-                                                                    fontSize: '0.7rem',
-                                                                    fontWeight: 700,
-                                                                    cursor: 'pointer'
-                                                                }}
-                                                            >
-                                                                Quitar filtro ({boxFiltro}) ✕
-                                                            </button>
-                                                        )}
-                                                        <button 
-                                                            onClick={() => setInspectDataIndicator({
-                                                                id: 'chart_estudios_por_box',
-                                                                label: 'Distribución de Estudios por Box / Cama en UCI',
-                                                                sector: activeSectorConfig.label,
-                                                                chartData: metrics.dataEstudiosPorBox,
-                                                                dataType: 'peticiones',
-                                                                rawData: metrics.peticionesFiltradas
-                                                            })}
-                                                            style={{
-                                                                display: 'flex', alignItems: 'center', gap: '4px',
-                                                                background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px',
-                                                                padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF',
-                                                                cursor: 'pointer'
-                                                            }}
-                                                            title="Expandir gráfico y exportar a Excel"
-                                                        >
-                                                            <Maximize2 size={13} /> Expandir / Excel
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                <div style={{ height: '230px' }}>
-                                                    {metrics.dataEstudiosPorBox.length === 0 ? (
-                                                        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
-                                                            No hay desglose de boxes registrado para este sector o período
-                                                        </div>
-                                                    ) : (
-                                                        <ResponsiveContainer width="100%" height={230}>
-                                                            <BarChart
-                                                                data={metrics.dataEstudiosPorBox.slice(0, 10)}
-                                                                margin={{ top: 10, right: 10, left: -10, bottom: 20 }}
-                                                            >
-                                                                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                                                                <XAxis
-                                                                    dataKey="box"
-                                                                    stroke="#64748B"
-                                                                    fontSize={9}
-                                                                    angle={-25}
-                                                                    textAnchor="end"
-                                                                />
-                                                                <YAxis stroke="#64748B" fontSize={10} />
-                                                                <Tooltip
-                                                                    formatter={(val, name, item) => [
-                                                                        `${Number(val).toLocaleString('es-AR')} estudios (${item.payload.porcentaje}%)`,
-                                                                        'Demanda'
-                                                                    ]}
-                                                                    contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
-                                                                />
-                                                                <Bar
-                                                                    dataKey="count"
-                                                                    fill="#2563EB"
-                                                                    radius={[4, 4, 0, 0]}
-                                                                    cursor="pointer"
-                                                                    onClick={(entry) => setBoxFiltro(entry.box)}
-                                                                >
-                                                                    {metrics.dataEstudiosPorBox.slice(0, 10).map((entry, index) => (
-                                                                        <Cell
-                                                                            key={`box-cell-${index}`}
-                                                                            fill={boxFiltro === entry.box ? '#1E40AF' : entry.color}
-                                                                        />
-                                                                    ))}
-                                                                </Bar>
-                                                            </BarChart>
-                                                        </ResponsiveContainer>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                    </div>
-
-                                    {/* Barra de Filtro Dinámico por Modalidad */}
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        background: '#FFFFFF',
-                                        border: '1px solid #E2E8F0',
-                                        borderRadius: '10px',
-                                        padding: '10px 16px',
-                                        flexWrap: 'wrap',
-                                        gap: '10px'
-                                    }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <Filter size={15} color="#64748B" />
-                                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
-                                                Filtrar Estudios por Modalidad Diagnóstica:
-                                            </span>
-                                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                                {[
-                                                    { id: 'TODAS', label: 'Todas' },
-                                                    { id: 'Laboratorio', label: '🔬 Laboratorio & Bioquímica' },
-                                                    { id: 'Imágenes', label: '🩻 Imágenes / RX en Cama' },
-                                                    { id: 'Patología', label: '🔬 Anatomía Patológica' }
-                                                ].map(mod => {
-                                                    const isSel = modalidadFiltro === mod.id;
-                                                    return (
-                                                        <button
-                                                            key={mod.id}
-                                                            onClick={() => setModalidadFiltro(mod.id)}
-                                                            style={{
-                                                                background: isSel ? '#EFF6FF' : '#F8FAFC',
-                                                                border: isSel ? '1px solid #2563EB' : '1px solid #CBD5E1',
-                                                                color: isSel ? '#1E40AF' : '#475569',
-                                                                fontWeight: isSel ? 700 : 500,
-                                                                borderRadius: '6px',
-                                                                padding: '4px 10px',
-                                                                fontSize: '0.75rem',
-                                                                cursor: 'pointer',
-                                                                transition: 'all 0.15s ease'
-                                                            }}
-                                                        >
-                                                            {mod.label}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-
-                                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                                            Mostrando <strong>{metrics.peticionesFiltradas.length.toLocaleString('es-AR')}</strong> estudios coincidentes
+                                        <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                            Arrastra los gráficos desde el tirador ⠿ para reordenar libremente · Redimensiona alto y ancho desde la esquina ⤡ o con botones 50%/100%.
                                         </span>
                                     </div>
+                                </div>
 
-                                    {/* Fila 2: Top Pruebas Clínicas y Médicos Solicitantes */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(440px, 1fr))', gap: '20px' }}>
-                                        
-                                        {/* 3. Top Pruebas y Estudios Clínicos */}
-                                        {isIndicatorActive('chart_top_estudios_uci') && (
-                                            <div style={{
-                                                background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                                padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                            }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                                    <div>
-                                                        <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
-                                                            Top Estudios Solicitados en {activeSectorConfig.shortLabel}
-                                                        </h3>
-                                                        <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                                            {modalidadFiltro === 'TODAS' ? 'Laboratorio, gasometría e imágenes diagnósticas' : `Segmentado por ${modalidadFiltro}`}
-                                                        </span>
-                                                    </div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{
-                                                            fontSize: '0.7rem', fontWeight: 700, color: '#1E40AF', background: '#EFF6FF',
-                                                            padding: '3px 8px', borderRadius: '6px'
-                                                        }}>
-                                                            Top 10 Frecuencia
-                                                        </span>
-                                                        <button 
-                                                            onClick={() => setInspectDataIndicator({
-                                                                id: 'chart_top_estudios_uci',
-                                                                label: 'Top Estudios Solicitados en UCI',
-                                                                sector: activeSectorConfig.label,
-                                                                chartData: metrics.dataTopEstudios,
-                                                                dataType: 'peticiones',
-                                                                rawData: metrics.peticionesFiltradas
-                                                            })}
-                                                            style={{
-                                                                display: 'flex', alignItems: 'center', gap: '4px',
-                                                                background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px',
-                                                                padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF',
-                                                                cursor: 'pointer'
-                                                            }}
-                                                            title="Expandir gráfico y exportar a Excel"
-                                                        >
-                                                            <Maximize2 size={13} /> Expandir / Excel
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                <div style={{ height: '240px' }}>
-                                                    {metrics.dataTopEstudios.length === 0 ? (
-                                                        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
-                                                            No hay estudios registrados con los filtros seleccionados
-                                                        </div>
-                                                    ) : (
-                                                        <ResponsiveContainer width="100%" height={240}>
-                                                            <BarChart
-                                                                data={metrics.dataTopEstudios}
-                                                                layout="vertical"
-                                                                margin={{ top: 5, right: 20, left: 60, bottom: 5 }}
-                                                            >
-                                                                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
-                                                                <XAxis type="number" stroke="#64748B" fontSize={10} />
-                                                                <YAxis
-                                                                    type="category"
-                                                                    dataKey="label"
-                                                                    stroke="#64748B"
-                                                                    fontSize={9}
-                                                                    width={130}
-                                                                    tickFormatter={(v) => v.length > 20 ? v.substring(0, 20) + '...' : v}
-                                                                />
-                                                                <Tooltip
-                                                                    formatter={(val) => [Number(val).toLocaleString('es-AR') + ' solicitudes', 'Cantidad']}
-                                                                    contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
-                                                                />
-                                                                <Bar dataKey="value" fill="#2563EB" radius={[0, 4, 4, 0]} name="Solicitudes" />
-                                                            </BarChart>
-                                                        </ResponsiveContainer>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* 4. Top Médicos Solicitantes */}
-                                        {isIndicatorActive('chart_solicitantes_uci') && (
-                                            <div style={{
-                                                background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                                padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                            }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                                    <div>
-                                                        <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
-                                                            Médicos Solicitantes Más Activos
-                                                        </h3>
-                                                        <span style={{ fontSize: '0.7rem', color: '#64748B' }}>Prescriptores clínicos con mayor demanda de estudios</span>
-                                                    </div>
-                                                    <button 
-                                                        onClick={() => setInspectDataIndicator({
-                                                            id: 'chart_solicitantes_uci',
-                                                            label: 'Médicos Solicitantes Más Activos en UCI',
-                                                            sector: activeSectorConfig.label,
-                                                            chartData: metrics.dataTopSolicitantes,
-                                                            dataType: 'peticiones',
-                                                            rawData: metrics.peticionesFiltradas
-                                                        })}
-                                                        style={{
-                                                            display: 'flex', alignItems: 'center', gap: '4px',
-                                                            background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px',
-                                                            padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF',
-                                                            cursor: 'pointer'
-                                                        }}
-                                                        title="Expandir gráfico y exportar a Excel"
-                                                    >
-                                                        <Maximize2 size={13} /> Expandir / Excel
-                                                    </button>
-                                                </div>
-
-                                                <div style={{ height: '240px' }}>
-                                                    {metrics.dataTopSolicitantes.length === 0 ? (
-                                                        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
-                                                            No hay solicitantes registrados con los filtros seleccionados
-                                                        </div>
-                                                    ) : (
-                                                        <ResponsiveContainer width="100%" height={240}>
-                                                            <BarChart
-                                                                data={metrics.dataTopSolicitantes}
-                                                                layout="vertical"
-                                                                margin={{ top: 5, right: 20, left: 60, bottom: 5 }}
-                                                            >
-                                                                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
-                                                                <XAxis type="number" stroke="#64748B" fontSize={10} />
-                                                                <YAxis
-                                                                    type="category"
-                                                                    dataKey="label"
-                                                                    stroke="#64748B"
-                                                                    fontSize={9}
-                                                                    width={120}
-                                                                    tickFormatter={(v) => v.length > 18 ? v.substring(0, 18) + '...' : v}
-                                                                />
-                                                                <Tooltip
-                                                                    formatter={(val) => [val, 'Solicitudes']}
-                                                                    contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
-                                                                />
-                                                                <Bar dataKey="value" fill="#8B5CF6" radius={[0, 4, 4, 0]} name="Solicitudes" />
-                                                            </BarChart>
-                                                        </ResponsiveContainer>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    {/* Filtro Rápido de Modalidad Diagnóstica (VLISE) */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#F8FAFC', padding: '3px 6px', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
+                                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B' }}>VLISE:</span>
+                                        {[
+                                            { id: 'TODAS', label: 'Todas' },
+                                            { id: 'Laboratorio', label: '🔬 Lab' },
+                                            { id: 'Imágenes', label: '🩻 RX' }
+                                        ].map(m => (
+                                            <button
+                                                key={m.id}
+                                                type="button"
+                                                onClick={() => setModalidadFiltro(m.id)}
+                                                style={{
+                                                    background: modalidadFiltro === m.id ? '#EFF6FF' : 'transparent',
+                                                    border: modalidadFiltro === m.id ? '1px solid #2563EB' : '1px solid transparent',
+                                                    color: modalidadFiltro === m.id ? '#1E40AF' : '#475569',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px',
+                                                    fontSize: '0.68rem',
+                                                    fontWeight: modalidadFiltro === m.id ? 800 : 500,
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                {m.label}
+                                            </button>
+                                        ))}
                                     </div>
 
-                                    {/* 5. Tabla Detallada de Auditoría de Peticiones */}
-                                    {isIndicatorActive('table_peticiones_detalle') && (
-                                        <div style={{
-                                            background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                            padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                        }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                                                <div>
-                                                    <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#1E293B' }}>
-                                                        Auditoría y Trazabilidad de Peticiones y Pruebas
-                                                    </h3>
-                                                    <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                                        Estudios solicitados con detalle de paciente, modalidad diagnóstica y origen clasificado
-                                                    </span>
-                                                </div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#2563EB' }}>
-                                                        {metrics.peticionesFiltradas.length.toLocaleString('es-AR')} registros
-                                                    </span>
-                                                    <button 
-                                                        onClick={() => setInspectDataIndicator({
-                                                            id: 'table_peticiones_detalle',
-                                                            label: 'Auditoría Completa de Peticiones y Pruebas en UCI',
-                                                            sector: activeSectorConfig.label,
-                                                            dataType: 'peticiones',
-                                                            rawData: metrics.peticionesFiltradas
-                                                        })}
-                                                        style={{
-                                                            display: 'flex', alignItems: 'center', gap: '4px',
-                                                            background: '#EFF6FF', border: '1px solid #93C5FD', borderRadius: '6px',
-                                                            padding: '4px 10px', fontSize: '0.74rem', fontWeight: 700, color: '#1E40AF',
-                                                            cursor: 'pointer'
-                                                        }}
-                                                        title="Expandir tabla completa y exportar a Excel"
-                                                    >
-                                                        <Maximize2 size={13} /> Expandir / Excel
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            <div style={{ overflowX: 'auto', maxHeight: '280px', fontSize: '0.78rem' }}>
-                                                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                                                    <thead>
-                                                        <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #CBD5E1', color: '#475569', position: 'sticky', top: 0, zIndex: 1 }}>
-                                                            <th style={{ padding: '8px 10px' }}>Fecha</th>
-                                                            <th style={{ padding: '8px 10px' }}>Paciente</th>
-                                                            <th style={{ padding: '8px 10px' }}>Estudio / Prueba</th>
-                                                            <th style={{ padding: '8px 10px' }}>Modalidad</th>
-                                                            <th style={{ padding: '8px 10px' }}>Hab./Box</th>
-                                                            <th style={{ padding: '8px 10px' }}>Origen Clasificado</th>
-                                                            <th style={{ padding: '8px 10px' }}>Solicitante</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {metrics.peticionesFiltradas.slice(0, 30).map((p, idx) => (
-                                                            <tr key={idx} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                                                                <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', color: '#64748B' }}>
-                                                                    {p.fecha_solicitud ? new Date(p.fecha_solicitud).toLocaleDateString('es-AR') : '-'}
-                                                                </td>
-                                                                <td style={{ padding: '8px 10px', fontWeight: 600, color: '#0F172A' }}>
-                                                                    {p.paciente || `ID ${p.id_paciente || '-'}`}
-                                                                </td>
-                                                                <td style={{ padding: '8px 10px', fontWeight: 600, color: '#1E293B' }}>
-                                                                    {(p.estudio || '').replace(/<[^>]+>/g, '')}
-                                                                </td>
-                                                                <td style={{ padding: '8px 10px' }}>
-                                                                    <span style={{
-                                                                        padding: '2px 8px',
-                                                                        borderRadius: '12px',
-                                                                        fontSize: '0.7rem',
-                                                                        fontWeight: 700,
-                                                                        background: p.modalidad === 'Imágenes' ? '#FAF5FF' : '#EFF6FF',
-                                                                        color: p.modalidad === 'Imágenes' ? '#7E22CE' : '#1D4ED8',
-                                                                        border: p.modalidad === 'Imágenes' ? '1px solid #E9D5FF' : '1px solid #BFDBFE'
-                                                                    }}>
-                                                                        {p.modalidad || 'Laboratorio'}
-                                                                    </span>
-                                                                </td>
-                                                                <td style={{ padding: '8px 10px', color: '#2563EB', fontWeight: 700 }}>
-                                                                    {p.habitacion || (p.cama ? `Cama ${p.cama}` : 'Piso')}
-                                                                </td>
-                                                                <td style={{ padding: '8px 10px', color: '#475569', fontSize: '0.72rem' }}>
-                                                                    <span style={{
-                                                                        background: '#F1F5F9',
-                                                                        padding: '2px 6px',
-                                                                        borderRadius: '4px',
-                                                                        fontWeight: 600
-                                                                    }}>
-                                                                        {p.origen_gobernanza || p.origen || 'Hospitalización'}
-                                                                    </span>
-                                                                </td>
-                                                                <td style={{ padding: '8px 10px', color: '#475569', fontSize: '0.72rem' }}>
-                                                                    {p.solicitante || '-'}
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    )}
-
+                                    <button
+                                        type="button"
+                                        onClick={handleResetChartLayout}
+                                        title="Restablecer orden y tamaños predeterminados"
+                                        style={{
+                                            background: '#F8FAFC',
+                                            border: '1px solid #CBD5E1',
+                                            borderRadius: '6px',
+                                            padding: '4px 10px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 600,
+                                            color: '#475569',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '5px'
+                                        }}
+                                    >
+                                        <RotateCcw size={13} />
+                                        <span>Restablecer Lienzo</span>
+                                    </button>
                                 </div>
-                            )}
+                            </div>
+
+                            {/* ─── CONTENEDOR FLEXIBLE DE GRÁFICOS REORDENABLES Y REDIMENSIONABLES ─── */}
+                            <div style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: '20px',
+                                alignItems: 'stretch'
+                            }}>
+                                {chartOrder.map((chartId, index) => {
+                                    if (!isIndicatorActive(chartId)) return null;
+                                    return renderChartCard(chartId, index);
+                                })}
+                            </div>
 
                         </div>
                     )}
