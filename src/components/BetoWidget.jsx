@@ -16,7 +16,7 @@ import { BetoStatsCard, BetoStatusPipeline, BetoModulePreview, BetoExportBar, Be
 import BetoChartCard from './BetoChartCard';
 import BetoPresentationMode from './BetoPresentationMode';
 import BetoTutorial from './BetoTutorial';
-import { downloadBetoReportPdf, isReportMessage } from '../utils/betoReportPdf';
+import { downloadBetoReportPdf, downloadBetoReportExcel, isReportMessage } from '../utils/betoReportPdf';
 import { generateShare } from '../api/shareClient';
 import { useTelarStore } from '../store/telarStore';
 import { getCurrentUser } from '../services/authService';
@@ -98,6 +98,48 @@ const THEMES = {
     clinical: { name: 'Clínico', bg: '#F0F9FF', bubble: '#FFFFFF', accent: '#0369A1', gradient: 'linear-gradient(135deg, #0369A1 0%, #0284C7 50%, #38BDF8 100%)' },
     warm: { name: 'Cálido', bg: '#FFFBF5', bubble: '#FFFFFF', accent: '#B45309', gradient: 'linear-gradient(135deg, #B45309 0%, #D97706 50%, #FBBF24 100%)' },
 };
+
+/**
+ * Transforma tablas markdown accidentales o dobles barras en listas ejecutivas limpias,
+ * garantizando que los listados de pacientes siempre se vean impecables en el chat.
+ */
+function sanitizeChatText(text) {
+    if (!text) return '';
+    let result = text;
+
+    // Normalizar dobles pipes accidentales "||" -> salto de línea
+    result = result.replace(/\|{2,}/g, '\n');
+
+    // Si tiene tablas markdown con separadores |---|
+    if (result.includes('|') && result.includes('---')) {
+        const lines = result.split('\n');
+        let inTable = false;
+        const newLines = [];
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('|')) {
+                if (trimmed.includes('---')) continue; // ignorar |---|---|
+                const rawCells = trimmed.split('|').map(c => c.trim()).filter(c => c.length > 0);
+                if (!inTable) {
+                    inTable = true;
+                    continue;
+                }
+                if (rawCells.length > 0) {
+                    const primary = rawCells[0];
+                    const meta = rawCells.slice(1).filter(c => c && c !== '—').join(' • ');
+                    newLines.push(`- **${primary}** ${meta ? `— ${meta}` : ''}`);
+                }
+            } else {
+                inTable = false;
+                newLines.push(line);
+            }
+        }
+        result = newLines.join('\n');
+    }
+
+    return result.trim();
+}
 
 export default function BetoWidget({ currentUser, currentModule, onNavigate, hideFab = false, externalOpen = false, onExternalClose }) {
     const effectiveUser = currentUser || getCurrentUser();
@@ -1090,9 +1132,18 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
             }}>
                 {messages.map((msg, i) => {
                     // #2 — Parse rich content from assistant messages
-                    const { text: cleanText, richBlocks } = msg.role === 'assistant'
+                    const { text: parsedRawText, richBlocks } = msg.role === 'assistant'
                         ? parseRichContent(msg.content, onNavigate)
                         : { text: msg.content, richBlocks: [] };
+
+                    // Sanitizar tablas rotas o tuberías para que siempre se vean limpias en chat
+                    const cleanText = msg.role === 'assistant'
+                        ? sanitizeChatText(parsedRawText)
+                        : parsedRawText;
+
+                    const effectiveExcelData = msg.excel_data || richBlocks.find(b => b.type === 'excel')?.data || null;
+                    const isReport = isReportMessage(msg.content) || !!effectiveExcelData;
+
                     return (
                     <div
                         key={i}
@@ -1133,8 +1184,8 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
                             {msg.role === 'assistant' ? (
                                 <div className="beto-markdown">
                                     <ReactMarkdown>{cleanText}</ReactMarkdown>
-                                    {/* Direct Excel download from API response (primary mechanism) */}
-                                    {msg.excel_data && (
+                                    {/* Direct Excel download from API response — only if no action bar */}
+                                    {msg.excel_data && !isReport && (
                                         <BetoExcelDownload excelData={msg.excel_data} />
                                     )}
                                     {/* #2 Rich blocks (text-parsed fallback) */}
@@ -1144,55 +1195,87 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
                                         if (block.type === 'pipeline') return <BetoStatusPipeline key={j} pipeline={block.data} />;
                                         if (block.type === 'insight') return <BetoInsightCard key={j} insight={block.data} />;
                                         if (block.type === 'modulePreview') return <BetoModulePreview key={j} moduleId={block.moduleId} onNavigate={onNavigate} />;
-                                        if (block.type === 'excel' && !msg.excel_data) return <BetoExcelDownload key={j} excelData={block.data} />;
+                                        if (block.type === 'excel' && !msg.excel_data && !isReport) return <BetoExcelDownload key={j} excelData={block.data} />;
                                         return null;
                                     })}
-                                    {/* PDF Download bar — visible on report messages */}
-                                    {isReportMessage(msg.content) && (
+                                    {/* Action bar: (Pdf) y (Excel) oficiales con estilo institucional */}
+                                    {isReport && (
                                         <div style={{
-                                            display: 'flex', gap: '6px', marginTop: '10px',
-                                            paddingTop: '8px', borderTop: `1px solid ${t.accent}15`,
+                                            display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '12px',
+                                            paddingTop: '10px', borderTop: '1px solid rgba(0,0,0,0.08)',
                                         }}>
+                                            <span style={{ fontSize: '0.74rem', color: '#64748B', fontWeight: 600, marginRight: '2px' }}>
+                                                Descargar detalle:
+                                            </span>
                                             <button
-                                                onClick={() => downloadBetoReportPdf(msg.content)}
+                                                onClick={() => downloadBetoReportPdf(msg.content, null, effectiveExcelData)}
                                                 style={{
-                                                    display: 'flex', alignItems: 'center', gap: '5px',
-                                                    padding: '5px 10px', borderRadius: '8px',
-                                                    border: `1px solid ${t.accent}25`,
-                                                    background: `${t.accent}08`, color: t.accent,
-                                                    fontSize: '0.72rem', fontWeight: 600,
+                                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                                    padding: '6px 13px', borderRadius: '8px',
+                                                    border: '1px solid #BFDBFE',
+                                                    background: '#EFF6FF', color: '#1D4ED8',
+                                                    fontSize: '0.76rem', fontWeight: 700,
                                                     cursor: 'pointer', transition: 'all 0.15s',
+                                                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
                                                 }}
                                                 onMouseOver={e => {
-                                                    e.currentTarget.style.background = `${t.accent}18`;
+                                                    e.currentTarget.style.background = '#DBEAFE';
                                                     e.currentTarget.style.transform = 'translateY(-1px)';
                                                 }}
                                                 onMouseOut={e => {
-                                                    e.currentTarget.style.background = `${t.accent}08`;
+                                                    e.currentTarget.style.background = '#EFF6FF';
                                                     e.currentTarget.style.transform = 'translateY(0)';
                                                 }}
+                                                title="Descargar reporte oficial en PDF con estética de Asociaciones, logo del Sanatorio y fuente Montserrat"
                                             >
-                                                <FileDown size={13} />
-                                                Descargar PDF
+                                                <FileDown size={14} />
+                                                (Pdf)
                                             </button>
+
+                                            <button
+                                                onClick={() => downloadBetoReportExcel(msg.content, effectiveExcelData)}
+                                                style={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                                    padding: '6px 13px', borderRadius: '8px',
+                                                    border: '1px solid #A7F3D0',
+                                                    background: '#ECFDF5', color: '#047857',
+                                                    fontSize: '0.76rem', fontWeight: 700,
+                                                    cursor: 'pointer', transition: 'all 0.15s',
+                                                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                                }}
+                                                onMouseOver={e => {
+                                                    e.currentTarget.style.background = '#D1FAE5';
+                                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                                }}
+                                                onMouseOut={e => {
+                                                    e.currentTarget.style.background = '#ECFDF5';
+                                                    e.currentTarget.style.transform = 'translateY(0)';
+                                                }}
+                                                title="Exportar datos a planilla Excel (.xlsx)"
+                                            >
+                                                <FileSpreadsheet size={14} />
+                                                (Excel)
+                                            </button>
+
                                             <button
                                                 onClick={() => {
                                                     const printW = window.open('', '_blank');
-                                                    printW.document.write(`<html><head><title>Reporte Beto</title><style>body{font-family:system-ui,sans-serif;padding:40px;max-width:800px;margin:0 auto;color:#1E293B}table{border-collapse:collapse;width:100%}th,td{border:1px solid #E2E8F0;padding:6px 10px;text-align:left;font-size:13px}th{background:#4F46E5;color:#fff}tr:nth-child(even){background:#F8FAFC}h1,h2,h3{color:#4F46E5}@media print{body{padding:20px}}</style></head><body>${document.querySelector('.beto-markdown')?.innerHTML || cleanText}</body></html>`);
+                                                    printW.document.write(`<html><head><title>Reporte Beto</title><style>body{font-family:'Montserrat',system-ui,sans-serif;padding:40px;max-width:800px;margin:0 auto;color:#1E293B}table{border-collapse:collapse;width:100%}th,td{border:1px solid #E2E8F0;padding:6px 10px;text-align:left;font-size:13px}th{background:#0D3B66;color:#fff}tr:nth-child(even){background:#F8FAFC}h1,h2,h3{color:#0D3B66}@media print{body{padding:20px}}</style></head><body>${document.querySelector('.beto-markdown')?.innerHTML || cleanText}</body></html>`);
                                                     printW.document.close();
                                                     printW.print();
                                                 }}
                                                 style={{
-                                                    display: 'flex', alignItems: 'center', gap: '5px',
-                                                    padding: '5px 10px', borderRadius: '8px',
-                                                    border: '1px solid #E2E8F020',
-                                                    background: 'transparent',
-                                                    color: theme === 'dark' ? '#94A3B8' : '#64748B',
+                                                    display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                    padding: '6px 10px', borderRadius: '8px',
+                                                    border: '1px solid #E2E8F0',
+                                                    background: '#FFFFFF',
+                                                    color: '#64748B',
                                                     fontSize: '0.72rem', fontWeight: 500,
                                                     cursor: 'pointer', transition: 'all 0.15s',
                                                 }}
                                                 onMouseOver={e => e.currentTarget.style.background = '#F1F5F9'}
-                                                onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                                                onMouseOut={e => e.currentTarget.style.background = '#FFFFFF'}
+                                                title="Imprimir listado"
                                             >
                                                 <Printer size={13} />
                                                 Imprimir
