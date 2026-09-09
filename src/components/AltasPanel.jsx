@@ -10,7 +10,7 @@ import {
     Search, RefreshCw, ChevronRight, ChevronLeft, Clock, Calendar,
     Filter, X, Loader2, FileText, User, Building2,
     Stethoscope, ChevronDown, ChevronUp, StickyNote, Save,
-    ListFilter, Download, FileDown, ShoppingCart, Printer, Trash2, PackageCheck, Receipt, Scissors, Undo2
+    ListFilter, Download, FileDown, ShoppingCart, Printer, Trash2, PackageCheck, Receipt, Scissors, Undo2, UserCheck
 } from 'lucide-react';
 import {
     fetchAltas, fetchHistorialInternaciones, updateAltaEstado, updateAltaNotas, updateAltaResponsable, ALTA_ESTADOS,
@@ -765,20 +765,27 @@ export default function AltasPanel({ addToast, currentUser }) {
         );
     }, [altas, selectedMonth]);
 
-    // ── Check if current user is jcorrea (can edit responsable) ──
-    const isJcorrea = useMemo(() => {
-        const email = (currentUser?.usuario || currentUser?.email || '').toLowerCase();
-        return email === 'jcorrea@sanatorioargentino.com.ar' || email.split('@')[0] === 'jcorrea';
-    }, [currentUser]);
+    // ── Permiso para editar responsable (disponible para todo usuario de admisión, no solo jcorrea) ──
+    const canEditResponsable = useMemo(() => {
+        return !isReadOnly;
+    }, [isReadOnly]);
 
-    // ── Lista única de responsables (de criterios de asignación) ──
+    // ── Lista única de responsables (de criterios de asignación + usuario actual) ──
     const allResponsables = useMemo(() => {
         const set = new Set();
         criterios.forEach(c => {
             if (c.responsable) set.add(c.responsable.trim().toUpperCase());
         });
+        if (currentUser?.nombre) {
+            const first = currentUser.nombre.split(' ')[0].trim().toUpperCase();
+            if (first) set.add(first);
+        }
+        if (currentUser?.usuario) {
+            const u = currentUser.usuario.trim().toUpperCase();
+            if (u) set.add(u);
+        }
         return [...set].sort();
-    }, [criterios]);
+    }, [criterios, currentUser]);
 
     // ── KPIs (calculados ANTES del filtro de pill para mostrar conteos globales) ──
     const localStats = useMemo(() => {
@@ -2114,7 +2121,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             </td>
                                             {/* Responsable (auto-matched or override) */}
                                             <td className="cart__td" style={{ position: 'relative' }}>
-                                                {isJcorrea ? (
+                                                {canEditResponsable ? (
                                                     <div style={{ position: 'relative', display: 'inline-block' }}>
                                                         <button
                                                             onClick={e => {
@@ -2625,6 +2632,39 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             );
                                         }
                                         return null;
+                                    })()}
+                                    {/* Opción directa: Asignarme a mí */}
+                                    {(() => {
+                                        const miNombre = (currentUser?.nombre || currentUser?.usuario || '').split(' ')[0].toUpperCase();
+                                        if (!miNombre) return null;
+                                        return (
+                                            <button
+                                                onClick={async e => {
+                                                    e.stopPropagation();
+                                                    try {
+                                                        await updateAltaResponsable(dropdownAnchor.id, miNombre);
+                                                        addToast?.(`Responsable → ${miNombre}`, 'success');
+                                                        setResponsableDropdownId(null);
+                                                        setDropdownAnchor(null);
+                                                        loadData();
+                                                    } catch (err) {
+                                                        addToast?.('Error: ' + err.message, 'error');
+                                                    }
+                                                }}
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                                    width: '100%', padding: '7px 12px',
+                                                    border: 'none', borderRadius: '6px',
+                                                    background: '#EFF6FF', color: '#1D4ED8',
+                                                    cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700,
+                                                    textAlign: 'left', marginBottom: '4px'
+                                                }}
+                                                onMouseOver={e => e.currentTarget.style.background = '#DBEAFE'}
+                                                onMouseOut={e => e.currentTarget.style.background = '#EFF6FF'}
+                                            >
+                                                <UserCheck size={13} /> Asignarme a mí ({miNombre})
+                                            </button>
+                                        );
                                     })()}
                                     {allResponsables.map(resp => {
                                         const alta = sortedAltas.find(a => a.id === dropdownAnchor.id);
