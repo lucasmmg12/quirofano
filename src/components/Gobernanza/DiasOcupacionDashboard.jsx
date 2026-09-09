@@ -211,18 +211,30 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 console.warn('Advertencia cargando resúmenes de origen y gobernanza:', errRes);
             }
 
-            // 3. Cargar Estudios Clínicos con columnas necesarias (Query 1)
+            // 3. Cargar Estudios Clínicos de UCI (Laboratorio, RX Tórax, etc.)
             try {
-                let pQuery = supabase
-                    .from('calidad_peticiones_pruebas')
-                    .select('id, id_peticion, fecha_solicitud, paciente, id_paciente, solicitante, paciente_edad, origen, tipo_visita, tipo_articulo, estudio, habitacion, cama, seccion, modalidad, origen_gobernanza, servicio_origen')
-                    .gte('fecha_solicitud', fechaDesde + 'T00:00:00')
-                    .lte('fecha_solicitud', fechaHasta + 'T23:59:59')
-                    .order('fecha_solicitud', { ascending: false })
-                    .limit(5000);
+                // Consultamos estudios asociados a boxes y unidades de UCI en páginas paralelas (hasta 10.000 estudios)
+                const pageSize = 1000;
+                const pages = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+                const promises = pages.map(p =>
+                    supabase
+                        .from('calidad_peticiones_pruebas')
+                        .select('id, id_peticion, fecha_solicitud, paciente, id_paciente, solicitante, paciente_edad, origen, tipo_visita, tipo_articulo, estudio, habitacion, cama, seccion, modalidad, origen_gobernanza')
+                        .gte('fecha_solicitud', fechaDesde + 'T00:00:00')
+                        .lte('fecha_solicitud', fechaHasta + 'T23:59:59')
+                        .or('habitacion.ilike.%BOX%,habitacion.ilike.%UNIDAD%,habitacion.ilike.%222%,habitacion.ilike.%223%,habitacion.ilike.%224%,habitacion.ilike.%226%,habitacion.ilike.%227%,habitacion.ilike.%228%,habitacion.ilike.%229%')
+                        .order('fecha_solicitud', { ascending: false })
+                        .range(p * pageSize, (p + 1) * pageSize - 1)
+                );
 
-                const { data: pData } = await pQuery;
-                setPeticionesEstudios(pData || []);
+                const results = await Promise.all(promises);
+                let allPeticiones = [];
+                results.forEach(res => {
+                    if (res.data && res.data.length > 0) {
+                        allPeticiones = allPeticiones.concat(res.data);
+                    }
+                });
+                setPeticionesEstudios(allPeticiones);
             } catch (errPet) {
                 console.warn('Advertencia cargando estudios clínicos:', errPet);
             }
@@ -449,65 +461,74 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             .sort((a, b) => b.value - a.value)
             .slice(0, 8);
 
-        // 8. Gráficos de Producción: Nominal vs Gobernanza Reclasificada
-        let dataProduccionNominal = [
-            { name: 'Ambulatorio', value: 409913, pct: 75.7, color: '#3B82F6' },
-            { name: 'Hospitalización', value: 131574, pct: 24.3, color: '#10B981' }
-        ];
-        if (peticionesResumen && peticionesResumen.length > 0) {
-            dataProduccionNominal = peticionesResumen.map(r => ({
-                name: r.origen,
-                value: Number(r.cantidad_estudios),
-                pct: Number(r.porcentaje_produccion),
-                color: r.origen?.toLowerCase().includes('ambulat') ? '#3B82F6' : '#10B981'
-            }));
-        }
-
-        const GOB_COLORS = {
-            'Ambulatorio Efectivo': '#2563EB',
-            'Hospitalización Nominal': '#059669',
-            'Internación Presunta (Sin Recepción)': '#6366F1',
-            'Internación (Vía Imágenes)': '#F59E0B',
-            'Guardia / Urgencias': '#EF4444'
+        // 8. Normalización de Habitaciones y Detección de Modalidad Clínica
+        const normalizeHab = (hab) => {
+            if (!hab) return 'Sin Asignar';
+            const h = hab.trim().toUpperCase();
+            const boxM = h.match(/^BOX\s*0?([1-8])$/i) || h.match(/^BOX\s*AUXILIAR\s*0?([1-8])$/i);
+            if (boxM) return 'BOX ' + boxM[1];
+            const uniM = h.match(/^UNIDAD\s*0?([1-5])$/i);
+            if (uniM) return 'UNIDAD ' + uniM[1].padStart(2, '0');
+            return h;
         };
 
-        let dataProduccionGobernanza = [
-            { name: 'Ambulatorio Efectivo', value: 379253, pct: 70.02, color: GOB_COLORS['Ambulatorio Efectivo'] },
-            { name: 'Hospitalización Nominal', value: 131639, pct: 24.30, color: GOB_COLORS['Hospitalización Nominal'] },
-            { name: 'Internación Presunta (Sin Recepción)', value: 11169, pct: 2.06, color: GOB_COLORS['Internación Presunta (Sin Recepción)'] },
-            { name: 'Internación (Vía Imágenes)', value: 10497, pct: 1.94, color: GOB_COLORS['Internación (Vía Imágenes)'] },
-            { name: 'Guardia / Urgencias', value: 9077, pct: 1.68, color: GOB_COLORS['Guardia / Urgencias'] }
-        ];
-        if (peticionesResumenGobernanza && peticionesResumenGobernanza.length > 0) {
-            dataProduccionGobernanza = peticionesResumenGobernanza.map(r => ({
-                name: r.origen_clasificacion,
-                value: Number(r.cantidad_estudios),
-                pct: Number(r.porcentaje_produccion),
-                color: GOB_COLORS[r.origen_clasificacion] || '#64748B'
-            }));
-        }
+        const getStudyModality = (p) => {
+            const ta = (p.tipo_articulo || '').toLowerCase();
+            const est = (p.estudio || '').toLowerCase();
+            const mod = (p.modalidad || '').toLowerCase();
+            if (ta.includes('radiologia') || mod.includes('imág') || est.includes('radiografia') || est.includes('ecografia') || est.includes('tac')) {
+                return 'Imágenes / RX';
+            }
+            if (est.includes('anatomopatol')) {
+                return 'Anatomía Patológica';
+            }
+            return 'Laboratorio & Bioquímica';
+        };
 
-        const totalRescatado = 30743;
-        const pctInternacionReal = '28.3';
-
-        // 9. Filtrado de Estudios por Modalidad, Sub-Nivel UCI y Box
-        const peticionesFiltradas = peticionesEstudios.filter(p => {
-            if (modalidadFiltro !== 'TODAS' && p.modalidad !== modalidadFiltro) return false;
-            
+        // 9. Filtrado de Estudios Base para UCI según subnivel y box seleccionado
+        const baseUciPeticiones = peticionesEstudios.filter(p => {
+            const normH = normalizeHab(p.habitacion);
             if (sectorId === 'UCI') {
-                const habUpper = (p.habitacion || '').toUpperCase();
-                const servUpper = (p.servicio_origen || '').toUpperCase();
-                if (uciSubNivel === 'INTENSIVA') {
-                    if (servUpper === 'TERAPIA INTERMEDIA' || habUpper.includes('UNIDAD')) return false;
-                } else if (uciSubNivel === 'INTERMEDIA') {
-                    if (servUpper === 'UCI' || habUpper.includes('BOX')) return false;
-                }
+                if (uciSubNivel === 'INTENSIVA' && !normH.startsWith('BOX')) return false;
+                if (uciSubNivel === 'INTERMEDIA' && normH.startsWith('BOX')) return false;
             }
+            if (boxFiltro !== 'TODOS' && normH !== boxFiltro) return false;
+            return true;
+        });
 
-            if (boxFiltro !== 'TODOS') {
-                const habNorm = (p.habitacion || '').trim().toUpperCase().replace(/^BOX\s*0?([1-8])$/, 'BOX $1');
-                if (habNorm !== boxFiltro) return false;
-            }
+        const totalBaseUci = baseUciPeticiones.length;
+
+        // Composición Diagnóstica Dinámica según filtros activos
+        const modCounts = {
+            'Laboratorio & Bioquímica': 0,
+            'Imágenes / RX': 0,
+            'Anatomía Patológica': 0
+        };
+        baseUciPeticiones.forEach(p => {
+            const m = getStudyModality(p);
+            if (modCounts[m] !== undefined) modCounts[m]++;
+            else modCounts['Laboratorio & Bioquímica']++;
+        });
+
+        const MOD_COLORS = {
+            'Laboratorio & Bioquímica': '#2563EB',
+            'Imágenes / RX': '#F59E0B',
+            'Anatomía Patológica': '#8B5CF6'
+        };
+
+        const dataModalidadesUci = [
+            { name: 'Laboratorio & Bioquímica', value: modCounts['Laboratorio & Bioquímica'], pct: totalBaseUci > 0 ? ((modCounts['Laboratorio & Bioquímica'] / totalBaseUci) * 100).toFixed(1) : '0.0', color: MOD_COLORS['Laboratorio & Bioquímica'] },
+            { name: 'Diagnóstico por Imágenes / RX', value: modCounts['Imágenes / RX'], pct: totalBaseUci > 0 ? ((modCounts['Imágenes / RX'] / totalBaseUci) * 100).toFixed(1) : '0.0', color: MOD_COLORS['Imágenes / RX'] },
+            { name: 'Anatomía Patológica', value: modCounts['Anatomía Patológica'], pct: totalBaseUci > 0 ? ((modCounts['Anatomía Patológica'] / totalBaseUci) * 100).toFixed(1) : '0.0', color: MOD_COLORS['Anatomía Patológica'] }
+        ].filter(item => item.value > 0);
+
+        // Filtrado adicional si se selecciona una modalidad específica en la barra
+        const peticionesFiltradas = baseUciPeticiones.filter(p => {
+            if (modalidadFiltro === 'TODAS') return true;
+            const mod = getStudyModality(p);
+            if (modalidadFiltro === 'Laboratorio') return mod === 'Laboratorio & Bioquímica';
+            if (modalidadFiltro === 'Imágenes') return mod === 'Imágenes / RX';
+            if (modalidadFiltro === 'Patología') return mod === 'Anatomía Patológica';
             return true;
         });
 
@@ -525,35 +546,35 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         const boxesSet = new Set();
         peticionesEstudios.forEach(p => {
             if (!p.habitacion) return;
-            let hab = p.habitacion.trim().toUpperCase();
-            hab = hab.replace(/^BOX\s*0?([1-8])$/, 'BOX $1');
+            const habNorm = normalizeHab(p.habitacion);
 
             if (sectorId === 'UCI') {
-                const servUpper = (p.servicio_origen || '').toUpperCase();
-                if (uciSubNivel === 'INTENSIVA' && (hab.includes('UNIDAD') || servUpper === 'TERAPIA INTERMEDIA')) return;
-                if (uciSubNivel === 'INTERMEDIA' && (hab.includes('BOX') || servUpper === 'UCI')) return;
+                if (uciSubNivel === 'INTENSIVA' && !habNorm.startsWith('BOX')) return;
+                if (uciSubNivel === 'INTERMEDIA' && habNorm.startsWith('BOX')) return;
             }
 
-            boxesSet.add(hab);
-            boxCounts[hab] = (boxCounts[hab] || 0) + 1;
+            boxesSet.add(habNorm);
+            boxCounts[habNorm] = (boxCounts[habNorm] || 0) + 1;
         });
-        const boxesDisponibles = Array.from(boxesSet).sort();
+        const boxesDisponibles = Array.from(boxesSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
+        const totalEstudiosBaseBox = Object.values(boxCounts).reduce((a, b) => a + b, 0);
         const dataEstudiosPorBox = Object.entries(boxCounts)
             .map(([box, count], idx) => ({
                 box,
                 count,
-                porcentaje: totalEstudiosSector > 0 ? ((count / totalEstudiosSector) * 100).toFixed(1) : '0.0',
+                porcentaje: totalEstudiosBaseBox > 0 ? ((count / totalEstudiosBaseBox) * 100).toFixed(1) : '0.0',
                 color: ESPECIALIDAD_PALETTE[idx % ESPECIALIDAD_PALETTE.length]
             }))
-            .sort((a, b) => b.count - a.count);
+            .sort((a, b) => a.box.localeCompare(b.box, undefined, { numeric: true, sensitivity: 'base' }));
 
         // 12. Gráfico: Top Pruebas y Estudios Clínicos
         const estudiosCounts = {};
         peticionesFiltradas.forEach(p => {
-            let est = p.estudio || 'SIN DETALLE';
-            est = est.replace(/<[^>]+>/g, '').trim();
+            let est = (p.estudio || '').replace(/<[^>]+>/g, '').trim();
             if (!est || est === 'SIN DETALLE') return;
+            if (est.startsWith('*** PETICION ANAL')) est = 'Rutina Bioquímica / Analítica Completa';
+            else if (est.startsWith('*** PETICION RADIOL')) est = 'Radiología en Cama / Tórax';
             estudiosCounts[est] = (estudiosCounts[est] || 0) + 1;
         });
         const dataTopEstudios = Object.entries(estudiosCounts)
@@ -598,11 +619,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             dataEstancias,
             dataProcedencia,
             dataClientes,
-            dataProduccionNominal,
-            dataProduccionGobernanza,
-            dataProduccionOrigen: origenVision === 'gobernanza' ? dataProduccionGobernanza : dataProduccionNominal,
-            totalRescatado,
-            pctInternacionReal,
+            dataModalidadesUci,
+            totalBaseUci,
             intensidadCamaDia,
             estudiosPorAdmision,
             dataEstudiosPorBox,
@@ -613,7 +631,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             totalEstudiosPeriodo: totalEstudiosSector,
             admisionesUnicas
         };
-    }, [filteredRows, camasTotales, fechaDesde, fechaHasta, activeSectorConfig, peticionesResumen, peticionesResumenGobernanza, peticionesEstudios, origenVision, modalidadFiltro, boxFiltro, sectorId, uciSubNivel]);
+    }, [filteredRows, camasTotales, fechaDesde, fechaHasta, activeSectorConfig, peticionesEstudios, modalidadFiltro, boxFiltro, sectorId, uciSubNivel]);
 
     // Notificar métricas al padre de forma segura fuera del render
     useEffect(() => {
@@ -1547,7 +1565,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             {(isIndicatorActive('chart_produccion_origen') || isIndicatorActive('chart_top_estudios_uci') || isIndicatorActive('chart_estudios_por_box') || isIndicatorActive('chart_solicitantes_uci') || isIndicatorActive('table_peticiones_detalle')) && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '8px' }}>
                                     
-                                    {/* Header de Sección Clínica con Selector de Visión */}
+                                    {/* Header de Sección Clínica */}
                                     <div style={{
                                         display: 'flex',
                                         alignItems: 'center',
@@ -1574,7 +1592,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             <div>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                     <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1E3A8A' }}>
-                                                        Estudios y Pruebas Clínicas (Laboratorio, Diagnóstico e Imágenes)
+                                                        Estudios y Soporte Diagnóstico en UCI
                                                     </span>
                                                     <span style={{
                                                         fontSize: '0.7rem',
@@ -1588,98 +1606,30 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                     </span>
                                                 </div>
                                                 <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
-                                                    Cruce de camas-día con soporte diagnóstico en {activeSectorConfig.label}
+                                                    Demanda diagnóstica vinculada a camas de {uciSubNivel === 'INTENSIVA' ? 'Terapia Intensiva (Boxes 1-8)' : uciSubNivel === 'INTERMEDIA' ? 'Terapia Intermedia (Unidades 01-05)' : 'UCI Consolidada'}
                                                 </span>
                                             </div>
                                         </div>
 
-                                        {/* Toggle de Visión: Gobernanza Reclasificada vs Nominal */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>Visión Producción:</span>
-                                            <div style={{
-                                                background: '#F1F5F9',
-                                                padding: '3px',
-                                                borderRadius: '8px',
-                                                display: 'flex',
-                                                gap: '3px',
-                                                border: '1px solid #CBD5E1'
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <span style={{
+                                                fontSize: '0.75rem',
+                                                fontWeight: 700,
+                                                color: '#1E40AF',
+                                                background: '#EFF6FF',
+                                                border: '1px solid #BFDBFE',
+                                                padding: '5px 12px',
+                                                borderRadius: '8px'
                                             }}>
-                                                <button
-                                                    onClick={() => setOrigenVision('gobernanza')}
-                                                    style={{
-                                                        background: origenVision === 'gobernanza' ? '#2563EB' : 'transparent',
-                                                        color: origenVision === 'gobernanza' ? '#FFFFFF' : '#475569',
-                                                        border: 'none',
-                                                        borderRadius: '6px',
-                                                        padding: '5px 10px',
-                                                        fontSize: '0.75rem',
-                                                        fontWeight: 700,
-                                                        cursor: 'pointer',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px',
-                                                        transition: 'all 0.15s ease'
-                                                    }}
-                                                >
-                                                    <Sparkles size={13} />
-                                                    Gobernanza (Reclasificada)
-                                                </button>
-                                                <button
-                                                    onClick={() => setOrigenVision('nominal')}
-                                                    style={{
-                                                        background: origenVision === 'nominal' ? '#2563EB' : 'transparent',
-                                                        color: origenVision === 'nominal' ? '#FFFFFF' : '#475569',
-                                                        border: 'none',
-                                                        borderRadius: '6px',
-                                                        padding: '5px 10px',
-                                                        fontSize: '0.75rem',
-                                                        fontWeight: 700,
-                                                        cursor: 'pointer',
-                                                        transition: 'all 0.15s ease'
-                                                    }}
-                                                >
-                                                    Nominal SALUS
-                                                </button>
-                                            </div>
+                                                {metrics.totalBaseUci.toLocaleString('es-AR')} estudios en período
+                                            </span>
                                         </div>
                                     </div>
 
-                                    {/* Banner de Auditoría Forense de Asistencia IS NULL */}
-                                    {origenVision === 'gobernanza' && (
-                                        <div style={{
-                                            background: '#F0FDF4',
-                                            border: '1px solid #BBF7D0',
-                                            borderRadius: '10px',
-                                            padding: '10px 16px',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between',
-                                            gap: '12px'
-                                        }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <CheckCircle2 size={18} color="#16A34A" />
-                                                <span style={{ fontSize: '0.78rem', color: '#166534', lineHeight: 1.4 }}>
-                                                    <strong>Auditoría Forense Asistencia IS NULL:</strong> Se reclasificaron <strong>{metrics.totalRescatado.toLocaleString('es-AR')} estudios de imágenes</strong> (ecografías, tomografías y RX) que estaban etiquetados como "Ambulatorio" por no tener recepción en tótem. La tasa de internación hospitalaria real asciende al <strong>{metrics.pctInternacionReal}%</strong> (vs 24.3% nominal).
-                                                </span>
-                                            </div>
-                                            <span style={{
-                                                fontSize: '0.7rem',
-                                                fontWeight: 800,
-                                                color: '#15803D',
-                                                background: '#DCFCE7',
-                                                padding: '3px 8px',
-                                                borderRadius: '6px',
-                                                whiteSpace: 'nowrap'
-                                            }}>
-                                                +30.743 Rescatados
-                                            </span>
-                                        </div>
-                                    )}
-
-                                    {/* Fila 1: Donut de Producción y Distribución de Estudios por Box */}
+                                    {/* Fila 1: Donut de Composición Diagnóstica y Distribución de Estudios por Box */}
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(440px, 1fr))', gap: '20px' }}>
                                         
-                                        {/* 1. Producción Global por Origen (Dual: Reclasificada vs Nominal) */}
+                                        {/* 1. Composición Diagnóstica en UCI (Dinámica según Filtros) */}
                                         {isIndicatorActive('chart_produccion_origen') && (
                                             <div style={{
                                                 background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
@@ -1688,72 +1638,78 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                                                     <div>
                                                         <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
-                                                            {origenVision === 'gobernanza' ? 'Producción Global por Gobernanza Reclasificada' : 'Producción Global Nominal SALUS'}
+                                                            Composición Diagnóstica en UCI
                                                         </h3>
                                                         <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                                            {origenVision === 'gobernanza' 
-                                                                ? 'Categorización forense de 541.487 estudios según recepción y asistencia'
-                                                                : 'Query 2 VLISE: Segmentación nativa Ambulatorio vs Hospitalización'}
+                                                            Modalidades de estudio según período y subnivel seleccionado
                                                         </span>
                                                     </div>
                                                     <span style={{
-                                                        fontSize: '0.7rem', fontWeight: 700, color: '#059669', background: '#ECFDF5',
+                                                        fontSize: '0.7rem', fontWeight: 700, color: '#1E40AF', background: '#EFF6FF',
                                                         padding: '3px 8px', borderRadius: '6px'
                                                     }}>
-                                                        541.487 Estudios
+                                                        {metrics.totalBaseUci.toLocaleString('es-AR')} Estudios
                                                     </span>
                                                 </div>
 
                                                 <div style={{ height: '230px', display: 'flex', alignItems: 'center' }}>
-                                                    <div style={{ width: '50%', height: '100%' }}>
-                                                        <ResponsiveContainer width="100%" height={230}>
-                                                            <PieChart>
-                                                                <Pie
-                                                                    data={metrics.dataProduccionOrigen}
-                                                                    dataKey="value"
-                                                                    nameKey="name"
-                                                                    cx="50%"
-                                                                    cy="50%"
-                                                                    innerRadius={48}
-                                                                    outerRadius={78}
-                                                                    paddingAngle={2}
-                                                                >
-                                                                    {metrics.dataProduccionOrigen.map((entry, index) => (
-                                                                        <Cell key={`cell-${index}`} fill={entry.color} />
-                                                                    ))}
-                                                                </Pie>
-                                                                <Tooltip
-                                                                    formatter={(val) => [Number(val).toLocaleString('es-AR') + ' estudios', 'Volumen']}
-                                                                    contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
-                                                                />
-                                                            </PieChart>
-                                                        </ResponsiveContainer>
-                                                    </div>
-                                                    <div style={{ width: '50%', display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto', maxHeight: '220px' }}>
-                                                        {metrics.dataProduccionOrigen.map(item => (
-                                                            <div key={item.name} style={{
-                                                                background: '#F8FAFC',
-                                                                border: '1px solid #E2E8F0',
-                                                                borderRadius: '8px',
-                                                                padding: '6px 10px'
-                                                            }}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-                                                                    <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: item.color }} />
-                                                                    <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#1E293B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.name}>
-                                                                        {item.name}
-                                                                    </span>
-                                                                </div>
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                                                                    <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0F172A' }}>
-                                                                        {item.value.toLocaleString('es-AR')}
-                                                                    </span>
-                                                                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: item.color }}>
-                                                                        {item.pct}%
-                                                                    </span>
-                                                                </div>
+                                                    {metrics.dataModalidadesUci.length === 0 ? (
+                                                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
+                                                            No hay estudios registrados para este sector o período
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <div style={{ width: '48%', height: '100%' }}>
+                                                                <ResponsiveContainer width="100%" height={230}>
+                                                                    <PieChart>
+                                                                        <Pie
+                                                                            data={metrics.dataModalidadesUci}
+                                                                            dataKey="value"
+                                                                            nameKey="name"
+                                                                            cx="50%"
+                                                                            cy="50%"
+                                                                            innerRadius={48}
+                                                                            outerRadius={78}
+                                                                            paddingAngle={3}
+                                                                        >
+                                                                            {metrics.dataModalidadesUci.map((entry, index) => (
+                                                                                <Cell key={`cell-mod-${index}`} fill={entry.color} />
+                                                                            ))}
+                                                                        </Pie>
+                                                                        <Tooltip
+                                                                            formatter={(val) => [Number(val).toLocaleString('es-AR') + ' estudios', 'Demanda']}
+                                                                            contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                                                                        />
+                                                                    </PieChart>
+                                                                </ResponsiveContainer>
                                                             </div>
-                                                        ))}
-                                                    </div>
+                                                            <div style={{ width: '52%', display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '220px' }}>
+                                                                {metrics.dataModalidadesUci.map(item => (
+                                                                    <div key={item.name} style={{
+                                                                        background: '#F8FAFC',
+                                                                        border: '1px solid #E2E8F0',
+                                                                        borderRadius: '8px',
+                                                                        padding: '8px 10px'
+                                                                    }}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                                                                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: item.color }} />
+                                                                            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#1E293B' }} title={item.name}>
+                                                                                {item.name}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                                                            <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0F172A' }}>
+                                                                                {item.value.toLocaleString('es-AR')}
+                                                                            </span>
+                                                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: item.color }}>
+                                                                                {item.pct}%
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
                                         )}
@@ -1859,13 +1815,18 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
                                                 Filtrar Estudios por Modalidad Diagnóstica:
                                             </span>
-                                            <div style={{ display: 'flex', gap: '6px' }}>
-                                                {['TODAS', 'Laboratorio', 'Imágenes'].map(mod => {
-                                                    const isSel = modalidadFiltro === mod;
+                                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                                {[
+                                                    { id: 'TODAS', label: 'Todas' },
+                                                    { id: 'Laboratorio', label: '🔬 Laboratorio & Bioquímica' },
+                                                    { id: 'Imágenes', label: '🩻 Imágenes / RX en Cama' },
+                                                    { id: 'Patología', label: '🔬 Anatomía Patológica' }
+                                                ].map(mod => {
+                                                    const isSel = modalidadFiltro === mod.id;
                                                     return (
                                                         <button
-                                                            key={mod}
-                                                            onClick={() => setModalidadFiltro(mod)}
+                                                            key={mod.id}
+                                                            onClick={() => setModalidadFiltro(mod.id)}
                                                             style={{
                                                                 background: isSel ? '#EFF6FF' : '#F8FAFC',
                                                                 border: isSel ? '1px solid #2563EB' : '1px solid #CBD5E1',
@@ -1878,7 +1839,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                                 transition: 'all 0.15s ease'
                                                             }}
                                                         >
-                                                            {mod === 'TODAS' ? 'Todas' : mod === 'Laboratorio' ? '🔬 Laboratorio & Gases' : '🩻 Imágenes (ECO / TAC / RX)'}
+                                                            {mod.label}
                                                         </button>
                                                     );
                                                 })}

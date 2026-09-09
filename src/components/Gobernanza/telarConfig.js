@@ -153,11 +153,11 @@ export const INDICADORES_CATALOGO = [
     },
     {
         id: 'chart_produccion_origen',
-        label: 'Producción por Origen y Reclasificación Forense',
+        label: 'Composición Diagnóstica en UCI',
         grupo: 'Estudios y Pruebas Clínicas',
         tipo: 'donut',
         icon: 'PieChart',
-        descripcion: 'Distribución institucional global con visión dual: Nominal SALUS (75.7% vs 24.3%) y Gobernanza Reclasificada (rescate de 30.743 estudios de internación/guardia).',
+        descripcion: 'Distribución dinámica de estudios solicitados según modalidad (Laboratorio, Diagnóstico por Imágenes, Anatomía Patológica) alineada a los filtros activos.',
         isDefault: true,
     },
     {
