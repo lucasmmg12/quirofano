@@ -98,7 +98,9 @@ $$\text{Días Camas Ocupados} = \text{Total de filas en el período filtrado}$$
 
 ### 2. Cantidad de Días Camas Disponibles
 $$\text{Días Camas Disponibles} = \text{Camas Totales del Servicio} \times \text{Días del período}$$
-* *Ejemplo UCI (11 camas, 437 días transcurridos)*: $11 \times 437 = 4.807 \text{ días disponibles}$.
+* *Ejemplo UCI Total (16 camas: 8 Intensiva [Box 1-8] + 8 Intermedia [Hab 222-229], 437 días transcurridos)*: $16 \times 437 = 6.992 \text{ días disponibles}$.
+* *Ejemplo Terapia Intensiva (8 camas)*: $8 \times 437 = 3.496 \text{ días disponibles}$.
+* *Ejemplo Terapia Intermedia (8 camas)*: $8 \times 437 = 3.496 \text{ días disponibles}$.
 
 ### 3. Porcentaje de Ocupación
 $$\% \text{ de Ocupación} = \left( \frac{\text{Días Camas Ocupados}}{\text{Días Camas Disponibles}} \right) \times 100$$

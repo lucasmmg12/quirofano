@@ -9,9 +9,9 @@ export const SECTORES_CONFIG = [
         label: 'Cuidados Críticos (UCI)', 
         shortLabel: 'UCI',
         icon: '🏥', 
-        camasDefault: 19,
+        camasDefault: 16,
         serviciosSalus: ['UCI', 'TERAPIA INTERMEDIA'],
-        descripcion: 'Unidad de Cuidados Críticos (Terapia Intensiva + Terapia Intermedia)'
+        descripcion: 'Unidad de Cuidados Críticos (Terapia Intensiva [8 camas: Box 1 a 8] + Terapia Intermedia [8 camas: Hab 222 a 229])'
     }
 ];
 

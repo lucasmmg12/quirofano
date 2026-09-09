@@ -475,24 +475,28 @@ Cuando te pregunten sobre días cama, porcentaje de ocupación, admisiones o rot
    - Cuando te pregunten *"¿cuántas admisiones tuvimos en [mes]?"*, entregá como dato principal el número de **Admisiones / Ingresos** (ej. **77** en UCI en julio 2026) que coincide con el gráfico del Telar/Dashboard.
    - Aclará además de forma proactiva: *"Ingresaron 77 pacientes en el mes, y además 8 pacientes continuaban internados de meses anteriores, sumando 85 pacientes únicos atendidos en cama."*
 
-### REGLA INSTITUCIONAL OBLIGATORIA SOBRE UCI:
-En el Sanatorio Argentino, la **Unidad de Cuidados Intensivos (UCI)** o Cuidados Críticos **comprende DOS niveles asistenciales**:
-1. **Terapia Intensiva (UTI):** \`servicio = 'UCI'\` (Boxes 1 a 8 • Dotación: 11 camas).
-2. **Terapia Intermedia (UTIM):** \`servicio = 'TERAPIA INTERMEDIA'\` (Unidades 01 a 05 • Dotación: 8 camas).
-- **Dotación Crítica Total:** 19 camas (11 Intensiva + 8 Intermedia).
-- Cuando el usuario pregunte por "UCI", "Terapia", "Cuidados Críticos" o días cama en cuidados intensivos, entregá SIEMPRE:
-  1. El **Total Consolidado de UCI** (\`WHERE servicio IN ('UCI', 'TERAPIA INTERMEDIA')\`).
-  2. El **Desglose claro**: cuántos días cama corresponden a Terapia Intensiva y cuántos a Terapia Intermedia.
-  3. El cálculo de **% de Ocupación** basado en la dotación de 19 camas (o la del subsector consultado).
+### REGLA INSTITUCIONAL OBLIGATORIA SOBRE UCI (VERDAD ABSOLUTA — DOTACIÓN DE 16 CAMAS):
+En el Sanatorio Argentino, la **Unidad de Cuidados Intensivos (UCI)** o Cuidados Críticos tiene una **DOTACIÓN TOTAL DE EXACTAMENTE 16 CAMAS (REGLA Y VERDAD ABSOLUTA)**.
+Comprende DOS niveles asistenciales, con 8 camas cada uno:
+1. **Terapia Intermedia (UTIM):** \`servicio = 'TERAPIA INTERMEDIA'\` — **8 camas** (Habitaciones 222, 223, 224, 225, 226, 227, 228 y 229).
+2. **Terapia Intensiva (UTI):** \`servicio = 'UCI'\` — **8 camas** (BOX 1, BOX 2, BOX 3, BOX 4, BOX 5, BOX 6, BOX 7 y BOX 8).
+- **Dotación Crítica Total de UCI:** **EXACTAMENTE 16 CAMAS** (8 Intensiva + 8 Intermedia). NUNCA digas 19, NUNCA digas 11. Son 16 camas en total.
+- **Detalle nominal exacto de las 16 camas:**
+  - **Terapia Intermedia (8 camas):** HAB 222, HAB 223, HAB 224, HAB 225, HAB 226, HAB 227, HAB 228, HAB 229.
+  - **Terapia Intensiva (8 camas):** BOX 1, BOX 2, BOX 3, BOX 4, BOX 5, BOX 6, BOX 7, BOX 8.
+- Cuando el usuario pregunte por "UCI", "Terapia", "Cuidados Críticos" o dotación de camas:
+  1. El **Total Consolidado de UCI** tiene SIEMPRE **16 camas instaladas** (\`WHERE servicio IN ('UCI', 'TERAPIA INTERMEDIA')\`).
+  2. El **Desglose claro**: 8 camas en Terapia Intensiva (Boxes 1 al 8) y 8 camas en Terapia Intermedia (Habitaciones 222 a 229).
+  3. El cálculo de **% de Ocupación** se basa SIEMPRE en **16 camas** (para UCI consolidada), u **8 camas** (para Terapia Intensiva sola), u **8 camas** (para Terapia Intermedia sola).
 
 ### DOTACIONES DE CAMAS INSTALADAS (Para cálculo de % Ocupación):
-- **UCI Consolidada (Total):** 19 camas (11 Intensiva + 8 Intermedia)
-- **Terapia Intensiva (UTI):** 11 camas
-- **Terapia Intermedia (UTIM):** 8 camas
+- **UCI Consolidada (Total):** 16 camas (8 Intensiva + 8 Intermedia) — VERDAD ABSOLUTA
+- **Terapia Intensiva (UTI):** 8 camas (BOX 1 a BOX 8)
+- **Terapia Intermedia (UTIM):** 8 camas (HAB 222 a HAB 229)
 - **Neonatología:** 20 camas
 - **Internación Clínica (Pisos):** 45 camas
 - **Pediatría:** 15 camas
-- **Total Sanatorio (Global):** 107 camas
+- **Total Sanatorio (Global):** 104 camas
 - **Fórmula Matemática:** \`% Ocupación = (dias_cama_ocupados / (camas_instaladas * dias_del_mes_o_periodo)) * 100\`
 
 ### PATRONES SQL RECOMENDADOS:
@@ -1344,7 +1348,7 @@ Soporta prácticas ambulatorias e internación.`,
 
 **MÉTRICAS CLÍNICAS DE OCUPACIÓN:**
 - **Días Camas Ocupados**: COUNT(*) en el rango de \`fecha_ocupacion\`.
-- **Días Camas Disponibles**: \`Camas_Totales × Días_del_período\` (UCI tiene 11 camas por defecto, Intermedia 8 camas).
+- **Días Camas Disponibles**: \`Camas_Totales × Días_del_período\` (UCI Total tiene exactamente 16 camas: 8 Intensiva [BOX 1 a 8] + 8 Intermedia [HAB 222 a 229]).
 - **% de Ocupación**: (Días Camas Ocupados / Días Camas Disponibles) × 100.
 - **Tasa de Mortalidad / % Defunción**: (Pacientes únicos con motivo_de_alta LIKE '%Defunción%' / Total admisiones únicas) × 100.
 - **Promedio de Estancia (ALOS)**: AVG(DATEDIFF(fecha_alta - fecha_ingreso)).

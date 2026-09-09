@@ -38,7 +38,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const [selectedEspecialidades, setSelectedEspecialidades] = useState(null); // null = todas activas
     const [especDropdownOpen, setEspecDropdownOpen] = useState(false);
     const especDropdownRef = useRef(null);
-    const [camasTotales, setCamasTotales] = useState(19);
+    const [camasTotales, setCamasTotales] = useState(16);
     const [fechaDesde, setFechaDesde] = useState('2026-01-01');
     const [fechaHasta, setFechaHasta] = useState(() => new Date().toISOString().split('T')[0]);
 
@@ -160,8 +160,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const handleSelectUciSubNivel = (sub) => {
         setUciSubNivel(sub);
         setBoxFiltro('TODOS');
-        if (sub === 'CONSOLIDADO') setCamasTotales(19);
-        else if (sub === 'INTENSIVA') setCamasTotales(11);
+        if (sub === 'CONSOLIDADO') setCamasTotales(16);
+        else if (sub === 'INTENSIVA') setCamasTotales(8);
         else if (sub === 'INTERMEDIA') setCamasTotales(8);
     };
 
@@ -805,7 +805,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 }}
                             >
                                 <span>⚡</span>
-                                <span>UCI Total (19 camas)</span>
+                                <span>UCI Total (16 camas)</span>
                             </button>
                             <button
                                 onClick={() => handleSelectUciSubNivel('INTENSIVA')}
@@ -825,7 +825,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 }}
                             >
                                 <span>🔴</span>
-                                <span>Terapia Intensiva (11)</span>
+                                <span>Terapia Intensiva (8)</span>
                             </button>
                             <button
                                 onClick={() => handleSelectUciSubNivel('INTERMEDIA')}
@@ -1214,7 +1214,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                 <span style={{ fontSize: '1.2rem' }}>🏥</span>
                                                 <div>
                                                     <div style={{ fontWeight: 800, color: '#1E40AF' }}>{s.label}</div>
-                                                    <span style={{ fontSize: '0.7rem', color: '#3B82F6' }}>19 camas operativas</span>
+                                                    <span style={{ fontSize: '0.7rem', color: '#3B82F6' }}>16 camas operativas</span>
                                                 </div>
                                             </div>
                                             <CheckCircle2 size={16} color="#2563EB" />
@@ -1252,7 +1252,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                     transition: 'all 0.15s ease'
                                                 }}
                                             >
-                                                <span>⚡ UCI Total (19 camas)</span>
+                                                <span>⚡ UCI Total (16 camas)</span>
                                                 {uciSubNivel === 'CONSOLIDADO' && <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2563EB' }} />}
                                             </button>
 
@@ -1274,7 +1274,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                     transition: 'all 0.15s ease'
                                                 }}
                                             >
-                                                <span>🔴 Terapia Intensiva (11 camas)</span>
+                                                <span>🔴 Terapia Intensiva (8 camas)</span>
                                                 {uciSubNivel === 'INTENSIVA' && <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#DC2626' }} />}
                                             </button>
 
