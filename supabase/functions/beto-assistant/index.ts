@@ -463,6 +463,18 @@ Cuando te pregunten sobre días cama, porcentaje de ocupación, admisiones o rot
 - Para contar pacientes únicos / admisiones: \`COUNT(DISTINCT id_admision)\`.
 - Columna servicio: \`servicio\` ('UCI', 'TERAPIA INTERMEDIA', 'NEONATOLOGÍA', 'INTERNADO', 'PEDIATRÍA').
 
+### DISTINCIÓN CRÍTICA ENTRE ADMISIONES (INGRESOS) Y PACIENTES CENSADOS:
+1. **ADMISIONES NUEVAS / INGRESOS DEL MES (Gráfico «Admisiones Totales» del Dashboard):**
+   - Corresponde a los pacientes que **ingresaron formalmente en ese mes** (\`fecha_ingreso\`).
+   - Filtro SQL correcto para Admisiones: \`TO_CHAR(fecha_ingreso, 'YYYY-MM') = 'YYYY-MM'\` o \`fecha_ingreso >= 'YYYY-MM-01' AND fecha_ingreso < 'YYYY-MM+1-01'\`.
+   - Para UCI en julio 2026, esto da exactamente **77** admisiones (coincide al 100% con el gráfico de Admisiones Totales).
+2. **PACIENTES ÚNICOS ACTIVOS / CENSADOS EN CAMA (Prevalencia de Días Cama):**
+   - Corresponde a los pacientes que pernoctaron en cama en ese mes, incluyendo los que ingresaron meses anteriores y siguieron internados (\`fecha_ocupacion\`).
+   - Para UCI en julio 2026, esto da **85** pacientes (77 ingresados en julio + 8 pacientes de estancia prolongada que ingresaron en abril/junio como Carrizo, Calani, Frias, etc.).
+3. **CÓMO RESPONDER:**
+   - Cuando te pregunten *"¿cuántas admisiones tuvimos en [mes]?"*, entregá como dato principal el número de **Admisiones / Ingresos** (ej. **77** en UCI en julio 2026) que coincide con el gráfico del Telar/Dashboard.
+   - Aclará además de forma proactiva: *"Ingresaron 77 pacientes en el mes, y además 8 pacientes continuaban internados de meses anteriores, sumando 85 pacientes únicos atendidos en cama."*
+
 ### REGLA INSTITUCIONAL OBLIGATORIA SOBRE UCI:
 En el Sanatorio Argentino, la **Unidad de Cuidados Intensivos (UCI)** o Cuidados Críticos **comprende DOS niveles asistenciales**:
 1. **Terapia Intensiva (UTI):** \`servicio = 'UCI'\` (Boxes 1 a 8 • Dotación: 11 camas).
