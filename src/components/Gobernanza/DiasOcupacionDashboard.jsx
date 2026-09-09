@@ -2678,7 +2678,16 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                             <UciGanttChart 
                                 rawData={rows}
-                                initialDate={fechaDesde}
+                                fechaDesde={fechaDesde}
+                                fechaHasta={fechaHasta}
+                                datePresetMode={datePresetMode}
+                                onDatePresetChange={handleSetDatePreset}
+                                onCustomDateChange={(d, h) => {
+                                    setFechaDesde(d);
+                                    setFechaHasta(h);
+                                    setDatePresetMode('personalizado');
+                                }}
+                                onClose={() => setViewMode('dashboard')}
                             />
                         </div>
                     ) : (

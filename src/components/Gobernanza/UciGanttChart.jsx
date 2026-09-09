@@ -50,9 +50,36 @@ const PALETA_COBERTURAS = [
     { bg: 'linear-gradient(135deg, #374151, #4B5563)', border: '#4B5563', text: '#FFFFFF' }  // Gris
 ];
 
+// ── Helpers de Fechas (Este Mes / Mes Anterior / Personalizado) ──
+const getPrimerDiaMes = (d = new Date()) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}-01`;
+};
+
+const getUltimoDiaMes = (d = new Date()) => {
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    return `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+};
+
+const getRangoMesAnterior = () => {
+    const now = new Date();
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return {
+        desde: getPrimerDiaMes(prevMonthDate),
+        hasta: getUltimoDiaMes(prevMonthDate)
+    };
+};
+
 export default function UciGanttChart({ 
     rawData = [], 
-    initialDate = null,
+    fechaDesde = null,
+    fechaHasta = null,
+    datePresetMode = 'este_mes',
+    onDatePresetChange = null,
+    onCustomDateChange = null,
     onClose = null 
 }) {
     // === ESTADOS ===
@@ -64,24 +91,46 @@ export default function UciGanttChart({
     const [selectedPatient, setSelectedPatient] = useState(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
 
-    // Fechas del Gantt: centrado por defecto en Agosto 2026 o en la fecha pasada
-    const [startDateStr, setStartDateStr] = useState(() => {
-        if (initialDate) {
-            const d = new Date(initialDate);
-            d.setDate(d.getDate() - 7);
-            return d.toISOString().split('T')[0];
-        }
-        return '2026-08-01';
-    });
+    // Fechas sincronizadas con el dashboard
+    const [localPresetMode, setLocalPresetMode] = useState(datePresetMode || 'este_mes');
+    const [localStartDate, setLocalStartDate] = useState(() => fechaDesde || getPrimerDiaMes());
+    const [localEndDate, setLocalEndDate] = useState(() => fechaHasta || getUltimoDiaMes());
 
-    const [endDateStr, setEndDateStr] = useState(() => {
-        if (initialDate) {
-            const d = new Date(initialDate);
-            d.setDate(d.getDate() + 23);
-            return d.toISOString().split('T')[0];
+    const activePreset = datePresetMode || localPresetMode;
+    const startDateStr = fechaDesde || localStartDate;
+    const endDateStr = fechaHasta || localEndDate;
+
+    const handleSelectPreset = (preset) => {
+        setLocalPresetMode(preset);
+        if (onDatePresetChange) {
+            onDatePresetChange(preset);
+        } else {
+            if (preset === 'este_mes') {
+                setLocalStartDate(getPrimerDiaMes());
+                setLocalEndDate(getUltimoDiaMes());
+            } else if (preset === 'mes_anterior') {
+                const { desde, hasta } = getRangoMesAnterior();
+                setLocalStartDate(desde);
+                setLocalEndDate(hasta);
+            }
         }
-        return '2026-08-31';
-    });
+    };
+
+    const handleCustomDateFrom = (newFrom) => {
+        setLocalStartDate(newFrom);
+        setLocalPresetMode('personalizado');
+        if (onCustomDateChange) {
+            onCustomDateChange(newFrom, endDateStr);
+        }
+    };
+
+    const handleCustomDateTo = (newTo) => {
+        setLocalEndDate(newTo);
+        setLocalPresetMode('personalizado');
+        if (onCustomDateChange) {
+            onCustomDateChange(startDateStr, newTo);
+        }
+    };
 
     const scrollContainerRef = useRef(null);
 
@@ -90,14 +139,29 @@ export default function UciGanttChart({
     const rowHeight = 52;
     const leftColWidth = 190;
 
-    // Generar array de días en el rango
-    const days = useMemo(() => {
+    // Generar array de días en el rango con protección estricta de RAM (máximo 45 días continuos)
+    const { days, isRangeClamped } = useMemo(() => {
         const list = [];
+        if (!startDateStr || !endDateStr) return { days: list, isRangeClamped: false };
+
         const start = new Date(startDateStr + 'T00:00:00');
         const end = new Date(endDateStr + 'T23:59:59');
+        if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+            return { days: list, isRangeClamped: false };
+        }
+
+        // Límite de seguridad de RAM: máx 45 días continuos para prevenir cuelgues del dispositivo
+        const MAX_GANTT_DAYS = 45;
         let curr = new Date(start);
+        let count = 0;
+        let clamped = false;
 
         while (curr <= end) {
+            if (count >= MAX_GANTT_DAYS) {
+                clamped = true;
+                break;
+            }
+
             const dateStr = curr.toISOString().split('T')[0];
             const dayNum = curr.getDate();
             const dayOfWeek = curr.toLocaleDateString('es-AR', { weekday: 'narrow' }).toUpperCase();
@@ -116,8 +180,9 @@ export default function UciGanttChart({
             });
 
             curr.setDate(curr.getDate() + 1);
+            count++;
         }
-        return list;
+        return { days: list, isRangeClamped: clamped };
     }, [startDateStr, endDateStr]);
 
     // Agrupar admisiones únicas con su cama normalizada
@@ -478,66 +543,136 @@ export default function UciGanttChart({
                         </button>
                     </div>
 
-                    {/* Navegación por fechas */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <button
-                            onClick={() => handleShiftDates(-7)}
-                            style={{
-                                background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: '6px',
-                                padding: '4px 6px', fontSize: '0.7rem', fontWeight: 600, color: '#475569', cursor: 'pointer'
-                            }}
-                            title="Retroceder 7 días"
-                        >
-                            -7d
-                        </button>
-                        <button
-                            onClick={() => handleShiftDates(-1)}
-                            style={{
-                                background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: '6px',
-                                padding: '4px 6px', fontSize: '0.7rem', fontWeight: 600, color: '#475569', cursor: 'pointer'
-                            }}
-                            title="Retroceder 1 día"
-                        >
-                            -1d
-                        </button>
+                    {/* Selector de Período Clínico idéntico: Este Mes | Mes Anterior | Personalizado */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            background: '#F1F5F9',
+                            padding: '2px',
+                            borderRadius: '8px',
+                            border: '1px solid #CBD5E1',
+                            gap: '2px'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={() => handleSelectPreset('este_mes')}
+                                style={{
+                                    background: activePreset === 'este_mes' ? '#1E40AF' : 'transparent',
+                                    color: activePreset === 'este_mes' ? '#FFFFFF' : '#475569',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '4px 9px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: activePreset === 'este_mes' ? 700 : 500,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: activePreset === 'este_mes' ? '0 1px 2px rgba(30, 64, 175, 0.2)' : 'none'
+                                }}
+                                title="Filtrar datos del mes en curso"
+                            >
+                                Este Mes
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleSelectPreset('mes_anterior')}
+                                style={{
+                                    background: activePreset === 'mes_anterior' ? '#1E40AF' : 'transparent',
+                                    color: activePreset === 'mes_anterior' ? '#FFFFFF' : '#475569',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '4px 9px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: activePreset === 'mes_anterior' ? 700 : 500,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: activePreset === 'mes_anterior' ? '0 1px 2px rgba(30, 64, 175, 0.2)' : 'none'
+                                }}
+                                title="Filtrar datos del mes cerrado anterior"
+                            >
+                                Mes Anterior
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleSelectPreset('personalizado')}
+                                style={{
+                                    background: activePreset === 'personalizado' ? '#1E40AF' : 'transparent',
+                                    color: activePreset === 'personalizado' ? '#FFFFFF' : '#475569',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '4px 9px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: activePreset === 'personalizado' ? 700 : 500,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: activePreset === 'personalizado' ? '0 1px 2px rgba(30, 64, 175, 0.2)' : 'none'
+                                }}
+                                title="Seleccionar rango de fechas manual"
+                            >
+                                Personalizado
+                            </button>
+                        </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px' }}>
-                            <Calendar size={13} color="#64748B" />
+                        {/* Rango de Fechas Interactivo (Desde - Hasta) */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: activePreset === 'personalizado' ? '#EFF6FF' : '#FFFFFF',
+                            border: activePreset === 'personalizado' ? '1px solid #93C5FD' : '1px solid #CBD5E1',
+                            borderRadius: '8px',
+                            padding: '2px 8px',
+                            transition: 'all 0.2s ease',
+                            boxShadow: activePreset === 'personalizado' ? '0 0 0 2px rgba(59, 130, 246, 0.1)' : 'none'
+                        }}>
+                            <Calendar size={13} color={activePreset === 'personalizado' ? '#2563EB' : '#64748B'} />
                             <input
                                 type="date"
                                 value={startDateStr}
-                                onChange={(e) => setStartDateStr(e.target.value)}
-                                style={{ border: 'none', fontSize: '0.72rem', color: '#1E293B', outline: 'none', fontWeight: 600 }}
+                                onChange={(e) => handleCustomDateFrom(e.target.value)}
+                                style={{
+                                    padding: '2px 4px',
+                                    borderRadius: '4px',
+                                    border: '1px solid #CBD5E1',
+                                    fontSize: '0.72rem',
+                                    color: '#1E293B',
+                                    background: '#FFFFFF',
+                                    fontWeight: 600
+                                }}
+                                title="Fecha Desde"
                             />
-                            <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>a</span>
+                            <span style={{ color: activePreset === 'personalizado' ? '#2563EB' : '#94A3B8', fontSize: '0.72rem', fontWeight: 600 }}>a</span>
                             <input
                                 type="date"
                                 value={endDateStr}
-                                onChange={(e) => setEndDateStr(e.target.value)}
-                                style={{ border: 'none', fontSize: '0.72rem', color: '#1E293B', outline: 'none', fontWeight: 600 }}
+                                onChange={(e) => handleCustomDateTo(e.target.value)}
+                                style={{
+                                    padding: '2px 4px',
+                                    borderRadius: '4px',
+                                    border: '1px solid #CBD5E1',
+                                    fontSize: '0.72rem',
+                                    color: '#1E293B',
+                                    background: '#FFFFFF',
+                                    fontWeight: 600
+                                }}
+                                title="Fecha Hasta"
                             />
                         </div>
 
-                        <button
-                            onClick={() => handleShiftDates(1)}
-                            style={{
-                                background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: '6px',
-                                padding: '4px 6px', fontSize: '0.7rem', fontWeight: 600, color: '#475569', cursor: 'pointer'
-                            }}
-                            title="Avanzar 1 día"
-                        >
-                            +1d
-                        </button>
-                        <button
-                            onClick={() => handleShiftDates(7)}
-                            style={{
-                                background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: '6px',
-                                padding: '4px 6px', fontSize: '0.7rem', fontWeight: 600, color: '#475569', cursor: 'pointer'
-                            }}
-                            title="Avanzar 7 días"
-                        >
-                            +7d
-                        </button>
+                        {/* Aviso protector de memoria si el rango fue acotado */}
+                        {isRangeClamped && (
+                            <div style={{
+                                background: '#FEF3C7',
+                                border: '1px solid #FCD34D',
+                                color: '#92400E',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                padding: '3px 8px',
+                                borderRadius: '6px'
+                            }} title="El diagrama de Gantt limita la cuadrícula a 45 días continuos para prevenir cuelgues del navegador y exceso de consumo de RAM">
+                                ⚡ Máx. 45 días (Protección RAM)
+                            </div>
+                        )}
                     </div>
 
                     {/* Selector de Zoom */}
