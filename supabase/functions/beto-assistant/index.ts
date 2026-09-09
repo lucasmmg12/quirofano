@@ -360,6 +360,23 @@ Cada biopsia tiene una "acción" que se determina cruzando Obra Social + Laborat
 - \`seccion\` (text) — Laboratorio, Imágenes, etc.
 - \`anio_solicitud\` (int)
 - \`mes_solicitud\` (int)
+
+### \`calidad_censo_camas_uci\` (Censo Diario en Tiempo Real de Camas Críticas - 16 Camas)
+Contiene la grilla exacta de camas críticas de UCI e Intermedia (habitaciones 222 a 229 y BOX 1 a BOX 8):
+- \`hab\` (text) — Identificador de habitación o box: '222', '223', '224', '225', '226', '227', '228', '229', 'BOX 1', 'BOX 2', 'BOX 3', 'BOX 4', 'BOX 5', 'BOX 6', 'BOX 7', 'BOX 8'
+- \`orden\` (int) — Orden correlativo (1 a 16)
+- \`fecha_ingreso\` (text) — Fecha de ingreso del paciente (DD/MM/YYYY)
+- \`paciente\` (text) — Apellido y nombre completo
+- \`fecha_nacimiento\` (text) — Fecha de nacimiento (DD/MM/YYYY)
+- \`dni\` (text) — Documento nacional de identidad
+- \`obra_social\` (text) — Cobertura médica
+- \`numero_afiliado\` (text) — Número de carnet / autorización
+- \`edad\` (text) — Edad (ej: '61 a')
+- \`telefono\` (text) — Número de contacto
+- \`tipo_internacion\` (text) — 'uci' o 'INT'
+- \`numero_admision\` (text) — Código de admisión en SALUS
+- \`estado\` (text) — 'OCUPADA' o 'LIBRE'
+- \`updated_at\` (timestamptz)
 `;
 }
 
@@ -602,8 +619,18 @@ Cuando el usuario pida "exportar deudas", "Excel de cirugías", etc. sin filtros
 - **Asociaciones**: SELECT nombre_paciente, nombre_cirugia, fecha_realizacion, cirujano, asociacion, especialidad, obra_social, docs_completos FROM asociaciones_cirugias ORDER BY fecha_realizacion DESC LIMIT 500
 - **Laboratorios**: SELECT paciente, dni, cliente, laboratorio, fecha_visita, biopsia_congelacion, biopsia_simple, biopsia_ampliada, modulo_tipo, modulo_cantidad, en_carrito, constancia_id FROM laboratorios_anatomia_patologica ORDER BY fecha_visita DESC LIMIT 500
 - **Altas**: SELECT paciente, dni, numero_admision, fecha_ingreso, fecha_alta, especialidad, doctor, cliente, estado, responsable_override, facturada, estado_fac FROM altas_administrativas ORDER BY fecha_ingreso DESC LIMIT 500
-- **Traspasos**: SELECT id, entrega, recibe, notas, fichas_count, created_at FROM altas_traspasos ORDER BY created_at DESC LIMIT 100
 - **Auditoría H.C.**: NOTA: La auditoría de historias clínicas no posee una tabla en la base de datos ya que procesa planillas Excel cargadas de forma dinámica y temporal en memoria.
+- **Censo de Camas / Camas de Hoy (UCI e Intermedia)**:
+  Cuando el usuario pida "excel de las camas de hoy", "dame el excel de las camas de hoy dia", "censo de camas de hoy", "estado de las camas hoy", o "camas uci hoy":
+  1. Ejecutá la consulta en la tabla \`calidad_censo_camas_uci\`:
+     \`SELECT hab, fecha_ingreso, paciente, fecha_nacimiento, dni, obra_social, numero_afiliado, edad, telefono, tipo_internacion FROM calidad_censo_camas_uci ORDER BY orden\`
+  2. Generá el bloque \`beto-excel\` con la estructura EXACTA solicitada por la institución:
+     - reportName: "Censo_Camas_Hoy"
+     - sheetName: "Camas"
+     - columns: ["HAB", "F ING", "APELLIDO Y NOMBRE", "F NAC", "DNI", "O SOCIAL", "Nº O SOCIAL", "EDAD", "Nº TELEFONO", "TIPO INTER"]
+     - data: Matriz con las 16 camas en orden exacto (222, 223, 224, 225, 226, 227, 228, 229, BOX 1, BOX 2, BOX 3, BOX 4, BOX 5, BOX 6, BOX 7, BOX 8).
+     - filters: "Censo diario de camas críticas y cuidados intermedios - Sanatorio Argentino"
+  3. Mostrá la tabla Markdown completa con las 16 camas (tanto ocupadas como libres), un resumen con cantidad de camas ocupadas y disponibles, y el botón para descargar el Excel.
 
 ## AUDITORÍA DE HISTORIAS CLÍNICAS (NUEVO)
 Este módulo sirve para verificar la calidad de las planillas de historias clínicas mediante carga de archivos Excel.
