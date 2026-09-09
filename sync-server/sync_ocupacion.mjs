@@ -64,6 +64,7 @@ export async function syncOcupacion(filtroServicio = null) {
             SELECT 
                 b.[Número admisión],
                 DATEADD(DAY, v.number, CAST(b.[Fecha ingreso] AS DATE)) AS [Fecha Ocupacion],
+                b.[Habitación],
                 b.Especialidad,
                 b.idAdmision,
                 b.[Fecha ingreso],
@@ -107,6 +108,7 @@ export async function syncOcupacion(filtroServicio = null) {
             id_admision: r.idAdmision,
             numero_admision: r['Número admisión'] ? String(r['Número admisión']).trim() : null,
             fecha_ocupacion: formatDateOnly(r['Fecha Ocupacion']),
+            habitacion: r['Habitación'] ? String(r['Habitación']).trim() : null,
             fecha_ingreso: formatDate(r['Fecha ingreso']),
             fecha_alta: formatDate(r['Fecha alta']),
             especialidad: r.Especialidad ? String(r.Especialidad).trim() : 'Sin Especialidad',

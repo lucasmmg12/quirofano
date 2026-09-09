@@ -324,6 +324,7 @@ Cada biopsia tiene una "acción" que se determina cruzando Obra Social + Laborat
 - \`id_admision\` (bigint) — ID Admisión en SALUS
 - \`numero_admision\` (text) — Número de admisión
 - \`fecha_ocupacion\` (date) — Fecha del día censal ocupado
+- \`habitacion\` (text) — Habitación o Box ocupado (ej: '222-,', '228-,', '220-A', 'Box 1-B1')
 - \`fecha_ingreso\` (timestamptz) — Fecha de ingreso del paciente
 - \`fecha_alta\` (timestamptz) — Fecha de egreso/alta
 - \`especialidad\` (text) — Especialidad tratante (CLINICA MEDICA, CIRUGIA, etc.)
@@ -615,6 +616,7 @@ Cuando el usuario pida "exportar deudas", "Excel de cirugías", etc. sin filtros
 - **Laboratorios**: SELECT paciente, dni, cliente, laboratorio, fecha_visita, biopsia_congelacion, biopsia_simple, biopsia_ampliada, modulo_tipo, modulo_cantidad, en_carrito, constancia_id FROM laboratorios_anatomia_patologica ORDER BY fecha_visita DESC LIMIT 500
 - **Altas**: SELECT paciente, dni, numero_admision, fecha_ingreso, fecha_alta, especialidad, doctor, cliente, estado, responsable_override, facturada, estado_fac FROM altas_administrativas ORDER BY fecha_ingreso DESC LIMIT 500
 - **Auditoría H.C.**: NOTA: La auditoría de historias clínicas no posee una tabla en la base de datos ya que procesa planillas Excel cargadas de forma dinámica y temporal en memoria.
+- **Ocupación e Internaciones (Telar)**: SELECT habitacion, paciente, numero_admision, fecha_ocupacion, fecha_ingreso, fecha_alta, servicio, especialidad, cliente, edad FROM calidad_admisiones_ocupacion ORDER BY fecha_ocupacion DESC LIMIT 500. Siempre incluir la columna \`habitacion\` ("Habitación").
 - **Censo de Camas / Camas de Hoy (UCI e Intermedia)**:
   Cuando el usuario pida "excel de las camas de hoy", "dame el excel de las camas de hoy dia", "censo de camas de hoy", "estado de las camas hoy", o "camas uci hoy":
   1. Ejecutá la consulta en la tabla \`calidad_censo_camas_uci\`:
@@ -625,7 +627,12 @@ Cuando el usuario pida "exportar deudas", "Excel de cirugías", etc. sin filtros
      - columns: ["HAB", "F ING", "APELLIDO Y NOMBRE", "F NAC", "DNI", "O SOCIAL", "Nº O SOCIAL", "EDAD", "Nº TELEFONO", "TIPO INTER"]
      - data: Matriz con las 16 camas en orden exacto (222, 223, 224, 225, 226, 227, 228, 229, BOX 1, BOX 2, BOX 3, BOX 4, BOX 5, BOX 6, BOX 7, BOX 8).
      - filters: "Censo diario de camas críticas y cuidados intermedios - Sanatorio Argentino"
-  3. Mostrá la tabla Markdown completa con las 16 camas (tanto ocupadas como libres), un resumen con cantidad de camas ocupadas y disponibles, y el botón para descargar el Excel.
+  3. En la respuesta de texto, SIEMPRE indicá la habitación de forma destacada en la lista de pacientes internados:
+     \`- **[Habitación]** Nombre del Paciente — Obra Social (Ingreso: DD/MM/AAAA)\`
+     Ejemplo:
+     \`- **[222]** YUDEWITZ, JANNINE SANDRA — OMINT S.A. (Ingreso: 07/09/2026)\`
+     \`- **[BOX 1]** MAESTRE CARRIZO, SILVANA VALERIA — SANCOR SALUD (Ingreso: 09/09/2026)\`
+  4. Mostrá el resumen con cantidad de camas ocupadas y disponibles sobre el total de 16 camas, y el botón para descargar el Excel y PDF.
 
 ## AUDITORÍA DE HISTORIAS CLÍNICAS (NUEVO)
 Este módulo sirve para verificar la calidad de las planillas de historias clínicas mediante carga de archivos Excel.

@@ -24,6 +24,7 @@ export default function TelarDataModal({ indicator, onClose, dateFilter = {}, ra
 
             return {
                 id: r.numero_admision || r.id_admision || '-',
+                habitacion: r.habitacion || '-',
                 paciente: r.paciente || '-',
                 edad: r.edad ?? '-',
                 especialidad: r.especialidad || '-',
@@ -39,6 +40,7 @@ export default function TelarDataModal({ indicator, onClose, dateFilter = {}, ra
 
     const tableColumns = [
         { key: 'id', label: 'N° Admisión' },
+        { key: 'habitacion', label: 'Habitación' },
         { key: 'paciente', label: 'Paciente' },
         { key: 'edad', label: 'Edad' },
         { key: 'especialidad', label: 'Especialidad' },
@@ -57,6 +59,7 @@ export default function TelarDataModal({ indicator, onClose, dateFilter = {}, ra
         return tableData.filter(row =>
             row.paciente.toLowerCase().includes(q) ||
             row.id.toLowerCase().includes(q) ||
+            row.habitacion.toLowerCase().includes(q) ||
             row.especialidad.toLowerCase().includes(q) ||
             row.cliente.toLowerCase().includes(q) ||
             row.procedencia.toLowerCase().includes(q)
@@ -222,6 +225,11 @@ export default function TelarDataModal({ indicator, onClose, dateFilter = {}, ra
                                     >
                                         <td style={{ padding: '8px 14px', fontWeight: 700, color: '#1E40AF', whiteSpace: 'nowrap' }}>
                                             {row.id}
+                                        </td>
+                                        <td style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}>
+                                            <span style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700, color: '#0369A1' }}>
+                                                {row.habitacion}
+                                            </span>
                                         </td>
                                         <td style={{ padding: '8px 14px', fontWeight: 600, color: '#0F172A', whiteSpace: 'nowrap' }}>
                                             {row.paciente}

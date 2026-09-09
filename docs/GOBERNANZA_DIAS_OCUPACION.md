@@ -20,6 +20,7 @@ SELECT
     b.[Número admisión],
     -- Desdobla una fila por cada día natural que la cama estuvo ocupada
     DATEADD(DAY, v.number, CAST(b.[Fecha ingreso] AS DATE)) AS [Fecha Ocupacion],
+    b.[Habitación],
     b.Especialidad,
     b.idAdmision,
     b.[Fecha ingreso],
@@ -61,6 +62,7 @@ WHERE (b.[Fecha alta] >= '2025-06-01' OR b.[Fecha alta] IS NULL)
 | `id_admision` | `BIGINT` | Identificador único de la admisión en SALUS. |
 | `numero_admision` | `VARCHAR(50)` | Código alfanumérico visible de la admisión (ej. `I052802`). |
 | `fecha_ocupacion` | `DATE` | Fecha del día específico de cama ocupada. Clave para agrupaciones diarias/mensuales. |
+| `habitacion` | `VARCHAR(100)` | Habitación o Box ocupado por el paciente (`b.[Habitación]`, ej. `222-,`, `228-,`, `220-A`, `Box 1-B1`). |
 | `fecha_ingreso` | `TIMESTAMPTZ` | Momento exacto de ingreso del paciente a la institución. |
 | `fecha_alta` | `TIMESTAMPTZ` | Momento de alta (NULL si permanece internado). |
 | `servicio` | `VARCHAR(150)` | Unidad o sector asistencial (`UCI`, `NEONATOLOGÍA`, `INTERNADO`, `PEDIATRÍA`, etc.). |

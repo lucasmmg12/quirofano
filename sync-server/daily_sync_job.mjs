@@ -81,6 +81,7 @@ async function runDailySync() {
         SELECT 
             b.[Número admisión] AS numero_admision,
             DATEADD(DAY, v.number, CAST(b.[Fecha ingreso] AS DATE)) AS fecha_ocupacion,
+            b.[Habitación] AS habitacion,
             b.Especialidad AS especialidad,
             b.idAdmision AS id_admision,
             b.[Fecha ingreso] AS fecha_ingreso,
@@ -115,6 +116,7 @@ async function runDailySync() {
         id_admision: r.id_admision,
         numero_admision: r.numero_admision ? String(r.numero_admision).trim() : null,
         fecha_ocupacion: r.fecha_ocupacion ? new Date(r.fecha_ocupacion).toISOString().split('T')[0] : null,
+        habitacion: r.habitacion ? String(r.habitacion).trim() : null,
         fecha_ingreso: r.fecha_ingreso ? new Date(r.fecha_ingreso).toISOString() : null,
         fecha_alta: r.fecha_alta ? new Date(r.fecha_alta).toISOString() : null,
         especialidad: r.especialidad ? String(r.especialidad).trim() : 'Sin Especialidad',
