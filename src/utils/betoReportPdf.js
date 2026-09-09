@@ -234,7 +234,120 @@ export function parseBetoReport(markdown) {
     if (currentTable) sections.push(currentTable);
     if (currentText.length > 0) sections.push({ type: 'text', content: currentText.join('\n') });
 
+    // Post-procesado: Si hay viñetas que representan pacientes con datos clínicos,
+    // convertirlas automáticamente en una tabla estructurada para PDF y Excel.
+    const bulletSections = sections.filter(s => s.type === 'bullet');
+    if (bulletSections.length > 0) {
+        const parsedPatients = bulletSections.map(b => parseBulletPatientLine(b.content));
+        const hasStructuredPatients = parsedPatients.some(p => p.hab || p.fIng || p.fAlta || (p.paciente && p.obraSocial));
+        
+        if (hasStructuredPatients && parsedPatients.length >= 2) {
+            // Reemplazar los bullets por una tabla estructurada
+            const tableHeaders = ['Habitación', 'Paciente', 'Obra Social', 'Fecha Ingreso', 'Fecha Alta', 'Detalle / Estado'];
+            const tableRows = parsedPatients.map(p => [
+                p.hab || '-',
+                p.paciente || '-',
+                p.obraSocial || '-',
+                p.fIng || '-',
+                p.fAlta || '-',
+                p.detalle || '-'
+            ]);
+
+            // Remover bullets individuales e insertar la tabla
+            const newSections = [];
+            let tableInserted = false;
+            for (const sec of sections) {
+                if (sec.type === 'bullet') {
+                    if (!tableInserted) {
+                        newSections.push({
+                            type: 'table',
+                            headers: tableHeaders,
+                            rows: tableRows
+                        });
+                        tableInserted = true;
+                    }
+                } else {
+                    newSections.push(sec);
+                }
+            }
+            return newSections;
+        }
+    }
+
     return sections;
+}
+
+/**
+ * Parsea una línea de texto de viñeta en campos estructurados de paciente
+ */
+export function parseBulletPatientLine(line) {
+    let clean = cleanMarkdown(line).replace(/^[-•*]\s+/, '').trim();
+    let hab = '';
+    let paciente = '';
+    let obraSocial = '';
+    let fIng = '';
+    let fAlta = '';
+    let detalle = '';
+
+    // 1. Habitación o Box: [222] o [BOX 1] o Habitación 222
+    const habMatch = clean.match(/^\[(.*?)\]\s*(.*)$/i);
+    if (habMatch) {
+        hab = habMatch[1].trim();
+        clean = habMatch[2].trim();
+    } else {
+        const habMatch2 = clean.match(/^(BOX\s*\d+|[123]\d{2})\s*[-—:]?\s*(.*)$/i);
+        if (habMatch2) {
+            hab = habMatch2[1].trim();
+            clean = habMatch2[2].trim();
+        }
+    }
+
+    // 2. Paréntesis con fechas o detalles: (Ingreso: ..., Alta: ...)
+    const parenMatch = clean.match(/\((.*?)\)(.*)$/);
+    if (parenMatch) {
+        const insideParen = parenMatch[1];
+        detalle = (parenMatch[2] || '').trim();
+        clean = clean.replace(/\(.*?\).*$/, '').trim();
+
+        const ingMatch = insideParen.match(/ingreso:\s*([^,;)]+)/i);
+        if (ingMatch) fIng = ingMatch[1].trim();
+        
+        const altMatch = insideParen.match(/alta:\s*([^,;)]*)/i);
+        if (altMatch) {
+            fAlta = altMatch[1].trim() || 'Internado';
+        } else if (!fIng) {
+            detalle = (detalle ? detalle + ' • ' : '') + insideParen.trim();
+        }
+    }
+
+    // 3. Separar Paciente y Obra Social de clean
+    if (clean.includes('—')) {
+        const parts = clean.split('—');
+        paciente = parts[0].trim();
+        obraSocial = parts.slice(1).join('—').trim();
+    } else if (clean.includes('•')) {
+        const parts = clean.split('•');
+        paciente = parts[0].trim();
+        obraSocial = parts.slice(1).join('•').trim();
+    } else {
+        // Buscar código de obra social (ej: 001 - PROVINCIA o OSDE / PAMI / DAMSU)
+        const osMatch = clean.match(/^(.*?)\s+(\d{2,4}\s*-\s*.*)$/);
+        if (osMatch) {
+            paciente = osMatch[1].trim();
+            obraSocial = osMatch[2].trim();
+        } else {
+            // Buscar palabras clave de obra social
+            const osMatch2 = clean.match(/^(.*?)\s+((?:OSDE|PAMI|PROVINCIA|SANCOR|OMINT|SWISS|MEDICUS|DAMSU|JERARQUICOS|ANDAR|OSPACP|PODER JUDICIAL|OBRA SOCIAL|MUTUAL).*)$/i);
+            if (osMatch2) {
+                paciente = osMatch2[1].trim();
+                obraSocial = osMatch2[2].trim();
+            } else {
+                paciente = clean;
+            }
+        }
+    }
+
+    return { hab, paciente, obraSocial, fIng, fAlta, detalle };
 }
 
 /**
@@ -554,10 +667,24 @@ export async function downloadBetoReportExcel(markdown, excelData, reportTitle) 
                 // Extraer viñetas si no hay tabla
                 const bulletLines = sections
                     .filter(s => s.type === 'bullet')
-                    .map(b => [b.content]);
+                    .map(b => b.content);
                 if (bulletLines.length > 0) {
-                    headers = ['Paciente / Detalle'];
-                    dataRows = bulletLines;
+                    const parsed = bulletLines.map(parseBulletPatientLine);
+                    const hasPatients = parsed.some(p => p.hab || p.fIng || p.fAlta || (p.paciente && p.obraSocial));
+                    if (hasPatients) {
+                        headers = ['Habitación', 'Paciente', 'Obra Social', 'Fecha Ingreso', 'Fecha Alta', 'Detalle / Estado'];
+                        dataRows = parsed.map(p => [
+                            p.hab || '-',
+                            p.paciente || '-',
+                            p.obraSocial || '-',
+                            p.fIng || '-',
+                            p.fAlta || '-',
+                            p.detalle || '-'
+                        ]);
+                    } else {
+                        headers = ['Detalle'];
+                        dataRows = bulletLines.map(b => [b]);
+                    }
                 }
             }
         }

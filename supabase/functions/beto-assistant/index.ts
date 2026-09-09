@@ -617,6 +617,17 @@ Cuando el usuario pida "exportar deudas", "Excel de cirugías", etc. sin filtros
 - **Altas**: SELECT paciente, dni, numero_admision, fecha_ingreso, fecha_alta, especialidad, doctor, cliente, estado, responsable_override, facturada, estado_fac FROM altas_administrativas ORDER BY fecha_ingreso DESC LIMIT 500
 - **Auditoría H.C.**: NOTA: La auditoría de historias clínicas no posee una tabla en la base de datos ya que procesa planillas Excel cargadas de forma dinámica y temporal en memoria.
 - **Ocupación e Internaciones (Telar)**: SELECT habitacion, paciente, numero_admision, fecha_ocupacion, fecha_ingreso, fecha_alta, servicio, especialidad, cliente, edad FROM calidad_admisiones_ocupacion ORDER BY fecha_ocupacion DESC LIMIT 500. Siempre incluir la columna \`habitacion\` ("Habitación").
+- **Pacientes Internados en UCI por Fecha / Histórico**:
+  Cuando pregunten quiénes estuvieron internados en UCI o Intermedia en un día específico (ej: "pacientes internados en UCI el 15/08/2026"):
+  1. Consultá \`calidad_admisiones_ocupacion\`:
+     \`SELECT habitacion, paciente, cliente, fecha_ingreso, fecha_alta, servicio FROM calidad_admisiones_ocupacion WHERE servicio IN ('UCI', 'TERAPIA INTERMEDIA') AND fecha_ocupacion = 'YYYY-MM-DD' ORDER BY habitacion\`
+  2. Generá OBLIGATORIAMENTE el bloque \`beto-excel\` con los datos TABULADOS en columnas separadas:
+     - reportName: "Pacientes_UCI_Fecha"
+     - sheetName: "Pacientes"
+     - columns: ["Habitación", "Paciente", "Obra Social", "Fecha Ingreso", "Fecha Alta", "Servicio"]
+     - data: Matriz con cada campo en su propia columna independiente (NUNCA concatenado en una sola celda).
+  3. En el texto de respuesta, listá los pacientes con formato:
+     \`- [Habitación] Nombre del Paciente — Obra Social (Ingreso: DD/MM/AAAA, Alta: DD/MM/AAAA)\`
 - **Censo de Camas / Camas de Hoy (UCI e Intermedia)**:
   Cuando el usuario pida "excel de las camas de hoy", "dame el excel de las camas de hoy dia", "censo de camas de hoy", "estado de las camas hoy", o "camas uci hoy":
   1. Ejecutá la consulta en la tabla \`calidad_censo_camas_uci\`:

@@ -14,6 +14,7 @@ import {
 import SalusSyncButton from '../SalusSyncButton';
 import TelarCatalogoDrawer from './TelarCatalogoDrawer';
 import TelarDataModal from './TelarDataModal';
+import UciGanttChart from './UciGanttChart';
 import { SECTORES_CONFIG, INDICADORES_CATALOGO, DEFAULT_ACTIVE_INDICATOR_IDS } from './telarConfig';
 
 const COLORS_ETARIO = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444'];
@@ -35,6 +36,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [sectorId, setSectorId] = useState('UCI');
     const [uciSubNivel, setUciSubNivel] = useState('CONSOLIDADO'); // 'CONSOLIDADO' | 'INTENSIVA' | 'INTERMEDIA'
+    const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' | 'gantt'
     const [selectedEspecialidades, setSelectedEspecialidades] = useState(null); // null = todas activas
     const [especDropdownOpen, setEspecDropdownOpen] = useState(false);
     const especDropdownRef = useRef(null);
@@ -896,6 +898,71 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         Fórmulas & SQL
                     </button>
 
+                    {/* Selector de Modo: Indicadores vs Gantt de Camas */}
+                    {sectorId === 'UCI' && (
+                        <div style={{
+                            display: 'flex',
+                            background: '#F1F5F9',
+                            padding: '3px',
+                            borderRadius: '8px',
+                            border: '1px solid #CBD5E1',
+                            gap: '3px'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={() => setViewMode('dashboard')}
+                                style={{
+                                    background: viewMode === 'dashboard' ? '#1E40AF' : 'transparent',
+                                    color: viewMode === 'dashboard' ? '#FFFFFF' : '#475569',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '5px 10px',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                <LayoutDashboard size={14} />
+                                <span>Indicadores</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setViewMode('gantt')}
+                                style={{
+                                    background: viewMode === 'gantt' ? '#1E40AF' : 'transparent',
+                                    color: viewMode === 'gantt' ? '#FFFFFF' : '#475569',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '5px 10px',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                <Bed size={14} />
+                                <span>Gantt Camas UCI</span>
+                                <span style={{
+                                    background: viewMode === 'gantt' ? '#3B82F6' : '#DBEAFE',
+                                    color: viewMode === 'gantt' ? '#FFFFFF' : '#1E40AF',
+                                    fontSize: '0.65rem',
+                                    padding: '1px 5px',
+                                    borderRadius: '6px',
+                                    fontWeight: 800
+                                }}>
+                                    16 Camas
+                                </span>
+                            </button>
+                        </div>
+                    )}
+
                     <div style={{ height: '24px', width: '1px', background: '#E2E8F0' }} />
 
                     {/* Filtro Multi-Especialidad con Casillas de Verificación */}
@@ -1316,9 +1383,71 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 Cargando indicadores del sector {activeSectorConfig.label}...
                             </span>
                         </div>
+                    ) : viewMode === 'gantt' && sectorId === 'UCI' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                            <UciGanttChart 
+                                rawData={rows}
+                                initialDate={fechaDesde}
+                            />
+                        </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                             
+                            {/* Banner de acceso rápido al Gantt de Camas */}
+                            {sectorId === 'UCI' && (
+                                <div style={{
+                                    background: 'linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)',
+                                    borderRadius: '12px',
+                                    padding: '14px 20px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    color: '#FFFFFF',
+                                    boxShadow: '0 4px 12px rgba(15, 23, 42, 0.1)',
+                                    flexWrap: 'wrap',
+                                    gap: '12px'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <div style={{ background: '#2563EB', padding: '8px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <Bed size={20} color="#FFFFFF" />
+                                        </div>
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span style={{ fontSize: '0.95rem', fontWeight: 800 }}>
+                                                    Cronograma Gantt de Ocupación por Cama
+                                                </span>
+                                                <span style={{ background: '#3B82F6', fontSize: '0.68rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 700 }}>
+                                                    16 Camas en Tiempo Real
+                                                </span>
+                                            </div>
+                                            <span style={{ fontSize: '0.74rem', opacity: 0.85 }}>
+                                                Línea de tiempo longitudinal con las 16 camas en el eje Y y desplazamiento horizontal de pacientes.
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setViewMode('gantt')}
+                                        style={{
+                                            background: '#FFFFFF',
+                                            color: '#1E40AF',
+                                            border: 'none',
+                                            borderRadius: '8px',
+                                            padding: '8px 16px',
+                                            fontSize: '0.8rem',
+                                            fontWeight: 800,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
+                                        }}
+                                    >
+                                        <span>Abrir Diagrama de Gantt</span>
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            )}
+
                             {/* ─── BLOQUE 1: SCORECARDS EJECUTIVOS ─── */}
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
                                 
