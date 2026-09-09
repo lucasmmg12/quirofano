@@ -785,10 +785,34 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         };
 
         const dataModalidadesUci = [
-            { name: 'Laboratorio & Bioquímica', value: modCounts['Laboratorio & Bioquímica'], pct: totalBaseUci > 0 ? ((modCounts['Laboratorio & Bioquímica'] / totalBaseUci) * 100).toFixed(1) : '0.0', color: MOD_COLORS['Laboratorio & Bioquímica'] },
-            { name: 'Diagnóstico por Imágenes / RX', value: modCounts['Imágenes / RX'], pct: totalBaseUci > 0 ? ((modCounts['Imágenes / RX'] / totalBaseUci) * 100).toFixed(1) : '0.0', color: MOD_COLORS['Imágenes / RX'] },
-            { name: 'Anatomía Patológica', value: modCounts['Anatomía Patológica'], pct: totalBaseUci > 0 ? ((modCounts['Anatomía Patológica'] / totalBaseUci) * 100).toFixed(1) : '0.0', color: MOD_COLORS['Anatomía Patológica'] }
-        ].filter(item => item.value > 0);
+            { 
+                name: 'Laboratorio & Bioquímica', 
+                modalidad: 'Laboratorio & Bioquímica',
+                value: modCounts['Laboratorio & Bioquímica'] || 0, 
+                count: modCounts['Laboratorio & Bioquímica'] || 0,
+                pct: totalBaseUci > 0 ? ((modCounts['Laboratorio & Bioquímica'] / totalBaseUci) * 100).toFixed(1) : '0.0', 
+                porcentaje: totalBaseUci > 0 ? ((modCounts['Laboratorio & Bioquímica'] / totalBaseUci) * 100).toFixed(1) : '0.0',
+                color: MOD_COLORS['Laboratorio & Bioquímica'] 
+            },
+            { 
+                name: 'Diagnóstico por Imágenes / RX', 
+                modalidad: 'Diagnóstico por Imágenes / RX',
+                value: modCounts['Imágenes / RX'] || 0, 
+                count: modCounts['Imágenes / RX'] || 0,
+                pct: totalBaseUci > 0 ? ((modCounts['Imágenes / RX'] / totalBaseUci) * 100).toFixed(1) : '0.0', 
+                porcentaje: totalBaseUci > 0 ? ((modCounts['Imágenes / RX'] / totalBaseUci) * 100).toFixed(1) : '0.0',
+                color: MOD_COLORS['Imágenes / RX'] 
+            },
+            { 
+                name: 'Anatomía Patológica', 
+                modalidad: 'Anatomía Patológica',
+                value: modCounts['Anatomía Patológica'] || 0, 
+                count: modCounts['Anatomía Patológica'] || 0,
+                pct: totalBaseUci > 0 ? ((modCounts['Anatomía Patológica'] / totalBaseUci) * 100).toFixed(1) : '0.0', 
+                porcentaje: totalBaseUci > 0 ? ((modCounts['Anatomía Patológica'] / totalBaseUci) * 100).toFixed(1) : '0.0',
+                color: MOD_COLORS['Anatomía Patológica'] 
+            }
+        ].filter(item => (item.value || 0) > 0);
 
         // Filtrado adicional si se selecciona una modalidad específica en la barra
         const peticionesFiltradas = baseUciPeticiones.filter(p => {
@@ -1372,7 +1396,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         id={chartId}
                         title="Composición Diagnóstica en UCI"
                         subtitle="Modalidades de estudio según período y filtros"
-                        badge={`${metrics.totalBaseUci.toLocaleString('es-AR')} Estudios`}
+                        badge={`${(metrics.totalBaseUci || 0).toLocaleString('es-AR')} Estudios`}
                         size={cardSize}
                         onSizeChange={handleChartSizeChange}
                         onDragStart={handleDragStartChart}
@@ -1405,7 +1429,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                     >
                         {({ height }) => (
                             <div style={{ height: `${height}px`, display: 'flex', alignItems: 'center' }}>
-                                {metrics.dataModalidadesUci.length === 0 ? (
+                                {(metrics.dataModalidadesUci || []).length === 0 ? (
                                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
                                         No hay estudios registrados para este sector o período
                                     </div>
@@ -1416,8 +1440,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                 <PieChart>
                                                     <Pie
                                                         data={metrics.dataModalidadesUci}
-                                                        dataKey="count"
-                                                        nameKey="modalidad"
+                                                        dataKey="value"
+                                                        nameKey="name"
                                                         cx="50%"
                                                         cy="50%"
                                                         innerRadius={Math.round(height * 0.18)}
@@ -1430,8 +1454,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                     </Pie>
                                                     <Tooltip
                                                         formatter={(val, name, item) => [
-                                                            `${Number(val).toLocaleString('es-AR')} estudios (${item.payload.porcentaje}%)`,
-                                                            item.payload.modalidad
+                                                            `${Number(val || 0).toLocaleString('es-AR')} estudios (${item?.payload?.porcentaje || item?.payload?.pct || 0}%)`,
+                                                            item?.payload?.modalidad || item?.payload?.name || name
                                                         ]}
                                                         contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
                                                     />
@@ -1439,37 +1463,42 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             </ResponsiveContainer>
                                         </div>
                                         <div style={{ width: '52%', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '8px' }}>
-                                            {metrics.dataModalidadesUci.map((m, idx) => (
-                                                <div 
-                                                    key={idx} 
-                                                    onClick={() => setModalidadFiltro(m.modalidad)}
-                                                    style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'space-between',
-                                                        padding: '5px 8px',
-                                                        borderRadius: '6px',
-                                                        background: modalidadFiltro === m.modalidad ? '#EFF6FF' : '#F8FAFC',
-                                                        border: modalidadFiltro === m.modalidad ? '1px solid #2563EB' : '1px solid #E2E8F0',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                >
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: m.color }} />
-                                                        <span style={{ fontSize: '0.74rem', fontWeight: 600, color: '#334155' }}>
-                                                            {m.modalidad}
-                                                        </span>
+                                            {metrics.dataModalidadesUci.map((m, idx) => {
+                                                const modName = m.modalidad || m.name || 'Estudio';
+                                                const modCount = Number(m.count ?? m.value ?? 0);
+                                                const modPct = m.porcentaje ?? m.pct ?? '0.0';
+                                                return (
+                                                    <div 
+                                                        key={idx} 
+                                                        onClick={() => setModalidadFiltro(modName)}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            padding: '5px 8px',
+                                                            borderRadius: '6px',
+                                                            background: modalidadFiltro === modName ? '#EFF6FF' : '#F8FAFC',
+                                                            border: modalidadFiltro === modName ? '1px solid #2563EB' : '1px solid #E2E8F0',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: m.color }} />
+                                                            <span style={{ fontSize: '0.74rem', fontWeight: 600, color: '#334155' }}>
+                                                                {modName}
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#0F172A' }}>
+                                                                {modCount.toLocaleString('es-AR')}
+                                                            </span>
+                                                            <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                                                ({modPct}%)
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#0F172A' }}>
-                                                            {m.count.toLocaleString('es-AR')}
-                                                        </span>
-                                                        <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
-                                                            ({m.porcentaje}%)
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </>
                                 )}
@@ -1538,7 +1567,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                         <YAxis stroke="#64748B" fontSize={10} />
                                         <Tooltip
                                             formatter={(val, name, item) => [
-                                                `${Number(val).toLocaleString('es-AR')} estudios (${item.payload.porcentaje}%)`,
+                                                `${Number(val || 0).toLocaleString('es-AR')} estudios (${item?.payload?.porcentaje || item?.payload?.pct || 0}%)`,
                                                 'Demanda'
                                             ]}
                                             contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
@@ -1625,7 +1654,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             tickFormatter={(v) => v.length > 20 ? v.substring(0, 20) + '...' : v}
                                         />
                                         <Tooltip
-                                            formatter={(val) => [Number(val).toLocaleString('es-AR') + ' solicitudes', 'Cantidad']}
+                                            formatter={(val) => [Number(val || 0).toLocaleString('es-AR') + ' solicitudes', 'Cantidad']}
                                             contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
                                         />
                                         <Bar dataKey="value" fill="#2563EB" radius={[0, 4, 4, 0]} name="Solicitudes" />
@@ -1715,7 +1744,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         id={chartId}
                         title="Auditoría y Trazabilidad de Peticiones y Pruebas"
                         subtitle="Estudios solicitados con paciente, modalidad diagnóstica y origen clasificado"
-                        badge={`${metrics.peticionesFiltradas.length.toLocaleString('es-AR')} registros`}
+                        badge={`${(metrics.peticionesFiltradas?.length || 0).toLocaleString('es-AR')} registros`}
                         size={cardSize}
                         onSizeChange={handleChartSizeChange}
                         onDragStart={handleDragStartChart}
@@ -2771,7 +2800,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             </button>
                                         </div>
                                         <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#1E293B', margin: '8px 0' }}>
-                                            {metrics.diasOcupados.toLocaleString('es-AR')}
+                                            {Number(metrics.diasOcupados || 0).toLocaleString('es-AR')}
                                         </div>
                                         <span style={{ fontSize: '0.75rem', color: '#10B981', fontWeight: 600 }}>
                                             ✓ Total pernoctadas / camas consumidas
@@ -2793,7 +2822,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>{camasTotales} camas</span>
                                         </div>
                                         <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#1E293B', margin: '8px 0' }}>
-                                            {metrics.camasDisponibles.toLocaleString('es-AR')}
+                                            {Number(metrics.camasDisponibles || 0).toLocaleString('es-AR')}
                                         </div>
                                         <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
                                             Capacidad instalada del sector
@@ -2901,7 +2930,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             {metrics.intensidadCamaDia} <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#64748B' }}>estudios/cama-día</span>
                                         </div>
                                         <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                                            {metrics.totalEstudiosPeriodo.toLocaleString('es-AR')} estudios en {activeSectorConfig.shortLabel} (~{metrics.estudiosPorAdmision}/paciente)
+                                            {Number(metrics.totalEstudiosPeriodo || 0).toLocaleString('es-AR')} estudios en {activeSectorConfig.shortLabel} (~{metrics.estudiosPorAdmision || 0}/paciente)
                                         </span>
                                     </div>
                                 )}
