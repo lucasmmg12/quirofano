@@ -115,6 +115,29 @@ const ESPECIALIDAD_PALETTE = [
     '#A855F7', '#EAB308', '#64748B', '#D946EF', '#0EA5E9'
 ];
 
+// ── Helpers de Fechas (Este Mes / Mes Anterior / Personalizado) ──
+const getPrimerDiaMes = (d = new Date()) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}-01`;
+};
+
+const getUltimoDiaMes = (d = new Date()) => {
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    return `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+};
+
+const getRangoMesAnterior = () => {
+    const now = new Date();
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return {
+        desde: getPrimerDiaMes(prevMonthDate),
+        hasta: getUltimoDiaMes(prevMonthDate)
+    };
+};
+
 export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpdate, addToast }) {
     // === ESTADOS DE NAVEGACIÓN Y SECTOR ===
     const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -125,8 +148,9 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const [especDropdownOpen, setEspecDropdownOpen] = useState(false);
     const especDropdownRef = useRef(null);
     const [camasTotales, setCamasTotales] = useState(16);
-    const [fechaDesde, setFechaDesde] = useState('2026-01-01');
-    const [fechaHasta, setFechaHasta] = useState(() => new Date().toISOString().split('T')[0]);
+    const [datePresetMode, setDatePresetMode] = useState('este_mes'); // 'este_mes' | 'mes_anterior' | 'personalizado'
+    const [fechaDesde, setFechaDesde] = useState(() => getPrimerDiaMes());
+    const [fechaHasta, setFechaHasta] = useState(() => getUltimoDiaMes());
 
     // === ESTADOS MODULARES DE INDICADORES ===
     const [activeIndicatorIds, setActiveIndicatorIds] = useState(() => {
@@ -373,20 +397,16 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
     // Presets rápidos de rango de fechas
     const handleSetDatePreset = (preset) => {
-        const today = new Date().toISOString().split('T')[0];
-        setFechaHasta(today);
-        if (preset === '30d') {
-            const d = new Date();
-            d.setDate(d.getDate() - 30);
-            setFechaDesde(d.toISOString().split('T')[0]);
-        } else if (preset === '90d') {
-            const d = new Date();
-            d.setDate(d.getDate() - 90);
-            setFechaDesde(d.toISOString().split('T')[0]);
-        } else if (preset === '2026') {
-            setFechaDesde('2026-01-01');
-        } else if (preset === 'historico') {
-            setFechaDesde('2025-06-01');
+        setDatePresetMode(preset);
+        if (preset === 'este_mes') {
+            setFechaDesde(getPrimerDiaMes());
+            setFechaHasta(getUltimoDiaMes());
+        } else if (preset === 'mes_anterior') {
+            const { desde, hasta } = getRangoMesAnterior();
+            setFechaDesde(desde);
+            setFechaHasta(hasta);
+        } else if (preset === 'personalizado') {
+            // Modo manual: mantiene fechas para ajuste libre
         }
     };
 
@@ -2223,60 +2243,127 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         />
                     </div>
 
-                    {/* Fechas con Presets Rápidos */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Calendar size={14} color="#64748B" />
-                        <input
-                            type="date"
-                            value={fechaDesde}
-                            onChange={(e) => setFechaDesde(e.target.value)}
-                            style={{
-                                padding: '4px 6px',
-                                borderRadius: '6px',
-                                border: '1px solid #CBD5E1',
-                                fontSize: '0.75rem',
-                                color: '#1E293B'
-                            }}
-                        />
-                        <span style={{ color: '#94A3B8', fontSize: '0.8rem' }}>a</span>
-                        <input
-                            type="date"
-                            value={fechaHasta}
-                            onChange={(e) => setFechaHasta(e.target.value)}
-                            style={{
-                                padding: '4px 6px',
-                                borderRadius: '6px',
-                                border: '1px solid #CBD5E1',
-                                fontSize: '0.75rem',
-                                color: '#1E293B'
-                            }}
-                        />
-                        {/* Botoncitos de Rango Rápido */}
-                        <div style={{ display: 'flex', gap: '2px', marginLeft: '4px' }}>
-                            {[
-                                { id: '30d', label: '30d' },
-                                { id: '90d', label: '90d' },
-                                { id: '2026', label: '2026' },
-                                { id: 'historico', label: 'Hist' }
-                            ].map(p => (
-                                <button
-                                    key={p.id}
-                                    onClick={() => handleSetDatePreset(p.id)}
-                                    style={{
-                                        background: '#F1F5F9',
-                                        border: '1px solid #CBD5E1',
-                                        borderRadius: '4px',
-                                        padding: '2px 5px',
-                                        fontSize: '0.68rem',
-                                        fontWeight: 600,
-                                        color: '#475569',
-                                        cursor: 'pointer'
-                                    }}
-                                    title={`Filtrar rango ${p.label}`}
-                                >
-                                    {p.label}
-                                </button>
-                            ))}
+                    {/* Selector de Período Clínico: Este Mes, Mes Anterior y Personalizado */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {/* Botones de Presets: Este Mes | Mes Anterior | Personalizado */}
+                        <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            background: '#F1F5F9',
+                            padding: '2px',
+                            borderRadius: '8px',
+                            border: '1px solid #CBD5E1',
+                            gap: '2px'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={() => handleSetDatePreset('este_mes')}
+                                style={{
+                                    background: datePresetMode === 'este_mes' ? '#1E40AF' : 'transparent',
+                                    color: datePresetMode === 'este_mes' ? '#FFFFFF' : '#475569',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '4px 9px',
+                                    fontSize: '0.74rem',
+                                    fontWeight: datePresetMode === 'este_mes' ? 700 : 500,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: datePresetMode === 'este_mes' ? '0 1px 2px rgba(30, 64, 175, 0.2)' : 'none'
+                                }}
+                                title="Filtrar datos del mes en curso"
+                            >
+                                Este Mes
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleSetDatePreset('mes_anterior')}
+                                style={{
+                                    background: datePresetMode === 'mes_anterior' ? '#1E40AF' : 'transparent',
+                                    color: datePresetMode === 'mes_anterior' ? '#FFFFFF' : '#475569',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '4px 9px',
+                                    fontSize: '0.74rem',
+                                    fontWeight: datePresetMode === 'mes_anterior' ? 700 : 500,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: datePresetMode === 'mes_anterior' ? '0 1px 2px rgba(30, 64, 175, 0.2)' : 'none'
+                                }}
+                                title="Filtrar datos del mes cerrado anterior"
+                            >
+                                Mes Anterior
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleSetDatePreset('personalizado')}
+                                style={{
+                                    background: datePresetMode === 'personalizado' ? '#1E40AF' : 'transparent',
+                                    color: datePresetMode === 'personalizado' ? '#FFFFFF' : '#475569',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '4px 9px',
+                                    fontSize: '0.74rem',
+                                    fontWeight: datePresetMode === 'personalizado' ? 700 : 500,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: datePresetMode === 'personalizado' ? '0 1px 2px rgba(30, 64, 175, 0.2)' : 'none'
+                                }}
+                                title="Seleccionar rango de fechas manual"
+                            >
+                                Personalizado
+                            </button>
+                        </div>
+
+                        {/* Rango de Fechas Interactivo (Desde - Hasta) */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: datePresetMode === 'personalizado' ? '#EFF6FF' : '#FFFFFF',
+                            border: datePresetMode === 'personalizado' ? '1px solid #93C5FD' : '1px solid #CBD5E1',
+                            borderRadius: '8px',
+                            padding: '2px 8px',
+                            transition: 'all 0.2s ease',
+                            boxShadow: datePresetMode === 'personalizado' ? '0 0 0 2px rgba(59, 130, 246, 0.1)' : 'none'
+                        }}>
+                            <Calendar size={13} color={datePresetMode === 'personalizado' ? '#2563EB' : '#64748B'} />
+                            <input
+                                type="date"
+                                value={fechaDesde}
+                                onChange={(e) => {
+                                    setFechaDesde(e.target.value);
+                                    setDatePresetMode('personalizado');
+                                }}
+                                style={{
+                                    padding: '3px 5px',
+                                    borderRadius: '5px',
+                                    border: '1px solid #CBD5E1',
+                                    fontSize: '0.75rem',
+                                    color: '#1E293B',
+                                    background: '#FFFFFF',
+                                    fontWeight: 600
+                                }}
+                                title="Fecha Desde"
+                            />
+                            <span style={{ color: datePresetMode === 'personalizado' ? '#2563EB' : '#94A3B8', fontSize: '0.75rem', fontWeight: 600 }}>a</span>
+                            <input
+                                type="date"
+                                value={fechaHasta}
+                                onChange={(e) => {
+                                    setFechaHasta(e.target.value);
+                                    setDatePresetMode('personalizado');
+                                }}
+                                style={{
+                                    padding: '3px 5px',
+                                    borderRadius: '5px',
+                                    border: '1px solid #CBD5E1',
+                                    fontSize: '0.75rem',
+                                    color: '#1E293B',
+                                    background: '#FFFFFF',
+                                    fontWeight: 600
+                                }}
+                                title="Fecha Hasta"
+                            />
                         </div>
                     </div>
 
