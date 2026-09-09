@@ -12,38 +12,6 @@ export const SECTORES_CONFIG = [
         camasDefault: 19,
         serviciosSalus: ['UCI', 'TERAPIA INTERMEDIA'],
         descripcion: 'Unidad de Cuidados Críticos (Terapia Intensiva + Terapia Intermedia)'
-    },
-    { 
-        id: 'NEONATOLOGÍA', 
-        label: 'Neonatología', 
-        shortLabel: 'Neo',
-        icon: '👶', 
-        camasDefault: 20,
-        descripcion: 'Unidad de cuidados intensivos e intermedios neonatales'
-    },
-    { 
-        id: 'INTERNADO', 
-        label: 'Internación Clínica', 
-        shortLabel: 'Internación',
-        icon: '🏨', 
-        camasDefault: 45,
-        descripcion: 'Pisos de internación médica y quirúrgica general'
-    },
-    { 
-        id: 'PEDIATRÍA', 
-        label: 'Pediatría', 
-        shortLabel: 'Pediatría',
-        icon: '🧸', 
-        camasDefault: 15,
-        descripcion: 'Internación pediátrica y cuidados infantiles'
-    },
-    { 
-        id: 'TODOS', 
-        label: 'Todos los Servicios del Sanatorio', 
-        shortLabel: 'Todos',
-        icon: '🌐', 
-        camasDefault: 107,
-        descripcion: 'Consolidado institucional global'
     }
 ];
 

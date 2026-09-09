@@ -995,48 +995,119 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             alignItems: 'center',
                             justifyContent: 'space-between'
                         }}>
-                            <span>Sectores / Áreas</span>
-                            <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>{SECTORES_CONFIG.length}</span>
+                            <span>Sector Activo</span>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1E40AF', background: '#DBEAFE', padding: '1px 6px', borderRadius: '6px' }}>1 Sector</span>
                         </div>
 
-                        <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             {SECTORES_CONFIG.map(s => {
-                                const isSelected = sectorId === s.id;
                                 return (
-                                    <button
-                                        key={s.id}
-                                        onClick={() => handleSelectSector(s.id)}
-                                        style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between',
-                                            padding: '10px 12px',
-                                            borderRadius: '8px',
-                                            border: isSelected ? '1px solid #BFDBFE' : '1px solid transparent',
-                                            background: isSelected ? '#EFF6FF' : 'transparent',
-                                            color: isSelected ? '#1E40AF' : '#334155',
-                                            fontWeight: isSelected ? 700 : 500,
-                                            fontSize: '0.82rem',
-                                            cursor: 'pointer',
-                                            textAlign: 'left',
-                                            transition: 'all 0.15s ease'
-                                        }}
-                                        onMouseOver={e => {
-                                            if (!isSelected) e.currentTarget.style.background = '#F8FAFC';
-                                        }}
-                                        onMouseOut={e => {
-                                            if (!isSelected) e.currentTarget.style.background = 'transparent';
-                                        }}
-                                    >
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{ fontSize: '1.1rem' }}>{s.icon}</span>
-                                            <div>
-                                                <div>{s.shortLabel}</div>
-                                                <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>{s.camasDefault} camas</span>
+                                    <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <div
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                padding: '10px 12px',
+                                                borderRadius: '8px',
+                                                border: '1px solid #BFDBFE',
+                                                background: '#EFF6FF',
+                                                color: '#1E40AF',
+                                                fontWeight: 700,
+                                                fontSize: '0.82rem',
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span style={{ fontSize: '1.2rem' }}>🏥</span>
+                                                <div>
+                                                    <div style={{ fontWeight: 800, color: '#1E40AF' }}>{s.label}</div>
+                                                    <span style={{ fontSize: '0.7rem', color: '#3B82F6' }}>19 camas operativas</span>
+                                                </div>
                                             </div>
+                                            <CheckCircle2 size={16} color="#2563EB" />
                                         </div>
-                                        {isSelected && <ChevronRight size={16} color="#2563EB" />}
-                                    </button>
+
+                                        {/* Sub-niveles de UCI: Intensiva vs Intermedia */}
+                                        <div style={{
+                                            marginLeft: '12px',
+                                            paddingLeft: '10px',
+                                            borderLeft: '2px solid #DBEAFE',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '3px',
+                                            marginTop: '4px'
+                                        }}>
+                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: '2px' }}>
+                                                Nivel Asistencial:
+                                            </span>
+
+                                            <button
+                                                onClick={() => handleSelectUciSubNivel('CONSOLIDADO')}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    padding: '6px 10px',
+                                                    borderRadius: '6px',
+                                                    border: uciSubNivel === 'CONSOLIDADO' ? '1px solid #93C5FD' : '1px solid transparent',
+                                                    background: uciSubNivel === 'CONSOLIDADO' ? '#DBEAFE' : 'transparent',
+                                                    color: uciSubNivel === 'CONSOLIDADO' ? '#1E40AF' : '#475569',
+                                                    fontWeight: uciSubNivel === 'CONSOLIDADO' ? 700 : 500,
+                                                    fontSize: '0.76rem',
+                                                    cursor: 'pointer',
+                                                    textAlign: 'left',
+                                                    transition: 'all 0.15s ease'
+                                                }}
+                                            >
+                                                <span>⚡ UCI Total (19 camas)</span>
+                                                {uciSubNivel === 'CONSOLIDADO' && <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2563EB' }} />}
+                                            </button>
+
+                                            <button
+                                                onClick={() => handleSelectUciSubNivel('INTENSIVA')}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    padding: '6px 10px',
+                                                    borderRadius: '6px',
+                                                    border: uciSubNivel === 'INTENSIVA' ? '1px solid #FECACA' : '1px solid transparent',
+                                                    background: uciSubNivel === 'INTENSIVA' ? '#FEE2E2' : 'transparent',
+                                                    color: uciSubNivel === 'INTENSIVA' ? '#991B1B' : '#475569',
+                                                    fontWeight: uciSubNivel === 'INTENSIVA' ? 700 : 500,
+                                                    fontSize: '0.76rem',
+                                                    cursor: 'pointer',
+                                                    textAlign: 'left',
+                                                    transition: 'all 0.15s ease'
+                                                }}
+                                            >
+                                                <span>🔴 Terapia Intensiva (11 camas)</span>
+                                                {uciSubNivel === 'INTENSIVA' && <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#DC2626' }} />}
+                                            </button>
+
+                                            <button
+                                                onClick={() => handleSelectUciSubNivel('INTERMEDIA')}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    padding: '6px 10px',
+                                                    borderRadius: '6px',
+                                                    border: uciSubNivel === 'INTERMEDIA' ? '1px solid #FEF08A' : '1px solid transparent',
+                                                    background: uciSubNivel === 'INTERMEDIA' ? '#FEF9C3' : 'transparent',
+                                                    color: uciSubNivel === 'INTERMEDIA' ? '#854D0E' : '#475569',
+                                                    fontWeight: uciSubNivel === 'INTERMEDIA' ? 700 : 500,
+                                                    fontSize: '0.76rem',
+                                                    cursor: 'pointer',
+                                                    textAlign: 'left',
+                                                    transition: 'all 0.15s ease'
+                                                }}
+                                            >
+                                                <span>🟡 Terapia Intermedia (8 camas)</span>
+                                                {uciSubNivel === 'INTERMEDIA' && <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#CA8A04' }} />}
+                                            </button>
+                                        </div>
+                                    </div>
                                 );
                             })}
                         </div>
