@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { 
     BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, 
@@ -8,7 +8,8 @@ import {
     BookOpen, Filter, Calendar, Bed, Activity, Users, 
     AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, RotateCcw, 
     X, FileText, Layers, PanelLeftClose, PanelLeftOpen, LayoutDashboard, 
-    Sparkles, RefreshCw, Sliders, Table, Eye, Download, Clock, HeartHandshake
+    Sparkles, RefreshCw, Sliders, Table, Eye, Download, Clock, HeartHandshake,
+    Check
 } from 'lucide-react';
 import SalusSyncButton from '../SalusSyncButton';
 import TelarCatalogoDrawer from './TelarCatalogoDrawer';
@@ -34,7 +35,9 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [sectorId, setSectorId] = useState('UCI');
     const [uciSubNivel, setUciSubNivel] = useState('CONSOLIDADO'); // 'CONSOLIDADO' | 'INTENSIVA' | 'INTERMEDIA'
-    const [especialidad, setEspecialidad] = useState('TODOS');
+    const [selectedEspecialidades, setSelectedEspecialidades] = useState(null); // null = todas activas
+    const [especDropdownOpen, setEspecDropdownOpen] = useState(false);
+    const especDropdownRef = useRef(null);
     const [camasTotales, setCamasTotales] = useState(19);
     const [fechaDesde, setFechaDesde] = useState('2026-01-01');
     const [fechaHasta, setFechaHasta] = useState(() => new Date().toISOString().split('T')[0]);
@@ -95,6 +98,45 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     // Modal de Documentación Técnica
     const [showDocModal, setShowDocModal] = useState(false);
 
+    // Manejador para cerrar el dropdown de especialidades al hacer click afuera
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (especDropdownRef.current && !especDropdownRef.current.contains(event.target)) {
+                setEspecDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const handleToggleEspecialidad = (esp) => {
+        if (selectedEspecialidades === null) {
+            setSelectedEspecialidades(especialidadesDisponibles.filter(e => e !== esp));
+        } else if (selectedEspecialidades.includes(esp)) {
+            const next = selectedEspecialidades.filter(e => e !== esp);
+            setSelectedEspecialidades(next);
+        } else {
+            const next = [...selectedEspecialidades, esp];
+            if (next.length >= especialidadesDisponibles.length) {
+                setSelectedEspecialidades(null);
+            } else {
+                setSelectedEspecialidades(next);
+            }
+        }
+    };
+
+    const handleSelectAllEspecialidades = () => {
+        setSelectedEspecialidades(null);
+    };
+
+    const handleClearAllEspecialidades = () => {
+        setSelectedEspecialidades([]);
+    };
+
+    const handleSelectOnlyEspecialidad = (esp) => {
+        setSelectedEspecialidades([esp]);
+    };
+
     // Configuración del sector activo
     const activeSectorConfig = useMemo(() => {
         return SECTORES_CONFIG.find(s => s.id === sectorId) || SECTORES_CONFIG[0];
@@ -103,7 +145,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     // Cuando cambia el sector, actualizar camas por defecto
     const handleSelectSector = (sId) => {
         setSectorId(sId);
-        setEspecialidad('TODOS');
+        setSelectedEspecialidades(null);
         setBoxFiltro('TODOS');
         const cfg = SECTORES_CONFIG.find(s => s.id === sId);
         if (cfg) {
@@ -247,7 +289,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         }
     };
 
-    // Filtrar filas según Sub-Nivel de UCI y Especialidad seleccionada
+    // Filtrar filas según Sub-Nivel de UCI y Especialidades seleccionadas (Multi-Select)
     const filteredRows = useMemo(() => {
         let list = rows;
         if (sectorId === 'UCI') {
@@ -257,11 +299,11 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 list = list.filter(r => (r.servicio || '').trim().toUpperCase() === 'TERAPIA INTERMEDIA');
             }
         }
-        if (especialidad && especialidad !== 'TODOS') {
-            list = list.filter(r => r.especialidad && r.especialidad.trim() === especialidad.trim());
+        if (selectedEspecialidades !== null) {
+            list = list.filter(r => r.especialidad && selectedEspecialidades.includes(r.especialidad.trim()));
         }
         return list;
-    }, [rows, sectorId, uciSubNivel, especialidad]);
+    }, [rows, sectorId, uciSubNivel, selectedEspecialidades]);
 
     // === CÁLCULO DE KPIS E INDICADORES ===
     const metrics = useMemo(() => {
@@ -856,27 +898,160 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
                     <div style={{ height: '24px', width: '1px', background: '#E2E8F0' }} />
 
-                    {/* Filtro Especialidad */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {/* Filtro Multi-Especialidad con Casillas de Verificación */}
+                    <div ref={especDropdownRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>Especialidad:</span>
-                        <select
-                            value={especialidad}
-                            onChange={(e) => setEspecialidad(e.target.value)}
+                        <button
+                            type="button"
+                            onClick={() => setEspecDropdownOpen(prev => !prev)}
                             style={{
-                                padding: '5px 8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '6px',
+                                padding: '5px 10px',
                                 borderRadius: '6px',
-                                border: '1px solid #CBD5E1',
+                                border: especDropdownOpen ? '1px solid #2563EB' : '1px solid #CBD5E1',
                                 fontSize: '0.8rem',
                                 color: '#1E293B',
                                 background: '#FFFFFF',
-                                maxWidth: '160px'
+                                minWidth: '130px',
+                                maxWidth: '190px',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
                             }}
                         >
-                            <option value="TODOS">(Todas)</option>
-                            {especialidadesDisponibles.map(esp => (
-                                <option key={esp} value={esp}>{esp}</option>
-                            ))}
-                        </select>
+                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>
+                                {selectedEspecialidades === null 
+                                    ? '(Todas)' 
+                                    : selectedEspecialidades.length === 0 
+                                        ? 'Ninguna' 
+                                        : selectedEspecialidades.length === 1 
+                                            ? selectedEspecialidades[0] 
+                                            : `${selectedEspecialidades.length} seleccionadas`}
+                            </span>
+                            <ChevronDown size={14} color="#64748B" style={{ transform: especDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }} />
+                        </button>
+
+                        {/* Menú Desplegable con Casillas de Verificación */}
+                        {especDropdownOpen && (
+                            <div style={{
+                                position: 'absolute',
+                                top: 'calc(100% + 5px)',
+                                left: '75px',
+                                background: '#FFFFFF',
+                                border: '1px solid #CBD5E1',
+                                borderRadius: '8px',
+                                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+                                zIndex: 9999,
+                                width: '230px',
+                                padding: '6px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '4px'
+                            }}>
+                                {/* Acciones Rápidas: Seleccionar Todas / Limpiar */}
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '4px 6px 6px 6px',
+                                    borderBottom: '1px solid #F1F5F9'
+                                }}>
+                                    <button
+                                        type="button"
+                                        onClick={handleSelectAllEspecialidades}
+                                        style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: '#2563EB',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            padding: '2px 4px'
+                                        }}
+                                    >
+                                        Seleccionar todas
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleClearAllEspecialidades}
+                                        style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: '#64748B',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 600,
+                                            cursor: 'pointer',
+                                            padding: '2px 4px'
+                                        }}
+                                    >
+                                        Deseleccionar todas
+                                    </button>
+                                </div>
+
+                                {/* Casillas de Verificación por Especialidad */}
+                                <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    {especialidadesDisponibles.map(esp => {
+                                        const isChecked = selectedEspecialidades === null || selectedEspecialidades.includes(esp);
+                                        return (
+                                            <div
+                                                key={esp}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    padding: '5px 6px',
+                                                    borderRadius: '6px',
+                                                    background: isChecked ? '#EFF6FF' : 'transparent',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.75rem',
+                                                    transition: 'background 0.1s ease'
+                                                }}
+                                                onClick={() => handleToggleEspecialidad(esp)}
+                                            >
+                                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', width: '100%' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isChecked}
+                                                        onChange={() => {}}
+                                                        style={{ accentColor: '#2563EB', cursor: 'pointer' }}
+                                                    />
+                                                    <span style={{
+                                                        color: isChecked ? '#1E40AF' : '#334155',
+                                                        fontWeight: isChecked ? 700 : 500
+                                                    }}>
+                                                        {esp}
+                                                    </span>
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    title={`Filtrar únicamente ${esp}`}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleSelectOnlyEspecialidad(esp);
+                                                    }}
+                                                    style={{
+                                                        background: 'transparent',
+                                                        border: 'none',
+                                                        color: '#94A3B8',
+                                                        fontSize: '0.68rem',
+                                                        fontWeight: 600,
+                                                        cursor: 'pointer',
+                                                        padding: '1px 5px',
+                                                        borderRadius: '3px'
+                                                    }}
+                                                    onMouseEnter={(e) => e.currentTarget.style.color = '#2563EB'}
+                                                    onMouseLeave={(e) => e.currentTarget.style.color = '#94A3B8'}
+                                                >
+                                                    solo
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Camas Totales */}
