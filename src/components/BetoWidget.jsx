@@ -8,9 +8,9 @@
  * Module Preview (#8), Export (#9), Themes (#10), Presentation (#14),
  * Memory (#18), Tutorials (#19)
  */
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
-import { Send, X, Maximize2, Minimize2, Sparkles, Loader2, Palette, BookOpen, FileSpreadsheet, Printer, Presentation, FileDown, ThumbsUp, ThumbsDown, Share2 } from 'lucide-react';
+import { Send, X, Maximize2, Minimize2, Sparkles, Loader2, Palette, BookOpen, FileSpreadsheet, Printer, Presentation, FileDown, ThumbsUp, ThumbsDown, Share2, History, RefreshCw, Search, ArrowUpRight, ChevronDown, ChevronUp } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { BetoStatsCard, BetoStatusPipeline, BetoModulePreview, BetoExportBar, BetoInsightCard, BetoExcelDownload, parseRichContent } from './BetoComponents';
 import BetoChartCard from './BetoChartCard';
@@ -19,6 +19,7 @@ import BetoTutorial from './BetoTutorial';
 import { downloadBetoReportPdf, isReportMessage } from '../utils/betoReportPdf';
 import { generateShare } from '../api/shareClient';
 import { useTelarStore } from '../store/telarStore';
+import { getCurrentUser } from '../services/authService';
 
 const BETO_AVATAR = '/beto.jpg';
 const BETO_GIF = '/The_avatar_is_greetings.gif';
@@ -99,6 +100,7 @@ const THEMES = {
 };
 
 export default function BetoWidget({ currentUser, currentModule, onNavigate, hideFab = false, externalOpen = false, onExternalClose }) {
+    const effectiveUser = currentUser || getCurrentUser();
     const [isOpen, setIsOpen] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [messages, setMessages] = useState([]);
@@ -109,6 +111,12 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
     // #10 Theme
     const [theme, setTheme] = useState(() => localStorage.getItem('beto_theme') || 'default');
     const [showThemes, setShowThemes] = useState(false);
+    // Historial de consultas previas
+    const [showHistory, setShowHistory] = useState(false);
+    const [historyItems, setHistoryItems] = useState([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
+    const [historySearch, setHistorySearch] = useState('');
+    const [expandedHistoryId, setExpandedHistoryId] = useState(null);
     // #14 Presentation
     const [presentationSlides, setPresentationSlides] = useState(null);
     // #19 Tutorial
@@ -126,6 +134,57 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
     const chatEndRef = useRef(null);
     const inputRef = useRef(null);
     const t = THEMES[theme] || THEMES.default;
+
+    const fetchHistory = useCallback(async () => {
+        setLoadingHistory(true);
+        try {
+            const userId = effectiveUser?.usuario;
+            let query = supabase
+                .from('beto_interactions')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(50);
+
+            if (userId && userId !== 'admin') {
+                query = query.eq('user_id', userId);
+            }
+
+            const { data, error } = await query;
+            if (!error && data) {
+                setHistoryItems(data);
+            }
+        } catch (err) {
+            console.warn('[Beto] Error fetching history:', err);
+        } finally {
+            setLoadingHistory(false);
+        }
+    }, [effectiveUser?.usuario]);
+
+    useEffect(() => {
+        if (showHistory) {
+            fetchHistory();
+        }
+    }, [showHistory, fetchHistory]);
+
+    const filteredHistory = useMemo(() => {
+        if (!historySearch.trim()) return historyItems;
+        const q = historySearch.toLowerCase();
+        return historyItems.filter(item => 
+            item.user_query?.toLowerCase().includes(q) ||
+            item.response_text?.toLowerCase().includes(q) ||
+            item.current_module?.toLowerCase().includes(q)
+        );
+    }, [historyItems, historySearch]);
+
+    const formatHistoryDate = (dateStr) => {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        const now = new Date();
+        const isToday = d.toDateString() === now.toDateString();
+        const time = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+        if (isToday) return `Hoy, ${time}`;
+        return `${d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}, ${time}`;
+    };
 
     // Scroll to bottom when new messages arrive
     useEffect(() => {
@@ -234,16 +293,16 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
             setShowGreeting(false);
             setIsOpen(true);
             if (messages.length === 0) {
-                const userName = currentUser?.nombre?.includes('@')
-                    ? currentUser.nombre.split('@')[0].replace(/^\w/, c => c.toUpperCase())
-                    : currentUser?.nombre || 'usuario';
+                const userName = effectiveUser?.nombre?.includes('@')
+                    ? effectiveUser.nombre.split('@')[0].replace(/^\w/, c => c.toUpperCase())
+                    : effectiveUser?.nombre || 'usuario';
                 setMessages([{
                     role: 'assistant',
                     content: `¡Hola **${userName}**! 👋 Soy **Beto**, tu asistente del Sanatorio Argentino.\n\nPodés preguntarme sobre:\n- 🔍 **Consultar datos** de cualquier módulo\n- 📊 **Generar reportes** (deudas, cirugías, asociaciones)\n- ✏️ **Modificar datos** (con tu confirmación)\n- 📲 **Enviar WhatsApp** a pacientes\n- 🧭 **Navegar** a cualquier módulo\n- 🔔 **Ver pendientes** y alertas\n- ❓ **Explicar** cómo funciona cada parte\n\n¿En qué te puedo ayudar?`,
                 }]);
             }
         }, 2000);
-    }, [messages.length, currentUser]);
+    }, [messages.length, effectiveUser]);
 
     const handleClose = useCallback(() => {
         setIsOpen(false);
@@ -289,7 +348,7 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
                 },
                 body: JSON.stringify({
                     messages: apiMessages,
-                    user: currentUser ? { nombre: currentUser.nombre, usuario: currentUser.usuario } : null,
+                    user: effectiveUser ? { nombre: effectiveUser.nombre, usuario: effectiveUser.usuario } : null,
                     currentModule: currentModule || 'inicio',
                     moduleContext: currentModule === 'gobernanza_indicadores' ? activeIndicators : null,
                     stream: true,
@@ -359,7 +418,7 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
             setIsLoading(false);
             setStreamingText('');
         }
-    }, [input, isLoading, messages, currentUser, currentModule, onNavigate]);
+    }, [input, isLoading, messages, effectiveUser, currentModule, onNavigate]);
 
     // #10 — Theme change handler
     const changeTheme = useCallback((newTheme) => {
@@ -659,6 +718,21 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
                         <Palette size={15} />
                     </button>
                     <button
+                        onClick={() => setShowHistory(p => !p)}
+                        title={showHistory ? 'Volver al chat activo' : 'Historial de consultas previas'}
+                        style={{
+                            width: '32px', height: '32px', borderRadius: '8px',
+                            border: 'none', background: showHistory ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.15)',
+                            color: 'white', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            transition: 'all 0.2s',
+                        }}
+                        onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}
+                        onMouseOut={e => e.currentTarget.style.background = showHistory ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.15)'}
+                    >
+                        <History size={15} />
+                    </button>
+                    <button
                         onClick={() => setIsFullscreen(prev => !prev)}
                         title={isFullscreen ? 'Minimizar' : 'Pantalla completa'}
                         style={{
@@ -746,6 +820,268 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
                     </div>
                 )}
             </div>
+
+            {/* Historial de Consultas Overlay */}
+            {showHistory && (
+                <div style={{
+                    position: 'absolute',
+                    top: '74px',
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: '#F8FAFC',
+                    zIndex: 30,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    animation: 'beto-fade-in 0.2s ease-out',
+                }}>
+                    {/* Header bar del historial */}
+                    <div style={{
+                        padding: '12px 16px',
+                        background: '#FFFFFF',
+                        borderBottom: '1px solid #E2E8F0',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <div style={{
+                                    width: '28px', height: '28px', borderRadius: '8px',
+                                    background: '#EEF2FF', color: '#4F46E5',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                }}>
+                                    <History size={16} />
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.86rem', fontWeight: 700, color: '#1E293B' }}>
+                                        Historial de Consultas
+                                    </div>
+                                    <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                        Registros de {effectiveUser?.nombre || effectiveUser?.usuario || 'usuario'}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{
+                                    fontSize: '0.7rem',
+                                    background: '#F1F5F9',
+                                    color: '#475569',
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    fontWeight: 600,
+                                }}>
+                                    {filteredHistory.length} {filteredHistory.length === 1 ? 'consulta' : 'consultas'}
+                                </span>
+                                <button
+                                    onClick={fetchHistory}
+                                    disabled={loadingHistory}
+                                    title="Actualizar historial"
+                                    style={{
+                                        width: '28px', height: '28px', borderRadius: '6px',
+                                        border: '1px solid #E2E8F0', background: '#FFFFFF',
+                                        color: '#64748B', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    }}
+                                >
+                                    <RefreshCw size={13} className={loadingHistory ? 'animate-spin' : ''} />
+                                </button>
+                                <button
+                                    onClick={() => setShowHistory(false)}
+                                    title="Cerrar y volver al chat"
+                                    style={{
+                                        width: '28px', height: '28px', borderRadius: '6px',
+                                        border: '1px solid #E2E8F0', background: '#FFFFFF',
+                                        color: '#64748B', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    }}
+                                >
+                                    <X size={15} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Search input */}
+                        <div style={{ position: 'relative' }}>
+                            <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                            <input
+                                type="text"
+                                placeholder="Buscar en consultas o respuestas (ej: uci, junio, camas)..."
+                                value={historySearch}
+                                onChange={e => setHistorySearch(e.target.value)}
+                                style={{
+                                    width: '100%',
+                                    padding: '7px 12px 7px 30px',
+                                    fontSize: '0.78rem',
+                                    borderRadius: '8px',
+                                    border: '1px solid #CBD5E1',
+                                    outline: 'none',
+                                    background: '#F8FAFC',
+                                    color: '#1E293B',
+                                }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Contenido scrolleable */}
+                    <div style={{
+                        flex: 1,
+                        overflowY: 'auto',
+                        padding: '12px 16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px',
+                    }}>
+                        {loadingHistory ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '200px', gap: '8px', color: '#64748B' }}>
+                                <Loader2 size={24} className="animate-spin text-indigo-600" />
+                                <span style={{ fontSize: '0.8rem' }}>Cargando consultas registradas...</span>
+                            </div>
+                        ) : filteredHistory.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '40px 20px', color: '#94A3B8' }}>
+                                <History size={36} style={{ margin: '0 auto 8px', opacity: 0.3 }} />
+                                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#64748B' }}>
+                                    {historySearch ? 'No se encontraron consultas coincidentes' : 'No hay consultas registradas aún'}
+                                </div>
+                                <div style={{ fontSize: '0.74rem', marginTop: '4px' }}>
+                                    {historySearch ? 'Probá con otra palabra clave.' : 'Cada pregunta que le hacés a Beto queda guardada para que nunca pierdas datos.'}
+                                </div>
+                            </div>
+                        ) : (
+                            filteredHistory.map((item) => {
+                                const isExpanded = expandedHistoryId === item.id;
+                                return (
+                                    <div
+                                        key={item.id}
+                                        style={{
+                                            background: '#FFFFFF',
+                                            border: '1px solid #E2E8F0',
+                                            borderRadius: '12px',
+                                            padding: '12px',
+                                            boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '8px',
+                                        }}
+                                    >
+                                        {/* Metadatos */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.7rem' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{ fontWeight: 600, color: '#475569' }}>
+                                                    {formatHistoryDate(item.created_at)}
+                                                </span>
+                                                {item.current_module && (
+                                                    <span style={{
+                                                        background: '#EEF2FF',
+                                                        color: '#4F46E5',
+                                                        padding: '1px 6px',
+                                                        borderRadius: '4px',
+                                                        fontWeight: 500,
+                                                        fontSize: '0.67rem',
+                                                    }}>
+                                                        {item.current_module}
+                                                    </span>
+                                                )}
+                                                {item.tools_used && item.tools_used.length > 0 && (
+                                                    <span style={{
+                                                        background: '#ECFDF5',
+                                                        color: '#059669',
+                                                        padding: '1px 6px',
+                                                        borderRadius: '4px',
+                                                        fontWeight: 500,
+                                                        fontSize: '0.67rem',
+                                                    }}>
+                                                        🛠️ {item.tools_used.join(', ')}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {item.response_ms && (
+                                                <span style={{ fontSize: '0.66rem', color: '#94A3B8' }}>
+                                                    {(item.response_ms / 1000).toFixed(1)}s
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {/* Pregunta del usuario */}
+                                        <div style={{
+                                            fontSize: '0.82rem',
+                                            fontWeight: 600,
+                                            color: '#1E293B',
+                                            display: 'flex',
+                                            alignItems: 'flex-start',
+                                            gap: '6px',
+                                            lineHeight: 1.4,
+                                        }}>
+                                            <span style={{ color: '#4F46E5', flexShrink: 0 }}>💬</span>
+                                            <span>{item.user_query}</span>
+                                        </div>
+
+                                        {/* Respuesta de Beto */}
+                                        {item.response_text && (
+                                            <div
+                                                onClick={() => setExpandedHistoryId(isExpanded ? null : item.id)}
+                                                style={{
+                                                    fontSize: '0.77rem',
+                                                    color: '#334155',
+                                                    background: '#F8FAFC',
+                                                    border: '1px solid #F1F5F9',
+                                                    borderRadius: '8px',
+                                                    padding: '8px 10px',
+                                                    lineHeight: 1.45,
+                                                    cursor: 'pointer',
+                                                }}
+                                                title="Click para expandir o colapsar"
+                                            >
+                                                <div style={{
+                                                    maxHeight: isExpanded ? 'none' : '65px',
+                                                    overflow: 'hidden',
+                                                    textOverflow: isExpanded ? 'unset' : 'ellipsis',
+                                                    whiteSpace: 'pre-wrap',
+                                                }}>
+                                                    {item.response_text}
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px', fontSize: '0.67rem', color: '#6366F1', fontWeight: 600 }}>
+                                                    {isExpanded ? 'Ver menos ▲' : 'Ver respuesta completa ▼'}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Botón de acción rápida: Usar en chat */}
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '2px' }}>
+                                            <button
+                                                onClick={() => {
+                                                    setInput(item.user_query);
+                                                    setShowHistory(false);
+                                                    setTimeout(() => inputRef.current?.focus(), 150);
+                                                }}
+                                                style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    background: '#F1F5F9',
+                                                    border: 'none',
+                                                    borderRadius: '6px',
+                                                    padding: '4px 8px',
+                                                    fontSize: '0.72rem',
+                                                    fontWeight: 600,
+                                                    color: '#475569',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.15s',
+                                                }}
+                                                onMouseOver={e => { e.currentTarget.style.background = '#EEF2FF'; e.currentTarget.style.color = '#4F46E5'; }}
+                                                onMouseOut={e => { e.currentTarget.style.background = '#F1F5F9'; e.currentTarget.style.color = '#475569'; }}
+                                            >
+                                                <ArrowUpRight size={12} />
+                                                Cargar en chat
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Messages area */}
             <div style={{

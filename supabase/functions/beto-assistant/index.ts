@@ -1645,7 +1645,7 @@ ${schemaContext}`;
 
         const fullMessages = [
             { role: 'system', content: SYSTEM_PROMPT_BASE + contextInfo },
-            ...messages.slice(-10) // Keep last 10 to avoid context overflow
+            ...messages.slice(-16) // Keep last 16 to retain rich multi-turn conversation context
         ];
 
         // First call to OpenAI
@@ -1698,7 +1698,7 @@ ${schemaContext}`;
             iterations++;
         }
 
-        // #12 — Analytics: Log interaction
+        // #12 — Analytics: Log interaction with user attribution and full fidelity
         const toolsUsed = [];
         for (const msg of fullMessages) {
             if (msg.role === 'assistant' && msg.tool_calls) {
@@ -1711,10 +1711,10 @@ ${schemaContext}`;
         let interactionId = null;
         try {
             const { data: logData } = await supabase.from('beto_interactions').insert({
-                user_name: user?.nombre || 'unknown',
-                user_id: user?.usuario || 'unknown',
-                user_query: userQuery.substring(0, 500),
-                response_text: (assistantMessage.content || '').substring(0, 1000),
+                user_name: user?.nombre || 'usuario',
+                user_id: user?.usuario || 'usuario',
+                user_query: userQuery.substring(0, 3000),
+                response_text: (assistantMessage.content || '').substring(0, 10000),
                 tools_used: toolsUsed,
                 response_ms: Date.now() - startTime,
                 success: true,
