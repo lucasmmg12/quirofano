@@ -35,7 +35,7 @@ const SMART_SUGGESTIONS = {
     metricas: ['📊 Resumen mensual', '📈 Comparar con mes anterior', '🏥 Métricas por especialidad', '📥 Exportar métricas a Excel'],
     auditoria_historias: ['📊 ¿Cómo auditar historias clínicas?', '📋 Explicar pipeline de auditoría', '💡 ¿Qué significa Sin Fecha de Alta?', '🧭 Llevame a Inicio'],
     facturacion: ['🧾 Fichas pendientes de facturar', '📊 Resumen de facturación del mes', '🔙 Fichas devueltas', '📚 Enseñame facturación'],
-    gobernanza_indicadores: ['🏥 Resumen de ocupación en UCI', '📊 Gráfico de admisiones por especialidad', '📉 Mortalidad y motivos de alta', '📥 Exportar admisiones de UCI a Excel'],
+    gobernanza_indicadores: ['🛏️ ¿Cuántos días cama tuvimos en junio 2026?', '🏥 Ocupación en UCI (Intensiva + Intermedia)', '📊 Gráfico de admisiones por especialidad', '📥 Exportar ocupación a Excel'],
     default: ['🔔 ¿Qué hay pendiente?', '📊 Reporte del día', '📥 Exportar datos a Excel', '❓ ¿Cómo funciona esto?'],
 };
 

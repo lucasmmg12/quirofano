@@ -6,28 +6,12 @@
 export const SECTORES_CONFIG = [
     { 
         id: 'UCI', 
-        label: 'Terapia Intensiva (UCI)', 
+        label: 'Cuidados Críticos (UCI)', 
         shortLabel: 'UCI',
         icon: '🏥', 
-        camasDefault: 11,
-        descripcion: 'Unidad de Cuidados Intensivos Polivalente de Adultos'
-    },
-    { 
-        id: 'TERAPIA INTERMEDIA', 
-        label: 'Terapia Intermedia', 
-        shortLabel: 'Intermedia',
-        icon: '🛏️', 
-        camasDefault: 8,
-        descripcion: 'Cuidados intermedios y de soporte clínico de adultos'
-    },
-    { 
-        id: 'CRITICOS_CONSOLIDADO', 
-        label: 'Cuidados Críticos (UCI + Intermedia)', 
-        shortLabel: 'UCI + Intermedia',
-        icon: '⚡', 
         camasDefault: 19,
         serviciosSalus: ['UCI', 'TERAPIA INTERMEDIA'],
-        descripcion: 'Consolidado transversal de alta complejidad'
+        descripcion: 'Unidad de Cuidados Críticos (Terapia Intensiva + Terapia Intermedia)'
     },
     { 
         id: 'NEONATOLOGÍA', 

@@ -438,6 +438,50 @@ PATRONES SQL correctos:
 
 **NUNCA** uses \`confirmado_at\` como indicador principal de confirmación. El campo que define si una cirugía está confirmada es \`status = 'azul'\`. El \`confirmado_at\` es solo un timestamp auxiliar.
 
+## CONSULTAS DE GOBERNANZA, DÍAS CAMA Y OCUPACIÓN HOSPITALARIA (TELAR / UCI / SALUS)
+Cuando te pregunten sobre días cama, porcentaje de ocupación, admisiones o rotación hospitalaria:
+- **Tabla Principal:** \`calidad_admisiones_ocupacion\`
+- Cada registro de esta tabla representa **1 DÍA CAMA OCUPADO** (pernoctada efectiva censada a las 00:00hs en el Sanatorio).
+- Para contar días cama ocupados en un período: \`COUNT(*)\` filtrando por \`fecha_ocupacion\`.
+- Para contar pacientes únicos / admisiones: \`COUNT(DISTINCT id_admision)\`.
+- Columna servicio: \`servicio\` ('UCI', 'TERAPIA INTERMEDIA', 'NEONATOLOGÍA', 'INTERNADO', 'PEDIATRÍA').
+
+### REGLA INSTITUCIONAL OBLIGATORIA SOBRE UCI:
+En el Sanatorio Argentino, la **Unidad de Cuidados Intensivos (UCI)** o Cuidados Críticos **comprende DOS niveles asistenciales**:
+1. **Terapia Intensiva (UTI):** \`servicio = 'UCI'\` (Boxes 1 a 8 • Dotación: 11 camas).
+2. **Terapia Intermedia (UTIM):** \`servicio = 'TERAPIA INTERMEDIA'\` (Unidades 01 a 05 • Dotación: 8 camas).
+- **Dotación Crítica Total:** 19 camas (11 Intensiva + 8 Intermedia).
+- Cuando el usuario pregunte por "UCI", "Terapia", "Cuidados Críticos" o días cama en cuidados intensivos, entregá SIEMPRE:
+  1. El **Total Consolidado de UCI** (\`WHERE servicio IN ('UCI', 'TERAPIA INTERMEDIA')\`).
+  2. El **Desglose claro**: cuántos días cama corresponden a Terapia Intensiva y cuántos a Terapia Intermedia.
+  3. El cálculo de **% de Ocupación** basado en la dotación de 19 camas (o la del subsector consultado).
+
+### DOTACIONES DE CAMAS INSTALADAS (Para cálculo de % Ocupación):
+- **UCI Consolidada (Total):** 19 camas (11 Intensiva + 8 Intermedia)
+- **Terapia Intensiva (UTI):** 11 camas
+- **Terapia Intermedia (UTIM):** 8 camas
+- **Neonatología:** 20 camas
+- **Internación Clínica (Pisos):** 45 camas
+- **Pediatría:** 15 camas
+- **Total Sanatorio (Global):** 107 camas
+- **Fórmula Matemática:** \`% Ocupación = (dias_cama_ocupados / (camas_instaladas * dias_del_mes_o_periodo)) * 100\`
+
+### PATRONES SQL RECOMENDADOS:
+- **Días cama por servicio en un mes (ej. Junio 2026):**
+  \`SELECT servicio, COUNT(*) as dias_cama_ocupados, COUNT(DISTINCT id_admision) as admisiones_unicas FROM calidad_admisiones_ocupacion WHERE fecha_ocupacion BETWEEN '2026-06-01' AND '2026-06-30' GROUP BY servicio ORDER BY dias_cama_ocupados DESC\`
+- **Días cama de UCI en un mes (ej. Junio 2026):**
+  \`SELECT servicio, COUNT(*) as dias_cama_ocupados, COUNT(DISTINCT id_admision) as admisiones_unicas FROM calidad_admisiones_ocupacion WHERE servicio IN ('UCI', 'TERAPIA INTERMEDIA') AND fecha_ocupacion BETWEEN '2026-06-01' AND '2026-06-30' GROUP BY servicio\`
+- **Total de días cama institucional en un mes:**
+  \`SELECT COUNT(*) as total_dias_cama, COUNT(DISTINCT id_admision) as total_admisiones FROM calidad_admisiones_ocupacion WHERE fecha_ocupacion BETWEEN '2026-06-01' AND '2026-06-30'\`
+- **Evolución mensual de UCI en el año 2026:**
+  \`SELECT TO_CHAR(fecha_ocupacion, 'YYYY-MM') as mes, servicio, COUNT(*) as dias_cama FROM calidad_admisiones_ocupacion WHERE servicio IN ('UCI', 'TERAPIA INTERMEDIA') AND fecha_ocupacion >= '2026-01-01' GROUP BY mes, servicio ORDER BY mes, servicio\`
+- **Estudios y Pruebas Clínicas en UCI (VLISE):**
+  \`calidad_peticiones_pruebas\` (estudios de laboratorio, gases en sangre e imágenes por Box, solicitante y modalidad).
+
+### GRÁFICOS INTERACTIVOS:
+- Acompañá tus respuestas de ocupación con un bloque \`beto-chart\` (de tipo \`"bar"\` o \`"donut"\`) para que el usuario pueda ver la comparativa visual interactiva y expandirla a pantalla completa.
+- Si solicitan exportar los datos o armar una planilla, generá el bloque \`beto-excel\`.
+
 ## MODIFICAR DATOS (Human-in-the-loop)
 - Para ESCRITURA: usá \`modify_database\`.
 - SIEMPRE primero describí lo que vas a hacer y pedí confirmación EXPLÍCITA.
@@ -807,7 +851,8 @@ async function executeToolCall(name: string, args: Record<string, unknown>): Pro
  * context, and this function safely executes it.
  */
 async function queryDatabase(args: Record<string, unknown>): Promise<string> {
-    const sql = (args.sql as string || '').trim();
+    const rawSql = (args.sql as string || '').trim();
+    const sql = rawSql.replace(/;+\s*$/, '');
     const explanation = args.explanation as string || '';
 
     console.log(`[beto] SQL Query: ${sql}`);

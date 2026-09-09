@@ -33,9 +33,10 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     // === ESTADOS DE NAVEGACIÓN Y SECTOR ===
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [sectorId, setSectorId] = useState('UCI');
+    const [uciSubNivel, setUciSubNivel] = useState('CONSOLIDADO'); // 'CONSOLIDADO' | 'INTENSIVA' | 'INTERMEDIA'
     const [especialidad, setEspecialidad] = useState('TODOS');
-    const [camasTotales, setCamasTotales] = useState(11);
-    const [fechaDesde, setFechaDesde] = useState('2025-06-01');
+    const [camasTotales, setCamasTotales] = useState(19);
+    const [fechaDesde, setFechaDesde] = useState('2026-01-01');
     const [fechaHasta, setFechaHasta] = useState(() => new Date().toISOString().split('T')[0]);
 
     // === ESTADOS MODULARES DE INDICADORES ===
@@ -108,6 +109,37 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         if (cfg) {
             setCamasTotales(cfg.camasDefault);
         }
+        if (sId === 'UCI') {
+            setUciSubNivel('CONSOLIDADO');
+        }
+    };
+
+    // Manejo de cambio de subnivel en UCI (Intensiva vs Intermedia vs Consolidado)
+    const handleSelectUciSubNivel = (sub) => {
+        setUciSubNivel(sub);
+        setBoxFiltro('TODOS');
+        if (sub === 'CONSOLIDADO') setCamasTotales(19);
+        else if (sub === 'INTENSIVA') setCamasTotales(11);
+        else if (sub === 'INTERMEDIA') setCamasTotales(8);
+    };
+
+    // Presets rápidos de rango de fechas
+    const handleSetDatePreset = (preset) => {
+        const today = new Date().toISOString().split('T')[0];
+        setFechaHasta(today);
+        if (preset === '30d') {
+            const d = new Date();
+            d.setDate(d.getDate() - 30);
+            setFechaDesde(d.toISOString().split('T')[0]);
+        } else if (preset === '90d') {
+            const d = new Date();
+            d.setDate(d.getDate() - 90);
+            setFechaDesde(d.toISOString().split('T')[0]);
+        } else if (preset === '2026') {
+            setFechaDesde('2026-01-01');
+        } else if (preset === 'historico') {
+            setFechaDesde('2025-06-01');
+        }
     };
 
     // Cargar datos desde Supabase
@@ -119,14 +151,14 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         setLoading(true);
         setLoadingPeticiones(true);
         try {
-            // 1. Cargar Días Camas de Ocupación
+            // 1. Cargar Días Camas de Ocupación con columnas optimizadas
             let query = supabase
                 .from('calidad_admisiones_ocupacion')
-                .select('*')
+                .select('id, id_admision, numero_admision, fecha_ocupacion, fecha_ingreso, fecha_alta, especialidad, servicio, habitacion, paciente, nhc, motivo_de_alta, cliente, procedencia, edad')
                 .gte('fecha_ocupacion', fechaDesde)
                 .lte('fecha_ocupacion', fechaHasta);
 
-            if (sectorId === 'CRITICOS_CONSOLIDADO') {
+            if (sectorId === 'UCI') {
                 query = query.in('servicio', ['UCI', 'TERAPIA INTERMEDIA']);
             } else if (sectorId && sectorId !== 'TODOS') {
                 query = query.eq('servicio', sectorId);
@@ -160,15 +192,15 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 console.warn('Advertencia cargando resúmenes de origen y gobernanza:', errRes);
             }
 
-            // 3. Cargar Estudios Clínicos de UCI, Intermedia e Imágenes Reclasificadas (Query 1)
+            // 3. Cargar Estudios Clínicos con columnas necesarias (Query 1)
             try {
                 let pQuery = supabase
                     .from('calidad_peticiones_pruebas')
-                    .select('*')
+                    .select('id, id_peticion, fecha_solicitud, paciente, id_paciente, solicitante, paciente_edad, origen, tipo_visita, tipo_articulo, estudio, habitacion, cama, seccion, modalidad, origen_gobernanza, servicio_origen')
                     .gte('fecha_solicitud', fechaDesde + 'T00:00:00')
                     .lte('fecha_solicitud', fechaHasta + 'T23:59:59')
                     .order('fecha_solicitud', { ascending: false })
-                    .limit(10000);
+                    .limit(5000);
 
                 const { data: pData } = await pQuery;
                 setPeticionesEstudios(pData || []);
@@ -184,11 +216,21 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         }
     };
 
-    // Filtrar filas según Especialidad seleccionada
+    // Filtrar filas según Sub-Nivel de UCI y Especialidad seleccionada
     const filteredRows = useMemo(() => {
-        if (!especialidad || especialidad === 'TODOS') return rows;
-        return rows.filter(r => r.especialidad && r.especialidad.trim() === especialidad.trim());
-    }, [rows, especialidad]);
+        let list = rows;
+        if (sectorId === 'UCI') {
+            if (uciSubNivel === 'INTENSIVA') {
+                list = list.filter(r => (r.servicio || '').trim().toUpperCase() === 'UCI');
+            } else if (uciSubNivel === 'INTERMEDIA') {
+                list = list.filter(r => (r.servicio || '').trim().toUpperCase() === 'TERAPIA INTERMEDIA');
+            }
+        }
+        if (especialidad && especialidad !== 'TODOS') {
+            list = list.filter(r => r.especialidad && r.especialidad.trim() === especialidad.trim());
+        }
+        return list;
+    }, [rows, sectorId, uciSubNivel, especialidad]);
 
     // === CÁLCULO DE KPIS E INDICADORES ===
     const metrics = useMemo(() => {
@@ -429,9 +471,20 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         const totalRescatado = 30743;
         const pctInternacionReal = '28.3';
 
-        // 9. Filtrado de Estudios por Modalidad y Box
+        // 9. Filtrado de Estudios por Modalidad, Sub-Nivel UCI y Box
         const peticionesFiltradas = peticionesEstudios.filter(p => {
             if (modalidadFiltro !== 'TODAS' && p.modalidad !== modalidadFiltro) return false;
+            
+            if (sectorId === 'UCI') {
+                const habUpper = (p.habitacion || '').toUpperCase();
+                const servUpper = (p.servicio_origen || '').toUpperCase();
+                if (uciSubNivel === 'INTENSIVA') {
+                    if (servUpper === 'TERAPIA INTERMEDIA' || habUpper.includes('UNIDAD')) return false;
+                } else if (uciSubNivel === 'INTERMEDIA') {
+                    if (servUpper === 'UCI' || habUpper.includes('BOX')) return false;
+                }
+            }
+
             if (boxFiltro !== 'TODOS') {
                 const habNorm = (p.habitacion || '').trim().toUpperCase().replace(/^BOX\s*0?([1-8])$/, 'BOX $1');
                 if (habNorm !== boxFiltro) return false;
@@ -440,7 +493,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         });
 
         // 10. Intensidad Diagnóstica (Estudios / Días Camas Ocupados)
-        const totalEstudiosSector = peticionesEstudios.length;
+        const totalEstudiosSector = peticionesFiltradas.length;
         const intensidadCamaDia = diasOcupados > 0 
             ? (totalEstudiosSector / diasOcupados).toFixed(2) 
             : '0.00';
@@ -455,6 +508,13 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             if (!p.habitacion) return;
             let hab = p.habitacion.trim().toUpperCase();
             hab = hab.replace(/^BOX\s*0?([1-8])$/, 'BOX $1');
+
+            if (sectorId === 'UCI') {
+                const servUpper = (p.servicio_origen || '').toUpperCase();
+                if (uciSubNivel === 'INTENSIVA' && (hab.includes('UNIDAD') || servUpper === 'TERAPIA INTERMEDIA')) return;
+                if (uciSubNivel === 'INTERMEDIA' && (hab.includes('BOX') || servUpper === 'UCI')) return;
+            }
+
             boxesSet.add(hab);
             boxCounts[hab] = (boxCounts[hab] || 0) + 1;
         });
@@ -503,7 +563,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             .sort((a, b) => b.value - a.value)
             .slice(0, 8);
 
-        const calculated = {
+        return {
             diasOcupados,
             camasDisponibles,
             porcOcupacion,
@@ -534,28 +594,42 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             totalEstudiosPeriodo: totalEstudiosSector,
             admisionesUnicas
         };
+    }, [filteredRows, camasTotales, fechaDesde, fechaHasta, activeSectorConfig, peticionesResumen, peticionesResumenGobernanza, peticionesEstudios, origenVision, modalidadFiltro, boxFiltro, sectorId, uciSubNivel]);
 
-        if (onMetricsUpdate) {
-            onMetricsUpdate({
-                sector: activeSectorConfig.label,
-                camasTotales,
-                diasOcupados,
-                camasDisponibles,
-                porcOcupacion,
-                porcDefuncion,
-                alos,
-                totalAdmisiones,
-                intensidadCamaDia,
-                dataMotivosAlta,
-                dataRangoEtario,
-                topEspecialidades,
-                dataProduccionOrigen: calculated.dataProduccionOrigen,
-                topEstudiosCount: dataTopEstudios.length
-            });
-        }
-
-        return calculated;
-    }, [filteredRows, camasTotales, fechaDesde, fechaHasta, activeSectorConfig, onMetricsUpdate, peticionesResumen, peticionesResumenGobernanza, peticionesEstudios, origenVision, modalidadFiltro, boxFiltro]);
+    // Notificar métricas al padre de forma segura fuera del render
+    useEffect(() => {
+        if (!onMetricsUpdate || !metrics) return;
+        onMetricsUpdate({
+            sector: activeSectorConfig.label,
+            subNivel: sectorId === 'UCI' ? uciSubNivel : null,
+            camasTotales,
+            diasOcupados: metrics.diasOcupados,
+            camasDisponibles: metrics.camasDisponibles,
+            porcOcupacion: metrics.porcOcupacion,
+            porcDefuncion: metrics.porcDefuncion,
+            alos: metrics.alos,
+            totalAdmisiones: metrics.totalAdmisiones,
+            intensidadCamaDia: metrics.intensidadCamaDia,
+            dataMotivosAlta: metrics.dataMotivosAlta,
+            dataRangoEtario: metrics.dataRangoEtario,
+            topEspecialidades: metrics.topEspecialidades,
+            dataProduccionOrigen: metrics.dataProduccionOrigen,
+            topEstudiosCount: metrics.dataTopEstudios?.length || 0
+        });
+    }, [
+        metrics.diasOcupados, 
+        metrics.camasDisponibles, 
+        metrics.porcOcupacion, 
+        metrics.porcDefuncion, 
+        metrics.alos, 
+        metrics.totalAdmisiones, 
+        metrics.intensidadCamaDia,
+        camasTotales, 
+        activeSectorConfig.label, 
+        uciSubNivel, 
+        sectorId, 
+        onMetricsUpdate
+    ]);
 
     const isIndicatorActive = (id) => activeIndicatorIds.includes(id);
 
@@ -622,6 +696,80 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             {activeSectorConfig.descripcion}
                         </span>
                     </div>
+
+                    {/* Sub-Selector Tripartito Exclusivo para UCI (Cuidados Críticos) */}
+                    {sectorId === 'UCI' && (
+                        <div style={{
+                            display: 'flex',
+                            background: '#F1F5F9',
+                            padding: '3px',
+                            borderRadius: '10px',
+                            border: '1px solid #CBD5E1',
+                            gap: '3px',
+                            marginLeft: '8px'
+                        }}>
+                            <button
+                                onClick={() => handleSelectUciSubNivel('CONSOLIDADO')}
+                                style={{
+                                    background: uciSubNivel === 'CONSOLIDADO' ? '#2563EB' : 'transparent',
+                                    color: uciSubNivel === 'CONSOLIDADO' ? '#FFFFFF' : '#475569',
+                                    border: 'none',
+                                    borderRadius: '7px',
+                                    padding: '5px 10px',
+                                    fontSize: '0.76rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                <span>⚡</span>
+                                <span>UCI Total (19 camas)</span>
+                            </button>
+                            <button
+                                onClick={() => handleSelectUciSubNivel('INTENSIVA')}
+                                style={{
+                                    background: uciSubNivel === 'INTENSIVA' ? '#1E40AF' : 'transparent',
+                                    color: uciSubNivel === 'INTENSIVA' ? '#FFFFFF' : '#475569',
+                                    border: 'none',
+                                    borderRadius: '7px',
+                                    padding: '5px 10px',
+                                    fontSize: '0.76rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                <span>🔴</span>
+                                <span>Terapia Intensiva (11)</span>
+                            </button>
+                            <button
+                                onClick={() => handleSelectUciSubNivel('INTERMEDIA')}
+                                style={{
+                                    background: uciSubNivel === 'INTERMEDIA' ? '#D97706' : 'transparent',
+                                    color: uciSubNivel === 'INTERMEDIA' ? '#FFFFFF' : '#475569',
+                                    border: 'none',
+                                    borderRadius: '7px',
+                                    padding: '5px 10px',
+                                    fontSize: '0.76rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                <span>🟡</span>
+                                <span>Terapia Intermedia (8)</span>
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Filtros Paramétricos Centrales */}
@@ -716,7 +864,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         />
                     </div>
 
-                    {/* Fechas */}
+                    {/* Fechas con Presets Rápidos */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <Calendar size={14} color="#64748B" />
                         <input
@@ -744,6 +892,33 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 color: '#1E293B'
                             }}
                         />
+                        {/* Botoncitos de Rango Rápido */}
+                        <div style={{ display: 'flex', gap: '2px', marginLeft: '4px' }}>
+                            {[
+                                { id: '30d', label: '30d' },
+                                { id: '90d', label: '90d' },
+                                { id: '2026', label: '2026' },
+                                { id: 'historico', label: 'Hist' }
+                            ].map(p => (
+                                <button
+                                    key={p.id}
+                                    onClick={() => handleSetDatePreset(p.id)}
+                                    style={{
+                                        background: '#F1F5F9',
+                                        border: '1px solid #CBD5E1',
+                                        borderRadius: '4px',
+                                        padding: '2px 5px',
+                                        fontSize: '0.68rem',
+                                        fontWeight: 600,
+                                        color: '#475569',
+                                        cursor: 'pointer'
+                                    }}
+                                    title={`Filtrar rango ${p.label}`}
+                                >
+                                    {p.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                 </div>
