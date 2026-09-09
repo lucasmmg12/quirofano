@@ -677,6 +677,81 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         };
     }, [filteredRows, camasTotales, fechaDesde, fechaHasta, activeSectorConfig, peticionesEstudios, modalidadFiltro, boxFiltro, sectorId, uciSubNivel]);
 
+    // Generar lista de indicadores estructurados para el Centro de Exportación
+    const activeIndicatorsList = useMemo(() => {
+        if (!metrics) return [];
+        const list = [
+            {
+                id: 'sector_info',
+                label: 'Sector Hospitalario',
+                value: `${activeSectorConfig.label} - ${uciSubNivel === 'CONSOLIDADO' ? 'UCI Consolidada (16 Camas: 8 Intensiva + 8 Intermedia)' : uciSubNivel === 'INTENSIVA' ? 'Terapia Intensiva (8 Camas: Box 1 a 8)' : 'Terapia Intermedia (8 Camas: Hab 222 a 229)'}`,
+                descripcion: `Período auditado: ${fechaDesde} al ${fechaHasta}`
+            },
+            {
+                id: 'kpi_dias_ocupados',
+                label: 'Días Camas Ocupados',
+                value: `${metrics.diasOcupados?.toLocaleString('es-AR') || 0} días`,
+                descripcion: 'Total camas-día efectivas consumidas en el período'
+            },
+            {
+                id: 'kpi_dias_disponibles',
+                label: 'Días Camas Disponibles',
+                value: `${metrics.camasDisponibles?.toLocaleString('es-AR') || 0} días`,
+                descripcion: `Capacidad instalada (${camasTotales} camas × días del período)`
+            },
+            {
+                id: 'kpi_porc_ocupacion',
+                label: '% de Ocupación',
+                value: `${metrics.porcOcupacion}%`,
+                descripcion: `Tasa de ocupación con estándar institucional (${Number(metrics.porcOcupacion) > 85 ? 'Alta saturación' : 'Normal operativa'})`
+            },
+            {
+                id: 'kpi_total_admisiones',
+                label: 'Total de Admisiones Únicas',
+                value: `${metrics.totalAdmisiones} pacientes`,
+                descripcion: 'Pacientes únicos internados en el período'
+            },
+            {
+                id: 'kpi_alos',
+                label: 'Promedio de Estancia (ALOS)',
+                value: `${metrics.alos} días`,
+                descripcion: 'Días promedio de permanencia por paciente egresado'
+            },
+            {
+                id: 'kpi_porc_defuncion',
+                label: '% de Defunción',
+                value: `${metrics.porcDefuncion}%`,
+                descripcion: `${metrics.defunciones} óbitos sobre ${metrics.totalAdmisiones} admisiones únicas`
+            },
+            {
+                id: 'kpi_intensidad_diagnostica',
+                label: 'Intensidad Diagnóstica (VLISE)',
+                value: `${metrics.intensidadCamaDia} estudios/cama-día (${metrics.totalEstudiosPeriodo || 0} estudios)`,
+                descripcion: 'Consumo de prácticas de laboratorio e imágenes por cama ocupada'
+            }
+        ];
+
+        if (metrics.topEspecialidades && metrics.topEspecialidades.length > 0) {
+            list.push({
+                id: 'top_especialidades',
+                label: 'Top Especialidades',
+                value: metrics.topEspecialidades.slice(0, 5).join(', '),
+                descripcion: 'Especialidades con mayor demanda de internación'
+            });
+        }
+
+        if (metrics.dataMotivosAlta && metrics.dataMotivosAlta.length > 0) {
+            list.push({
+                id: 'motivos_alta',
+                label: 'Distribución de Egresos',
+                value: metrics.dataMotivosAlta.slice(0, 4).map(m => `${m.label} (${m.value})`).join(' | '),
+                descripcion: 'Desenlace clínico de las altas'
+            });
+        }
+
+        return list;
+    }, [metrics, activeSectorConfig, uciSubNivel, fechaDesde, fechaHasta, camasTotales]);
+
     // Notificar métricas al padre de forma segura fuera del render
     useEffect(() => {
         if (!onMetricsUpdate || !metrics) return;
@@ -684,18 +759,24 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             sector: activeSectorConfig.label,
             subNivel: sectorId === 'UCI' ? uciSubNivel : null,
             camasTotales,
+            fechaDesde,
+            fechaHasta,
             diasOcupados: metrics.diasOcupados,
             camasDisponibles: metrics.camasDisponibles,
             porcOcupacion: metrics.porcOcupacion,
             porcDefuncion: metrics.porcDefuncion,
             alos: metrics.alos,
             totalAdmisiones: metrics.totalAdmisiones,
+            defunciones: metrics.defunciones,
             intensidadCamaDia: metrics.intensidadCamaDia,
+            totalEstudiosPeriodo: metrics.totalEstudiosPeriodo,
             dataMotivosAlta: metrics.dataMotivosAlta,
             dataRangoEtario: metrics.dataRangoEtario,
             topEspecialidades: metrics.topEspecialidades,
             dataProduccionOrigen: metrics.dataProduccionOrigen,
-            topEstudiosCount: metrics.dataTopEstudios?.length || 0
+            topEstudiosCount: metrics.dataTopEstudios?.length || 0,
+            activeIndicators: activeIndicatorsList,
+            filteredRows
         });
     }, [
         metrics.diasOcupados, 
@@ -706,9 +787,13 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         metrics.totalAdmisiones, 
         metrics.intensidadCamaDia,
         camasTotales, 
+        fechaDesde,
+        fechaHasta,
         activeSectorConfig.label, 
         uciSubNivel, 
-        sectorId, 
+        sectorId,
+        activeIndicatorsList,
+        filteredRows,
         onMetricsUpdate
     ]);
 
@@ -1208,7 +1293,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                     
                     {onOpenInfografia && (
                         <button
-                            onClick={onOpenInfografia}
+                            onClick={() => onOpenInfografia(activeIndicatorsList, metrics, filteredRows)}
                             style={{
                                 background: 'linear-gradient(135deg, #4F46E5, #7C3AED)',
                                 color: '#FFFFFF',
@@ -1220,11 +1305,13 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '6px',
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                boxShadow: '0 2px 4px rgba(79, 70, 229, 0.2)'
                             }}
+                            title="Exportar a PowerPoint PPTX, Excel, PDF, Infografía y Más"
                         >
                             <Sparkles size={14} />
-                            Infografía AI
+                            Centro de Exportación
                         </button>
                     )}
                 </div>
