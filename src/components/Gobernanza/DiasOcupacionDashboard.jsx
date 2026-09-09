@@ -9,7 +9,7 @@ import {
     AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, RotateCcw, 
     X, FileText, Layers, PanelLeftClose, PanelLeftOpen, LayoutDashboard, 
     Sparkles, RefreshCw, Sliders, Table, Eye, Download, Clock, HeartHandshake,
-    Check
+    Check, Maximize2
 } from 'lucide-react';
 import SalusSyncButton from '../SalusSyncButton';
 import TelarCatalogoDrawer from './TelarCatalogoDrawer';
@@ -1709,10 +1709,11 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                 Cantidad de Admisiones por Especialidad
                                             </h3>
                                             <button 
-                                                onClick={() => setInspectDataIndicator({ id: 'chart_especialidades', label: 'Admisiones por Especialidad', sector: activeSectorConfig.label })}
-                                                style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                onClick={() => setInspectDataIndicator({ id: 'chart_especialidades', label: 'Admisiones por Especialidad', sector: activeSectorConfig.label, chartData: metrics.dataEspecialidades, dataType: 'admisiones' })}
+                                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                title="Expandir gráfico y exportar a Excel"
                                             >
-                                                <Eye size={13} /> Ver datos
+                                                <Maximize2 size={13} /> Expandir / Excel
                                             </button>
                                         </div>
 
@@ -1740,12 +1741,21 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                         padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
                                     }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#1E293B' }}>
-                                                Cantidad de Admisiones Totales
-                                            </h3>
-                                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                                                Evolución mensual del sector
-                                            </span>
+                                            <div>
+                                                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#1E293B' }}>
+                                                    Cantidad de Admisiones Totales
+                                                </h3>
+                                                <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                                    Evolución mensual del sector
+                                                </span>
+                                            </div>
+                                            <button 
+                                                onClick={() => setInspectDataIndicator({ id: 'chart_admisiones_totales', label: 'Cantidad de Admisiones Totales', sector: activeSectorConfig.label, chartData: metrics.dataAdmisionesTotales, dataType: 'admisiones' })}
+                                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                title="Expandir gráfico y exportar a Excel"
+                                            >
+                                                <Maximize2 size={13} /> Expandir / Excel
+                                            </button>
                                         </div>
 
                                         <div style={{ height: '260px' }}>
@@ -1778,10 +1788,11 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                 Motivos de Alta
                                             </h3>
                                             <button 
-                                                onClick={() => setInspectDataIndicator({ id: 'chart_motivos_alta', label: 'Motivos de Alta', sector: activeSectorConfig.label })}
-                                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                                                onClick={() => setInspectDataIndicator({ id: 'chart_motivos_alta', label: 'Motivos de Alta', sector: activeSectorConfig.label, chartData: metrics.dataMotivosAlta, dataType: 'admisiones' })}
+                                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                title="Expandir gráfico y exportar a Excel"
                                             >
-                                                <Eye size={15} />
+                                                <Maximize2 size={13} /> Expandir / Excel
                                             </button>
                                         </div>
 
@@ -1821,10 +1832,11 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                 Rango Etario
                                             </h3>
                                             <button 
-                                                onClick={() => setInspectDataIndicator({ id: 'chart_rango_etario', label: 'Rango Etario', sector: activeSectorConfig.label })}
-                                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                                                onClick={() => setInspectDataIndicator({ id: 'chart_rango_etario', label: 'Rango Etario de Pacientes', sector: activeSectorConfig.label, chartData: metrics.dataRangoEtario, dataType: 'admisiones' })}
+                                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                title="Expandir gráfico y exportar a Excel"
                                             >
-                                                <Eye size={15} />
+                                                <Maximize2 size={13} /> Expandir / Excel
                                             </button>
                                         </div>
 
@@ -1860,10 +1872,19 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                         padding: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
                                     }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                            <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
-                                                Categorías de Estancias
-                                            </h3>
-                                            <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>Corta / Media / Larga</span>
+                                            <div>
+                                                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#1E293B' }}>
+                                                    Categorías de Estancias
+                                                </h3>
+                                                <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>Corta / Media / Larga</span>
+                                            </div>
+                                            <button 
+                                                onClick={() => setInspectDataIndicator({ id: 'chart_estancias', label: 'Categorías de Estancias', sector: activeSectorConfig.label, chartData: metrics.dataEstancias, dataType: 'admisiones' })}
+                                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                title="Expandir gráfico y exportar a Excel"
+                                            >
+                                                <Maximize2 size={13} /> Expandir / Excel
+                                            </button>
                                         </div>
 
                                         <div style={{ height: '230px' }}>
@@ -1899,10 +1920,11 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                     Canal de Procedencia del Paciente
                                                 </h3>
                                                 <button 
-                                                    onClick={() => setInspectDataIndicator({ id: 'chart_procedencia', label: 'Procedencia de Ingreso', sector: activeSectorConfig.label })}
-                                                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                                                    onClick={() => setInspectDataIndicator({ id: 'chart_procedencia', label: 'Procedencia de Ingreso', sector: activeSectorConfig.label, chartData: metrics.dataProcedencia, dataType: 'admisiones' })}
+                                                    style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                    title="Expandir gráfico y exportar a Excel"
                                                 >
-                                                    <Eye size={15} />
+                                                    <Maximize2 size={13} /> Expandir / Excel
                                                 </button>
                                             </div>
                                             <div style={{ height: '220px' }}>
@@ -1929,10 +1951,11 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                     Top Obras Sociales y Financiadores
                                                 </h3>
                                                 <button 
-                                                    onClick={() => setInspectDataIndicator({ id: 'chart_clientes', label: 'Financiadores y Clientes', sector: activeSectorConfig.label })}
-                                                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                                                    onClick={() => setInspectDataIndicator({ id: 'chart_clientes', label: 'Financiadores y Clientes', sector: activeSectorConfig.label, chartData: metrics.dataClientes, dataType: 'admisiones' })}
+                                                    style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                    title="Expandir gráfico y exportar a Excel"
                                                 >
-                                                    <Eye size={15} />
+                                                    <Maximize2 size={13} /> Expandir / Excel
                                                 </button>
                                             </div>
                                             <div style={{ height: '220px' }}>
@@ -2035,12 +2058,33 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                             Modalidades de estudio según período y subnivel seleccionado
                                                         </span>
                                                     </div>
-                                                    <span style={{
-                                                        fontSize: '0.7rem', fontWeight: 700, color: '#1E40AF', background: '#EFF6FF',
-                                                        padding: '3px 8px', borderRadius: '6px'
-                                                    }}>
-                                                        {metrics.totalBaseUci.toLocaleString('es-AR')} Estudios
-                                                    </span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{
+                                                            fontSize: '0.7rem', fontWeight: 700, color: '#1E40AF', background: '#EFF6FF',
+                                                            padding: '3px 8px', borderRadius: '6px'
+                                                        }}>
+                                                            {metrics.totalBaseUci.toLocaleString('es-AR')} Estudios
+                                                        </span>
+                                                        <button 
+                                                            onClick={() => setInspectDataIndicator({
+                                                                id: 'chart_produccion_origen',
+                                                                label: 'Composición Diagnóstica en UCI',
+                                                                sector: activeSectorConfig.label,
+                                                                chartData: metrics.dataModalidadesUci,
+                                                                dataType: 'peticiones',
+                                                                rawData: metrics.peticionesFiltradas
+                                                            })}
+                                                            style={{
+                                                                display: 'flex', alignItems: 'center', gap: '4px',
+                                                                background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px',
+                                                                padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF',
+                                                                cursor: 'pointer'
+                                                            }}
+                                                            title="Expandir gráfico y exportar a Excel"
+                                                        >
+                                                            <Maximize2 size={13} /> Expandir / Excel
+                                                        </button>
+                                                    </div>
                                                 </div>
 
                                                 <div style={{ height: '230px', display: 'flex', alignItems: 'center' }}>
@@ -2120,23 +2164,44 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                             Demanda diagnóstica según ubicación del paciente en {activeSectorConfig.shortLabel}
                                                         </span>
                                                     </div>
-                                                    {boxFiltro !== 'TODOS' && (
-                                                        <button
-                                                            onClick={() => setBoxFiltro('TODOS')}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        {boxFiltro !== 'TODOS' && (
+                                                            <button
+                                                                onClick={() => setBoxFiltro('TODOS')}
+                                                                style={{
+                                                                    background: '#EFF6FF',
+                                                                    border: '1px solid #BFDBFE',
+                                                                    color: '#1E40AF',
+                                                                    borderRadius: '6px',
+                                                                    padding: '3px 8px',
+                                                                    fontSize: '0.7rem',
+                                                                    fontWeight: 700,
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                            >
+                                                                Quitar filtro ({boxFiltro}) ✕
+                                                            </button>
+                                                        )}
+                                                        <button 
+                                                            onClick={() => setInspectDataIndicator({
+                                                                id: 'chart_estudios_por_box',
+                                                                label: 'Distribución de Estudios por Box / Cama en UCI',
+                                                                sector: activeSectorConfig.label,
+                                                                chartData: metrics.dataEstudiosPorBox,
+                                                                dataType: 'peticiones',
+                                                                rawData: metrics.peticionesFiltradas
+                                                            })}
                                                             style={{
-                                                                background: '#EFF6FF',
-                                                                border: '1px solid #BFDBFE',
-                                                                color: '#1E40AF',
-                                                                borderRadius: '6px',
-                                                                padding: '3px 8px',
-                                                                fontSize: '0.7rem',
-                                                                fontWeight: 700,
+                                                                display: 'flex', alignItems: 'center', gap: '4px',
+                                                                background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px',
+                                                                padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF',
                                                                 cursor: 'pointer'
                                                             }}
+                                                            title="Expandir gráfico y exportar a Excel"
                                                         >
-                                                            Quitar filtro ({boxFiltro}) ✕
+                                                            <Maximize2 size={13} /> Expandir / Excel
                                                         </button>
-                                                    )}
+                                                    </div>
                                                 </div>
 
                                                 <div style={{ height: '230px' }}>
@@ -2260,12 +2325,33 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                             {modalidadFiltro === 'TODAS' ? 'Laboratorio, gasometría e imágenes diagnósticas' : `Segmentado por ${modalidadFiltro}`}
                                                         </span>
                                                     </div>
-                                                    <span style={{
-                                                        fontSize: '0.7rem', fontWeight: 700, color: '#1E40AF', background: '#EFF6FF',
-                                                        padding: '3px 8px', borderRadius: '6px'
-                                                    }}>
-                                                        Top 10 Frecuencia
-                                                    </span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{
+                                                            fontSize: '0.7rem', fontWeight: 700, color: '#1E40AF', background: '#EFF6FF',
+                                                            padding: '3px 8px', borderRadius: '6px'
+                                                        }}>
+                                                            Top 10 Frecuencia
+                                                        </span>
+                                                        <button 
+                                                            onClick={() => setInspectDataIndicator({
+                                                                id: 'chart_top_estudios_uci',
+                                                                label: 'Top Estudios Solicitados en UCI',
+                                                                sector: activeSectorConfig.label,
+                                                                chartData: metrics.dataTopEstudios,
+                                                                dataType: 'peticiones',
+                                                                rawData: metrics.peticionesFiltradas
+                                                            })}
+                                                            style={{
+                                                                display: 'flex', alignItems: 'center', gap: '4px',
+                                                                background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px',
+                                                                padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF',
+                                                                cursor: 'pointer'
+                                                            }}
+                                                            title="Expandir gráfico y exportar a Excel"
+                                                        >
+                                                            <Maximize2 size={13} /> Expandir / Excel
+                                                        </button>
+                                                    </div>
                                                 </div>
 
                                                 <div style={{ height: '240px' }}>
@@ -2315,6 +2401,25 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                         </h3>
                                                         <span style={{ fontSize: '0.7rem', color: '#64748B' }}>Prescriptores clínicos con mayor demanda de estudios</span>
                                                     </div>
+                                                    <button 
+                                                        onClick={() => setInspectDataIndicator({
+                                                            id: 'chart_solicitantes_uci',
+                                                            label: 'Médicos Solicitantes Más Activos en UCI',
+                                                            sector: activeSectorConfig.label,
+                                                            chartData: metrics.dataTopSolicitantes,
+                                                            dataType: 'peticiones',
+                                                            rawData: metrics.peticionesFiltradas
+                                                        })}
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: '4px',
+                                                            background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px',
+                                                            padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                        title="Expandir gráfico y exportar a Excel"
+                                                    >
+                                                        <Maximize2 size={13} /> Expandir / Excel
+                                                    </button>
                                                 </div>
 
                                                 <div style={{ height: '240px' }}>
@@ -2368,9 +2473,29 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                         Estudios solicitados con detalle de paciente, modalidad diagnóstica y origen clasificado
                                                     </span>
                                                 </div>
-                                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#2563EB' }}>
-                                                    {metrics.peticionesFiltradas.length.toLocaleString('es-AR')} registros
-                                                </span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#2563EB' }}>
+                                                        {metrics.peticionesFiltradas.length.toLocaleString('es-AR')} registros
+                                                    </span>
+                                                    <button 
+                                                        onClick={() => setInspectDataIndicator({
+                                                            id: 'table_peticiones_detalle',
+                                                            label: 'Auditoría Completa de Peticiones y Pruebas en UCI',
+                                                            sector: activeSectorConfig.label,
+                                                            dataType: 'peticiones',
+                                                            rawData: metrics.peticionesFiltradas
+                                                        })}
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: '4px',
+                                                            background: '#EFF6FF', border: '1px solid #93C5FD', borderRadius: '6px',
+                                                            padding: '4px 10px', fontSize: '0.74rem', fontWeight: 700, color: '#1E40AF',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                        title="Expandir tabla completa y exportar a Excel"
+                                                    >
+                                                        <Maximize2 size={13} /> Expandir / Excel
+                                                    </button>
+                                                </div>
                                             </div>
 
                                             <div style={{ overflowX: 'auto', maxHeight: '280px', fontSize: '0.78rem' }}>
@@ -2448,7 +2573,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             {inspectDataIndicator && (
                 <TelarDataModal
                     indicator={inspectDataIndicator}
-                    rawData={filteredRows}
+                    rawData={inspectDataIndicator.dataType === 'peticiones' ? (inspectDataIndicator.rawData || metrics.peticionesFiltradas) : filteredRows}
                     onClose={() => setInspectDataIndicator(null)}
                 />
             )}
