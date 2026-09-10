@@ -18,7 +18,7 @@ const SYNC_MODULES = {
     asociaciones: { label: 'Asociaciones', icon: '🏥' },
 };
 
-export default function SalusSyncButton({ onComplete, addToast }) {
+export default function SalusSyncButton({ onComplete, addToast, module = null }) {
     const [salusAvailable, setSalusAvailable] = useState(null);
     const [syncing, setSyncing] = useState(false);
     const [results, setResults] = useState(null);
@@ -28,6 +28,7 @@ export default function SalusSyncButton({ onComplete, addToast }) {
 
     const currentUser = getCurrentUser();
     const isFrojo = currentUser?.usuario === 'frojo';
+    const isSurgeryOnly = isFrojo || module === 'cirugias';
 
     // Verificar disponibilidad cada 10s cuando está offline
     useEffect(() => {
@@ -44,14 +45,22 @@ export default function SalusSyncButton({ onComplete, addToast }) {
 
         try {
             const SYNC_URL = import.meta.env.VITE_SALUS_SYNC_URL || 'http://127.0.0.1:3456/api/salus';
-            const qs = isFast ? '?fast=true' : '';
-            const res = await fetch(`${SYNC_URL}/sync-all${qs}`, { signal: AbortSignal.timeout(300000) });
+            // Si es frojo o estamos en el panel de cirugías, sincronizar EXCLUSIVAMENTE cirugías (ultrarrápido)
+            const endpoint = isSurgeryOnly 
+                ? `${SYNC_URL}/sync/cirugias`
+                : `${SYNC_URL}/sync-all${isFast ? '?fast=true' : ''}`;
+
+            const res = await fetch(endpoint, { signal: AbortSignal.timeout(300000) });
             const json = await res.json();
 
             if (json.success) {
-                setResults(json.results);
+                const effectiveResults = isSurgeryOnly ? { cirugias: json.results } : json.results;
+                setResults(effectiveResults);
                 setLastSync(new Date());
-                addToast?.(`✅ Sincronización ${isFast ? 'rápida' : 'completa'} completada`, 'success');
+                const msg = isSurgeryOnly 
+                    ? '✅ Cirugías sincronizadas con SALUS' 
+                    : `✅ Sincronización ${isFast ? 'rápida' : 'completa'} completada`;
+                addToast?.(msg, 'success');
                 onComplete?.();
             } else {
                 setResults({ error: json.error });

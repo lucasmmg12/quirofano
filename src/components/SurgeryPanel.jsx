@@ -1842,6 +1842,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                     </button>
 
                     <SalusSyncButton
+                        module="cirugias"
                         onComplete={loadData}
                         addToast={addToast}
                         currentUser={currentUser}

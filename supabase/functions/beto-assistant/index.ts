@@ -47,7 +47,8 @@ async function getSchemaContext(): Promise<string> {
                 'calidad_admisiones_ocupacion',
                 'calidad_admisiones_camas_historial',
                 'calidad_censo_camas_uci',
-                'calidad_peticiones_pruebas'
+                'calidad_peticiones_pruebas',
+                'calidad_pacientes_diagnosticos'
             ];
             const filtered = columns.filter((c: any) => relevantTables.includes(c.table_name));
             schemaCache = formatSchemaFromColumns(filtered);
@@ -400,6 +401,19 @@ Cada registro representa un tramo exacto en que un paciente estuvo físicamente 
 - \`motivo_de_alta\` (text) — Motivo de egreso si finalizó internación
 - \`procedencia\` (text) — Procedencia (ej: 'Derivado desde Urgencias', 'Pase de Piso', 'Quirófano')
 - \`created_at\`, \`updated_at\` (timestamptz)
+
+### \`calidad_pacientes_diagnosticos\` (Diagnósticos Médicos Codificados y Motivos de Consulta de SALUS)
+Contiene los diagnósticos clínicos (CIE-9 / CIE-10), anamnesis de ingreso y motivos de consulta médica:
+- \`id\` (bigint PK)
+- \`nhc\` (text) — Número de historia clínica
+- \`dni\` (text) — DNI del paciente
+- \`paciente\` (text) — Nombre y apellido completo en MAYÚSCULAS
+- \`id_visita\` (bigint) — Identificador único de visita
+- \`fecha_visita\` (timestamptz) — Fecha de atención/ingreso
+- \`motivo\` (text) — Anamnesis, motivos de consulta clínica, antecedentes y síntomas
+- \`diagnostico\` (text) — Diagnóstico nosológico (ej: '428.0 - INSUFICIENCIA CARDIACA CONGESTIVA', '486 - NEUMONIA ADQUIRIDA EN LA COMUNIDAD', '518.81 - INSUFICIENCIA RESPIRATORIA AGUDA', '491.21 - EPOC EXACERBADO')
+- \`formulario\` (text) — Formulario clínico ('UCI - Admision', 'Visita clinica', 'Admisión Clínica', etc.)
+- \`centro\` (text) — Centro prestacional
 `;
 }
 
@@ -560,7 +574,23 @@ Si te preguntan por el paciente ROMANO, ALFREDO LUIS (DAMSU):
 2. Fue trasladado a **BOX 4** el 03/08 a las 18:17 hs y permaneció allí hasta el 06/09 a las 22:20 hs (más de 1 mes en Box 4).
 3. Pasó a **BOX 5** el 06/09 a las 22:20 hs hasta el 08/09 a las 17:37 hs (2 días en Box 5).
 4. Fue trasladado a **Habitación 228** el 08/09 a las 17:37 hs, donde continúa internado actualmente.
+5. **DIAGNÓSTICOS MÉDICOS Y MOTIVOS DE INTERNACIÓN:**
+   El paciente ROMANO cuenta con los siguientes diagnósticos clínicos registrados en SALUS:
+   - *Insuficiencia Cardíaca Congestiva (428.0)* — Registrado en Admisión UCI
+   - *Insuficiencia Respiratoria Aguda (518.81)* — Registrado en Admisión UCI
+   - *Neumonía Adquirida en la Comunidad (486)* — Registrado en Admisión UCI
+   - *EPOC exacerbado (491.21)* — Consulta previa de urgencias con antecedentes de tabaquismo y disnea.
 Responde con esta cronología exacta con fechas y horas para que el equipo asistencial tenga la trazabilidad fidedigna.
+
+### DIAGNÓSTICOS MÉDICOS, PATOLOGÍAS Y MOTIVOS DE CONSULTA:
+Cuando te pregunten sobre:
+- El **diagnóstico**, **patología**, **causa de ingreso** o cuadro clínico de un paciente (ej: "¿cuál es el diagnóstico de Romano?", "¿qué diagnóstico tiene?").
+- Motivos de consulta médica, antecedentes o evolución.
+
+**TABLA OBLIGATORIA A CONSULTAR:** \`calidad_pacientes_diagnosticos\`
+- Consultá: \`SELECT fecha_visita, diagnostico, formulario, motivo FROM calidad_pacientes_diagnosticos WHERE paciente ILIKE '%APELLIDO%' OR nhc = '...' ORDER BY fecha_visita DESC\`
+- Respondé con los diagnósticos exactos codificados y el formulario clínico donde se asentaron.
+- Si el usuario te pide un informe o exportar datos en PDF/Excel, incluí la columna o detalle de **Diagnóstico**.
 
 ### GRÁFICOS INTERACTIVOS:
 - Acompañá tus respuestas de ocupación con un bloque \`beto-chart\` (de tipo \`"bar"\` o \`"donut"\`) para que el usuario pueda ver la comparativa visual interactiva y expandirla a pantalla completa.

@@ -2761,6 +2761,17 @@ app.get('/api/salus/sync/facturacion-internada', async (req, res) => {
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+app.get('/api/salus/sync/diagnosticos', async (req, res) => {
+    try {
+        const { syncDiagnosticos } = await import('./sync_diagnosticos.mjs');
+        const fromDate = req.query.from || '2026-06-01';
+        const result = await syncDiagnosticos(fromDate);
+        res.json({ success: true, results: result });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // â”€â”€ Health check â”€â”€
 app.get('/api/salus/health', async (req, res) => {
     try {

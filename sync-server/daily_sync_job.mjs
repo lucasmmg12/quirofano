@@ -19,6 +19,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, '..', '.env') });
 
 import { syncHistorialCamas } from './sync_ocupacion.mjs';
+import { syncDiagnosticos } from './sync_diagnosticos.mjs';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://hakysnqiryimxbwdslwe.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
@@ -415,10 +416,24 @@ async function runDailySync() {
 
     await pool.close();
 
+    // ──────────────────────────────────────────────────────────
+    // PASO 5: Diagnósticos y Motivos de Consulta (Últimos 45 días)
+    // ──────────────────────────────────────────────────────────
+    log('PASO 5/5: Sincronizando Diagnósticos Clínicos y Motivos de Consulta (últimos 45 días)...');
+    let syncedDiag = 0;
+    try {
+        const f45Diag = new Date(Date.now() - 45 * 24 * 3600 * 1000).toISOString().split('T')[0];
+        const diagRes = await syncDiagnosticos(f45Diag);
+        syncedDiag = diagRes.upserted || 0;
+        log(`Paso 5 completado: ${syncedDiag} diagnósticos actualizados.`);
+    } catch (eDiag) {
+        log(`⚠️ Error no bloqueante en Paso 5 (Diagnósticos): ${eDiag.message}`);
+    }
+
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     log('========================================================');
     log(`✅ Sincronización Diaria completada con éxito en ${elapsed}s.`);
-    log(`📊 Resumen: ${syncedOcup} ocupaciones, ${syncedLab} lab UCI, ${syncedImg} imágenes reclasificadas.`);
+    log(`📊 Resumen: ${syncedOcup} ocupaciones, ${syncedLab} lab UCI, ${syncedImg} imágenes, ${syncedDiag} diagnósticos.`);
     log('========================================================');
 }
 
