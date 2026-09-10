@@ -265,19 +265,46 @@ export function BetoExcelDownload({ excelData }) {
                     headerRows.push([`Generado: ${new Date().toLocaleDateString('es-AR')} por Beto IA`]);
                     headerRows.push([]); // Empty row separator
                 }
+                const headerRowIdx = headerRows.length;
                 headerRows.push(sheetData.columns || []);
 
-                const wsData = [...headerRows, ...(sheetData.data || [])];
+                // Formatear timestamps ISO a formato DD/MM/YYYY HH:mm o DD/MM/YYYY
+                const formattedData = (sheetData.data || []).map(row => {
+                    return (row || []).map(val => {
+                        if (val === null || val === undefined) return '';
+                        const s = String(val).trim();
+                        const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/);
+                        if (isoMatch) {
+                            const [, y, m, d, hh, mm] = isoMatch;
+                            return hh !== undefined ? `${d}/${m}/${y} ${hh}:${mm}` : `${d}/${m}/${y}`;
+                        }
+                        return val;
+                    });
+                });
+
+                const wsData = [...headerRows, ...formattedData];
                 const ws = XLSX.utils.aoa_to_sheet(wsData);
 
+                // Activar AutoFilter nativo de Excel en la fila de encabezados
+                if (sheetData.columns?.length && formattedData.length > 0) {
+                    ws['!autofilter'] = {
+                        ref: XLSX.utils.encode_range({
+                            s: { r: headerRowIdx, c: 0 },
+                            e: { r: wsData.length - 1, c: sheetData.columns.length - 1 }
+                        })
+                    };
+                    // Inmovilizar paneles justo debajo de los encabezados para trabajar y filtrar cómodamente
+                    ws['!freeze'] = { xSplit: 0, ySplit: headerRowIdx + 1 };
+                }
+
                 // Style column widths based on header lengths
-                if (sheetData.columns && sheetData.data) {
+                if (sheetData.columns && formattedData) {
                     ws['!cols'] = sheetData.columns.map((col, i) => {
                         const maxLen = Math.max(
                             col.length,
-                            ...sheetData.data.slice(0, 50).map(row => String(row[i] || '').length)
+                            ...formattedData.slice(0, 100).map(row => String(row[i] || '').length)
                         );
-                        return { wch: Math.min(Math.max(maxLen + 2, 10), 40) };
+                        return { wch: Math.min(Math.max(maxLen + 3, 12), 45) };
                     });
                 }
                 

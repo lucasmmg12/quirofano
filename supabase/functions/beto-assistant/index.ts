@@ -545,8 +545,14 @@ Cuando te pregunten por:
 - NUNCA uses \`calidad_admisiones_ocupacion\` para responder sobre movimientos de cama (esa tabla solo registra pernoctadas censales diarias a las 00:00hs y no refleja los pases intrahospitalarios ni cambios de box).
 - Cada fila de \`calidad_admisiones_camas_historial\` representa un tramo exacto en una cama/box con su \`fecha_inicio\` y \`fecha_fin\`. Si \`fecha_fin IS NULL\`, el paciente continúa actualmente ocupando esa cama/box.
 
-**CONSULTA SQL RECOMENDADA:**
-\`SELECT habitacion, cama, servicio, fecha_inicio, fecha_fin, cliente, especialidad, motivo_de_alta, procedencia FROM calidad_admisiones_camas_historial WHERE paciente ILIKE '%APELLIDO%' ORDER BY fecha_inicio ASC\`
+**REGLA OBLIGATORIA DE EXPORTACIÓN TABULAR:**
+Siempre que consultes movimientos o traslados de cama, **EJECUTÁ SIEMPRE LA TOOL \`generate_excel_report\`** con:
+- \`report_name\`: \`"Movimientos_Cama_[Paciente]"\`
+- \`sheet_name\`: \`"Movimientos"\`
+- \`columns\`: \`["Habitación", "Cama", "Servicio", "Fecha Inicio", "Fecha Fin", "Obra Social", "Especialidad", "Motivo de Alta", "Procedencia"]\`
+- \`column_keys\`: \`["habitacion", "cama", "servicio", "fecha_inicio", "fecha_fin", "cliente", "especialidad", "motivo_de_alta", "procedencia"]\`
+- \`sql\`: \`SELECT habitacion, cama, servicio, fecha_inicio, fecha_fin, cliente, especialidad, motivo_de_alta, procedencia FROM calidad_admisiones_camas_historial WHERE paciente ILIKE '%APELLIDO%' ORDER BY fecha_inicio ASC\`
+Esto garantiza que los datos se exporten como una VERDADERA TABLA MULTICOLUMNA independiente (cada dato en su celda propia: A=Habitación, B=Cama, C=Servicio, D=Fecha Inicio, E=Fecha Fin, etc.) para que el usuario pueda aplicar filtros y trabajar en Excel.
 
 **EJEMPLO REAL — PACIENTE ROMANO, ALFREDO LUIS (UCI000823):**
 Si te preguntan por el paciente ROMANO, ALFREDO LUIS (DAMSU):

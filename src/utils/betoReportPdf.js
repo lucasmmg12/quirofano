@@ -208,13 +208,18 @@ export function parseBetoReport(markdown) {
             currentTable = null;
         }
 
-        // Viñetas o listado de pacientes (- Paciente o • Paciente)
-        if (trimmed.startsWith('- ') || trimmed.startsWith('• ') || trimmed.startsWith('* ')) {
+        // Viñetas, listas numeradas o líneas cronológicas de movimientos/pacientes
+        const isBulletPrefix = trimmed.startsWith('- ') || trimmed.startsWith('• ') || trimmed.startsWith('* ');
+        const isNumbered = /^\d+[\.\)]\s+/.test(trimmed);
+        const isDateOrMovementLine = /^(?:Desde\s+)?[0-9]{1,2}\/[0-9]{1,2}\/[0-9]{4}/.test(trimmed) || /^(?:Habitación\s*\d+|BOX\s*\d+|\[(?:Habitación|BOX|\d{3}))/i.test(trimmed);
+
+        if (isBulletPrefix || isNumbered || isDateOrMovementLine) {
             if (currentText.length > 0) {
                 sections.push({ type: 'text', content: currentText.join('\n') });
                 currentText = [];
             }
-            sections.push({ type: 'bullet', content: cleanMarkdown(trimmed.replace(/^[-•*]\s*/, '')) });
+            const cleanContent = cleanMarkdown(trimmed.replace(/^[-•*]\s+/, '').replace(/^\d+[\.\)]\s+/, ''));
+            sections.push({ type: 'bullet', content: cleanContent });
             continue;
         }
 
@@ -234,10 +239,37 @@ export function parseBetoReport(markdown) {
     if (currentTable) sections.push(currentTable);
     if (currentText.length > 0) sections.push({ type: 'text', content: currentText.join('\n') });
 
-    // Post-procesado: Si hay viñetas que representan pacientes con datos clínicos,
+    // Post-procesado: Si hay viñetas que representan pacientes o movimientos de cama,
     // convertirlas automáticamente en una tabla estructurada para PDF y Excel.
     const bulletSections = sections.filter(s => s.type === 'bullet');
     if (bulletSections.length > 0) {
+        // 1. Probar si son movimientos de cama cronológicos
+        const parsedMovements = bulletSections.map(b => parseMovementBulletLine(b.content)).filter(Boolean);
+        if (parsedMovements.length >= 1) {
+            const tableHeaders = ['Fecha Inicio', 'Fecha Fin', 'Ubicación / Box', 'Servicio', 'Detalle / Estado'];
+            const tableRows = parsedMovements.map(m => [
+                m.fInicio || '-',
+                m.fFin || '-',
+                m.ubicacion || '-',
+                m.servicio || '-',
+                m.detalle || '-'
+            ]);
+            const newSections = [];
+            let tableInserted = false;
+            for (const sec of sections) {
+                if (sec.type === 'bullet') {
+                    if (!tableInserted) {
+                        newSections.push({ type: 'table', headers: tableHeaders, rows: tableRows });
+                        tableInserted = true;
+                    }
+                } else {
+                    newSections.push(sec);
+                }
+            }
+            return newSections;
+        }
+
+        // 2. Probar si son pacientes internados
         const parsedPatients = bulletSections.map(b => parseBulletPatientLine(b.content));
         const hasStructuredPatients = parsedPatients.some(p => p.hab || p.fIng || p.fAlta || (p.paciente && p.obraSocial));
         
@@ -348,6 +380,95 @@ export function parseBulletPatientLine(line) {
     }
 
     return { hab, paciente, obraSocial, fIng, fAlta, detalle };
+}
+
+/**
+ * Parsea una línea de viñeta que representa un movimiento cronológico de cama/box
+ */
+export function parseMovementBulletLine(line) {
+    if (!line) return null;
+    let clean = cleanMarkdown(line)
+        .replace(/^[-•*]\s+/, '')
+        .replace(/^\d+[\.\)]\s+/, '')
+        .trim();
+
+    let fInicio = '';
+    let fFin = '';
+    let ubicacion = '';
+    let detalle = '';
+
+    // Detectar servicio asistencial
+    let servicio = '-';
+    if (/\bUCI\b|\bUTI\b|INTENSIV/i.test(clean)) {
+        servicio = 'UCI';
+    } else if (/TERAPIA INTERMEDIA|\bUTIM\b|INTERMEDIA/i.test(clean)) {
+        servicio = 'TERAPIA INTERMEDIA';
+    } else if (/URGENCIA|GUARDIA/i.test(clean)) {
+        servicio = 'URGENCIAS';
+    } else if (/PEDIATR/i.test(clean)) {
+        servicio = 'PEDIATRÍA';
+    } else if (/NEONAT/i.test(clean)) {
+        servicio = 'NEONATOLOGÍA';
+    } else if (/INTERN/i.test(clean)) {
+        servicio = 'INTERNACIÓN';
+    }
+
+    // Patrón 1: "Desde DD/MM/AAAA, HH:MM Habitación/Box ..." o "Desde DD/MM/AAAA (HH:MM): Habitación/Box ..."
+    const desdeMatch = clean.match(/^Desde\s+([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{4}(?:[,\s]+[0-9]{1,2}:[0-9]{2}|\s*\([0-9]{1,2}:[0-9]{2}\))?|[0-9]{1,2}:[0-9]{2})[:\s,]*(.*)$/i);
+    if (desdeMatch) {
+        fInicio = desdeMatch[1].replace(/[(),]/g, '').trim();
+        fFin = 'Internado actual';
+        let rest = desdeMatch[2].trim();
+        const habMatch = rest.match(/^(Habitación\s*\d+|BOX\s*\d+|[123]\d{2})[-—:\s,]*(.*)$/i);
+        if (habMatch) {
+            ubicacion = habMatch[1].trim();
+            detalle = habMatch[2].replace(/^[—\-:\s,]+/, '').replace(/[()]/g, '').trim();
+        } else {
+            ubicacion = rest;
+        }
+        return { fInicio, fFin, ubicacion, servicio, detalle };
+    }
+
+    // Patrón 2: "DD/MM/AAAA, HH:MM a DD/MM/AAAA, HH:MM Habitación/Box (Detalle)"
+    const rangeMatch = clean.match(/^([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{4}(?:[,\s]+[0-9]{1,2}:[0-9]{2}|\s*\([0-9]{1,2}:[0-9]{2}\))?)\s*(?:a|al|-)\s*([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{4}(?:[,\s]+[0-9]{1,2}:[0-9]{2}|\s*\([0-9]{1,2}:[0-9]{2}\))?|[0-9]{1,2}:[0-9]{2})[:\s,]*(.*)$/i);
+    if (rangeMatch) {
+        fInicio = rangeMatch[1].replace(/[()]/g, '').trim();
+        let finRaw = rangeMatch[2].replace(/[()]/g, '').trim();
+        if (/^[0-9]{1,2}:[0-9]{2}$/.test(finRaw)) {
+            const fechaParte = fInicio.split(/[,\s]+/)[0];
+            fFin = `${fechaParte} ${finRaw}`;
+        } else {
+            fFin = finRaw;
+        }
+
+        let rest = rangeMatch[3].trim();
+        const habMatch = rest.match(/^(Habitación\s*\d+|BOX\s*\d+|[123]\d{2})[-—:\s,]*(.*)$/i);
+        if (habMatch) {
+            ubicacion = habMatch[1].trim();
+            detalle = habMatch[2].replace(/^[—\-:\s,]+/, '').replace(/[()]/g, '').trim();
+        } else {
+            ubicacion = rest;
+        }
+        return { fInicio, fFin, ubicacion, servicio, detalle };
+    }
+
+    // Patrón 3: Si tiene "Habitación X" o "BOX X" y contiene fechas
+    if (/(Habitación\s*\d+|BOX\s*\d+)/i.test(clean) && /[0-9]{1,2}\/[0-9]{1,2}/.test(clean)) {
+        const habMatch = clean.match(/(Habitación\s*\d+|BOX\s*\d+)/i);
+        ubicacion = habMatch ? habMatch[1].trim() : '';
+        const dates = clean.match(/[0-9]{1,2}\/[0-9]{1,2}\/[0-9]{4}/g);
+        if (dates && dates.length >= 2) {
+            fInicio = dates[0];
+            fFin = dates[1];
+        } else if (dates && dates.length === 1) {
+            fInicio = dates[0];
+            fFin = clean.toLowerCase().includes('desde') ? 'Internado actual' : '-';
+        }
+        detalle = clean.replace(ubicacion, '').replace(/[—\-:()]/g, ' ').trim();
+        return { fInicio, fFin, ubicacion, servicio, detalle };
+    }
+
+    return null;
 }
 
 /**
@@ -674,27 +795,52 @@ export async function downloadBetoReportExcel(markdown, excelData, reportTitle) 
         let headers = [];
         let dataRows = [];
 
+        // Helper para limpiar y formatear celdas (especialmente fechas ISO a DD/MM/YYYY HH:mm)
+        const formatCell = (val) => {
+            if (val === null || val === undefined) return '';
+            const s = String(val).trim();
+            // Formatear timestamps ISO: "2026-08-03T19:42:00.000Z" o "2026-08-03 16:42:00"
+            const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/);
+            if (isoMatch) {
+                const [, y, m, d, hh, mm] = isoMatch;
+                return hh !== undefined ? `${d}/${m}/${y} ${hh}:${mm}` : `${d}/${m}/${y}`;
+            }
+            return s;
+        };
+
         if (excelData?.columns && excelData?.data) {
-            headers = excelData.columns;
-            dataRows = excelData.data;
+            headers = excelData.columns.map(h => cleanMarkdown(String(h || '')));
+            dataRows = excelData.data.map(row => (row || []).map(formatCell));
             if (excelData.reportName) title = excelData.reportName;
         } else {
             const sections = parseBetoReport(markdown);
             const tableSec = sections.find(s => s.type === 'table');
             if (tableSec && tableSec.headers?.length) {
-                headers = tableSec.headers.map(h => cleanMarkdown(h));
-                dataRows = tableSec.rows.map(r => r.map(c => cleanMarkdown(c)));
+                headers = tableSec.headers.map(h => cleanMarkdown(String(h || '')));
+                dataRows = tableSec.rows.map(r => r.map(c => formatCell(cleanMarkdown(String(c || '')))));
             } else {
-                // Extraer viñetas si no hay tabla
+                // Fallback: extraer viñetas o líneas estructuradas
                 const bulletLines = sections
                     .filter(s => s.type === 'bullet')
                     .map(b => b.content);
-                if (bulletLines.length > 0) {
-                    const parsed = bulletLines.map(parseBulletPatientLine);
-                    const hasPatients = parsed.some(p => p.hab || p.fIng || p.fAlta || (p.paciente && p.obraSocial));
+                const rawLines = bulletLines.length > 0 ? bulletLines : (markdown || '').split('\n').map(l => l.trim()).filter(Boolean);
+
+                const movements = rawLines.map(parseMovementBulletLine).filter(Boolean);
+                if (movements.length > 0) {
+                    headers = ['Fecha Inicio', 'Fecha Fin', 'Ubicación / Box', 'Servicio', 'Detalle / Estado'];
+                    dataRows = movements.map(m => [
+                        m.fInicio || '-',
+                        m.fFin || '-',
+                        m.ubicacion || '-',
+                        m.servicio || '-',
+                        m.detalle || '-'
+                    ]);
+                } else {
+                    const parsedPatients = rawLines.map(parseBulletPatientLine);
+                    const hasPatients = parsedPatients.some(p => p.hab || p.fIng || p.fAlta || (p.paciente && p.obraSocial));
                     if (hasPatients) {
                         headers = ['Habitación', 'Paciente', 'Obra Social', 'Fecha Ingreso', 'Fecha Alta', 'Detalle / Estado'];
-                        dataRows = parsed.map(p => [
+                        dataRows = parsedPatients.map(p => [
                             p.hab || '-',
                             p.paciente || '-',
                             p.obraSocial || '-',
@@ -703,8 +849,15 @@ export async function downloadBetoReportExcel(markdown, excelData, reportTitle) 
                             p.detalle || '-'
                         ]);
                     } else {
-                        headers = ['Detalle'];
-                        dataRows = bulletLines.map(b => [b]);
+                        // Desglose de líneas con separadores a múltiples columnas
+                        headers = ['N°', 'Identificador / Clave', 'Detalle / Estado'];
+                        dataRows = rawLines.map((line, idx) => {
+                            const parts = line.split(/[—–-]\s+/);
+                            if (parts.length >= 2) {
+                                return [idx + 1, parts[0].trim(), parts.slice(1).join(' - ').trim()];
+                            }
+                            return [idx + 1, '-', line];
+                        });
                     }
                 }
             }
@@ -723,8 +876,20 @@ export async function downloadBetoReportExcel(markdown, excelData, reportTitle) 
             headers
         ];
 
+        const headerRowIdx = headerBlock.length - 1; // Fila exacta de encabezados (0-indexed)
         const allRows = [...headerBlock, ...dataRows];
         const ws = XLSX.utils.aoa_to_sheet(allRows);
+
+        // Activar AutoFilter nativo de Excel en la fila de encabezados
+        ws['!autofilter'] = {
+            ref: XLSX.utils.encode_range({
+                s: { r: headerRowIdx, c: 0 },
+                e: { r: allRows.length - 1, c: headers.length - 1 }
+            })
+        };
+
+        // Inmovilizar paneles (Freeze Panes) justo debajo de los encabezados para trabajar cómodamente
+        ws['!freeze'] = { xSplit: 0, ySplit: headerRowIdx + 1 };
 
         // Auto-ajustar anchos de columnas
         ws['!cols'] = headers.map((h, i) => {
@@ -735,7 +900,8 @@ export async function downloadBetoReportExcel(markdown, excelData, reportTitle) 
             return { wch: Math.min(Math.max(maxLen + 3, 14), 50) };
         });
 
-        XLSX.utils.book_append_sheet(wb, ws, 'Pacientes');
+        const sheetTitle = (title || 'Datos').replace(/[:\\/?*\[\]]/g, '').slice(0, 31);
+        XLSX.utils.book_append_sheet(wb, ws, sheetTitle || 'Datos');
         const safeName = (title || 'Reporte_Beto')
             .replace(/[^a-zA-Z0-9_\-]+/g, '_')
             .replace(/^_+|_+$/g, '');
