@@ -346,8 +346,14 @@ export default function UciGanttChart({
         const e = new Date(endDateStr + 'T00:00:00');
         s.setDate(s.getDate() + daysDelta);
         e.setDate(e.getDate() + daysDelta);
-        setStartDateStr(s.toISOString().split('T')[0]);
-        setEndDateStr(e.toISOString().split('T')[0]);
+        const newFrom = s.toISOString().split('T')[0];
+        const newTo = e.toISOString().split('T')[0];
+        setLocalStartDate(newFrom);
+        setLocalEndDate(newTo);
+        setLocalPresetMode('personalizado');
+        if (onCustomDateChange) {
+            onCustomDateChange(newFrom, newTo);
+        }
     };
 
     // Auto-scroll inicial a mitad de mes o a "hoy"

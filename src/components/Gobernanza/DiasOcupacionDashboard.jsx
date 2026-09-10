@@ -428,7 +428,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             while (hasMore) {
                 let q = supabase
                     .from('calidad_admisiones_ocupacion')
-                    .select('id, id_admision, numero_admision, fecha_ocupacion, fecha_ingreso, fecha_alta, especialidad, servicio, paciente, nhc, motivo_de_alta, cliente, procedencia, edad')
+                    .select('id, id_admision, numero_admision, fecha_ocupacion, fecha_ingreso, fecha_alta, especialidad, servicio, paciente, nhc, motivo_de_alta, cliente, procedencia, edad, habitacion')
                     .gte('fecha_ocupacion', fechaDesde)
                     .lte('fecha_ocupacion', fechaHasta)
                     .range(page * pageSize, (page + 1) * pageSize - 1);
