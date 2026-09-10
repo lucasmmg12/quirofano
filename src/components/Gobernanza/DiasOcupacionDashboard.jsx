@@ -14,6 +14,7 @@ import {
 import SalusSyncButton from '../SalusSyncButton';
 import TelarCatalogoDrawer from './TelarCatalogoDrawer';
 import TelarDataModal from './TelarDataModal';
+import UciMortalidadAuditModal from './UciMortalidadAuditModal';
 import UciGanttChart from './UciGanttChart';
 import DraggableChartCard from './DraggableChartCard';
 import { SECTORES_CONFIG, INDICADORES_CATALOGO, DEFAULT_ACTIVE_INDICATOR_IDS } from './telarConfig';
@@ -164,6 +165,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
     const [isCatalogoOpen, setIsCatalogoOpen] = useState(false);
     const [inspectDataIndicator, setInspectDataIndicator] = useState(null);
+    const [isMortalidadAuditOpen, setIsMortalidadAuditOpen] = useState(false);
 
     // === ESTADOS DE REORDENAMIENTO Y REDIMENSIONAMIENTO DE GRÁFICOS ===
     const [chartOrder, setChartOrder] = useState(() => {
@@ -2879,29 +2881,43 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
                                 {/* 4. % de Defunción */}
                                 {isIndicatorActive('kpi_porc_defuncion') && (
-                                    <div style={{
-                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                        padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                    }}>
+                                    <div 
+                                        onClick={() => setIsMortalidadAuditOpen(true)}
+                                        title="Ver Auditoría Clínica de Mortalidad y Motivos de Defunción"
+                                        style={{
+                                            background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                            padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                            boxShadow: '0 2px 4px rgba(0,0,0,0.02)', cursor: 'pointer', transition: 'border-color 0.15s'
+                                        }}
+                                    >
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                             <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
                                                 % de Defunción
                                             </span>
                                             <button 
-                                                onClick={() => setInspectDataIndicator({ id: 'kpi_porc_defuncion', label: 'Mortalidad y Egresos', sector: activeSectorConfig.label })}
-                                                title="Ver datos tabulados"
-                                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                                                onClick={(e) => { e.stopPropagation(); setIsMortalidadAuditOpen(true); }}
+                                                title="Auditoría Clínica de Mortalidad"
+                                                style={{ 
+                                                    background: '#FEE2E2', border: 'none', cursor: 'pointer', color: '#DC2626', 
+                                                    padding: '4px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', 
+                                                    gap: '4px', fontSize: '0.72rem', fontWeight: 700 
+                                                }}
                                             >
-                                                <Eye size={15} />
+                                                <Eye size={13} />
+                                                Auditar
                                             </button>
                                         </div>
                                         <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#EF4444', margin: '8px 0' }}>
                                             {metrics.porcDefuncion}%
                                         </div>
-                                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                                            {metrics.defunciones} de {metrics.totalAdmisiones} admisiones únicas
-                                        </span>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                                {metrics.defunciones} de {metrics.totalAdmisiones} admisiones
+                                            </span>
+                                            <span style={{ fontSize: '0.7rem', color: '#DC2626', fontWeight: 700 }}>
+                                                Ver motivos →
+                                            </span>
+                                        </div>
                                     </div>
                                 )}
 
@@ -3062,6 +3078,16 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                     onClose={() => setInspectDataIndicator(null)}
                 />
             )}
+
+            {/* ─── MODAL DE AUDITORÍA CLÍNICA DE MORTALIDAD UCI ─── */}
+            <UciMortalidadAuditModal
+                isOpen={isMortalidadAuditOpen}
+                onClose={() => setIsMortalidadAuditOpen(false)}
+                rawData={filteredRows}
+                totalAdmisionesCount={metrics.totalAdmisiones}
+                sectorLabel={activeSectorConfig.label}
+                dateFilter={{ fechaDesde, fechaHasta }}
+            />
 
             {/* ─── DRAWER DEL CATÁLOGO MODULAR DE INDICADORES ─── */}
             <TelarCatalogoDrawer
