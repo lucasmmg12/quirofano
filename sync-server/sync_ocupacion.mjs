@@ -95,12 +95,17 @@ export async function syncHistorialCamas(filtroServicio = null) {
         `;
 
         if (filtroServicio === 'UCI') {
-            query += ` AND (
-                h.HOSP_Servicio IN ('UCI', 'TERAPIA INTERMEDIA') 
-                OR b.Servicio IN ('UCI', 'TERAPIA INTERMEDIA')
-                OR h.NombreHabitacion LIKE '%BOX%'
-                OR h.NombreHabitacion LIKE '%22[2-9]%'
-            )`;
+            query += ` 
+                AND (
+                    h.HOSP_Servicio IN ('UCI', 'TERAPIA INTERMEDIA') 
+                    OR b.Servicio IN ('UCI', 'TERAPIA INTERMEDIA')
+                    OR b.[Número admisión] LIKE 'UCI%'
+                    OR b.[Número admisión] LIKE 'TI%'
+                )
+                AND ISNULL(b.Servicio, '') NOT IN ('HOSPITAL DE DIA', 'QUIROFANOS HOSPITAL DE DIA', 'FERTILIDAD', 'QUIROFANOS CENTRALES', 'URGENCIAS', 'SHOCK ROOM')
+                AND ISNULL(h.HOSP_Servicio, '') NOT IN ('HOSPITAL DE DIA', 'QUIROFANOS HOSPITAL DE DIA', 'FERTILIDAD', 'QUIROFANOS CENTRALES', 'URGENCIAS', 'SHOCK ROOM')
+                AND (h.NombreHabitacion LIKE '%BOX%' OR h.NombreHabitacion LIKE '%22[2-9]%')
+            `;
         } else if (filtroServicio) {
             query += ` AND (h.HOSP_Servicio = '${filtroServicio}' OR b.Servicio = '${filtroServicio}')`;
         }

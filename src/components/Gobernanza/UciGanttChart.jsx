@@ -195,6 +195,12 @@ export default function UciGanttChart({
                 const habNorm = normalizeCamaId(r.habitacion);
                 if (!habNorm) return;
 
+                // Descartar traslados transitorios o clics erróneos de SALUS (< 20 minutos) cuando tienen fecha fin
+                if (r.fecha_inicio && r.fecha_fin) {
+                    const durMins = (new Date(r.fecha_fin) - new Date(r.fecha_inicio)) / (1000 * 60);
+                    if (durMins >= 0 && durMins < 20) return;
+                }
+
                 const admId = r.numero_admision ? String(r.numero_admision).trim() : String(r.id_admision);
                 const uniqueKey = `${r.id_admision}_${habNorm}_${r.fecha_inicio || idx}`;
 
@@ -289,10 +295,10 @@ export default function UciGanttChart({
                 // Días desde el inicio del rango
                 const diffDaysStart = Math.max(0, (startClamped - startRange) / (1000 * 60 * 60 * 24));
                 // Duración en días en el viewport
-                const durationDays = Math.max(0.6, (endClamped - startClamped) / (1000 * 60 * 60 * 24));
+                const durationDays = Math.max(0.15, (endClamped - startClamped) / (1000 * 60 * 60 * 24));
 
                 const leftPx = diffDaysStart * dayWidth;
-                const widthPx = Math.max(28, durationDays * dayWidth);
+                const widthPx = Math.max(16, durationDays * dayWidth);
 
                 // Días totales reales de estancia
                 const totalDays = Math.max(1, Math.ceil((admEnd - admStart) / (1000 * 60 * 60 * 24)));
@@ -316,6 +322,28 @@ export default function UciGanttChart({
                     isDefuncion: (adm.motivoAlta || '').toLowerCase().includes('defunci'),
                     matchesSearch
                 });
+            }
+        });
+
+        // Anti-solapamiento visual de barras en la misma cama (Previene colisión por traslados/altas el mismo día)
+        Object.keys(byCama).forEach(cId => {
+            const bars = byCama[cId];
+            bars.sort((a, b) => a.leftPx - b.leftPx);
+
+            for (let i = 0; i < bars.length - 1; i++) {
+                const current = bars[i];
+                const next = bars[i + 1];
+
+                // Si la barra actual colisiona con el inicio de la siguiente barra:
+                if (current.leftPx + current.widthPx > next.leftPx) {
+                    const gap = 2; // Margen de separación visual
+                    const availableWidth = next.leftPx - current.leftPx - gap;
+                    if (availableWidth >= 12) {
+                        current.widthPx = availableWidth;
+                    } else {
+                        current.widthPx = 12;
+                    }
+                }
             }
         });
 

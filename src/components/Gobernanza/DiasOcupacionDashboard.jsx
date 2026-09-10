@@ -513,6 +513,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 const { data: histData, error: histErr } = await supabase
                     .from('calidad_admisiones_camas_historial')
                     .select('*')
+                    .in('servicio', ['UCI', 'TERAPIA INTERMEDIA'])
                     .or(`fecha_fin.gte.${fechaDesde}T00:00:00,fecha_fin.is.null`)
                     .lte('fecha_inicio', `${fechaHasta}T23:59:59`)
                     .order('fecha_inicio', { ascending: true });
