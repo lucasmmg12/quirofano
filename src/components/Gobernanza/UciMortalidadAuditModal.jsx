@@ -312,75 +312,403 @@ export default function UciMortalidadAuditModal({
         XLSX.writeFile(wb, `Auditoria_Mortalidad_UCI_${dateStr}.xlsx`);
     };
 
-    // 6. Exportar a PDF Institucional
-    const handleExportPDF = () => {
-        const doc = new jsPDF('landscape');
-        const primaryBlue = [30, 64, 175]; // #1E40AF
+    // 6. Exportar a PDF Institucional (Estilo Asociaciones con Logo, KPIs, Gráficos y Tabla)
+    const handleExportPDF = async () => {
+        const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        const margin = 14;
+        const colW = pageW - margin * 2;
 
-        // Encabezado institucional
-        doc.setFillColor(...primaryBlue);
-        doc.rect(0, 0, 297, 18, 'F');
+        // A. Cargar logo circular
+        let logoCircle = null;
+        try {
+            const logoImg = new Image();
+            logoImg.crossOrigin = 'anonymous';
+            logoImg.src = '/logosanatorio.png';
+            await new Promise((resolve, reject) => {
+                logoImg.onload = resolve;
+                logoImg.onerror = reject;
+            });
+            const canvasSize = 200;
+            const canvas = document.createElement('canvas');
+            canvas.width = canvasSize;
+            canvas.height = canvasSize;
+            const ctx = canvas.getContext('2d');
+            ctx.beginPath();
+            ctx.arc(canvasSize / 2, canvasSize / 2, canvasSize / 2, 0, Math.PI * 2);
+            ctx.closePath();
+            ctx.clip();
+            ctx.drawImage(logoImg, 0, 0, canvasSize, canvasSize);
+            logoCircle = canvas.toDataURL('image/png');
+        } catch {
+            logoCircle = null;
+        }
 
-        doc.setTextColor(255, 255, 255);
+        // B. Función interna para dibujar el Header oficial de Asociaciones
+        const drawHeader = (titleRight, subtitleRight) => {
+            // Barra Azul Institucional (#0D3B66)
+            doc.setFillColor(13, 59, 102);
+            doc.rect(0, 0, pageW, 28, 'F');
+
+            // Logo Circular con anillo blanco
+            const logoX = margin + 1;
+            const logoY = 7;
+            const logoSize = 14;
+
+            if (logoCircle) {
+                doc.setFillColor(255, 255, 255);
+                doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2 + 1.2, 'F');
+                doc.addImage(logoCircle, 'PNG', logoX, logoY, logoSize, logoSize);
+            } else {
+                doc.setFillColor(255, 255, 255);
+                doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 'F');
+                doc.setFontSize(6.5);
+                doc.setTextColor(13, 59, 102);
+                doc.text('SA', logoX + 3.5, logoY + logoSize / 2 + 1.5);
+            }
+
+            // Título Izquierdo
+            doc.setFontSize(14);
+            doc.setTextColor(255, 255, 255);
+            doc.setFont('helvetica', 'bold');
+            doc.text('SANATORIO ARGENTINO', margin + 18, 12.5);
+
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(191, 219, 254);
+            doc.text('Gobernanza Clínica & Auditoría Médica · Cuidados Críticos (UCI)', margin + 18, 18.5);
+
+            // Badge Derecho
+            doc.setFontSize(10.5);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(255, 255, 255);
+            doc.text(titleRight, pageW - margin, 12.5, { align: 'right' });
+
+            doc.setFontSize(7.8);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(191, 219, 254);
+            doc.text(subtitleRight, pageW - margin, 18.5, { align: 'right' });
+
+            // Línea de Acento (#3B82F6)
+            doc.setFillColor(59, 130, 246);
+            doc.rect(0, 28, pageW, 2, 'F');
+        };
+
+        // ══════════════════════════════════════════
+        // PÁGINA 1: DASHBOARD EJECUTIVO Y GRÁFICOS
+        // ══════════════════════════════════════════
+        const fDesdeStr = dateFilter?.fechaDesde || '2026-01-01';
+        const fHastaStr = dateFilter?.fechaHasta || 'Actualidad';
+        drawHeader('AUDITORÍA CLÍNICA DE MORTALIDAD', `Período: ${fDesdeStr} al ${fHastaStr}`);
+
+        let y = 35;
+
+        // 1. INFO BAR / 5 KPI SCORECARDS (Estilo Asociaciones)
+        const kpiBoxW = (colW - 16) / 5;
+        const kpiBoxH = 17;
+        const kpis = [
+            { label: 'DEFUNCIONES TOTALES', val: `${metrics.total}`, sub: `Tasa cruda: ${metrics.porcDefuncion}%`, color: [220, 38, 38], bg: [254, 242, 242] },
+            { label: 'PRECOZ (< 48 HS)', val: `${metrics.totalPrecoz48h} (${metrics.porcTotalPrecoz48h}%)`, sub: 'Ingreso crítico irreversible', color: [217, 119, 6], bg: [255, 251, 235] },
+            { label: 'ULTRA-PRECOZ (< 24 HS)', val: `${metrics.ultraPrecoz} (${metrics.porcUltraPrecoz}%)`, sub: 'Reanimación sin respuesta', color: [239, 68, 68], bg: [255, 255, 255] },
+            { label: 'PUERTA URGENCIAS', val: `${metrics.urgenciasCount} (${metrics.porcUrgencias}%)`, sub: 'Canal de guardia hiperagudo', color: [37, 99, 235], bg: [239, 246, 255] },
+            { label: 'EVOLUTIVA (> 48 HS)', val: `${metrics.evolutiva} (${metrics.porcEvolutiva}%)`, sub: `Edad media: ${metrics.edadPromedio} años`, color: [71, 85, 105], bg: [248, 250, 252] }
+        ];
+
+        kpis.forEach((kpi, idx) => {
+            const bx = margin + idx * (kpiBoxW + 4);
+            doc.setFillColor(...kpi.bg);
+            doc.roundedRect(bx, y, kpiBoxW, kpiBoxH, 2.5, 2.5, 'F');
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(bx, y, kpiBoxW, kpiBoxH, 2.5, 2.5, 'S');
+
+            doc.setFontSize(6.2);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(...kpi.color);
+            doc.text(kpi.label, bx + 4, y + 4.5);
+
+            doc.setFontSize(10.5);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(...kpi.color);
+            doc.text(kpi.val, bx + 4, y + 10.5);
+
+            doc.setFontSize(6);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100, 116, 139);
+            doc.text(kpi.sub, bx + 4, y + 14.5);
+        });
+
+        y += kpiBoxH + 7;
+
+        // 2. TÍTULO DE SECCIÓN GRÁFICA
+        doc.setFillColor(13, 59, 102);
+        doc.rect(margin, y, 3, 7, 'F');
+        doc.setFontSize(9.5);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(11);
-        doc.text('SANATORIO ARGENTINO — AUDITORÍA CLÍNICA DE MORTALIDAD UCI', 14, 12);
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Fecha: ${new Date().toLocaleDateString('es-AR')}`, 280, 12, { align: 'right' });
+        doc.setTextColor(13, 59, 102);
+        doc.text('ANÁLISIS GRÁFICO DE CAUSALIDAD Y PERMANENCIA AL ÓBITO', margin + 6, y + 5.2);
 
-        // Resumen clínico superior
-        doc.setTextColor(30, 41, 59);
-        doc.setFontSize(12);
+        y += 10;
+
+        // 3. DOS TARJETAS GRÁFICAS PARALELAS (Gráficos Vectoriales Proporcionales)
+        const cardW = (colW - 8) / 2;
+        const cardH = 68;
+
+        // ── GRÁFICO 1: DISTRIBUCIÓN POR TIEMPO HASTA EL ÓBITO ──
+        const g1X = margin;
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(g1X, y, cardW, cardH, 3, 3, 'F');
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(g1X, y, cardW, cardH, 3, 3, 'S');
+
+        // Header Card 1
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(g1X, y, cardW, 11, 3, 3, 'F');
+        doc.setFontSize(8);
         doc.setFont('helvetica', 'bold');
-        doc.text(`Informe de Defunciones y Severidad al Ingreso — Sector: ${sectorLabel}`, 14, 26);
-
-        doc.setFontSize(8);
+        doc.setTextColor(15, 23, 42);
+        doc.text('1. Estratificación Temporal (Precoz vs Evolutiva)', g1X + 6, y + 5.5);
+        doc.setFontSize(6.2);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(100, 116, 139);
-        doc.text(
-            `Total Fallecidos: ${metrics.total} (${metrics.porcDefuncion}% cruda) | Mortalidad Precoz <48h: ${metrics.totalPrecoz48h} (${metrics.porcTotalPrecoz48h}%) | <24h: ${metrics.ultraPrecoz} (${metrics.porcUltraPrecoz}%) | Urgencias: ${metrics.urgenciasCount} (${metrics.porcUrgencias}%)`, 
-            14, 32
-        );
+        doc.text('Proxy APACHE II: Separa ingresos agónicos fútiles de complicaciones intra-UCI', g1X + 6, y + 9);
 
-        // Tabla PDF
+        // Barras temporales
+        const totalDef = Math.max(1, metrics.total);
+        let stayOver7d = 0;
+        let stay3to7d = 0;
+        defunciones.forEach(d => {
+            if (d.diasEstancia > 7) stayOver7d++;
+            else if (d.horasEstancia !== null && d.horasEstancia > 48) stay3to7d++;
+        });
+
+        const timeBars = [
+            { label: '< 24 hs (Ultra-Precoz / Cuadro Agónico)', count: metrics.ultraPrecoz, color: [220, 38, 38], tag: 'Irreversible' },
+            { label: '24 a 48 hs (Precoz / Falla Precoz)', count: metrics.precoz, color: [217, 119, 6], tag: 'Crítico al ingreso' },
+            { label: '3 a 7 días (Estancia Intermedia)', count: stay3to7d, color: [37, 99, 235], tag: 'Evolución intra-UCI' },
+            { label: '> 7 días (Estancia Prolongada / Multiorgánica)', count: stayOver7d, color: [71, 85, 105], tag: 'Complicaciones' }
+        ];
+
+        let bY = y + 16;
+        const maxBarTrackW = cardW - 65;
+
+        timeBars.forEach(b => {
+            const pctVal = ((b.count / totalDef) * 100).toFixed(1);
+            const barFillW = Math.max(2, (b.count / totalDef) * maxBarTrackW);
+
+            doc.setFontSize(6.8);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(30, 41, 59);
+            doc.text(b.label, g1X + 6, bY + 3.2);
+
+            // Barra de fondo gris
+            doc.setFillColor(241, 245, 249);
+            doc.roundedRect(g1X + 6, bY + 4.5, maxBarTrackW, 4, 1.5, 1.5, 'F');
+
+            // Barra rellena proporcional
+            doc.setFillColor(...b.color);
+            doc.roundedRect(g1X + 6, bY + 4.5, barFillW, 4, 1.5, 1.5, 'F');
+
+            // Valor y porcentaje a la derecha
+            doc.setFontSize(7.5);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(...b.color);
+            doc.text(`${b.count} (${pctVal}%)`, g1X + 10 + maxBarTrackW, bY + 8);
+
+            bY += 12;
+        });
+
+        // ── GRÁFICO 2: PUERTA DE ENTRADA Y PROCEDENCIA ──
+        const g2X = margin + cardW + 8;
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(g2X, y, cardW, cardH, 3, 3, 'F');
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(g2X, y, cardW, cardH, 3, 3, 'S');
+
+        // Header Card 2
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(g2X, y, cardW, 11, 3, 3, 'F');
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(15, 23, 42);
+        doc.text('2. Procedencia de Ingreso & Vía de Entrada', g2X + 6, y + 5.5);
+        doc.setFontSize(6.2);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 116, 139);
+        doc.text('Identifica el canal por donde arribaron los pacientes más graves', g2X + 6, y + 9);
+
+        // Conteo de procedencias dinámico
+        const procCounts = {};
+        defunciones.forEach(d => {
+            const p = d.procedencia || 'Sin dato';
+            procCounts[p] = (procCounts[p] || 0) + 1;
+        });
+        const sortedProc = Object.entries(procCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 4);
+
+        let pY = y + 16;
+        const procColors = [
+            [13, 59, 102], // Navy
+            [2, 132, 199], // Sky
+            [124, 58, 237], // Purple
+            [5, 150, 105]   // Green
+        ];
+
+        sortedProc.forEach(([procName, pCount], pIdx) => {
+            const pctVal = ((pCount / totalDef) * 100).toFixed(1);
+            const barFillW = Math.max(2, (pCount / totalDef) * maxBarTrackW);
+            const pCol = procColors[pIdx % procColors.length];
+
+            doc.setFontSize(6.8);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(30, 41, 59);
+            const cleanProcName = procName.length > 38 ? procName.substring(0, 38) + '...' : procName;
+            doc.text(cleanProcName, g2X + 6, pY + 3.2);
+
+            // Barra de fondo gris
+            doc.setFillColor(241, 245, 249);
+            doc.roundedRect(g2X + 6, pY + 4.5, maxBarTrackW, 4, 1.5, 1.5, 'F');
+
+            // Barra rellena proporcional
+            doc.setFillColor(...pCol);
+            doc.roundedRect(g2X + 6, pY + 4.5, barFillW, 4, 1.5, 1.5, 'F');
+
+            // Valor y porcentaje a la derecha
+            doc.setFontSize(7.5);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(...pCol);
+            doc.text(`${pCount} (${pctVal}%)`, g2X + 10 + maxBarTrackW, pY + 8);
+
+            pY += 12;
+        });
+
+        y += cardH + 7;
+
+        // 4. BLOQUE INFERIOR: CLUSTER DE DIAGNÓSTICOS PREVALENTES
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(margin, y, colW, 42, 3, 3, 'F');
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(margin, y, colW, 42, 3, 3, 'S');
+
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(13, 59, 102);
+        doc.text('3. Cuadros Nosológicos y Diagnósticos Críticos Prevalentes al Ingreso (CIE-9 / SALUS)', margin + 6, y + 6);
+
+        // Obtener top diagnósticos
+        const diagFreq = {};
+        Object.values(diagnosticosMap).forEach(list => {
+            list.forEach(d => {
+                if (d.diagnostico) {
+                    const c = d.diagnostico.trim();
+                    diagFreq[c] = (diagFreq[c] || 0) + 1;
+                }
+            });
+        });
+        const topDiags = Object.entries(diagFreq)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 6);
+
+        let dX = margin + 6;
+        let dY = y + 12;
+        const pillW = (colW - 20) / 2;
+
+        if (topDiags.length === 0) {
+            doc.setFontSize(7);
+            doc.setFont('helvetica', 'italic');
+            doc.setTextColor(100, 116, 139);
+            doc.text('Consultando diagnósticos codificados en SALUS...', margin + 6, y + 16);
+        } else {
+            topDiags.forEach(([diagName, cnt], idx) => {
+                const posX = idx % 2 === 0 ? margin + 6 : margin + 10 + pillW;
+                const posY = y + 12 + Math.floor(idx / 2) * 9;
+
+                doc.setFillColor(255, 255, 255);
+                doc.roundedRect(posX, posY, pillW, 7, 1.5, 1.5, 'F');
+                doc.setDrawColor(203, 213, 225);
+                doc.roundedRect(posX, posY, pillW, 7, 1.5, 1.5, 'S');
+
+                doc.setFontSize(6.8);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(15, 23, 42);
+                const shortDiag = diagName.length > 55 ? diagName.substring(0, 55) + '...' : diagName;
+                doc.text(shortDiag, posX + 3, posY + 4.8);
+
+                doc.setFontSize(6.5);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(37, 99, 235);
+                doc.text(`${cnt} caso${cnt > 1 ? 's' : ''}`, posX + pillW - 14, posY + 4.8, { align: 'right' });
+            });
+        }
+
+        // ══════════════════════════════════════════
+        // PÁGINA 2: LISTADO NOMINAL DETALLADO
+        // ══════════════════════════════════════════
+        doc.addPage();
+        drawHeader('LISTADO NOMINAL DE PACIENTES AUDITADOS', `Total Casos: ${filteredRows.length} | Sector: ${sectorLabel}`);
+
         const tableBody = filteredRows.map(r => {
             const nhcKey = String(r.nhc).trim();
-            const diags = (diagnosticosMap[nhcKey] || []).map(d => d.diagnostico).filter(Boolean).slice(0, 2).join('\n') || '-';
-            const fIng = r.fecha_ingreso ? new Date(r.fecha_ingreso).toLocaleDateString('es-AR') : '-';
-            const fAlt = r.fecha_alta ? new Date(r.fecha_alta).toLocaleDateString('es-AR') : '-';
-            const tiempo = r.horasEstancia !== null ? `${r.horasEstancia} hs` : `${r.diasEstancia} d`;
+            const diags = (diagnosticosMap[nhcKey] || []).map(d => d.diagnostico).filter(Boolean);
+            const pets = (peticionesMap[nhcKey] || []).map(p => p.estudio).filter(Boolean);
+
+            const fIng = r.fecha_ingreso ? new Date(r.fecha_ingreso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
+            const fAlt = r.fecha_alta ? new Date(r.fecha_alta).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
+            const tiempo = r.horasEstancia !== null ? `${r.horasEstancia} hs (${r.diasEstancia} d)` : `${r.diasEstancia} días`;
+
+            const diagStr = diags.slice(0, 2).join('\n') || 'Sin codificación CIE';
+            const petStr = pets.length > 0 ? `${pets.slice(0, 2).join('\n')}${pets.length > 2 ? `\n(+${pets.length - 2} más)` : ''}` : 'Sin estudios';
 
             return [
                 r.nhc || '-',
                 r.paciente || '-',
-                r.edad ?? '-',
+                r.edad ? `${r.edad} a` : '-',
                 r.procedencia || '-',
-                `${fIng} a ${fAlt}`,
+                `${fIng}\n${fAlt}`,
                 tiempo,
                 r.clasifLabel.split('(')[0].trim(),
-                diags
+                diagStr,
+                petStr
             ];
         });
 
         autoTable(doc, {
-            startY: 36,
-            head: [['NHC', 'Paciente', 'Edad', 'Procedencia', 'Período', 'Tiempo', 'Estratificación', 'Diagnóstico de Ingreso']],
+            startY: 34,
+            head: [['NHC', 'Paciente', 'Edad', 'Procedencia', 'Ingreso / Defunción', 'Permanencia', 'Estratificación', 'Diagnósticos de Ingreso', 'Estudios Realizados']],
             body: tableBody,
-            styles: { fontSize: 7, cellPadding: 2 },
-            headStyles: { fillColor: primaryBlue, textColor: 255, fontStyle: 'bold' },
+            styles: { fontSize: 6.8, cellPadding: 2.2, overflow: 'linebreak' },
+            headStyles: { fillColor: [13, 59, 102], textColor: 255, fontStyle: 'bold', fontSize: 7.2 },
             alternateRowStyles: { fillColor: [248, 250, 252] },
             columnStyles: {
-                0: { cellWidth: 16 },
-                1: { cellWidth: 50 },
-                2: { cellWidth: 12 },
-                3: { cellWidth: 35 },
+                0: { cellWidth: 14 },
+                1: { cellWidth: 42, fontStyle: 'bold' },
+                2: { cellWidth: 11 },
+                3: { cellWidth: 32 },
                 4: { cellWidth: 30 },
-                5: { cellWidth: 18 },
-                6: { cellWidth: 40 },
-                7: { cellWidth: 70 }
+                5: { cellWidth: 20 },
+                6: { cellWidth: 30 },
+                7: { cellWidth: 50 },
+                8: { cellWidth: 40 }
             }
         });
+
+        // ══════════════════════════════════════════
+        // FOOTERS INSTITUCIONALES EN TODAS LAS PÁGINAS
+        // ══════════════════════════════════════════
+        const totalPages = doc.internal.getNumberOfPages();
+        for (let p = 1; p <= totalPages; p++) {
+            doc.setPage(p);
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(0.3);
+            doc.line(margin, pageH - 9, pageW - margin, pageH - 9);
+
+            doc.setFontSize(6.5);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(148, 163, 184);
+            doc.text('Sanatorio Argentino SRL · Dirección Médica & Auditoría UCI · Sistema ADM-QUI', margin, pageH - 5);
+            doc.text(`Página ${p} de ${totalPages} · Documento Oficial Reservado`, pageW - margin, pageH - 5, { align: 'right' });
+        }
 
         const dateStr = new Date().toISOString().split('T')[0];
         doc.save(`Auditoria_Mortalidad_UCI_${dateStr}.pdf`);
