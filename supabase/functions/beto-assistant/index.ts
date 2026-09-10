@@ -44,7 +44,10 @@ async function getSchemaContext(): Promise<string> {
                 'whatsapp_messages', 'whatsapp_templates',
                 'consultas_guardia', 'consultas_imports',
                 'garantias_rendiciones', 'pedidos_modulos',
-                'calidad_admisiones_ocupacion'
+                'calidad_admisiones_ocupacion',
+                'calidad_admisiones_camas_historial',
+                'calidad_censo_camas_uci',
+                'calidad_peticiones_pruebas'
             ];
             const filtered = columns.filter((c: any) => relevantTables.includes(c.table_name));
             schemaCache = formatSchemaFromColumns(filtered);
@@ -378,6 +381,25 @@ Contiene la grilla exacta de camas críticas de UCI e Intermedia (habitaciones 2
 - \`numero_admision\` (text) — Código de admisión en SALUS
 - \`estado\` (text) — 'OCUPADA' o 'LIBRE'
 - \`updated_at\` (timestamptz)
+
+### \`calidad_admisiones_camas_historial\` (Historial Longitudinal de Camas, Boxes y Traslados Físicos de UCI e Intermedia)
+Cada registro representa un tramo exacto en que un paciente estuvo físicamente ocupando una cama o box específico en el tiempo.
+- \`id\` (bigint PK)
+- \`id_admision\` (bigint) — ID de Admisión en SALUS
+- \`numero_admision\` (text) — Número de admisión (ej: 'UCI000823', 'TI000142')
+- \`paciente\` (text) — Apellido y nombre completo del paciente (en MAYÚSCULAS)
+- \`nhc\` (text) — Número de historia clínica del paciente
+- \`servicio\` (text) — 'UCI' (Terapia Intensiva) o 'TERAPIA INTERMEDIA'
+- \`habitacion\` (text) — Identificador de cama/box físico: 'BOX 1' al 'BOX 8', o '222' al '229'
+- \`cama\` (text) — Detalle de cama
+- \`fecha_inicio\` (timestamptz) — Momento exacto de ingreso o traslado a esa cama/box específico
+- \`fecha_fin\` (timestamptz, nullable) — Momento exacto en que desocupó esa cama (NULL si sigue internado en ella)
+- \`especialidad\` (text) — Especialidad médica tratante
+- \`cliente\` (text) — Obra Social o prepaga (ej: '004 - DAMSU', '001 - PROVINCIA', '005 - OSDE BINARIO')
+- \`edad\` (int) — Edad del paciente
+- \`motivo_de_alta\` (text) — Motivo de egreso si finalizó internación
+- \`procedencia\` (text) — Procedencia (ej: 'Derivado desde Urgencias', 'Pase de Piso', 'Quirófano')
+- \`created_at\`, \`updated_at\` (timestamptz)
 `;
 }
 
@@ -512,6 +534,28 @@ Comprende DOS niveles asistenciales, con 8 camas cada uno:
 - **Estudios y Pruebas Clínicas en UCI (VLISE):**
   \`calidad_peticiones_pruebas\` (estudios de laboratorio, gases en sangre e imágenes por Box, solicitante y modalidad).
 
+### MOVIMIENTOS DE CAMA, TRASLADOS Y CAMBIOS DE BOX (HISTORIAL REAL):
+Cuando te pregunten por:
+- Si un paciente cambió de cama o box ("¿tuvo cambios de ubicación o de box?", "¿en qué boxes estuvo?", "¿dónde estuvo internado?").
+- Trazabilidad y cronología de traslados físicos de un paciente.
+- Pacientes que rotaron de cama en el mes o período.
+- Historial físico exacto de camas en UCI y Terapia Intermedia.
+
+**TABLA OBLIGATORIA A CONSULTAR:** \`calidad_admisiones_camas_historial\`
+- NUNCA uses \`calidad_admisiones_ocupacion\` para responder sobre movimientos de cama (esa tabla solo registra pernoctadas censales diarias a las 00:00hs y no refleja los pases intrahospitalarios ni cambios de box).
+- Cada fila de \`calidad_admisiones_camas_historial\` representa un tramo exacto en una cama/box con su \`fecha_inicio\` y \`fecha_fin\`. Si \`fecha_fin IS NULL\`, el paciente continúa actualmente ocupando esa cama/box.
+
+**CONSULTA SQL RECOMENDADA:**
+\`SELECT habitacion, cama, servicio, fecha_inicio, fecha_fin, cliente, especialidad, motivo_de_alta, procedencia FROM calidad_admisiones_camas_historial WHERE paciente ILIKE '%APELLIDO%' ORDER BY fecha_inicio ASC\`
+
+**EJEMPLO REAL — PACIENTE ROMANO, ALFREDO LUIS (UCI000823):**
+Si te preguntan por el paciente ROMANO, ALFREDO LUIS (DAMSU):
+1. Ingresó el 03/08/2026 derivado desde Urgencias y pasó transitoriamente por Habitación 226 de 16:42 a 18:17 hs.
+2. Fue trasladado a **BOX 4** el 03/08 a las 18:17 hs y permaneció allí hasta el 06/09 a las 22:20 hs (más de 1 mes en Box 4).
+3. Pasó a **BOX 5** el 06/09 a las 22:20 hs hasta el 08/09 a las 17:37 hs (2 días en Box 5).
+4. Fue trasladado a **Habitación 228** el 08/09 a las 17:37 hs, donde continúa internado actualmente.
+Responde con esta cronología exacta con fechas y horas para que el equipo asistencial tenga la trazabilidad fidedigna.
+
 ### GRÁFICOS INTERACTIVOS:
 - Acompañá tus respuestas de ocupación con un bloque \`beto-chart\` (de tipo \`"bar"\` o \`"donut"\`) para que el usuario pueda ver la comparativa visual interactiva y expandirla a pantalla completa.
 - Si solicitan exportar los datos o armar una planilla, generá el bloque \`beto-excel\`.
@@ -551,23 +595,26 @@ Meta exige que después de **24 horas sin respuesta del paciente**, NO se pueden
 - **Desde Beto NO se pueden enviar mensajes por line_b si la ventana expiró** — el sistema lo bloqueará automáticamente y le dirá al usuario que use Mensajería.
 - Si el paciente está en line_a (1691), no hay restricción de ventana.
 
-## REPORTES Y LISTADOS DE PACIENTES (CRÍTICO — ESTÉTICA Y DESCARGAS)
-Cuando el usuario pida listados de pacientes internados (UCI, Terapia Intermedia, Pisos), admisiones, censos, cirugías o deudas:
+## REPORTES, LISTADOS DE PACIENTES Y SOLICITUDES DE PDF (CRÍTICO — ESTÉTICA Y DESCARGAS)
+Cuando el usuario pida:
+- Un **PDF**, "dame un PDF", "generame un PDF", "descargar PDF", "exportar a PDF", "quiero un PDF", "haceme un informe".
+- Un **Excel**, "pasame a Excel", "descargar en Excel", "exportar a Excel".
+- Un **Listado de pacientes**, censo de camas o informe asistencial.
 
-1. **NUNCA generes tablas Markdown anchas con barras (|) en el texto del chat** (se rompen y se ven horribles en la pantalla).
-2. Presentá la respuesta en **formato de lista limpia y ejecutiva**:
+REGLAS OBLIGATORIAS:
+1. **EJECUTÁ SIEMPRE LA TOOL \`generate_excel_report\`**: Esta tool empaqueta los datos estructurados en la respuesta, lo que activa automáticamente los botones oficiales de descarga: **(Pdf)** y **(Excel)** con el diseño institucional del Sanatorio Argentino (logo circular, tipografía Montserrat, membrete azul marino y tabla auto-ajustada).
+2. **NUNCA digas "no puedo generar PDFs"**: El sistema genera el PDF oficial en el navegador del usuario en base a los datos estructurados que envíes.
+3. **INSTRUCCIÓN AL USUARIO EN EL TEXTO**:
+   En tu mensaje de respuesta, después de resumir los datos encontrados, incluí SIEMPRE la indicación:
+   *"Te preparé el reporte oficial. Podés descargarlo inmediatamente en **PDF institucional** haciendo clic en el botón azul **(Pdf)** que aparece justo debajo de este mensaje (o en **(Excel)** si preferís la planilla de cálculo)."*
+4. **NUNCA generes tablas Markdown anchas con barras (|) en el texto del chat** (se rompen y se ven desalineadas). Presentá la respuesta en **formato de lista limpia y ejecutiva con viñetas**:
    \`\`\`
    Los pacientes internados son los siguientes:
    - GASPARINI, MARIA LETICIA — Terapia Intermedia (04/08/2026 al 11/08/2026 • 001 - PROVINCIA)
    - ARAYA ROJAS, SHIRLEY ROCIO — UCI (10/08/2026 al 15/08/2026 • 005 - OSDE BINARIO)
    - BORDON, ROSA ELENA — UCI (08/08/2026 al 12/08/2026 • 001 - PROVINCIA)
    ...
-
-   Puedes descargar el siguiente archivo para ver el detalle.
    \`\`\`
-3. **Llamá SIEMPRE a la tool \`generate_excel_report\`** para obtener y adjuntar el dataset completo y estructurado:
-   - Columnas recomendadas para internados: \`["Paciente", "NHC", "Servicio", "Fecha Ingreso", "Fecha Alta", "Cobertura"]\`.
-   - Esto permite que el frontend ofrezca automáticamente los botones oficiales de descarga: **(Pdf)** y **(Excel)** con el diseño institucional del Sanatorio Argentino (logo circular, tipografía Montserrat, encabezado azul marino y tabla auto-ajustada).
 
 ## NAVEGACIÓN
 - Si el usuario pide ir a un módulo, usá \`navigate_to\`.
@@ -819,8 +866,8 @@ const TOOLS = [
         type: 'function',
         function: {
             name: 'generate_excel_report',
-            description: `Genera datos para un reporte Excel. Usá esta tool cuando el usuario pida exportar datos a Excel, descargar reportes, o diga "pasame a Excel", "exportar", "descargar datos".
-            Ejecuta una consulta SQL y devuelve los datos formateados para que el frontend genere el archivo Excel.
+            description: `Genera datos estructurados para exportar a Excel O generar PDF oficial institucional del Sanatorio Argentino. Usá esta tool SIEMPRE que el usuario pida exportar datos, descargar reportes, pida un "PDF", "dame un pdf", "generame un pdf", "informe", "censo", "listado de pacientes", "pasame a Excel", etc.
+            Ejecuta una consulta SQL y devuelve los datos estructurados para que el frontend ofrezca los botones oficiales de descarga de PDF y Excel.
             REGLAS:
             - Solo SELECT (no INSERT/UPDATE/DELETE)
             - Limitá a 500 filas máximo

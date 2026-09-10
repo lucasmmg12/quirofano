@@ -1142,7 +1142,7 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
                         : parsedRawText;
 
                     const effectiveExcelData = msg.excel_data || richBlocks.find(b => b.type === 'excel')?.data || null;
-                    const isReport = isReportMessage(msg.content) || !!effectiveExcelData;
+                    const isReport = isReportMessage(msg.content) || !!effectiveExcelData || /(reporte oficial|\(pdf\)|descargarlo en pdf|informe oficial)/i.test(msg.content);
 
                     return (
                     <div
@@ -1201,61 +1201,61 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
                                     {/* Action bar: (Pdf) y (Excel) oficiales con estilo institucional */}
                                     {isReport && (
                                         <div style={{
-                                            display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '12px',
-                                            paddingTop: '10px', borderTop: '1px solid rgba(0,0,0,0.08)',
-                                        }}>
-                                            <span style={{ fontSize: '0.74rem', color: '#64748B', fontWeight: 600, marginRight: '2px' }}>
-                                                Descargar detalle:
-                                            </span>
-                                            <button
-                                                onClick={() => downloadBetoReportPdf(msg.content, null, effectiveExcelData)}
-                                                style={{
-                                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                                    padding: '6px 13px', borderRadius: '8px',
-                                                    border: '1px solid #BFDBFE',
-                                                    background: '#EFF6FF', color: '#1D4ED8',
-                                                    fontSize: '0.76rem', fontWeight: 700,
-                                                    cursor: 'pointer', transition: 'all 0.15s',
-                                                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-                                                }}
-                                                onMouseOver={e => {
-                                                    e.currentTarget.style.background = '#DBEAFE';
-                                                    e.currentTarget.style.transform = 'translateY(-1px)';
-                                                }}
-                                                onMouseOut={e => {
-                                                    e.currentTarget.style.background = '#EFF6FF';
-                                                    e.currentTarget.style.transform = 'translateY(0)';
-                                                }}
-                                                title="Descargar reporte oficial en PDF con estética de Asociaciones, logo del Sanatorio y fuente Montserrat"
-                                            >
-                                                <FileDown size={14} />
-                                                (Pdf)
-                                            </button>
+                                             display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '12px',
+                                             paddingTop: '10px', borderTop: '1px solid rgba(0,0,0,0.08)',
+                                         }}>
+                                             <span style={{ fontSize: '0.74rem', color: '#64748B', fontWeight: 600, marginRight: '2px' }}>
+                                                 Descargar detalle:
+                                             </span>
+                                             <button
+                                                 onClick={() => downloadBetoReportPdf(msg.content, null, effectiveExcelData)}
+                                                 style={{
+                                                     display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                                     padding: '6px 13px', borderRadius: '8px',
+                                                     border: '1px solid #BFDBFE',
+                                                     background: '#EFF6FF', color: '#1D4ED8',
+                                                     fontSize: '0.76rem', fontWeight: 700,
+                                                     cursor: 'pointer', transition: 'all 0.15s',
+                                                     boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                                 }}
+                                                 onMouseOver={e => {
+                                                     e.currentTarget.style.background = '#DBEAFE';
+                                                     e.currentTarget.style.transform = 'translateY(-1px)';
+                                                 }}
+                                                 onMouseOut={e => {
+                                                     e.currentTarget.style.background = '#EFF6FF';
+                                                     e.currentTarget.style.transform = 'translateY(0)';
+                                                 }}
+                                                 title="Descargar reporte oficial en PDF con estética del Sanatorio Argentino y tipografía Montserrat"
+                                             >
+                                                 <FileDown size={14} />
+                                                 Descargar PDF
+                                             </button>
 
-                                            <button
-                                                onClick={() => downloadBetoReportExcel(msg.content, effectiveExcelData)}
-                                                style={{
-                                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                                    padding: '6px 13px', borderRadius: '8px',
-                                                    border: '1px solid #A7F3D0',
-                                                    background: '#ECFDF5', color: '#047857',
-                                                    fontSize: '0.76rem', fontWeight: 700,
-                                                    cursor: 'pointer', transition: 'all 0.15s',
-                                                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-                                                }}
-                                                onMouseOver={e => {
-                                                    e.currentTarget.style.background = '#D1FAE5';
-                                                    e.currentTarget.style.transform = 'translateY(-1px)';
-                                                }}
-                                                onMouseOut={e => {
-                                                    e.currentTarget.style.background = '#ECFDF5';
-                                                    e.currentTarget.style.transform = 'translateY(0)';
-                                                }}
-                                                title="Exportar datos a planilla Excel (.xlsx)"
-                                            >
-                                                <FileSpreadsheet size={14} />
-                                                (Excel)
-                                            </button>
+                                             <button
+                                                 onClick={() => downloadBetoReportExcel(msg.content, effectiveExcelData)}
+                                                 style={{
+                                                     display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                                     padding: '6px 13px', borderRadius: '8px',
+                                                     border: '1px solid #A7F3D0',
+                                                     background: '#ECFDF5', color: '#047857',
+                                                     fontSize: '0.76rem', fontWeight: 700,
+                                                     cursor: 'pointer', transition: 'all 0.15s',
+                                                     boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                                 }}
+                                                 onMouseOver={e => {
+                                                     e.currentTarget.style.background = '#D1FAE5';
+                                                     e.currentTarget.style.transform = 'translateY(-1px)';
+                                                 }}
+                                                 onMouseOut={e => {
+                                                     e.currentTarget.style.background = '#ECFDF5';
+                                                     e.currentTarget.style.transform = 'translateY(0)';
+                                                 }}
+                                                 title="Descargar planilla de cálculo en Excel (.xlsx)"
+                                             >
+                                                 <FileSpreadsheet size={14} />
+                                                 Descargar Excel
+                                             </button>
 
                                             <button
                                                 onClick={() => {

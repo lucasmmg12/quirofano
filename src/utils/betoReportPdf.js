@@ -354,7 +354,9 @@ export function parseBulletPatientLine(line) {
  * Genera el documento jsPDF con el estilo oficial de Asociaciones
  */
 export async function generateBetoReportPdf(markdown, reportTitle, excelData) {
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const numCols = (excelData?.columns?.length) || 0;
+    const isLandscape = numCols >= 6;
+    const doc = new jsPDF({ orientation: isLandscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
     const fontName = await loadMontserratFonts(doc);
     const logoBase64 = await loadCircularLogoBase64();
 
@@ -384,7 +386,8 @@ export async function generateBetoReportPdf(markdown, reportTitle, excelData) {
 
     // Extraer título limpio
     const headingSec = sections.find(s => s.type === 'heading');
-    const rawTitle = reportTitle || excelData?.reportName || (headingSec ? headingSec.content : 'Reporte de Pacientes e Indicadores');
+    const rawReportName = excelData?.reportName ? String(excelData.reportName).replace(/_/g, ' ') : null;
+    const rawTitle = reportTitle || rawReportName || (headingSec ? headingSec.content : 'Reporte Oficial de Pacientes e Indicadores');
     const cleanTitle = cleanMarkdown(rawTitle) || 'Reporte de Pacientes';
 
     // ═══════════════════════════════════════════
@@ -573,8 +576,20 @@ export async function generateBetoReportPdf(markdown, reportTitle, excelData) {
             }
 
             case 'text': {
-                const cleanText = cleanMarkdown(section.content);
+                let cleanText = cleanMarkdown(section.content);
                 if (!cleanText) continue;
+
+                // Filtrar frases conversacionales de chat que no corresponden a un PDF médico institucional
+                const chatterRegex = /(te dejo el excel|podés descargar|puedes descargar|hacé clic en el botón|descargar el archivo|si necesitás más detalles|avisame y te lo|te preparé el reporte oficial|¿querés que te|puedo buscar solo por|te paso la información|si necesitás algún otro dato)/i;
+                if (chatterRegex.test(cleanText)) {
+                    cleanText = cleanText
+                        .split('\n')
+                        .filter(line => !chatterRegex.test(line))
+                        .join('\n')
+                        .trim();
+                    if (!cleanText) continue;
+                }
+
                 doc.setFontSize(8.5);
                 doc.setFont(fontName, 'normal');
                 doc.setTextColor(...COLORS.darkText);
@@ -617,11 +632,17 @@ function generateColumnStyles(headers) {
         const lower = h.toLowerCase();
         if (lower.includes('nhc') || lower.includes('dni')) {
             styles[i] = { halign: 'center', cellWidth: 20 };
-        } else if (lower.includes('fecha') || lower.includes('ingreso') || lower.includes('alta')) {
+        } else if (lower.includes('hab') || lower === 'box' || lower === 'cama') {
+            styles[i] = { halign: 'center', cellWidth: 18 };
+        } else if (lower === 'edad' || lower === 'orden') {
+            styles[i] = { halign: 'center', cellWidth: 14 };
+        } else if (lower.includes('fecha') || lower.includes('ingreso') || lower.includes('alta') || lower.includes('f ing') || lower.includes('f nac')) {
             styles[i] = { halign: 'center', cellWidth: 22 };
         } else if (lower.includes('servicio') || lower.includes('sector')) {
             styles[i] = { cellWidth: 28 };
-        } else if (lower.includes('paciente') || lower.includes('nombre')) {
+        } else if (lower.includes('obra') || lower.includes('social') || lower.includes('cobertura') || lower.includes('cliente')) {
+            styles[i] = { cellWidth: 36 };
+        } else if (lower.includes('paciente') || lower.includes('nombre') || lower.includes('apellido')) {
             styles[i] = { fontStyle: 'bold' };
         }
     });
