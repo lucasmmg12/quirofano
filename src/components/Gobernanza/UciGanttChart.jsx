@@ -87,6 +87,8 @@ export default function UciGanttChart({
     // === ESTADOS ===
     const [subNivel, setSubNivel] = useState('TODAS'); // 'TODAS' | 'INTENSIVA' | 'INTERMEDIA'
     const [searchTerm, setSearchTerm] = useState('');
+    const [viewScope, setViewScope] = useState('semana'); // 'semana' (7 días) | 'quincena' (14 días) | 'mes' (30 días)
+    const [filterStatus, setFilterStatus] = useState('todos'); // 'todos' | 'defunciones' | 'activos' | 'prolongados'
     const [zoomLevel, setZoomLevel] = useState('normal'); // 'compact' (38px), 'normal' (56px), 'detailed' (90px)
     const [hoveredPatient, setHoveredPatient] = useState(null);
     const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
@@ -134,12 +136,54 @@ export default function UciGanttChart({
         }
     };
 
+    const handleSetViewScope = (scope) => {
+        setViewScope(scope);
+        const start = new Date(startDateStr + 'T00:00:00');
+        let daysToAdd = 6;
+        if (scope === 'quincena') daysToAdd = 13;
+        else if (scope === 'mes') {
+            const y = start.getFullYear();
+            const m = start.getMonth();
+            const lastDay = new Date(y, m + 1, 0).getDate();
+            daysToAdd = Math.max(0, lastDay - start.getDate());
+        }
+        const end = new Date(start);
+        end.setDate(end.getDate() + daysToAdd);
+        const newTo = end.toISOString().split('T')[0];
+        setLocalEndDate(newTo);
+        if (onCustomDateChange) {
+            onCustomDateChange(startDateStr, newTo);
+        }
+    };
+
+    const handleShiftDates = (direction) => {
+        const start = new Date(startDateStr + 'T00:00:00');
+        const end = new Date(endDateStr + 'T00:00:00');
+        const spanDays = Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)));
+        const shiftDays = (viewScope === 'semana' ? 7 : viewScope === 'quincena' ? 14 : spanDays) * (direction === 'next' ? 1 : -1);
+
+        start.setDate(start.getDate() + shiftDays);
+        end.setDate(end.getDate() + shiftDays);
+
+        const newFrom = start.toISOString().split('T')[0];
+        const newTo = end.toISOString().split('T')[0];
+        setLocalStartDate(newFrom);
+        setLocalEndDate(newTo);
+        setLocalPresetMode('personalizado');
+        if (onCustomDateChange) {
+            onCustomDateChange(newFrom, newTo);
+        }
+    };
+
     const scrollContainerRef = useRef(null);
 
-    // Dimensiones según zoom
-    const dayWidth = zoomLevel === 'compact' ? 36 : zoomLevel === 'detailed' ? 95 : 56;
-    const rowHeight = 52;
-    const leftColWidth = 190;
+    // Dimensiones según alcance de vista y zoom
+    const isWeekView = viewScope === 'semana';
+    const isFortnightView = viewScope === 'quincena';
+
+    const dayWidth = isWeekView ? 165 : isFortnightView ? 100 : (zoomLevel === 'compact' ? 38 : zoomLevel === 'detailed' ? 95 : 56);
+    const rowHeight = isWeekView ? 64 : 52;
+    const leftColWidth = 195;
 
     // Generar array de días en el rango con protección estricta de RAM (máximo 45 días continuos)
     const { days, isRangeClamped } = useMemo(() => {
@@ -166,7 +210,9 @@ export default function UciGanttChart({
 
             const dateStr = curr.toISOString().split('T')[0];
             const dayNum = curr.getDate();
-            const dayOfWeek = curr.toLocaleDateString('es-AR', { weekday: 'narrow' }).toUpperCase();
+            const dayOfWeek = (isWeekView || isFortnightView || count < 15)
+                ? curr.toLocaleDateString('es-AR', { weekday: 'short' }).toUpperCase()
+                : curr.toLocaleDateString('es-AR', { weekday: 'narrow' }).toUpperCase();
             const monthName = curr.toLocaleDateString('es-AR', { month: 'short' }).toUpperCase();
             const isWeekend = curr.getDay() === 0 || curr.getDay() === 6;
             const isToday = dateStr === new Date().toISOString().split('T')[0];
@@ -358,15 +404,28 @@ export default function UciGanttChart({
                     adm.id.toLowerCase().includes(searchTerm.toLowerCase().trim()) ||
                     adm.cliente.toLowerCase().includes(searchTerm.toLowerCase().trim());
 
+                const isCurrentActive = !adm.fechaAlta;
+                const isDefuncion = adm.isDefuncion !== undefined ? adm.isDefuncion : (adm.motivoAlta || '').toLowerCase().includes('defunci');
+
+                let matchesFilter = true;
+                if (filterStatus === 'defunciones') {
+                    matchesFilter = isDefuncion;
+                } else if (filterStatus === 'activos') {
+                    matchesFilter = isCurrentActive;
+                } else if (filterStatus === 'prolongados') {
+                    matchesFilter = totalDays >= 7;
+                }
+
                 byCama[adm.habitacion].push({
                     ...adm,
                     leftPx,
                     widthPx,
                     totalDays,
                     colorTheme,
-                    isCurrentActive: !adm.fechaAlta,
-                    isDefuncion: adm.isDefuncion !== undefined ? adm.isDefuncion : (adm.motivoAlta || '').toLowerCase().includes('defunci'),
-                    matchesSearch
+                    isCurrentActive,
+                    isDefuncion,
+                    matchesSearch,
+                    matchesFilter
                 });
             }
         });
@@ -394,13 +453,16 @@ export default function UciGanttChart({
         });
 
         return byCama;
-    }, [admissions, startDateStr, endDateStr, dayWidth, searchTerm]);
+    }, [admissions, startDateStr, endDateStr, dayWidth, searchTerm, filterStatus]);
 
     // Estadísticas del Gantt en la vista actual
     const stats = useMemo(() => {
         let camasOcupadasAhora = 0;
         let estanciaSum = 0;
         let countEstancia = 0;
+        let countDefunciones = 0;
+        let countActivos = 0;
+        let countProlongados = 0;
         const uniquePatients = new Set();
         const camasConPacientes = {};
 
@@ -410,10 +472,19 @@ export default function UciGanttChart({
 
             list.forEach(item => {
                 uniquePatients.add(item.idAdmision || item.id);
-                if (item.isCurrentActive) camasOcupadasAhora++;
+                if (item.isCurrentActive) {
+                    camasOcupadasAhora++;
+                    countActivos++;
+                }
+                if (item.isDefuncion) {
+                    countDefunciones++;
+                }
                 if (item.totalDays) {
                     estanciaSum += item.totalDays;
                     countEstancia++;
+                    if (item.totalDays >= 7) {
+                        countProlongados++;
+                    }
                 }
             });
         });
@@ -437,7 +508,10 @@ export default function UciGanttChart({
             camasOcupadasAhora: Math.min(visibleCamas.length, camasOcupadasAhora),
             alosVista,
             maxCama,
-            maxCount
+            maxCount,
+            countDefunciones,
+            countActivos,
+            countProlongados
         };
     }, [visibleCamas, admissionsByCama]);
 
@@ -446,22 +520,6 @@ export default function UciGanttChart({
         if (!scrollContainerRef.current) return;
         const offset = direction === 'left' ? -350 : 350;
         scrollContainerRef.current.scrollBy({ left: offset, behavior: 'smooth' });
-    };
-
-    // Navegación rápida por días/semanas
-    const handleShiftDates = (daysDelta) => {
-        const s = new Date(startDateStr + 'T00:00:00');
-        const e = new Date(endDateStr + 'T00:00:00');
-        s.setDate(s.getDate() + daysDelta);
-        e.setDate(e.getDate() + daysDelta);
-        const newFrom = s.toISOString().split('T')[0];
-        const newTo = e.toISOString().split('T')[0];
-        setLocalStartDate(newFrom);
-        setLocalEndDate(newTo);
-        setLocalPresetMode('personalizado');
-        if (onCustomDateChange) {
-            onCustomDateChange(newFrom, newTo);
-        }
     };
 
     // Auto-scroll inicial a mitad de mes o a "hoy"
@@ -605,6 +663,101 @@ export default function UciGanttChart({
                 {/* Controles de Navegación Temporal y Desplazamiento */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     
+                    {/* Selector de Alcance (Semana 7d | Quincena 14d | Mes Completo) */}
+                    <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        background: '#EEF2FF',
+                        padding: '2px',
+                        borderRadius: '8px',
+                        border: '1px solid #C7D2FE',
+                        gap: '2px'
+                    }}>
+                        {[
+                            { id: 'semana', label: '📅 Semana (7d)' },
+                            { id: 'quincena', label: 'Quincena (14d)' },
+                            { id: 'mes', label: 'Mes Completo' }
+                        ].map(scope => (
+                            <button
+                                key={scope.id}
+                                type="button"
+                                onClick={() => handleSetViewScope(scope.id)}
+                                style={{
+                                    background: viewScope === scope.id ? '#1E40AF' : 'transparent',
+                                    color: viewScope === scope.id ? '#FFFFFF' : '#3730A3',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '4px 10px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: viewScope === scope.id ? 800 : 600,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: viewScope === scope.id ? '0 1px 3px rgba(30, 64, 175, 0.25)' : 'none'
+                                }}
+                                title={`Ver horizonte de ${scope.label}`}
+                            >
+                                {scope.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Navegación Rápida de Período (Sem. Anterior / Siguiente) */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        background: '#EFF6FF',
+                        border: '1px solid #BFDBFE',
+                        borderRadius: '8px',
+                        padding: '2px 4px',
+                        gap: '3px'
+                    }}>
+                        <button
+                            type="button"
+                            onClick={() => handleShiftDates('prev')}
+                            style={{
+                                background: '#FFFFFF',
+                                border: '1px solid #CBD5E1',
+                                borderRadius: '5px',
+                                padding: '3px 7px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                cursor: 'pointer',
+                                color: '#1E40AF',
+                                fontSize: '0.7rem',
+                                fontWeight: 700
+                            }}
+                            title={`Retroceder ${viewScope === 'semana' ? '1 semana' : viewScope === 'quincena' ? '1 quincena' : '1 período'}`}
+                        >
+                            <ChevronLeft size={14} />
+                            {viewScope === 'semana' ? 'Sem. Ant.' : 'Ant.'}
+                        </button>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#1E40AF', padding: '0 5px', whiteSpace: 'nowrap' }}>
+                            {startDateStr.split('-').reverse().slice(0, 2).join('/')} — {endDateStr.split('-').reverse().slice(0, 2).join('/')}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => handleShiftDates('next')}
+                            style={{
+                                background: '#FFFFFF',
+                                border: '1px solid #CBD5E1',
+                                borderRadius: '5px',
+                                padding: '3px 7px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                cursor: 'pointer',
+                                color: '#1E40AF',
+                                fontSize: '0.7rem',
+                                fontWeight: 700
+                            }}
+                            title={`Avanzar ${viewScope === 'semana' ? '1 semana' : viewScope === 'quincena' ? '1 quincena' : '1 período'}`}
+                        >
+                            {viewScope === 'semana' ? 'Sem. Sig.' : 'Sig.'}
+                            <ChevronRight size={14} />
+                        </button>
+                    </div>
+
                     {/* Botones de Desplazamiento Horizontal (Izquierda / Derecha) */}
                     <div style={{
                         display: 'flex',
@@ -927,19 +1080,90 @@ export default function UciGanttChart({
                     </span>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <div style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#10B981' }} />
-                        <span style={{ fontSize: '0.7rem' }}>Internado Activo</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <div style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#3B82F6' }} />
-                        <span style={{ fontSize: '0.7rem' }}>Alta Médica</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <div style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#EF4444' }} />
-                        <span style={{ fontSize: '0.7rem' }}>Defunción</span>
-                    </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B', marginRight: '2px' }}>Filtro rápido:</span>
+                    <button
+                        type="button"
+                        onClick={() => setFilterStatus('todos')}
+                        style={{
+                            background: filterStatus === 'todos' ? '#1E40AF' : '#FFFFFF',
+                            color: filterStatus === 'todos' ? '#FFFFFF' : '#475569',
+                            border: filterStatus === 'todos' ? '1px solid #1E40AF' : '1px solid #CBD5E1',
+                            borderRadius: '6px',
+                            padding: '2px 8px',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        Todos ({stats.totalEnVista})
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setFilterStatus(prev => prev === 'defunciones' ? 'todos' : 'defunciones')}
+                        style={{
+                            background: filterStatus === 'defunciones' ? '#DC2626' : '#FEF2F2',
+                            color: filterStatus === 'defunciones' ? '#FFFFFF' : '#991B1B',
+                            border: '1px solid #F87171',
+                            borderRadius: '6px',
+                            padding: '2px 8px',
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'all 0.15s ease'
+                        }}
+                        title="Resaltar defunciones y atenuar el resto"
+                    >
+                        <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: filterStatus === 'defunciones' ? '#FFFFFF' : '#DC2626' }} />
+                        Defunciones ({stats.countDefunciones || 0})
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setFilterStatus(prev => prev === 'activos' ? 'todos' : 'activos')}
+                        style={{
+                            background: filterStatus === 'activos' ? '#059669' : '#ECFDF5',
+                            color: filterStatus === 'activos' ? '#FFFFFF' : '#065F46',
+                            border: '1px solid #6EE7B7',
+                            borderRadius: '6px',
+                            padding: '2px 8px',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'all 0.15s ease'
+                        }}
+                        title="Resaltar pacientes actualmente internados"
+                    >
+                        <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: filterStatus === 'activos' ? '#FFFFFF' : '#10B981' }} />
+                        Activos ({stats.countActivos || 0})
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setFilterStatus(prev => prev === 'prolongados' ? 'todos' : 'prolongados')}
+                        style={{
+                            background: filterStatus === 'prolongados' ? '#D97706' : '#FFFBEB',
+                            color: filterStatus === 'prolongados' ? '#FFFFFF' : '#92400E',
+                            border: '1px solid #FCD34D',
+                            borderRadius: '6px',
+                            padding: '2px 8px',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'all 0.15s ease'
+                        }}
+                        title="Resaltar internaciones prolongadas mayores a 7 días"
+                    >
+                        ⏳ &gt; 7 Días ({stats.countProlongados || 0})
+                    </button>
                 </div>
             </div>
 
@@ -1171,7 +1395,9 @@ export default function UciGanttChart({
                                         {/* Barras de Internación */}
                                         {list.map(adm => {
                                             const isSelected = selectedPatient?.key ? selectedPatient.key === adm.key : selectedPatient?.id === adm.id;
-                                            const opacity = adm.matchesSearch ? 1 : 0.25;
+                                            const matches = adm.matchesSearch && (adm.matchesFilter !== false);
+                                            const opacity = matches ? 1 : 0.18;
+                                            const showTwoLines = isWeekView && adm.widthPx >= 85;
 
                                             return (
                                                 <div
@@ -1187,8 +1413,8 @@ export default function UciGanttChart({
                                                         position: 'absolute',
                                                         left: `${adm.leftPx}px`,
                                                         width: `${adm.widthPx}px`,
-                                                        top: '8px',
-                                                        height: '36px',
+                                                        top: isWeekView ? '8px' : '8px',
+                                                        height: isWeekView ? '48px' : '36px',
                                                         background: adm.isDefuncion
                                                             ? 'linear-gradient(135deg, #DC2626, #EF4444)'
                                                             : adm.isCurrentActive
@@ -1200,7 +1426,7 @@ export default function UciGanttChart({
                                                             ? '0 0 0 3px rgba(251, 191, 36, 0.5), 0 4px 10px rgba(0,0,0,0.15)' 
                                                             : '0 2px 4px rgba(0,0,0,0.06)',
                                                         color: '#FFFFFF',
-                                                        padding: '0 8px',
+                                                        padding: isWeekView ? '4px 8px' : '0 8px',
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         justifyContent: 'space-between',
@@ -1213,48 +1439,125 @@ export default function UciGanttChart({
                                                         transform: isSelected ? 'scale(1.02)' : 'none'
                                                     }}
                                                 >
-                                                    {/* Nombre del paciente y detalles */}
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
-                                                        {adm.isCurrentActive && (
-                                                            <div 
-                                                                title="Internado Actualmente"
-                                                                style={{
-                                                                    width: '7px',
-                                                                    height: '7px',
-                                                                    borderRadius: '50%',
-                                                                    background: '#FFFFFF',
-                                                                    boxShadow: '0 0 6px rgba(255,255,255,0.8)',
-                                                                    flexShrink: 0
-                                                                }} 
-                                                            />
-                                                        )}
-                                                        <span style={{
-                                                            fontSize: '0.72rem',
-                                                            fontWeight: 700,
-                                                            overflow: 'hidden',
-                                                            textOverflow: 'ellipsis',
-                                                            letterSpacing: '0.2px'
-                                                        }}>
-                                                            {adm.paciente}
-                                                        </span>
-                                                        <span style={{ fontSize: '0.65rem', opacity: 0.85, fontWeight: 500 }}>
-                                                            • {adm.cliente}
-                                                        </span>
-                                                    </div>
+                                                    {showTwoLines ? (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', width: '100%', minWidth: 0, gap: '2px', overflow: 'hidden' }}>
+                                                            {/* Fila 1: Paciente y Badge Estado / Días */}
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '6px' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0, overflow: 'hidden' }}>
+                                                                    {adm.isCurrentActive && (
+                                                                        <div 
+                                                                            title="Internado Actualmente"
+                                                                            style={{
+                                                                                width: '7px',
+                                                                                height: '7px',
+                                                                                borderRadius: '50%',
+                                                                                background: '#FFFFFF',
+                                                                                boxShadow: '0 0 6px rgba(255,255,255,0.8)',
+                                                                                flexShrink: 0
+                                                                            }} 
+                                                                        />
+                                                                    )}
+                                                                    <span style={{
+                                                                        fontSize: '0.75rem',
+                                                                        fontWeight: 800,
+                                                                        overflow: 'hidden',
+                                                                        textOverflow: 'ellipsis',
+                                                                        letterSpacing: '0.2px'
+                                                                    }}>
+                                                                        {adm.paciente}
+                                                                    </span>
+                                                                </div>
 
-                                                    {/* Badge de Estancia */}
-                                                    {adm.widthPx > 90 && (
-                                                        <span style={{
-                                                            fontSize: '0.64rem',
-                                                            fontWeight: 800,
-                                                            background: 'rgba(255, 255, 255, 0.25)',
-                                                            padding: '1px 6px',
-                                                            borderRadius: '10px',
-                                                            marginLeft: '6px',
-                                                            flexShrink: 0
-                                                        }}>
-                                                            {adm.totalDays}d
-                                                        </span>
+                                                                {adm.isDefuncion ? (
+                                                                    <span style={{
+                                                                        fontSize: '0.62rem',
+                                                                        fontWeight: 900,
+                                                                        background: '#991B1B',
+                                                                        color: '#FEE2E2',
+                                                                        padding: '1px 5px',
+                                                                        borderRadius: '4px',
+                                                                        letterSpacing: '0.5px',
+                                                                        flexShrink: 0
+                                                                    }}>
+                                                                        ÓBITO
+                                                                    </span>
+                                                                ) : (
+                                                                    <span style={{
+                                                                        fontSize: '0.64rem',
+                                                                        fontWeight: 800,
+                                                                        background: 'rgba(255, 255, 255, 0.25)',
+                                                                        padding: '1px 6px',
+                                                                        borderRadius: '10px',
+                                                                        flexShrink: 0
+                                                                    }}>
+                                                                        {adm.totalDays}d
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Fila 2: Cobertura / Traslado / Procedencia */}
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.64rem', opacity: 0.92, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                    {adm.cliente}
+                                                                </span>
+                                                                {adm.isTraslado && (
+                                                                    <span style={{ background: 'rgba(0,0,0,0.18)', padding: '0 4px', borderRadius: '3px', flexShrink: 0 }}>
+                                                                        ⇄ {adm.motivoAlta}
+                                                                    </span>
+                                                                )}
+                                                                {!adm.isTraslado && adm.procedencia && (
+                                                                    <span style={{ opacity: 0.8, flexShrink: 0 }}>
+                                                                        ({adm.procedencia})
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            {/* Nombre del paciente y detalles en 1 sola línea */}
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
+                                                                {adm.isCurrentActive && (
+                                                                    <div 
+                                                                        title="Internado Actualmente"
+                                                                        style={{
+                                                                            width: '7px',
+                                                                            height: '7px',
+                                                                            borderRadius: '50%',
+                                                                            background: '#FFFFFF',
+                                                                            boxShadow: '0 0 6px rgba(255,255,255,0.8)',
+                                                                            flexShrink: 0
+                                                                        }} 
+                                                                    />
+                                                                )}
+                                                                <span style={{
+                                                                    fontSize: '0.72rem',
+                                                                    fontWeight: 700,
+                                                                    overflow: 'hidden',
+                                                                    textOverflow: 'ellipsis',
+                                                                    letterSpacing: '0.2px'
+                                                                }}>
+                                                                    {adm.paciente}
+                                                                </span>
+                                                                <span style={{ fontSize: '0.65rem', opacity: 0.85, fontWeight: 500 }}>
+                                                                    • {adm.cliente}
+                                                                </span>
+                                                            </div>
+
+                                                            {/* Badge de Estancia o Defunción */}
+                                                            {adm.widthPx > 90 && (
+                                                                <span style={{
+                                                                    fontSize: '0.64rem',
+                                                                    fontWeight: 800,
+                                                                    background: adm.isDefuncion ? '#991B1B' : 'rgba(255, 255, 255, 0.25)',
+                                                                    padding: '1px 6px',
+                                                                    borderRadius: '10px',
+                                                                    marginLeft: '6px',
+                                                                    flexShrink: 0
+                                                                }}>
+                                                                    {adm.isDefuncion ? 'ÓBITO' : `${adm.totalDays}d`}
+                                                                </span>
+                                                            )}
+                                                        </>
                                                     )}
                                                 </div>
                                             );
