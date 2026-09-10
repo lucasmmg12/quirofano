@@ -191,7 +191,8 @@ export default function UciGanttChart({
     const admissions = useMemo(() => {
         // Prioridad 1: Historial canónico de traslados físicos de camas (tramos exactos)
         if (historialCamas && historialCamas.length > 0) {
-            const list = [];
+            // 1. Agrupar tramos válidos por número/id de admisión
+            const byAdmMap = new Map();
             historialCamas.forEach((r, idx) => {
                 const habNorm = normalizeCamaId(r.habitacion);
                 if (!habNorm) return;
@@ -203,27 +204,63 @@ export default function UciGanttChart({
                 }
 
                 const admId = r.numero_admision ? String(r.numero_admision).trim() : String(r.id_admision);
-                const uniqueKey = `${r.id_admision}_${habNorm}_${r.fecha_inicio || idx}`;
+                if (!byAdmMap.has(admId)) byAdmMap.set(admId, []);
+                byAdmMap.get(admId).push({ r, habNorm, idx });
+            });
 
-                list.push({
-                    key: uniqueKey,
-                    id: admId,
-                    idAdmision: r.id_admision,
-                    numero_admision: r.numero_admision || admId,
-                    nhc: r.nhc,
-                    paciente: r.paciente || 'PACIENTE SIN IDENTIFICAR',
-                    habitacion: habNorm,
-                    habitacionRaw: r.habitacion,
-                    camaSub: r.cama,
-                    fechaIngreso: r.fecha_inicio ? new Date(r.fecha_inicio) : null,
-                    fechaAlta: r.fecha_fin ? new Date(r.fecha_fin) : null,
-                    cliente: r.cliente || 'Particular',
-                    edad: r.edad,
-                    especialidad: r.especialidad || 'UCI',
-                    motivoAlta: r.motivo_de_alta || (r.fecha_fin ? 'Alta / Traslado' : 'Internado activo'),
-                    motivo_de_alta: r.motivo_de_alta,
-                    procedencia: r.procedencia,
-                    servicio: r.servicio || 'UCI'
+            const list = [];
+            byAdmMap.forEach((tramos, admId) => {
+                // Ordenar cronológicamente por fecha_inicio
+                tramos.sort((a, b) => new Date(a.r.fecha_inicio || 0) - new Date(b.r.fecha_inicio || 0));
+
+                tramos.forEach((item, i) => {
+                    const { r, habNorm, idx } = item;
+                    const isLast = (i === tramos.length - 1);
+                    const nextTramo = !isLast ? tramos[i + 1] : null;
+
+                    const uniqueKey = `${r.id_admision}_${habNorm}_${r.fecha_inicio || idx}`;
+                    const isDefuncionAdm = (r.motivo_de_alta || '').toLowerCase().includes('defunc');
+
+                    // Regla de Auditoría Clínica:
+                    // Los tramos intermedios fueron pases de cama ("Traslado a [Siguiente Cama]").
+                    // El evento de Defunción como motivo de egreso SOLO se produce en la última cama del paciente.
+                    let motivoTramo = 'Internado activo';
+                    let isDefuncionTramo = false;
+
+                    if (isLast) {
+                        if (isDefuncionAdm) {
+                            motivoTramo = 'Defunción';
+                            isDefuncionTramo = true;
+                        } else if (r.fecha_fin) {
+                            motivoTramo = r.motivo_de_alta || 'Alta médica';
+                        }
+                    } else {
+                        motivoTramo = nextTramo ? `Traslado a ${nextTramo.habNorm}` : 'Traslado de cama';
+                        isDefuncionTramo = false;
+                    }
+
+                    list.push({
+                        key: uniqueKey,
+                        id: admId,
+                        idAdmision: r.id_admision,
+                        numero_admision: r.numero_admision || admId,
+                        nhc: r.nhc,
+                        paciente: r.paciente || 'PACIENTE SIN IDENTIFICAR',
+                        habitacion: habNorm,
+                        habitacionRaw: r.habitacion,
+                        camaSub: r.cama,
+                        fechaIngreso: r.fecha_inicio ? new Date(r.fecha_inicio) : null,
+                        fechaAlta: r.fecha_fin ? new Date(r.fecha_fin) : null,
+                        cliente: r.cliente || 'Particular',
+                        edad: r.edad,
+                        especialidad: r.especialidad || 'UCI',
+                        motivoAlta: motivoTramo,
+                        motivo_de_alta: r.motivo_de_alta,
+                        isDefuncion: isDefuncionTramo,
+                        isTraslado: !isLast,
+                        procedencia: r.procedencia,
+                        servicio: r.servicio || 'UCI'
+                    });
                 });
             });
             return list;
@@ -328,7 +365,7 @@ export default function UciGanttChart({
                     totalDays,
                     colorTheme,
                     isCurrentActive: !adm.fechaAlta,
-                    isDefuncion: (adm.motivoAlta || '').toLowerCase().includes('defunci'),
+                    isDefuncion: adm.isDefuncion !== undefined ? adm.isDefuncion : (adm.motivoAlta || '').toLowerCase().includes('defunci'),
                     matchesSearch
                 });
             }
