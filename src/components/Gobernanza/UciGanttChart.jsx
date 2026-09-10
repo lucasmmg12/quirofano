@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
     Calendar, ChevronLeft, ChevronRight, Search, Download, 
     Maximize2, Minimize2, Users, Bed, Clock, Filter, AlertCircle,
-    Activity, ArrowLeftRight
+    Activity, ArrowLeftRight, ShieldAlert, Stethoscope
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -81,6 +81,7 @@ export default function UciGanttChart({
     datePresetMode = 'este_mes',
     onDatePresetChange = null,
     onCustomDateChange = null,
+    onOpenMortalidadAudit = null,
     onClose = null 
 }) {
     // === ESTADOS ===
@@ -208,6 +209,8 @@ export default function UciGanttChart({
                     key: uniqueKey,
                     id: admId,
                     idAdmision: r.id_admision,
+                    numero_admision: r.numero_admision || admId,
+                    nhc: r.nhc,
                     paciente: r.paciente || 'PACIENTE SIN IDENTIFICAR',
                     habitacion: habNorm,
                     habitacionRaw: r.habitacion,
@@ -218,6 +221,8 @@ export default function UciGanttChart({
                     edad: r.edad,
                     especialidad: r.especialidad || 'UCI',
                     motivoAlta: r.motivo_de_alta || (r.fecha_fin ? 'Alta / Traslado' : 'Internado activo'),
+                    motivo_de_alta: r.motivo_de_alta,
+                    procedencia: r.procedencia,
                     servicio: r.servicio || 'UCI'
                 });
             });
@@ -240,6 +245,8 @@ export default function UciGanttChart({
                     key: String(id),
                     id: r.numero_admision || String(r.id_admision),
                     idAdmision: r.id_admision,
+                    numero_admision: r.numero_admision || String(r.id_admision),
+                    nhc: r.nhc,
                     paciente: r.paciente || 'PACIENTE SIN IDENTIFICAR',
                     habitacion: habNorm,
                     habitacionRaw: r.habitacion,
@@ -250,6 +257,8 @@ export default function UciGanttChart({
                     edad: r.edad,
                     especialidad: r.especialidad || 'UCI',
                     motivoAlta: r.motivo_de_alta || (r.fecha_alta ? 'Alta' : 'Internado activo'),
+                    motivo_de_alta: r.motivo_de_alta,
+                    procedencia: r.procedencia,
                     servicio: r.servicio || 'UCI'
                 });
             }
@@ -1345,13 +1354,78 @@ export default function UciGanttChart({
                                     <span style={{ fontSize: '0.68rem', color: '#64748B', display: 'block' }}>Estancia en esta Cama</span>
                                     <strong style={{ color: '#2563EB', fontSize: '0.95rem' }}>{selectedPatient.totalDays} días</strong>
                                 </div>
-                                <div style={{ background: '#F8FAFC', padding: '8px 12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                    <span style={{ fontSize: '0.68rem', color: '#64748B', display: 'block' }}>Motivo / Estado</span>
-                                    <strong style={{ color: selectedPatient.isDefuncion ? '#EF4444' : '#0F172A' }}>
+                                <div 
+                                    onClick={() => {
+                                        if (selectedPatient.isDefuncion && onOpenMortalidadAudit) {
+                                            onOpenMortalidadAudit(selectedPatient);
+                                            setSelectedPatient(null);
+                                        }
+                                    }}
+                                    style={{ 
+                                        background: selectedPatient.isDefuncion ? '#FEF2F2' : '#F8FAFC', 
+                                        padding: '8px 12px', borderRadius: '8px', 
+                                        border: selectedPatient.isDefuncion ? '1.5px solid #F87171' : '1px solid #E2E8F0',
+                                        cursor: selectedPatient.isDefuncion ? 'pointer' : 'default',
+                                        transition: 'all 0.15s'
+                                    }}
+                                    title={selectedPatient.isDefuncion ? "Haga clic aquí para auditar la defunción de este paciente" : ""}
+                                >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '0.68rem', color: selectedPatient.isDefuncion ? '#991B1B' : '#64748B', display: 'block', fontWeight: selectedPatient.isDefuncion ? 700 : 400 }}>
+                                            Motivo / Estado
+                                        </span>
+                                        {selectedPatient.isDefuncion && (
+                                            <span style={{ fontSize: '0.62rem', background: '#DC2626', color: '#FFF', padding: '1px 5px', borderRadius: '4px', fontWeight: 800 }}>
+                                                AUDITAR 🔍
+                                            </span>
+                                        )}
+                                    </div>
+                                    <strong style={{ color: selectedPatient.isDefuncion ? '#DC2626' : '#0F172A', display: 'block', marginTop: '2px', fontSize: '0.9rem' }}>
                                         {selectedPatient.motivoAlta}
                                     </strong>
                                 </div>
                             </div>
+
+                            {/* Banner de Defunción si el paciente falleció */}
+                            {selectedPatient.isDefuncion && (
+                                <div style={{
+                                    background: '#FEF2F2',
+                                    border: '1px solid #FCA5A5',
+                                    borderRadius: '8px',
+                                    padding: '10px 12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    marginTop: '4px'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <div style={{ background: '#FEE2E2', padding: '6px', borderRadius: '6px', color: '#DC2626' }}>
+                                            <ShieldAlert size={18} />
+                                        </div>
+                                        <div>
+                                            <strong style={{ color: '#991B1B', fontSize: '0.78rem', display: 'block' }}>Óbito en UCI / Terapia</strong>
+                                            <span style={{ color: '#7F1D1D', fontSize: '0.7rem' }}>Trazabilidad clínica, diagnósticos y estudios</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            if (onOpenMortalidadAudit) {
+                                                onOpenMortalidadAudit(selectedPatient);
+                                                setSelectedPatient(null);
+                                            }
+                                        }}
+                                        style={{
+                                            background: '#DC2626', color: '#FFFFFF', border: 'none',
+                                            padding: '6px 12px', borderRadius: '6px', fontSize: '0.74rem',
+                                            fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                                            boxShadow: '0 2px 4px rgba(220, 38, 38, 0.25)'
+                                        }}
+                                    >
+                                        <Stethoscope size={13} />
+                                        Auditar Caso →
+                                    </button>
+                                </div>
+                            )}
 
                             {/* Cronología de Traslados si tuvo más de una cama */}
                             {(() => {
@@ -1418,13 +1492,40 @@ export default function UciGanttChart({
                             })()}
                         </div>
 
-                        <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+                        <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            {selectedPatient.isDefuncion ? (
+                                <button
+                                    onClick={() => {
+                                        if (onOpenMortalidadAudit) {
+                                            onOpenMortalidadAudit(selectedPatient);
+                                            setSelectedPatient(null);
+                                        }
+                                    }}
+                                    style={{
+                                        background: '#DC2626',
+                                        color: '#FFFFFF',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '7px 14px',
+                                        fontSize: '0.78rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        boxShadow: '0 2px 4px rgba(220, 38, 38, 0.25)'
+                                    }}
+                                >
+                                    <ShieldAlert size={15} />
+                                    Auditar Defunción →
+                                </button>
+                            ) : <div />}
                             <button
                                 onClick={() => setSelectedPatient(null)}
                                 style={{
-                                    background: '#2563EB',
-                                    color: '#FFFFFF',
-                                    border: 'none',
+                                    background: '#F1F5F9',
+                                    color: '#334155',
+                                    border: '1px solid #CBD5E1',
                                     borderRadius: '6px',
                                     padding: '7px 16px',
                                     fontSize: '0.8rem',

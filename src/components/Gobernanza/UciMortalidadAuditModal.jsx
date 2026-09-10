@@ -15,7 +15,8 @@ export default function UciMortalidadAuditModal({
     rawData = [], 
     totalAdmisionesCount = 0,
     sectorLabel = 'Cuidados Críticos (UCI)',
-    dateFilter = {} 
+    dateFilter = {},
+    targetPatient = null 
 }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStay, setFilterStay] = useState('all'); // 'all', 'under_24h', 'under_48h', 'over_48h', 'urgencias'
@@ -27,12 +28,23 @@ export default function UciMortalidadAuditModal({
     const [diagnosticosMap, setDiagnosticosMap] = useState({});
     const [peticionesMap, setPeticionesMap] = useState({});
 
+    // Sincronizar foco en targetPatient si se abrió desde el Gantt
+    useEffect(() => {
+        if (targetPatient && isOpen) {
+            if (targetPatient.nhc) {
+                setExpandedNhc(String(targetPatient.nhc).trim());
+            }
+            if (targetPatient.paciente) {
+                setSearchTerm(targetPatient.paciente);
+            }
+            setFilterStay('all');
+        }
+    }, [targetPatient, isOpen]);
+
     // 1. Filtrar y deduplicar admisiones con motivo de egreso Defunción
     const defunciones = useMemo(() => {
-        if (!rawData || rawData.length === 0) return [];
-
         const defMap = new Map();
-        rawData.forEach(r => {
+        (rawData || []).forEach(r => {
             const motivo = (r.motivo_de_alta || '').toLowerCase();
             if (motivo.includes('defunc') || motivo.includes('fallec') || motivo.includes('óbito') || motivo.includes('obito')) {
                 const key = r.numero_admision || r.id_admision || `${r.nhc}_${r.fecha_ingreso}`;
@@ -90,13 +102,72 @@ export default function UciMortalidadAuditModal({
             }
         });
 
+        // Asegurar que si viene targetPatient desde el Gantt, esté presente en el mapa
+        if (targetPatient) {
+            const tKey = targetPatient.numero_admision || targetPatient.id || `${targetPatient.nhc}_${targetPatient.fechaIngreso}`;
+            if (!defMap.has(tKey)) {
+                let horasEstancia = null;
+                let diasEstancia = targetPatient.totalDays || 1;
+                const dIng = targetPatient.fechaIngreso ? new Date(targetPatient.fechaIngreso) : null;
+                const dAlt = targetPatient.fechaAlta ? new Date(targetPatient.fechaAlta) : null;
+                if (dIng && dAlt) {
+                    const diffMs = Math.max(0, dAlt - dIng);
+                    horasEstancia = Math.round(diffMs / (1000 * 60 * 60));
+                    diasEstancia = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+                }
+
+                let clasificacion = 'evolutiva';
+                let clasifLabel = 'Evolutiva (> 48 hs)';
+                let clasifColor = '#2563EB';
+                let clasifBg = '#EFF6FF';
+                if (horasEstancia !== null && horasEstancia < 24) {
+                    clasificacion = 'ultra_precoz';
+                    clasifLabel = '< 24 hs (Cuadro Agónico / Reanimación)';
+                    clasifColor = '#DC2626';
+                    clasifBg = '#FEF2F2';
+                } else if (horasEstancia !== null && horasEstancia <= 48) {
+                    clasificacion = 'precoz';
+                    clasifLabel = '24 - 48 hs (Ingreso Crítico Inicial)';
+                    clasifColor = '#D97706';
+                    clasifBg = '#FFFBEB';
+                } else if (diasEstancia > 7) {
+                    clasificacion = 'prolongada';
+                    clasifLabel = '> 7 días (Estancia Prolongada)';
+                    clasifColor = '#475569';
+                    clasifBg = '#F1F5F9';
+                }
+
+                defMap.set(tKey, {
+                    numero_admision: targetPatient.numero_admision || targetPatient.id,
+                    id_admision: targetPatient.idAdmision,
+                    nhc: targetPatient.nhc,
+                    paciente: targetPatient.paciente,
+                    edad: targetPatient.edad,
+                    procedencia: targetPatient.procedencia || 'Derivado desde Urgencias',
+                    fecha_ingreso: targetPatient.fechaIngreso ? targetPatient.fechaIngreso.toISOString() : null,
+                    fecha_alta: targetPatient.fechaAlta ? targetPatient.fechaAlta.toISOString() : null,
+                    cliente: targetPatient.cliente,
+                    especialidad: targetPatient.especialidad || 'UCI',
+                    habitacion: targetPatient.habitacion,
+                    motivo_de_alta: targetPatient.motivoAlta || targetPatient.motivo_de_alta || 'Defunción',
+                    horasEstancia,
+                    diasEstancia,
+                    clasificacion,
+                    clasifLabel,
+                    clasifColor,
+                    clasifBg,
+                    esUrgencias: (targetPatient.procedencia || '').toLowerCase().includes('urgencia') || (targetPatient.procedencia || '').toLowerCase().includes('guardia')
+                });
+            }
+        }
+
         // Ordenar por fecha de alta (defunción) descendente
         return Array.from(defMap.values()).sort((a, b) => {
             const dateA = new Date(a.fecha_alta || a.fecha_ingreso || 0);
             const dateB = new Date(b.fecha_alta || b.fecha_ingreso || 0);
             return dateB - dateA;
         });
-    }, [rawData]);
+    }, [rawData, targetPatient]);
 
     // 2. Cargar Diagnósticos y Peticiones asociadas a los pacientes fallecidos
     useEffect(() => {

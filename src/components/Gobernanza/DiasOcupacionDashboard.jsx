@@ -166,6 +166,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const [isCatalogoOpen, setIsCatalogoOpen] = useState(false);
     const [inspectDataIndicator, setInspectDataIndicator] = useState(null);
     const [isMortalidadAuditOpen, setIsMortalidadAuditOpen] = useState(false);
+    const [mortalidadAuditTargetPatient, setMortalidadAuditTargetPatient] = useState(null);
 
     // === ESTADOS DE REORDENAMIENTO Y REDIMENSIONAMIENTO DE GRÁFICOS ===
     const [chartOrder, setChartOrder] = useState(() => {
@@ -2737,6 +2738,10 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     setFechaHasta(h);
                                     setDatePresetMode('personalizado');
                                 }}
+                                onOpenMortalidadAudit={(patient) => {
+                                    setMortalidadAuditTargetPatient(patient);
+                                    setIsMortalidadAuditOpen(true);
+                                }}
                                 onClose={() => setViewMode('dashboard')}
                             />
                         </div>
@@ -3082,7 +3087,11 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             {/* ─── MODAL DE AUDITORÍA CLÍNICA DE MORTALIDAD UCI ─── */}
             <UciMortalidadAuditModal
                 isOpen={isMortalidadAuditOpen}
-                onClose={() => setIsMortalidadAuditOpen(false)}
+                onClose={() => {
+                    setIsMortalidadAuditOpen(false);
+                    setMortalidadAuditTargetPatient(null);
+                }}
+                targetPatient={mortalidadAuditTargetPatient}
                 rawData={filteredRows}
                 totalAdmisionesCount={metrics.totalAdmisiones}
                 sectorLabel={activeSectorConfig.label}
