@@ -314,6 +314,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     // Estados de Datos de Ocupación
     const [loading, setLoading] = useState(true);
     const [rows, setRows] = useState([]);
+    const [camasHistorialRows, setCamasHistorialRows] = useState([]);
     const [especialidadesDisponibles, setEspecialidadesDisponibles] = useState([]);
 
     // Estados de Datos de Peticiones y Estudios Clínicos (VLISE)
@@ -505,6 +506,22 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 setPeticionesEstudios(allPeticiones);
             } catch (errPet) {
                 console.warn('Advertencia cargando estudios clínicos:', errPet);
+            }
+
+            // 4. Cargar Historial Granular de Camas y Traslados de UCI
+            try {
+                const { data: histData, error: histErr } = await supabase
+                    .from('calidad_admisiones_camas_historial')
+                    .select('*')
+                    .or(`fecha_fin.gte.${fechaDesde}T00:00:00,fecha_fin.is.null`)
+                    .lte('fecha_inicio', `${fechaHasta}T23:59:59`)
+                    .order('fecha_inicio', { ascending: true });
+
+                if (!histErr && histData) {
+                    setCamasHistorialRows(histData);
+                }
+            } catch (errHist) {
+                console.warn('Advertencia cargando historial de camas:', errHist);
             }
 
         } catch (err) {
@@ -2707,6 +2724,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                             <UciGanttChart 
                                 rawData={rows}
+                                historialCamas={camasHistorialRows}
                                 fechaDesde={fechaDesde}
                                 fechaHasta={fechaHasta}
                                 datePresetMode={datePresetMode}

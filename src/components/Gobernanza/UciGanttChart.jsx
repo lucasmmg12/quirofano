@@ -75,6 +75,7 @@ const getRangoMesAnterior = () => {
 
 export default function UciGanttChart({ 
     rawData = [], 
+    historialCamas = [],
     fechaDesde = null,
     fechaHasta = null,
     datePresetMode = 'este_mes',
@@ -185,8 +186,39 @@ export default function UciGanttChart({
         return { days: list, isRangeClamped: clamped };
     }, [startDateStr, endDateStr]);
 
-    // Agrupar admisiones únicas con su cama normalizada
+    // Agrupar admisiones/tramos con su cama normalizada
     const admissions = useMemo(() => {
+        // Prioridad 1: Historial canónico de traslados físicos de camas (tramos exactos)
+        if (historialCamas && historialCamas.length > 0) {
+            const list = [];
+            historialCamas.forEach((r, idx) => {
+                const habNorm = normalizeCamaId(r.habitacion);
+                if (!habNorm) return;
+
+                const admId = r.numero_admision ? String(r.numero_admision).trim() : String(r.id_admision);
+                const uniqueKey = `${r.id_admision}_${habNorm}_${r.fecha_inicio || idx}`;
+
+                list.push({
+                    key: uniqueKey,
+                    id: admId,
+                    idAdmision: r.id_admision,
+                    paciente: r.paciente || 'PACIENTE SIN IDENTIFICAR',
+                    habitacion: habNorm,
+                    habitacionRaw: r.habitacion,
+                    camaSub: r.cama,
+                    fechaIngreso: r.fecha_inicio ? new Date(r.fecha_inicio) : null,
+                    fechaAlta: r.fecha_fin ? new Date(r.fecha_fin) : null,
+                    cliente: r.cliente || 'Particular',
+                    edad: r.edad,
+                    especialidad: r.especialidad || 'UCI',
+                    motivoAlta: r.motivo_de_alta || (r.fecha_fin ? 'Alta / Traslado' : 'Internado activo'),
+                    servicio: r.servicio || 'UCI'
+                });
+            });
+            return list;
+        }
+
+        // Fallback: Datos agregados de rawData
         if (!rawData || rawData.length === 0) return [];
         const map = new Map();
 
@@ -195,16 +227,17 @@ export default function UciGanttChart({
             if (!id) return;
 
             const habNorm = normalizeCamaId(r.habitacion);
-            // Solo considerar si pertenece a UCI / Intermedia
             if (!habNorm) return;
 
             if (!map.has(id)) {
                 map.set(id, {
+                    key: String(id),
                     id: r.numero_admision || String(r.id_admision),
                     idAdmision: r.id_admision,
                     paciente: r.paciente || 'PACIENTE SIN IDENTIFICAR',
                     habitacion: habNorm,
                     habitacionRaw: r.habitacion,
+                    camaSub: null,
                     fechaIngreso: r.fecha_ingreso ? new Date(r.fecha_ingreso) : null,
                     fechaAlta: r.fecha_alta ? new Date(r.fecha_alta) : null,
                     cliente: r.cliente || 'Particular',
@@ -217,7 +250,7 @@ export default function UciGanttChart({
         });
 
         return Array.from(map.values());
-    }, [rawData]);
+    }, [historialCamas, rawData]);
 
     // Camas a mostrar según subnivel
     const visibleCamas = useMemo(() => {
@@ -291,19 +324,18 @@ export default function UciGanttChart({
 
     // Estadísticas del Gantt en la vista actual
     const stats = useMemo(() => {
-        let totalEnVista = 0;
         let camasOcupadasAhora = 0;
         let estanciaSum = 0;
         let countEstancia = 0;
-
+        const uniquePatients = new Set();
         const camasConPacientes = {};
 
         visibleCamas.forEach(c => {
             const list = admissionsByCama[c.id] || [];
-            totalEnVista += list.length;
             camasConPacientes[c.id] = list.length;
 
             list.forEach(item => {
+                uniquePatients.add(item.idAdmision || item.id);
                 if (item.isCurrentActive) camasOcupadasAhora++;
                 if (item.totalDays) {
                     estanciaSum += item.totalDays;
@@ -311,6 +343,8 @@ export default function UciGanttChart({
                 }
             });
         });
+
+        const totalEnVista = uniquePatients.size;
 
         // Cama con mayor movimiento
         let maxCama = '-';
@@ -1062,12 +1096,12 @@ export default function UciGanttChart({
                                     >
                                         {/* Barras de Internación */}
                                         {list.map(adm => {
-                                            const isSelected = selectedPatient?.id === adm.id;
+                                            const isSelected = selectedPatient?.key ? selectedPatient.key === adm.key : selectedPatient?.id === adm.id;
                                             const opacity = adm.matchesSearch ? 1 : 0.25;
 
                                             return (
                                                 <div
-                                                    key={adm.id}
+                                                    key={adm.key || adm.id}
                                                     onClick={() => setSelectedPatient(adm)}
                                                     onMouseEnter={(e) => {
                                                         const rect = e.currentTarget.getBoundingClientRect();
@@ -1280,7 +1314,7 @@ export default function UciGanttChart({
 
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                                 <div style={{ background: '#F8FAFC', padding: '8px 12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                    <span style={{ fontSize: '0.68rem', color: '#64748B', display: 'block' }}>Estancia Total</span>
+                                    <span style={{ fontSize: '0.68rem', color: '#64748B', display: 'block' }}>Estancia en esta Cama</span>
                                     <strong style={{ color: '#2563EB', fontSize: '0.95rem' }}>{selectedPatient.totalDays} días</strong>
                                 </div>
                                 <div style={{ background: '#F8FAFC', padding: '8px 12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
@@ -1290,6 +1324,70 @@ export default function UciGanttChart({
                                     </strong>
                                 </div>
                             </div>
+
+                            {/* Cronología de Traslados si tuvo más de una cama */}
+                            {(() => {
+                                const relatedTransfers = admissions
+                                    .filter(a => a.idAdmision === selectedPatient.idAdmision)
+                                    .sort((a, b) => (a.fechaIngreso || 0) - (b.fechaIngreso || 0));
+
+                                if (relatedTransfers.length <= 1) return null;
+
+                                return (
+                                    <div style={{
+                                        background: '#EFF6FF',
+                                        border: '1px solid #BFDBFE',
+                                        borderRadius: '8px',
+                                        padding: '10px 12px',
+                                        marginTop: '4px'
+                                    }}>
+                                        <span style={{
+                                            fontSize: '0.68rem',
+                                            fontWeight: 800,
+                                            color: '#1E40AF',
+                                            textTransform: 'uppercase',
+                                            display: 'block',
+                                            marginBottom: '6px'
+                                        }}>
+                                            🔄 Ruta de Traslados de Cama ({relatedTransfers.length} movimientos en la internación)
+                                        </span>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            {relatedTransfers.map((t, idx) => {
+                                                const isCurrent = t.key === selectedPatient.key;
+                                                return (
+                                                    <div 
+                                                        key={idx}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            background: isCurrent ? '#FFFFFF' : 'transparent',
+                                                            padding: '4px 8px',
+                                                            borderRadius: '6px',
+                                                            border: isCurrent ? '1px solid #3B82F6' : '1px solid transparent',
+                                                            fontSize: '0.73rem'
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <span style={{ fontWeight: 800, color: isCurrent ? '#2563EB' : '#475569' }}>
+                                                                {idx + 1}. {t.habitacion} {t.camaSub ? `(${t.camaSub})` : ''}
+                                                            </span>
+                                                            {isCurrent && (
+                                                                <span style={{ background: '#2563EB', color: '#FFF', fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
+                                                                    Viendo
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <span style={{ color: '#64748B', fontSize: '0.68rem' }}>
+                                                            {t.fechaIngreso ? t.fechaIngreso.toLocaleDateString('es-AR') : '-'} → {t.fechaAlta ? t.fechaAlta.toLocaleDateString('es-AR') : 'Activo'}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
 
                         <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>

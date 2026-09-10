@@ -18,6 +18,8 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, '..', '.env') });
 
+import { syncHistorialCamas } from './sync_ocupacion.mjs';
+
 const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://hakysnqiryimxbwdslwe.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -156,6 +158,17 @@ async function runDailySync() {
         }
     }
     log(`Paso 1 completado: ${syncedOcup} días camas actualizados/insertados.`);
+
+    // ──────────────────────────────────────────────────────────
+    // PASO 1.5: Sincronización de Historial Granular de Camas y Traslados
+    // ──────────────────────────────────────────────────────────
+    try {
+        log('PASO 1.5: Sincronizando Historial de Traslados de Cama (calidad_admisiones_camas_historial)...');
+        await syncHistorialCamas('UCI');
+        log('Paso 1.5 completado.');
+    } catch (errHist) {
+        log(`⚠️ Advertencia en Paso 1.5 (Historial Camas): ${errHist.message}`);
+    }
 
     // ──────────────────────────────────────────────────────────
     // PASO 2: Sincronización de Estudios de Laboratorio en UCI
