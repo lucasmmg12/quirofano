@@ -37,10 +37,12 @@ const SMART_SUGGESTIONS = {
     auditoria_historias: ['📊 ¿Cómo auditar historias clínicas?', '📋 Explicar pipeline de auditoría', '💡 ¿Qué significa Sin Fecha de Alta?', '🧭 Llevame a Inicio'],
     facturacion: ['🧾 Fichas pendientes de facturar', '📊 Resumen de facturación del mes', '🔙 Fichas devueltas', '📚 Enseñame facturación'],
     gobernanza_indicadores: [
+        '🫁 Kinesiología y ARM en UCI (Protocolos 580 a 585)',
+        '🏃‍♂️ Movilización temprana y Escala IMS en UCI',
         '🚑 Indicadores de Guardia Clínica (Septiembre 2026)',
-        '⏱️ ¿Cuál es el tiempo de espera en Guardia?',
-        '🔪 Tasa de conversión a cirugía de Guardia',
-        '🛏️ Días cama y ocupación en UCI',
+        '🔪 Tasa de conversión a cirugía y ventana de 48hs',
+        '🛏️ Censo y ocupación de las 16 camas de UCI',
+        '⏱️ Tiempos de espera y triage en Guardia',
         '📥 Exportar resumen de Guardia a Excel'
     ],
     default: ['🔔 ¿Qué hay pendiente?', '📊 Reporte del día', '📥 Exportar datos a Excel', '❓ ¿Cómo funciona esto?'],
@@ -84,9 +86,11 @@ const PROACTIVE_NUDGES = {
         '🔙 ¿Necesitás devolver fichas a Control de Altas?',
     ],
     gobernanza_indicadores: [
-        '🚑 ¿Querés que revisemos los indicadores de Guardia Clínica de este mes?',
+        '🫁 ¿Querés que revisemos la ventilación mecánica (ARM) o kinesiología de algún paciente de UCI?',
+        '🚑 ¿Revisamos los 9 indicadores de Guardia Clínica de este mes?',
+        '🏃‍♂️ Puedo verificar el IMS o fuerza muscular MRC de los internados en UCI',
         '⏱️ Puedo darte los tiempos de espera y permanencia en Guardia',
-        '🛏️ ¿Necesitás un reporte de ocupación o días cama de UCI?',
+        '🛏️ ¿Necesitás el censo de las 16 camas de UCI o exportarlo a Excel?',
     ],
     default: [
         '👋 ¡Hola! ¿Sabías que puedo generar reportes en PDF?',

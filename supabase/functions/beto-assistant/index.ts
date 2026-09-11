@@ -41,7 +41,7 @@ async function getSchemaContext(): Promise<string> {
                 'laboratorios_anatomia_patologica',
                 'admqui_usuarios',
                 'altas_administrativas', 'altas_traspasos', 'altas_asignacion',
-                'whatsapp_messages', 'whatsapp_templates',
+                'whatsapp_messages', 'whatsapp_templates', 'whatsapp_lines', 'crm_contacts',
                 'consultas_guardia', 'consultas_imports',
                 'garantias_rendiciones', 'pedidos_modulos',
                 'calidad_admisiones_ocupacion',
@@ -49,9 +49,11 @@ async function getSchemaContext(): Promise<string> {
                 'calidad_censo_camas_uci',
                 'calidad_peticiones_pruebas',
                 'calidad_pacientes_diagnosticos',
+                'calidad_uci_kinesiologia',
                 'guardia_indicadores_resumen',
                 'gobernanza_indicadores',
-                'gobernanza_proyectos'
+                'gobernanza_proyectos',
+                'activos', 'activos_movimientos'
             ];
             const filtered = columns.filter((c: any) => relevantTables.includes(c.table_name));
             schemaCache = formatSchemaFromColumns(filtered);
@@ -435,6 +437,32 @@ Contiene las solicitudes de estudios de internación y guardia:
 - \`cama\` (text) — Cama
 - \`prioridad\` (text) — Prioridad ('Normal', 'Alta', 'Urgente')
 
+### \`calidad_uci_kinesiologia\` (Monitoreo de ARM, Movilización Temprana y Kinesiología en UCI)
+Registros longitudinales continuos de los protocolos 580 al 585 de SALUS ([PR InstRespVisitaPaciente]) para pacientes internados en Terapia Intensiva y Terapia Intermedia:
+- \`id\` (bigint PK)
+- \`id_registro_salus\` (bigint)
+- \`nhc\` (text) — Número de Historia Clínica del paciente
+- \`dni\` (text)
+- \`paciente\` (text) — Nombre y apellido completo en MAYÚSCULAS
+- \`id_paciente_salus\` (bigint)
+- \`id_visita\` (bigint)
+- \`id_hospitalizacion\` (bigint)
+- \`fecha_hora\` (timestamptz) — Momento exacto de la evaluación o registro del kinesiólogo
+- \`protocolo_id\` (int) — 
+    * 584: (KINE) Monitoreo ventilación Mecánica Invasiva (ARM)
+    * 583: UCI - MOVILIZACION TEMPRANA (MT)
+    * 581: UCI - Weaning de la Ventilación Mecánica Invasiva
+    * 582: UCI - Extubación
+    * 580: UCI - Kinesiología (Evolución y notas)
+- \`protocolo_nombre\` (text)
+- \`grupo_nombre\` (text)
+- \`parametro\` (text) — Nombre de la variable ('Modo', 'FiO2', 'PEEP', 'Vt', 'Pres. pico', 'Balón', 'Escala IMS', 'Score MRC', 'Criterios PADIS', 'PeMax', 'Kinesiología')
+- \`valor_numerico\` (numeric) — Valor cuantitativo (ej: 0.40 para 40% FiO2, 8 para PEEP, 450 para Vt, 25 para Presión Pico, 0-10 para IMS, 0-60 para MRC)
+- \`valor_texto\` (text) — Texto libre, notas evolutivas completas firmadas
+- \`valor_combo\` (text) — Selección de desplegable
+- \`unidades\` (text) — Unidades de medida ('%', 'cmH2O', 'ml', etc.)
+- \`profesional\` (text) — Kinesiólogo actuante (ej: 'ROMANO, FRANCISCO', 'BOLZONELLA CUELLO, MARIA FLORENCIA')
+
 ### \`guardia_indicadores_resumen\` (Consolidado Mensual de los 9 Indicadores de Guardia Clínica de SALUS)
 Contiene las métricas oficiales y KPIs mensuales de Guardia de Urgencias del Sanatorio Argentino (sincronizadas desde SALUS 128.223.16.29:2450):
 - \`id\` (uuid PK)
@@ -526,7 +554,11 @@ const SYSTEM_PROMPT_BASE = `Eres **Beto**, el asistente virtual de inteligencia 
 13. **🔍 Auditoría de Historias Clínicas** — Auditoría de planillas de evolución médica y alta de SALUS (análisis temporal en memoria).
 14. **📚 Manual de Procedimientos** — Instructivos institucionales normativos con formato oficial del SGC / ITAES elaborado por Lucas Marinero.
 15. **⚙️ Configuración y Gobernanza** — Gestión de usuarios, roles, líneas de WhatsApp y parámetros del sistema.
-16. **📈 Gobernanza de Indicadores (Telar)** — Dashboard dinámico que muestra indicadores visuales y KPIs del sanatorio en tiempo real. En este módulo, recibís el contexto visual exacto de lo que el usuario está viendo (el \`moduleContext\`).
+16. **📈 Gobernanza de Indicadores (Telar)** — Centro neurálgico de BI institucional y auditoría clínica en tiempo real:
+   - **Sectores Activos:**
+     - **🏥 Cuidados Críticos (UCI):** Dotación oficial de 16 camas (8 UTI + 8 UTIM). Cuenta con Diagrama de Gantt longitudinal de ocupación, Censo de Camas en tiempo real, auditoría de mortalidad (<48hs vs >48hs) y el **Dossier Clínico 360 del Paciente** (acceso directo haciendo clic en cualquier barra del Gantt o cama del censo, integrando Ficha, Movimientos físicos de camas, Diagnósticos/Anamnesis de SALUS, Laboratorio/Imágenes VLISE y el Panel de Kinesiología y ARM). **Modo 100% Lectura (auditoría pura, sin carga de datos)**.
+     - **🚑 Guardia y Emergencias (Guardia Clínica):** Los 9 indicadores normativos de calidad de SALUS (conversión a cirugía, tiempos de espera, triage N1/N2/N3, reconsultas 72h, reinternaciones 72h, intensidad TAC/Rx, destinos post-guardia, estada clínica y adherencia a epicrisis) con modal de **Línea de Tiempo de Conversiones Quirúrgicas (ventana forense de 48 hs)**. Excluye estrictamente toda la patología gineco-obstétrica (Maternidad es un servicio independiente).
+   - En este módulo, recibís el contexto visual exacto de lo que el usuario está viendo (\`moduleContext\`).
 
 ## CÓMO BUSCAR DATOS
 - Usá la tool \`query_database\` para CUALQUIER consulta de datos. Generá SQL SELECT válido.
@@ -683,7 +715,7 @@ Cuando te pregunten sobre:
 - Explicá la estratificación temporal de la mortalidad (criterio internacional de UCI):
   1. **Mortalidad Precoz e Hipercrítica (< 48 hs):** En Sanatorio Argentino representa el **24.2% de los fallecimientos en UCI** (19.0% en menos de 24 hs). Son pacientes que ingresan en estado agónico o irreversible, prácticamente en etapa terminal, donde la UCI actúa como receptor de soporte vital de máxima emergencia.
   2. **Vía de Entrada:** El **77.6%** de los pacientes fallecidos ingresan derivados de **Urgencias / Guardia**, lo que demuestra la gravedad aguda extrahospitalaria con la que llegan.
-  3. **Mortalidad Evolutiva (> 48 hs):** El restante ~75.8% corresponde a estancias intermedias y prolongadas con complicaciones de cuadros refractarios (3-7 días: 43.1%, > 7 días: 32.8%).
+  3. **Mortalidad Evolutiva (> 48 hs):** El restante ~75.8% corresponde a estancias intermedias y prolongadas con complicaciones de cuadros refractarios (3-7 days: 43.1%, > 7 days: 32.8%).
   4. **Patologías y Diagnósticos Prevalentes al Ingreso:** Shock Séptico, Insuficiencia Respiratoria Aguda severa (CIE 518.81), Insuficiencia Cardíaca Congestiva descompensada / Shock Cardiogénico (CIE 428.0), Neoplasias Avanzadas / Cuidados Paliativos y Fallo Renal Agudo (CIE 584.9).
   5. **Edad Promedio:** ~72 años, con alta comorbilidad basal.
 - Respondé con este desglose clínico reflexivo y profesional para que la dirección médica y los auditores comprendan la severidad real de los ingresos y no solo la tasa bruta.
@@ -692,8 +724,43 @@ Cuando te pregunten sobre:
 - Acompañá tus respuestas de ocupación con un bloque \`beto-chart\` (de tipo \`"bar"\` o \`"donut"\`) para que el usuario pueda ver la comparativa visual interactiva y expandirla a pantalla completa.
 - Si solicitan exportar los datos o armar una planilla, generá el bloque \`beto-excel\`.
 
+## KINESIOLOGÍA, ASISTENCIA RESPIRATORIA MECÁNICA (ARM) Y REHABILITACIÓN EN UCI
+Cuando te pregunten sobre:
+- Respirador, asistencia respiratoria mecánica invasiva o no invasiva (ARM / VNI) de un paciente en UCI.
+- Parámetros ventilatorios: **FiO2 (%)**, **PEEP (cmH2O)**, **Presión Pico**, **Volumen Corriente (Vt ml)**, **Balón de neumotaponamiento** o índice de oxigenación **PaFiO2 (Kirby)**.
+- **Movilización Temprana en UCI**: Nivel de la **Escala IMS (0 al 10)**, fuerza muscular **MRC (0 al 60)**, alerta de **DAUCI** (Debilidad Adquirida en UCI si MRC < 48 puntos) o criterios **PADIS**.
+- **Desvinculación y Extubación (Weaning)**: Protocolo secuencial de 3 pasos, Prueba de Respiración Espontánea (PRE), fuerza de tos (**PeMax > 40 cmH2O**), o reintubación en 48 hs.
+- **Evolución y notas de kinesiología** de pacientes internados en Boxes o piso de UCI.
+
+### TABLA OBLIGATORIA A CONSULTAR: \`calidad_uci_kinesiologia\`
+- Buscá siempre por \`nhc = 'NHC'\` o \`paciente ILIKE '%APELLIDO%'\`.
+- Ordená por \`fecha_hora ASC\` para análisis evolutivo temporal, o \`fecha_hora DESC\` para el último estado.
+- Para verificar el modo actual o último ventilatorio:
+  \`SELECT fecha_hora, parametro, valor_numerico, valor_texto, valor_combo, profesional FROM calidad_uci_kinesiologia WHERE nhc = '...' AND protocolo_id = 584 ORDER BY fecha_hora DESC LIMIT 10\`.
+
+### REGLAS CLÍNICAS INSTITUCIONALES (LOS 3 EJES DEL LIC. FRANCISCO ROMANO):
+1. **Eje 1 - Monitoreo Ventilatorio (ARM - Protocolo 584):**
+   - Modos habituales: PC-CMV (Presión control), VCV (Volumen control), PSV (Presión soporte) o destete a ventilación no invasiva (VNI) / cánula nasal.
+   - Seguridad barométrica: la Presión Pico segura debe ser \`< 35 cmH2O\` para prevenir barotrauma / VILI.
+   - Balón de neumotaponamiento: rango seguro de 20 a 30 cmH2O (para evitar isquemia traqueal o microaspiración).
+2. **Eje 2 - Movilización Temprana (MT - Protocolo 583):**
+   - Escala IMS (*ICU Mobility Scale*): 0 (reposo pasivo en cama) a 10 (marcha independiente total).
+   - Reportá siempre el **IMS Máximo Alcanzado** vs. el **IMS al Egreso/Actual**.
+   - Score MRC de fuerza muscular (0-60): si es \`< 48 puntos\`, genera alerta de **DAUCI** (Debilidad Adquirida en UCI).
+3. **Eje 3 - Protocolo de Weaning & Extubación (Protocolos 581 y 582):**
+   - 3 Fases: 1. Aptitud clínica (PaFiO2 > 150, PEEP ≤ 8, RASS -2 a +1) → 2. Prueba Espontánea (PRE 30-120 min) → 3. Extubación segura (tos con PeMax > 40 cmH2O y seguimiento de no reintubación en 48 hs).
+4. **Pacientes sin ARM:**
+   - Si un paciente no tiene registros en protocolo 584 (ej. internados clínicos sin ARM), aclará taxativamente: *"El paciente se encuentra en ventilación espontánea y no requirió soporte ventilatorio invasivo durante este episodio"*.
+
 ## GOBERNANZA CLÍNICA: GUARDIA Y URGENCIAS MÉDICAS (SALUS / TELAR)
 Cuando te pregunten sobre **Guardia Clínica**, **Urgencias Médicas**, tiempos de espera en guardia, pases a cirugía, triage, reconsultas, reinternaciones, tomografías/radiografías solicitadas o adherencia a epicrisis:
+
+### ⚠️ REGLA INSTITUCIONAL OBLIGATORIA: SEPARACIÓN DE GUARDIA CLÍNICA Y GUARDIA GINECO-OBSTÉTRICA
+En Sanatorio Argentino la Guardia Gineco-Obstétrica (Maternidad) es un circuito asistencial, quirúrgico y de auditoría TOTALMENTE SEPARADO de la Guardia Clínica (Adultos / Medicina Interna / Cirugía General).
+1. En Guardia Clínica **NUNCA** deben computarse ni responderse consultas por embarazos, trabajo de parto, cesáreas ni procedimientos obstétricos o ginecológicos.
+2. En SALUS, \`[Grupo Agenda] = 'GUARDIA CLINICA'\` solo contiene \`(N1/N2/N3) VISITA CLINICA\`. Todo lo ginecológico y obstétrico (\`VISITA GINECOLOGIA\`, \`VISITA OBSTETRICA\`, cesáreas, partos y legrados) pertenece a la agenda de Maternidad y se audita de forma diferenciada.
+3. **Ventana de Conversión Quirúrgica de 48 horas:** Para auditoría forense de pases a quirófano desde Guardia Clínica, la ventana oficial es de **48 horas** (para no excluir pacientes que ingresan de noche y se operan de madrugada al día siguiente o tras estabilización médica prequirúrgica).
+4. Las cirugías atribuibles a Guardia Clínica son exclusivamente cirugías generales de urgencia (apendicectomías, colecistectomías agudas, hernioplastias estranguladas, laparotomías por abdomen agudo, tiroidectomías por compresión, suturas complejas, traqueostomías de urgencia).
 
 ### 1. DÓNDE CONSULTAR LOS DATOS DE GUARDIA:
 - **Tabla Oficial Consolidada de KPIs:** \`guardia_indicadores_resumen\`
@@ -1038,7 +1105,7 @@ const TOOLS = [
             parameters: {
                 type: 'object',
                 properties: {
-                    modulo: { type: 'string', description: 'Módulo destino: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, beto, configuracion, auditoria_historias' }
+                    modulo: { type: 'string', description: 'Módulo destino: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, beto, configuracion, auditoria_historias, gobernanza, gobernanza_indicadores, uci, guardia, facturacion, asociaciones, laboratorios, consultas, liquidaciones, documentos, activos, manual' }
                 },
                 required: ['modulo']
             }
@@ -1060,7 +1127,7 @@ const TOOLS = [
             parameters: {
                 type: 'object',
                 properties: {
-                    modulo: { type: 'string', description: 'Módulo a explicar: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, beto, configuracion, asociaciones, laboratorios, auditoria_historias' }
+                    modulo: { type: 'string', description: 'Módulo a explicar: inicio, mensajeria, pedidos, altas, turnos, deudas, cirugias, beto, configuracion, asociaciones, laboratorios, auditoria_historias, gobernanza, gobernanza_indicadores, uci, guardia, kinesiologia' }
                 },
                 required: ['modulo']
             }
@@ -1432,11 +1499,25 @@ function navigateTo(args: Record<string, unknown>): string {
         mensajeria: 'mensajeria',
         pedidos: 'pedidos',
         altas: 'altas',
+        facturacion: 'facturacion',
         turnos: 'turnos',
         deudas: 'deudas',
         cirugias: 'cirugias',
         beto: 'beto',
         configuracion: 'configuracion',
+        gobernanza: 'gobernanza',
+        gobernanza_indicadores: 'gobernanza_indicadores',
+        uci: 'gobernanza_indicadores',
+        guardia: 'gobernanza_indicadores',
+        kinesiologia: 'gobernanza_indicadores',
+        asociaciones: 'asociaciones_entrega',
+        laboratorios: 'laboratorios',
+        consultas: 'consultas',
+        liquidaciones: 'liquidaciones',
+        documentos: 'documentos',
+        activos: 'activos',
+        manual: 'manual',
+        auditoria_historias: 'auditoria_historias',
     };
 
     const target = moduleMap[modulo.toLowerCase()];
@@ -1550,6 +1631,21 @@ async function getAlerts(): Promise<string> {
                 type: 'info', icon: '📅',
                 message: `${proximas} cirugías en los próximos 3 días (${confProx} confirmadas, ${proximas - confProx} pendientes)`,
                 count: proximas
+            });
+        }
+
+        // 5. Censo de Camas Críticas UCI e Intermedia (Dotación oficial: 16 camas)
+        const { count: camasOcupadasUci } = await supabase.from('calidad_censo_camas_uci')
+            .select('*', { count: 'exact', head: true })
+            .eq('estado', 'OCUPADA');
+
+        if (camasOcupadasUci !== null && camasOcupadasUci !== undefined && camasOcupadasUci > 0) {
+            const disponibles = Math.max(0, 16 - camasOcupadasUci);
+            const pct = Math.round((camasOcupadasUci / 16) * 100);
+            alerts.push({
+                type: pct >= 85 ? 'warning' : 'info', icon: '🏥',
+                message: `Cuidados Críticos (UCI): ${camasOcupadasUci}/16 camas ocupadas (${pct}%) — ${disponibles} camas libres`,
+                count: camasOcupadasUci
             });
         }
     } catch (err) {
@@ -1756,6 +1852,58 @@ Módulo de auditoría para verificar la calidad de las planillas Excel de histor
 - **Resaltado y Enfoque en Pantalla**: Las celdas sin fecha de alta se marcan con fondo naranja (\`table-cell-alta-warning\`) y muestran un distintivo explícito \`⚠ Sin Alta\`.
 - **Filtros de Acceso Rápido**: Tarjetas Bento interactivas en la parte superior permiten filtrar instantáneamente la tabla para auditar casos específicos (ej. haciendo clic en la tarjeta "Sin Fecha de Alta").
 - **Reportes y Exportación**: Genera reportes en PDF clínico para auditoría y exporta planillas Excel limpias con las columnas de auditoría agregadas al inicio.`,
+
+        gobernanza: `## 📈 Gobernanza de Indicadores (Telar Institucional)
+Centro neurálgico de Business Intelligence, auditoría clínica y control de gestión del Sanatorio Argentino en tiempo real.
+
+**Sectores Activos:**
+1. **🏥 Cuidados Críticos (UCI):** Dotación oficial de 16 camas (8 UTI + 8 UTIM). Integra Diagrama de Gantt de ocupación, Censo diario en tiempo real, auditoría de mortalidad (<48hs vs >48hs) y el **Dossier Clínico 360 del Paciente**.
+2. **🚑 Guardia y Emergencias (Guardia Clínica):** Los 9 Indicadores de Calidad de SALUS y Línea de Tiempo de Conversiones Quirúrgicas con ventana forense de 48 hs.
+
+**Principio Rector:** Es una plataforma **100% de Solo Lectura / Auditoría** (no se cargan datos manualmente, todo se sincroniza desde SALUS y VLISE).`,
+
+        gobernanza_indicadores: `## 📈 Gobernanza de Indicadores (Dashboard)
+Visualización interactiva y análisis forense de métricas hospitalarias:
+- **UCI:** Días cama, porcentaje de ocupación (base 16 camas), estancia media (ALOS), mortalidad temprana (<48hs) vs tardía, y producción diagnóstica (VLISE).
+- **Guardia Clínica:** Conversión a cirugía, tiempos de espera, triage, reconsultas, reinternaciones e intensidad de imágenes.
+- **Dossier 360 de Paciente:** Acceso directo desde el Gantt o Censo para auditar al paciente completo (ficha, camas, diagnósticos, laboratorio y kinesiología).`,
+
+        uci: `## 🏥 Cuidados Críticos (UCI) en Gobernanza
+Panel integral de auditoría y monitoreo de pacientes críticos en Terapia Intensiva y Terapia Intermedia.
+
+**Regla de Dotación:** Exactamente **16 camas fijas**:
+- **Terapia Intensiva (UTI):** 8 camas (BOX 1 al BOX 8).
+- **Terapia Intermedia (UTIM):** 8 camas (Habitaciones 222 a 229).
+
+**Herramientas Integradas:**
+- **Diagrama de Gantt:** Vista cronológica de internación y solapamientos.
+- **Censo Diario en Tiempo Real:** Estado de ocupación y datos del internado.
+- **Dossier Clínico 360 del Paciente:** Al hacer clic en cualquier barra o cama, se abre el expediente completo (Ficha, Historial de Camas, Diagnósticos SALUS, Laboratorio/Imágenes VLISE y Kinesiología).`,
+
+        kinesiologia: `## 🫁 Kinesiología, ARM y Rehabilitación en UCI
+Módulo clínico de seguimiento longitudinal diseñado según los protocolos del Lic. Francisco Romano (SALUS protocolos 580 al 585):
+
+1. **Eje 1 - Monitoreo Ventilatorio (ARM - Protocolo 584):** Curvas temporales de Modo ventilatorio, FiO2, PEEP, Presión Pico (<35 cmH2O segura), Volumen Corriente (Vt) y Balón de neumotaponamiento.
+2. **Eje 2 - Movilización Temprana (MT - Protocolo 583):** Escala IMS (0 al 10), fuerza muscular MRC (0 al 60), criterios PADIS y alertas de DAUCI (Debilidad Adquirida en UCI si MRC < 48).
+3. **Eje 3 - Protocolo de Weaning & Extubación (Protocolos 581 y 582):** Protocolo de 3 fases (Aptitud, Prueba Espontánea PRE y Extubación segura con PeMax > 40 cmH2O).
+4. **Eje 4 - Bitácora Evolutiva (Protocolo 580):** Notas clínicas firmadas por los kinesiólogos.`,
+
+        guardia: `## 🚑 Guardia Clínica y Emergencias
+Panel de calidad asistencial de urgencias médicas para pacientes adultos.
+
+**Regla Institucional Obligatoria:**
+La Guardia Clínica es **TOTALMENTE INDEPENDIENTE** de la Guardia Gineco-Obstétrica (Maternidad). En Guardia Clínica **NUNCA** se computan cesáreas, partos, embarazos ni legrados.
+
+**Los 9 Indicadores de SALUS:**
+1. Conversión a Cirugía (Meta 8-12%, ventana 48hs)
+2. Tiempos de Espera (Triage y Médico, Meta < 30 min)
+3. Cobertura de Triage (Meta > 95%, real 100%)
+4. Reconsultas a las 72 hs (Meta < 7%)
+5. Reinternaciones Tempranas a las 72 hs (Meta < 5%)
+6. Demanda de Imágenes TAC y Rx (25-35 cada 100 consultas)
+7. Distribución de Destinos Post-Guardia (Alta, Piso, Qx, UCI)
+8. Promedio de Días de Estada Clínica (1.5 a 2.5 días)
+9. Adherencia a Epicrisis Protocolo 382 (Meta 100%)`,
     };
 
     return explicaciones[modulo] || `No tengo información sobre "${modulo}". Módulos: ${Object.keys(explicaciones).join(', ')}.`;
