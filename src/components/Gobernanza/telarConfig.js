@@ -11,7 +11,52 @@ export const SECTORES_CONFIG = [
         icon: '🏥', 
         camasDefault: 16,
         serviciosSalus: ['UCI', 'TERAPIA INTERMEDIA'],
-        descripcion: 'Unidad de Cuidados Críticos (Terapia Intensiva [8 camas: Box 1 a 8] + Terapia Intermedia [8 camas: Hab 222 a 229])'
+        descripcion: '16 camas operativas (UTI 8 + UTIN 8)',
+        activo: true
+    },
+    { 
+        id: 'QUIROFANO', 
+        label: 'Quirófano Central', 
+        shortLabel: 'Quirófano',
+        icon: '🔪', 
+        camasDefault: 0,
+        serviciosSalus: ['QUIROFANO'],
+        descripcion: 'Cirugía Mayor y Ambulatoria',
+        activo: false,
+        badge: 'Próximamente'
+    },
+    { 
+        id: 'INTERNACION_GENERAL', 
+        label: 'Internación General', 
+        shortLabel: 'Piso',
+        icon: '🛏️', 
+        camasDefault: 40,
+        serviciosSalus: ['INTERNACION GENERAL'],
+        descripcion: 'Salas de Internación 2° y 3° Piso',
+        activo: false,
+        badge: 'Próximamente'
+    },
+    { 
+        id: 'MATERNIDAD_NEO', 
+        label: 'Maternidad y Neonatología', 
+        shortLabel: 'Maternidad & Neo',
+        icon: '👶', 
+        camasDefault: 20,
+        serviciosSalus: ['NEONATOLOGIA', 'MATERNIDAD'],
+        descripcion: 'Área Materno-Infantil y Cuidados Neonatales',
+        activo: false,
+        badge: 'Próximamente'
+    },
+    { 
+        id: 'GUARDIA', 
+        label: 'Guardia y Emergencias', 
+        shortLabel: 'Guardia',
+        icon: '🚑', 
+        camasDefault: 6,
+        serviciosSalus: ['GUARDIA'],
+        descripcion: 'Urgencias Médicas y Shockroom',
+        activo: false,
+        badge: 'Próximamente'
     }
 ];
 

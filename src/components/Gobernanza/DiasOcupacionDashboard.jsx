@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { 
     BookOpen, Filter, Calendar, Bed, Activity, Users, 
-    AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, RotateCcw, 
+    AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ChevronRight, RotateCcw, 
     X, FileText, Layers, PanelLeftClose, PanelLeftOpen, LayoutDashboard, 
     Sparkles, RefreshCw, Sliders, Table, Eye, Download, Clock, HeartHandshake,
     Check, Maximize2, CheckSquare, Square, GripVertical, Move
@@ -144,6 +144,17 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [sectorId, setSectorId] = useState('UCI');
     const [uciSubNivel, setUciSubNivel] = useState('CONSOLIDADO'); // 'CONSOLIDADO' | 'INTENSIVA' | 'INTERMEDIA'
+    const [isUciOpen, setIsUciOpen] = useState(() => {
+        return localStorage.getItem('telar_uci_expanded') === 'true';
+    });
+
+    const handleToggleUci = () => {
+        setIsUciOpen(prev => {
+            const next = !prev;
+            try { localStorage.setItem('telar_uci_expanded', String(next)); } catch {}
+            return next;
+        });
+    };
     const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' | 'gantt'
     const [selectedEspecialidades, setSelectedEspecialidades] = useState(null); // null = todas activas
     const [especDropdownOpen, setEspecDropdownOpen] = useState(false);
@@ -2482,235 +2493,346 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             </span>
                         </div>
 
-                        {/* Nivel 2: UCI */}
-                        <div style={{ padding: '12px', borderBottom: '1px solid #F1F5F9' }}>
+                        {/* CONTENEDOR DE SERVICIOS (ACORDEÓN MODULAR) */}
+                        <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
+                            
+                            {/* 🏥 SERVICIO: UCI (EXPANDIBLE AL TOCARLO) */}
                             <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                padding: '10px 12px',
                                 borderRadius: '8px',
-                                background: '#EFF6FF',
-                                border: '1px solid #BFDBFE',
-                                color: '#1E40AF'
+                                border: `1.5px solid ${isUciOpen ? '#93C5FD' : '#E2E8F0'}`,
+                                background: '#FFFFFF',
+                                boxShadow: isUciOpen ? '0 4px 12px -2px rgba(37, 99, 235, 0.08)' : '0 1px 2px rgba(0,0,0,0.03)',
+                                overflow: 'hidden',
+                                transition: 'all 0.2s ease'
                             }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span style={{ fontSize: '1.2rem' }}>🏥</span>
-                                    <div>
-                                        <div style={{ fontWeight: 800, fontSize: '0.88rem' }}>UCI</div>
-                                        <div style={{ fontSize: '0.68rem', color: '#3B82F6' }}>16 camas operativas</div>
+                                {/* Botón Cabecera UCI */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        handleToggleUci();
+                                        if (sectorId !== 'UCI') handleSelectSector('UCI');
+                                    }}
+                                    style={{
+                                        width: '100%',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '11px 12px',
+                                        background: isUciOpen ? '#EFF6FF' : '#F8FAFC',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        textAlign: 'left',
+                                        transition: 'background 0.15s ease'
+                                    }}
+                                    onMouseEnter={e => { if (!isUciOpen) e.currentTarget.style.background = '#F1F5F9'; }}
+                                    onMouseLeave={e => { if (!isUciOpen) e.currentTarget.style.background = isUciOpen ? '#EFF6FF' : '#F8FAFC'; }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '1.25rem' }}>🏥</span>
+                                        <div>
+                                            <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1E40AF' }}>UCI</div>
+                                            <div style={{ fontSize: '0.68rem', color: '#3B82F6' }}>16 camas operativas</div>
+                                        </div>
                                     </div>
-                                </div>
-                                <span style={{
-                                    fontSize: '0.7rem',
-                                    background: '#2563EB',
-                                    color: '#FFFFFF',
-                                    padding: '2px 8px',
-                                    borderRadius: '10px',
-                                    fontWeight: 800
-                                }}>
-                                    {activeIndicatorIds.length} activos
-                                </span>
-                            </div>
-
-                            {/* Sub-selector de UCI (Consolidado vs Intensiva vs Intermedia) */}
-                            <div style={{
-                                marginTop: '10px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '4px',
-                                paddingLeft: '8px',
-                                borderLeft: '2px solid #DBEAFE'
-                            }}>
-                                <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                    Nivel Asistencial:
-                                </span>
-                                <div style={{ display: 'flex', gap: '3px' }}>
-                                    {[
-                                        { id: 'CONSOLIDADO', label: 'Total 16', color: '#2563EB' },
-                                        { id: 'INTENSIVA', label: 'UTI (8)', color: '#DC2626' },
-                                        { id: 'INTERMEDIA', label: 'UTIN (8)', color: '#D97706' }
-                                    ].map(sub => {
-                                        const isSel = uciSubNivel === sub.id;
-                                        return (
-                                            <button
-                                                key={sub.id}
-                                                type="button"
-                                                onClick={() => handleSelectUciSubNivel(sub.id)}
-                                                style={{
-                                                    flex: 1,
-                                                    padding: '5px 2px',
-                                                    borderRadius: '6px',
-                                                    border: isSel ? `1px solid ${sub.color}` : '1px solid #CBD5E1',
-                                                    background: isSel ? '#FFFFFF' : '#F8FAFC',
-                                                    color: isSel ? sub.color : '#64748B',
-                                                    fontWeight: isSel ? 800 : 500,
-                                                    fontSize: '0.68rem',
-                                                    cursor: 'pointer',
-                                                    boxShadow: isSel ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-                                                    transition: 'all 0.15s ease'
-                                                }}
-                                            >
-                                                {sub.label}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Nivel 3: Lista de Indicadores con botoncito de checklist */}
-                        <div style={{ padding: '12px 14px', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                                    Indicadores UCI ({activeIndicatorIds.length})
-                                </span>
-                                <div style={{ display: 'flex', gap: '6px' }}>
-                                    <button
-                                        type="button"
-                                        onClick={handleSelectAllIndicators}
-                                        style={{
-                                            background: 'transparent',
-                                            border: 'none',
-                                            color: '#2563EB',
+                                    
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{
                                             fontSize: '0.68rem',
-                                            fontWeight: 700,
-                                            cursor: 'pointer',
-                                            padding: '1px 4px'
-                                        }}
-                                    >
-                                        Todos
-                                    </button>
-                                    <span style={{ color: '#CBD5E1' }}>|</span>
-                                    <button
-                                        type="button"
-                                        onClick={handleResetDefaults}
-                                        style={{
-                                            background: 'transparent',
-                                            border: 'none',
-                                            color: '#64748B',
-                                            fontSize: '0.68rem',
-                                            fontWeight: 600,
-                                            cursor: 'pointer',
-                                            padding: '1px 4px'
-                                        }}
-                                    >
-                                        Predeterminados
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Grupos de Indicadores */}
-                            {SIDEBAR_INDICATOR_GROUPS.map(group => {
-                                const groupIndicators = INDICADORES_CATALOGO.filter(i => group.ids.includes(i.id));
-                                if (groupIndicators.length === 0) return null;
-
-                                const activeCountInGroup = groupIndicators.filter(i => activeIndicatorIds.includes(i.id)).length;
-
-                                return (
-                                    <div key={group.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        <div style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between',
-                                            padding: '2px 4px',
-                                            borderBottom: '1px solid #F1F5F9',
-                                            marginBottom: '2px'
+                                            background: isUciOpen ? '#2563EB' : '#DBEAFE',
+                                            color: isUciOpen ? '#FFFFFF' : '#1E40AF',
+                                            padding: '2px 8px',
+                                            borderRadius: '10px',
+                                            fontWeight: 800
                                         }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                <span>{group.icon}</span>
-                                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>
-                                                    {group.title}
-                                                </span>
-                                            </div>
-                                            <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748B' }}>
-                                                {activeCountInGroup}/{groupIndicators.length}
+                                            {activeIndicatorIds.length} activos
+                                        </span>
+                                        <span style={{ color: isUciOpen ? '#2563EB' : '#94A3B8', display: 'flex', alignItems: 'center' }}>
+                                            {isUciOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                        </span>
+                                    </div>
+                                </button>
+
+                                {/* CONTENIDO DESPLEGABLE DE UCI ("TODO LO DE ABAJO") */}
+                                {isUciOpen && (
+                                    <div style={{
+                                        borderTop: '1px solid #DBEAFE',
+                                        background: '#FFFFFF',
+                                        animation: 'fadeIn 0.2s ease-out'
+                                    }}>
+                                        {/* Sub-selector de UCI (Consolidado vs Intensiva vs Intermedia) */}
+                                        <div style={{
+                                            padding: '10px 12px',
+                                            background: '#F8FAFC',
+                                            borderBottom: '1px solid #F1F5F9',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '4px'
+                                        }}>
+                                            <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                Nivel Asistencial:
                                             </span>
+                                            <div style={{ display: 'flex', gap: '3px' }}>
+                                                {[
+                                                    { id: 'CONSOLIDADO', label: 'Total 16', color: '#2563EB' },
+                                                    { id: 'INTENSIVA', label: 'UTI (8)', color: '#DC2626' },
+                                                    { id: 'INTERMEDIA', label: 'UTIN (8)', color: '#D97706' }
+                                                ].map(sub => {
+                                                    const isSel = uciSubNivel === sub.id;
+                                                    return (
+                                                        <button
+                                                            key={sub.id}
+                                                            type="button"
+                                                            onClick={() => handleSelectUciSubNivel(sub.id)}
+                                                            style={{
+                                                                flex: 1,
+                                                                padding: '5px 2px',
+                                                                borderRadius: '6px',
+                                                                border: isSel ? `1px solid ${sub.color}` : '1px solid #CBD5E1',
+                                                                background: isSel ? '#FFFFFF' : '#F8FAFC',
+                                                                color: isSel ? sub.color : '#64748B',
+                                                                fontWeight: isSel ? 800 : 500,
+                                                                fontSize: '0.68rem',
+                                                                cursor: 'pointer',
+                                                                boxShadow: isSel ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                                                                transition: 'all 0.15s ease'
+                                                            }}
+                                                        >
+                                                            {sub.label}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
 
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                            {groupIndicators.map(ind => {
-                                                const isChecked = activeIndicatorIds.includes(ind.id);
-                                                return (
-                                                    <div
-                                                        key={ind.id}
-                                                        onClick={() => handleToggleIndicator(ind.id)}
+                                        {/* Nivel 3: Lista de Indicadores con checklist */}
+                                        <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                                                    Indicadores UCI ({activeIndicatorIds.length})
+                                                </span>
+                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleSelectAllIndicators}
                                                         style={{
+                                                            background: 'transparent',
+                                                            border: 'none',
+                                                            color: '#2563EB',
+                                                            fontSize: '0.68rem',
+                                                            fontWeight: 700,
+                                                            cursor: 'pointer',
+                                                            padding: '1px 4px'
+                                                        }}
+                                                    >
+                                                        Todos
+                                                    </button>
+                                                    <span style={{ color: '#CBD5E1' }}>|</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleResetDefaults}
+                                                        style={{
+                                                            background: 'transparent',
+                                                            border: 'none',
+                                                            color: '#64748B',
+                                                            fontSize: '0.68rem',
+                                                            fontWeight: 600,
+                                                            cursor: 'pointer',
+                                                            padding: '1px 4px'
+                                                        }}
+                                                    >
+                                                        Predeterminados
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Grupos de Indicadores */}
+                                            {SIDEBAR_INDICATOR_GROUPS.map(group => {
+                                                const groupIndicators = INDICADORES_CATALOGO.filter(i => group.ids.includes(i.id));
+                                                if (groupIndicators.length === 0) return null;
+
+                                                const activeCountInGroup = groupIndicators.filter(i => activeIndicatorIds.includes(i.id)).length;
+
+                                                return (
+                                                    <div key={group.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                        <div style={{
                                                             display: 'flex',
                                                             alignItems: 'center',
                                                             justifyContent: 'space-between',
-                                                            padding: '6px 8px',
-                                                            borderRadius: '6px',
-                                                            cursor: 'pointer',
-                                                            background: isChecked ? '#EFF6FF' : 'transparent',
-                                                            border: isChecked ? '1px solid #BFDBFE' : '1px solid transparent',
-                                                            transition: 'all 0.12s ease'
-                                                        }}
-                                                        onMouseEnter={(e) => {
-                                                            if (!isChecked) e.currentTarget.style.background = '#F8FAFC';
-                                                        }}
-                                                        onMouseLeave={(e) => {
-                                                            if (!isChecked) e.currentTarget.style.background = 'transparent';
-                                                        }}
-                                                    >
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                                                            <button
-                                                                type="button"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleToggleIndicator(ind.id);
-                                                                }}
-                                                                style={{
-                                                                    background: 'transparent',
-                                                                    border: 'none',
-                                                                    padding: 0,
-                                                                    cursor: 'pointer',
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    justifyContent: 'center',
-                                                                    color: isChecked ? '#1E40AF' : '#94A3B8'
-                                                                }}
-                                                                title={isChecked ? "Desactivar del dashboard" : "Enviar al dashboard"}
-                                                            >
-                                                                {isChecked ? (
-                                                                    <CheckSquare size={16} color="#1E40AF" />
-                                                                ) : (
-                                                                    <Square size={16} color="#94A3B8" />
-                                                                )}
-                                                            </button>
-
-                                                            <span style={{
-                                                                fontSize: '0.74rem',
-                                                                fontWeight: isChecked ? 700 : 500,
-                                                                color: isChecked ? '#1E293B' : '#475569',
-                                                                whiteSpace: 'nowrap',
-                                                                overflow: 'hidden',
-                                                                textOverflow: 'ellipsis'
-                                                            }}
-                                                            title={ind.descripcion}
-                                                            >
-                                                                {ind.label}
+                                                            padding: '2px 4px',
+                                                            borderBottom: '1px solid #F1F5F9',
+                                                            marginBottom: '2px'
+                                                        }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                                <span>{group.icon}</span>
+                                                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>
+                                                                    {group.title}
+                                                                </span>
+                                                            </div>
+                                                            <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748B' }}>
+                                                                {activeCountInGroup}/{groupIndicators.length}
                                                             </span>
                                                         </div>
 
-                                                        <span style={{
-                                                            fontSize: '0.6rem',
-                                                            fontWeight: 700,
-                                                            padding: '1px 4px',
-                                                            borderRadius: '4px',
-                                                            background: ind.tipo === 'kpi' ? '#DBEAFE' : ind.tipo === 'table' ? '#D1FAE5' : '#F1F5F9',
-                                                            color: ind.tipo === 'kpi' ? '#1E40AF' : ind.tipo === 'table' ? '#065F46' : '#475569',
-                                                            flexShrink: 0
-                                                        }}>
-                                                            {ind.tipo === 'kpi' ? 'KPI' : ind.tipo === 'table' ? 'Tabla' : 'Gráfico'}
-                                                        </span>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                            {groupIndicators.map(ind => {
+                                                                const isChecked = activeIndicatorIds.includes(ind.id);
+                                                                return (
+                                                                    <div
+                                                                        key={ind.id}
+                                                                        onClick={() => handleToggleIndicator(ind.id)}
+                                                                        style={{
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            justifyContent: 'space-between',
+                                                                            padding: '6px 8px',
+                                                                            borderRadius: '6px',
+                                                                            cursor: 'pointer',
+                                                                            background: isChecked ? '#EFF6FF' : 'transparent',
+                                                                            border: isChecked ? '1px solid #BFDBFE' : '1px solid transparent',
+                                                                            transition: 'all 0.12s ease'
+                                                                        }}
+                                                                        onMouseEnter={(e) => {
+                                                                            if (!isChecked) e.currentTarget.style.background = '#F8FAFC';
+                                                                        }}
+                                                                        onMouseLeave={(e) => {
+                                                                            if (!isChecked) e.currentTarget.style.background = 'transparent';
+                                                                        }}
+                                                                    >
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleToggleIndicator(ind.id);
+                                                                                }}
+                                                                                style={{
+                                                                                    background: 'transparent',
+                                                                                    border: 'none',
+                                                                                    padding: 0,
+                                                                                    cursor: 'pointer',
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    justifyContent: 'center',
+                                                                                    color: isChecked ? '#1E40AF' : '#94A3B8'
+                                                                                }}
+                                                                                title={isChecked ? "Desactivar del dashboard" : "Enviar al dashboard"}
+                                                                            >
+                                                                                {isChecked ? (
+                                                                                    <CheckSquare size={16} color="#1E40AF" />
+                                                                                ) : (
+                                                                                    <Square size={16} color="#94A3B8" />
+                                                                                )}
+                                                                            </button>
+
+                                                                            <span style={{
+                                                                                fontSize: '0.74rem',
+                                                                                fontWeight: isChecked ? 700 : 500,
+                                                                                color: isChecked ? '#1E293B' : '#475569',
+                                                                                whiteSpace: 'nowrap',
+                                                                                overflow: 'hidden',
+                                                                                textOverflow: 'ellipsis'
+                                                                            }}
+                                                                            title={ind.descripcion}
+                                                                            >
+                                                                                {ind.label}
+                                                                            </span>
+                                                                        </div>
+
+                                                                        <span style={{
+                                                                            fontSize: '0.6rem',
+                                                                            fontWeight: 700,
+                                                                            padding: '1px 4px',
+                                                                            borderRadius: '4px',
+                                                                            background: ind.tipo === 'kpi' ? '#DBEAFE' : ind.tipo === 'table' ? '#D1FAE5' : '#F1F5F9',
+                                                                            color: ind.tipo === 'kpi' ? '#1E40AF' : ind.tipo === 'table' ? '#065F46' : '#475569',
+                                                                            flexShrink: 0
+                                                                        }}>
+                                                                            {ind.tipo === 'kpi' ? 'KPI' : ind.tipo === 'table' ? 'Tabla' : 'Gráfico'}
+                                                                        </span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
                                                     </div>
                                                 );
                                             })}
                                         </div>
                                     </div>
-                                );
-                            })}
+                                )}
+                            </div>
+
+                            {/* 📋 OTROS SERVICIOS CLÍNICOS (LISTA MODULAR) */}
+                            <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <div style={{
+                                    fontSize: '0.66rem',
+                                    fontWeight: 800,
+                                    color: '#64748B',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px',
+                                    padding: '0 4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between'
+                                }}>
+                                    <span>Otros Servicios</span>
+                                    <span style={{ fontSize: '0.6rem', fontWeight: 600, color: '#94A3B8' }}>
+                                        {SECTORES_CONFIG.filter(s => s.id !== 'UCI').length} en desarrollo
+                                    </span>
+                                </div>
+
+                                {SECTORES_CONFIG.filter(s => s.id !== 'UCI').map(serv => (
+                                    <div
+                                        key={serv.id}
+                                        onClick={() => {
+                                            addToast?.(`El servicio de ${serv.label} está en etapa de parametrización de indicadores.`, 'info');
+                                        }}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            padding: '10px 12px',
+                                            borderRadius: '8px',
+                                            border: '1px solid #E2E8F0',
+                                            background: '#F8FAFC',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                        onMouseEnter={e => {
+                                            e.currentTarget.style.background = '#F1F5F9';
+                                            e.currentTarget.style.borderColor = '#CBD5E1';
+                                        }}
+                                        onMouseLeave={e => {
+                                            e.currentTarget.style.background = '#F8FAFC';
+                                            e.currentTarget.style.borderColor = '#E2E8F0';
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ fontSize: '1.2rem' }}>{serv.icon}</span>
+                                            <div>
+                                                <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#334155' }}>
+                                                    {serv.label}
+                                                </div>
+                                                <div style={{ fontSize: '0.64rem', color: '#94A3B8' }}>
+                                                    {serv.descripcion}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <span style={{
+                                            fontSize: '0.6rem',
+                                            fontWeight: 700,
+                                            padding: '2px 7px',
+                                            borderRadius: '6px',
+                                            background: '#F1F5F9',
+                                            color: '#64748B',
+                                            border: '1px solid #E2E8F0',
+                                            whiteSpace: 'nowrap'
+                                        }}>
+                                            {serv.badge || 'Próximamente'}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 )}
