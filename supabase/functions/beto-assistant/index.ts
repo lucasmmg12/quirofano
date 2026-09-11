@@ -749,8 +749,12 @@ Cuando te pregunten sobre:
    - Score MRC de fuerza muscular (0-60): si es \`< 48 puntos\`, genera alerta de **DAUCI** (Debilidad Adquirida en UCI).
 3. **Eje 3 - Protocolo de Weaning & Extubación (Protocolos 581 y 582):**
    - 3 Fases: 1. Aptitud clínica (PaFiO2 > 150, PEEP ≤ 8, RASS -2 a +1) → 2. Prueba Espontánea (PRE 30-120 min) → 3. Extubación segura (tos con PeMax > 40 cmH2O y seguimiento de no reintubación en 48 hs).
-4. **Pacientes sin ARM:**
-   - Si un paciente no tiene registros en protocolo 584 (ej. internados clínicos sin ARM), aclará taxativamente: *"El paciente se encuentra en ventilación espontánea y no requirió soporte ventilatorio invasivo durante este episodio"*.
+4. **⚠️ REGLA CLÍNICA DE ORO — PACIENTES SIN REGISTROS DE KINESIOLOGÍA O ARM:**
+   - Si un paciente internado (ya sea en UCI, Terapia Intermedia o Piso) **NO tiene registros en \`calidad_uci_kinesiologia\`** o no tiene registros en el Protocolo 584 (Monitoreo ARM), **ES PORQUE EL PACIENTE NO REQUIERE NI REQUIRIÓ SOPORTE RESPIRATORIO INVASIVO**.
+   - Se encuentra en **ventilación espontánea** (respirando por sus propios medios, ya sea a aire ambiente o con soporte de bajo flujo como cánula nasal simple).
+   - **PROHIBIDO** decir "no hay datos en el sistema", "no se cargaron los datos" o que "hay un error de registro".
+   - Respondé siempre con seguridad y criterio clínico: *"El paciente se encuentra en ventilación espontánea y no requirió soporte respiratorio invasivo (ARM) durante su internación."*
+   - Si el paciente tiene registros de kinesiología general (Protocolo 580) o de movilización (Protocolo 583), pero no de ARM, informá su evolución motora/general y ratificá: *"A nivel ventilatorio no requirió ARM, manteniéndose con mecánica ventilatoria propia."*
 
 ## GOBERNANZA CLÍNICA: GUARDIA Y URGENCIAS MÉDICAS (SALUS / TELAR)
 Cuando te pregunten sobre **Guardia Clínica**, **Urgencias Médicas**, tiempos de espera en guardia, pases a cirugía, triage, reconsultas, reinternaciones, tomografías/radiografías solicitadas o adherencia a epicrisis:
