@@ -20,6 +20,7 @@ config({ path: resolve(__dirname, '..', '.env') });
 
 import { syncHistorialCamas } from './sync_ocupacion.mjs';
 import { syncDiagnosticos } from './sync_diagnosticos.mjs';
+import { syncKinesiologiaUci } from './sync_kinesiologia_uci.mjs';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://hakysnqiryimxbwdslwe.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
@@ -427,13 +428,24 @@ async function runDailySync() {
         syncedDiag = diagRes.upserted || 0;
         log(`Paso 5 completado: ${syncedDiag} diagnósticos actualizados.`);
     } catch (eDiag) {
-        log(`⚠️ Error no bloqueante en Paso 5 (Diagnósticos): ${eDiag.message}`);
+    // ──────────────────────────────────────────────────────────
+    // PASO 6: Kinesiología y Terapia Respiratoria en UCI (Últimos 45 días)
+    // ──────────────────────────────────────────────────────────
+    log('PASO 6/6: Sincronizando Kinesiología y Terapia Respiratoria UCI (últimos 45 días)...');
+    let syncedKine = 0;
+    try {
+        const f45Kine = new Date(Date.now() - 45 * 24 * 3600 * 1000).toISOString().split('T')[0];
+        const kineRes = await syncKinesiologiaUci(f45Kine);
+        syncedKine = kineRes.upserted || 0;
+        log(`Paso 6 completado: ${syncedKine} registros de Kinesiología/ARM actualizados.`);
+    } catch (eKine) {
+        log(`⚠️ Error no bloqueante en Paso 6 (Kinesiología UCI): ${eKine.message}`);
     }
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     log('========================================================');
     log(`✅ Sincronización Diaria completada con éxito en ${elapsed}s.`);
-    log(`📊 Resumen: ${syncedOcup} ocupaciones, ${syncedLab} lab UCI, ${syncedImg} imágenes, ${syncedDiag} diagnósticos.`);
+    log(`📊 Resumen: ${syncedOcup} ocupaciones, ${syncedLab} lab UCI, ${syncedImg} imágenes, ${syncedDiag} diagnósticos, ${syncedKine} kinesiología/ARM.`);
     log('========================================================');
 }
 

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
     Calendar, ChevronLeft, ChevronRight, Search, Download, 
     Maximize2, Minimize2, Users, Bed, Clock, Filter, AlertCircle,
-    Activity, ArrowLeftRight, ShieldAlert, Stethoscope, User, FileText, ExternalLink
+    Activity, ArrowLeftRight, ShieldAlert, Stethoscope, User, FileText, ExternalLink, Wind
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import UciPacienteDossierModal from './UciPacienteDossierModal';
@@ -95,6 +95,7 @@ export default function UciGanttChart({
     const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
     const [selectedPatient, setSelectedPatient] = useState(null);
     const [dossierPatient, setDossierPatient] = useState(null);
+    const [dossierInitialTab, setDossierInitialTab] = useState('resumen');
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     // Fechas sincronizadas con el dashboard
@@ -1915,6 +1916,34 @@ export default function UciGanttChart({
 
                                 <button
                                     onClick={() => {
+                                        setDossierInitialTab('kinesiologia');
+                                        setDossierPatient(selectedPatient);
+                                    }}
+                                    style={{
+                                        background: 'linear-gradient(135deg, #0F766E 0%, #0D9488 100%)',
+                                        color: '#FFFFFF',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        padding: '7px 14px',
+                                        fontSize: '0.78rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        boxShadow: '0 2px 6px rgba(13, 148, 136, 0.3)',
+                                        transition: 'all 0.15s'
+                                    }}
+                                    onMouseOver={e => e.currentTarget.style.transform = 'scale(1.02)'}
+                                    onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
+                                >
+                                    <Wind size={14} />
+                                    🫁 Kinesiología & ARM
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        setDossierInitialTab('resumen');
                                         setDossierPatient(selectedPatient);
                                     }}
                                     style={{
@@ -1966,6 +1995,7 @@ export default function UciGanttChart({
                 onClose={() => setDossierPatient(null)}
                 patient={dossierPatient}
                 historialCamas={historialCamas}
+                initialTab={dossierInitialTab}
             />
         </div>
     );

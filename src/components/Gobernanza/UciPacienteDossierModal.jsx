@@ -4,10 +4,11 @@ import {
     FlaskConical, HeartPulse, ShieldAlert, CheckCircle2, Phone, 
     MessageSquare, Download, ExternalLink, FileSpreadsheet, AlertTriangle, 
     ChevronRight, Building2, Hash, Heart, RefreshCw, Layers, DollarSign,
-    Receipt, Check, Copy
+    Receipt, Check, Copy, Wind
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import * as XLSX from 'xlsx';
+import UciKinesiologiaPanel from './UciKinesiologiaPanel';
 
 /**
  * UciPacienteDossierModal
@@ -19,9 +20,10 @@ export default function UciPacienteDossierModal({
     isOpen,
     onClose,
     patient = null,
-    historialCamas = []
+    historialCamas = [],
+    initialTab = 'resumen'
 }) {
-    const [activeTab, setActiveTab] = useState('resumen'); // 'resumen' | 'diagnosticos' | 'estudios' | 'camas' | 'cirugias' | 'guardia' | 'administrativo'
+    const [activeTab, setActiveTab] = useState(initialTab || 'resumen'); // 'resumen' | 'kinesiologia' | 'diagnosticos' | 'estudios' | 'camas' | 'cirugias' | 'guardia' | 'administrativo'
     const [loading, setLoading] = useState(false);
     const [copied, setCopied] = useState(false);
 
@@ -35,6 +37,7 @@ export default function UciPacienteDossierModal({
     const [consultasGuardia, setConsultasGuardia] = useState([]);
     const [deudasInfo, setDeudasInfo] = useState(null);
     const [presupuestos, setPresupuestos] = useState([]);
+    const [kinesiologia, setKinesiologia] = useState([]);
 
     // Cargar información consolidada en tiempo real cuando se abre el modal
     useEffect(() => {
@@ -42,7 +45,7 @@ export default function UciPacienteDossierModal({
 
         let isMounted = true;
         setLoading(true);
-        setActiveTab('resumen');
+        setActiveTab(initialTab || 'resumen');
 
         const fetchFullPatientData = async () => {
             try {
@@ -291,6 +294,29 @@ export default function UciPacienteDossierModal({
                     })()
                 );
 
+                // 9. Kinesiología y Terapia Respiratoria en UCI (calidad_uci_kinesiologia)
+                promises.push(
+                    (async () => {
+                        let kine = [];
+                        if (resolvedNhc) {
+                            const { data } = await supabase
+                                .from('calidad_uci_kinesiologia')
+                                .select('*')
+                                .eq('nhc', resolvedNhc)
+                                .order('fecha_hora', { ascending: true });
+                            kine = data || [];
+                        }
+                        if (kine.length === 0 && nombreVal) {
+                            const tokens = nombreVal.replace(/,/g, ' ').trim().split(/\s+/).filter(t => t.length > 2);
+                            let q = supabase.from('calidad_uci_kinesiologia').select('*');
+                            tokens.slice(0, 2).forEach(t => { q = q.ilike('paciente', `%${t}%`); });
+                            const { data } = await q.order('fecha_hora', { ascending: true }).limit(500);
+                            kine = data || [];
+                        }
+                        return { key: 'kinesiologia', data: kine };
+                    })()
+                );
+
                 const results = await Promise.allSettled(promises);
                 if (!isMounted) return;
 
@@ -303,6 +329,7 @@ export default function UciPacienteDossierModal({
                         if (key === 'traslados') setTraslados(data || []);
                         if (key === 'cirugias') setCirugias(data || []);
                         if (key === 'guardia') setConsultasGuardia(data || []);
+                        if (key === 'kinesiologia') setKinesiologia(data || []);
                         if (key === 'admin') {
                             setDeudasInfo(data?.deuda || null);
                             setPresupuestos(data?.presupuestos || []);
@@ -630,6 +657,7 @@ Movimientos de Cama: ${traslados.length}`;
                     <div style={{ display: 'flex', gap: '4px' }}>
                         {[
                             { id: 'resumen', label: 'Resumen 360°', icon: FileText, count: null },
+                            { id: 'kinesiologia', label: 'Kinesiología & ARM', icon: Wind, count: kinesiologia.length, highlight: true },
                             { id: 'diagnosticos', label: 'Diagnósticos SALUS', icon: Stethoscope, count: diagnosticos.length },
                             { id: 'estudios', label: 'Estudios & Peticiones', icon: FlaskConical, count: peticiones.length },
                             { id: 'camas', label: 'Ruta de Camas', icon: Bed, count: traslados.length },
@@ -870,6 +898,15 @@ Movimientos de Cama: ${traslados.length}`;
                             )}
 
                         </div>
+                    )}
+
+                    {/* ════ PESTAÑA: KINESIOLOGÍA & TERAPIA RESPIRATORIA EN UCI ════ */}
+                    {activeTab === 'kinesiologia' && (
+                        <UciKinesiologiaPanel 
+                            nhc={currentNhc} 
+                            patient={patient} 
+                            records={kinesiologia} 
+                        />
                     )}
 
                     {/* ════ PESTAÑA 2: DIAGNÓSTICOS CLÍNICOS SALUS ════ */}

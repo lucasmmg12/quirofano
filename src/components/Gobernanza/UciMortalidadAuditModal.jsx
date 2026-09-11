@@ -3,12 +3,13 @@ import {
     X, AlertTriangle, Clock, ShieldAlert, HeartPulse, Stethoscope, 
     FlaskConical, FileSpreadsheet, FileText, Search, ChevronDown, ChevronUp, 
     Activity, Filter, User, Bed, Calendar, ArrowRight, CheckCircle2, Download,
-    ArrowLeft, Building2, Check, FileCheck, Layers
+    ArrowLeft, Building2, Check, FileCheck, Layers, Wind
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import UciKinesiologiaPanel from './UciKinesiologiaPanel';
 
 export default function UciMortalidadAuditModal({ 
     isOpen, 
@@ -1424,6 +1425,20 @@ export default function UciMortalidadAuditModal({
                                     </button>
 
                                     <button
+                                        onClick={() => setActiveSubTab('kinesiologia')}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '6px',
+                                            padding: '8px 14px', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 700,
+                                            border: 'none', cursor: 'pointer',
+                                            background: activeSubTab === 'kinesiologia' ? '#0F766E' : 'transparent',
+                                            color: activeSubTab === 'kinesiologia' ? '#FFFFFF' : '#475569'
+                                        }}
+                                    >
+                                        <Wind size={15} />
+                                        🫁 Kinesiología y ARM
+                                    </button>
+
+                                    <button
                                         onClick={() => setActiveSubTab('peticiones')}
                                         style={{
                                             display: 'flex', alignItems: 'center', gap: '6px',
@@ -1513,6 +1528,14 @@ export default function UciMortalidadAuditModal({
                                             </div>
                                         )}
                                     </div>
+                                )}
+
+                                {/* SUBTAB: KINESIOLOGÍA Y TERAPIA RESPIRATORIA */}
+                                {activeSubTab === 'kinesiologia' && (
+                                    <UciKinesiologiaPanel 
+                                        nhc={singleNhcKey}
+                                        patient={currentPatientRecord}
+                                    />
                                 )}
 
                                 {/* SUBTAB 2: ESTUDIOS Y PETICIONES */}
