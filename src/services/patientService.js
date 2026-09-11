@@ -30,7 +30,7 @@ export async function searchPatients(query) {
         // Búsqueda por DNI (starts with)
         dbQuery = supabase
             .from(PATIENTS_TABLE)
-            .select('id_paciente, nombre, dni, edad, sexo, email, centro')
+            .select('id_paciente, nombre, dni, edad, sexo, email, centro, telefono')
             .ilike('dni', `${trimmed}%`)
             .order('nombre', { ascending: true })
             .limit(10);
@@ -40,7 +40,7 @@ export async function searchPatients(query) {
         const tokens = trimmed.split(/\s+/);
         dbQuery = supabase
             .from(PATIENTS_TABLE)
-            .select('id_paciente, nombre, dni, edad, sexo, email, centro')
+            .select('id_paciente, nombre, dni, edad, sexo, email, centro, telefono')
             .order('nombre', { ascending: true })
             .limit(10);
 

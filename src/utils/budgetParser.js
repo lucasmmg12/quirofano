@@ -1,9 +1,9 @@
 /**
  * Parser inteligente de observaciones de Presupuestos (Salus / Sanatorio Argentino)
  * 
- * Desglosa el texto monolítico de contratos y coseguros en secciones
- * clínico-administrativas: Prestación, Cobertura, Inclusiones, Exclusiones,
- * Requisitos de Internación, Formas de Pago, Vigencia y Contacto.
+ * Desglosa el texto de contratos y coseguros en secciones
+ * clínico-administrativas: Prestación, Cobertura, ID de Autorización, Primeros Renglones,
+ * Inclusiones, Exclusiones, Requisitos de Internación, Formas de Pago, Vigencia y Contacto.
  */
 
 export function parseBudgetObservaciones(raw) {
@@ -16,7 +16,7 @@ export function parseBudgetObservaciones(raw) {
     const sectionDefs = [
         { key: 'prestacion', regex: /PRESTACI[OÓ]N(?:\s+PRESUPUESTADA)?\s*:/i },
         { key: 'cobertura', regex: /COBERTURA\s*:/i },
-        { key: 'idRef', regex: /ID\s*:/i },
+        { key: 'idRef', regex: /ID\s*[:\-#]?/i },
         { key: 'incluye', regex: /INCLUYE\s*:/i },
         { key: 'exclusiones', regex: /EXCLUSIONES\s*:/i },
         { key: 'requisitos', regex: /REQUISITOS(?:\s+DE\s+INTERNACI[OÓ]N)?\s*:/i },
@@ -41,6 +41,16 @@ export function parseBudgetObservaciones(raw) {
     if (found.length === 0) {
         return {
             isStructured: false,
+            prestacion: null,
+            cobertura: null,
+            idRef: null,
+            primerosRenglones: clean.slice(0, 250),
+            incluye: [],
+            exclusiones: [],
+            requisitos: [],
+            formasPago: [],
+            importante: [],
+            contacto: null,
             rawText: clean,
         };
     }
@@ -55,6 +65,29 @@ export function parseBudgetObservaciones(raw) {
         let chunk = clean.substring(curr.contentStart, end).trim();
         chunk = chunk.replace(/^[•\-\*\s]+/, '').trim();
         sections[curr.key] = chunk;
+    }
+
+    // Extraer los primeros renglones (todo lo anterior a la primera lista: INCLUYE / EXCLUSIONES / REQUISITOS)
+    const firstListHeader = found.find(f => ['incluye', 'exclusiones', 'requisitos'].includes(f.key));
+    const primerosRenglones = firstListHeader 
+        ? clean.substring(0, firstListHeader.startIndex).replace(/[\r\n]+/g, ' · ').trim() 
+        : clean.slice(0, 250);
+
+    // Extraer ID de Autorización
+    let extractedId = sections.idRef || null;
+    if (extractedId) {
+        // Limpiar balas o signos sobrantes
+        extractedId = extractedId.replace(/^[•\-\*\s]+/, '').replace(/[•\-\*\s]+$/, '').trim();
+        if (extractedId === '•' || extractedId === '-' || extractedId.length === 0) {
+            extractedId = null;
+        }
+    }
+    // Fallback: búsqueda con regex de ID en los primeros renglones
+    if (!extractedId) {
+        const idRegexMatch = clean.match(/ID\s*[:\-#]\s*([a-zA-Z0-9\/\.\-_]+)/i);
+        if (idRegexMatch && idRegexMatch[1] && idRegexMatch[1] !== '•' && idRegexMatch[1] !== '-') {
+            extractedId = idRegexMatch[1].trim();
+        }
     }
 
     // Helper para dividir bloques con viñetas
@@ -92,13 +125,14 @@ export function parseBudgetObservaciones(raw) {
 
     // Limpiar cobertura si arrastra "ID:" al final
     let coberturaText = sections.cobertura || '';
-    coberturaText = coberturaText.replace(/ID\s*:\s*[•\-\s]*$/i, '').trim();
+    coberturaText = coberturaText.replace(/ID\s*[:\-#]?\s*[•\-\s]*$/i, '').trim();
 
     return {
         isStructured: true,
         prestacion: sections.prestacion || null,
         cobertura: coberturaText || null,
-        idRef: sections.idRef || null,
+        idRef: extractedId,
+        primerosRenglones,
         incluye: toList(sections.incluye),
         exclusiones: toList(sections.exclusiones),
         requisitos: toList(sections.requisitos),

@@ -28,6 +28,7 @@ export default function BudgetCollapsible({ idPaciente, patientName }) {
     const [budgetItems, setBudgetItems] = useState({});  // { [id_presupuesto]: items[] }
     const [loadingItems, setLoadingItems] = useState(null);
     const [activeTabs, setActiveTabs] = useState({}); // { [id_presupuesto]: 'condiciones' | 'items' }
+    const [rawTextVisible, setRawTextVisible] = useState({}); // { [id_presupuesto]: boolean }
 
     // Lazy load: fetch budgets on first open
     const handleToggle = useCallback(async (e) => {
@@ -287,6 +288,20 @@ export default function BudgetCollapsible({ idPaciente, patientName }) {
                                                     display: 'flex', alignItems: 'center', gap: '6px',
                                                     flexWrap: 'wrap', marginTop: '4px',
                                                 }}>
+                                                    {/* ID de Autorización / Referencia Salus */}
+                                                    {parsedObs?.idRef && (
+                                                        <span style={{
+                                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                            padding: '2px 7px', borderRadius: '5px',
+                                                            fontSize: '0.67rem', fontWeight: 800,
+                                                            background: '#FEF3C7', color: '#92400E',
+                                                            border: '1px solid #F59E0B',
+                                                            letterSpacing: '0.02em',
+                                                        }}>
+                                                            🔑 ID AUTORIZACIÓN: {parsedObs.idRef}
+                                                        </span>
+                                                    )}
+
                                                     {/* Cobertura / Coseguro */}
                                                     {parsedObs?.cobertura && (
                                                         <span style={{
@@ -349,6 +364,27 @@ export default function BudgetCollapsible({ idPaciente, patientName }) {
                                                         </span>
                                                     )}
                                                 </div>
+
+                                                {/* Primeros Renglones (Lectura Rápida de Autorizaciones/Detalle) */}
+                                                {parsedObs?.primerosRenglones && (
+                                                    <div style={{
+                                                        marginTop: '5px',
+                                                        padding: '3px 8px',
+                                                        borderRadius: '4px',
+                                                        background: '#F8FAFC',
+                                                        border: '1px solid #E2E8F0',
+                                                        fontSize: '0.67rem',
+                                                        color: '#334155',
+                                                        lineHeight: '1.3',
+                                                        whiteSpace: 'nowrap',
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                        fontFamily: 'ui-monospace, monospace',
+                                                    }}>
+                                                        <span style={{ fontWeight: 700, color: '#0369A1' }}>📋 Inicio: </span>
+                                                        {parsedObs.primerosRenglones.replace(/\n+/g, ' · ')}
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* Importe Total y Saldo */}
@@ -455,6 +491,57 @@ export default function BudgetCollapsible({ idPaciente, patientName }) {
                                                 {/* ── VISTA 1: CONDICIONES Y COBERTURA ── */}
                                                 {currentTab === 'condiciones' && (
                                                     <div style={{ padding: '14px', animation: 'fadeIn 0.15s ease-out' }}>
+                                                        {/* PANEL DE VERIFICACIÓN: ID DE AUTORIZACIÓN Y PRIMEROS RENGLONES */}
+                                                        {(parsedObs?.idRef || parsedObs?.primerosRenglones) && (
+                                                            <div style={{
+                                                                borderRadius: '8px',
+                                                                border: '1.5px solid #FCD34D',
+                                                                background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
+                                                                padding: '10px 14px',
+                                                                marginBottom: '12px',
+                                                                boxShadow: '0 1px 3px rgba(217, 119, 6, 0.08)',
+                                                            }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', flexWrap: 'wrap', gap: '6px' }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                        <span style={{ fontSize: '1rem' }}>🔑</span>
+                                                                        <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#92400E', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                                                                            Verificación de Autorización / Auditoría Salus
+                                                                        </span>
+                                                                    </div>
+                                                                    {parsedObs?.idRef && (
+                                                                        <span style={{
+                                                                            fontFamily: 'ui-monospace, monospace',
+                                                                            fontSize: '0.78rem',
+                                                                            fontWeight: 800,
+                                                                            background: '#F59E0B',
+                                                                            color: '#FFFFFF',
+                                                                            padding: '2px 10px',
+                                                                            borderRadius: '6px',
+                                                                            letterSpacing: '0.04em',
+                                                                        }}>
+                                                                            ID: {parsedObs.idRef}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {parsedObs?.primerosRenglones && (
+                                                                    <div style={{
+                                                                        background: '#FFFFFF',
+                                                                        borderRadius: '6px',
+                                                                        border: '1px solid #FDE68A',
+                                                                        padding: '8px 12px',
+                                                                        fontSize: '0.72rem',
+                                                                        color: '#78350F',
+                                                                        lineHeight: '1.45',
+                                                                        fontFamily: 'ui-monospace, monospace',
+                                                                        whiteSpace: 'pre-wrap',
+                                                                        wordBreak: 'break-word',
+                                                                    }}>
+                                                                        {parsedObs.primerosRenglones}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+
                                                         {parsedObs?.isStructured ? (
                                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                                                 {/* Tarjeta de Resumen Clínico */}
@@ -667,6 +754,56 @@ export default function BudgetCollapsible({ idPaciente, patientName }) {
                                                                     <div style={{ fontWeight: 700, color: '#0F172A', marginBottom: '2px' }}>Observaciones Registradas:</div>
                                                                     {budget.observaciones || 'Sin observaciones detalladas registradas en el presupuesto.'}
                                                                 </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* BOTÓN Y VISOR DE TEXTO ORIGINAL SALUS */}
+                                                        {budget.observaciones && (
+                                                            <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #E2E8F0' }}>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setRawTextVisible(prev => ({ ...prev, [budget.id_presupuesto]: !prev[budget.id_presupuesto] }));
+                                                                    }}
+                                                                    style={{
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '6px',
+                                                                        background: rawTextVisible[budget.id_presupuesto] ? '#EFF6FF' : 'transparent',
+                                                                        border: `1px solid ${rawTextVisible[budget.id_presupuesto] ? '#93C5FD' : '#CBD5E1'}`,
+                                                                        color: '#2563EB',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '0.7rem',
+                                                                        fontWeight: 600,
+                                                                        padding: '4px 10px',
+                                                                        borderRadius: '6px',
+                                                                        transition: 'all 0.15s ease',
+                                                                    }}
+                                                                >
+                                                                    <FileText size={12} />
+                                                                    {rawTextVisible[budget.id_presupuesto] ? 'Ocultar texto completo original de Salus' : 'Ver texto completo original de Salus'}
+                                                                </button>
+
+                                                                {rawTextVisible[budget.id_presupuesto] && (
+                                                                    <div style={{
+                                                                        marginTop: '8px',
+                                                                        padding: '10px 12px',
+                                                                        background: '#F8FAFC',
+                                                                        border: '1px solid #CBD5E1',
+                                                                        borderRadius: '6px',
+                                                                        fontSize: '0.7rem',
+                                                                        fontFamily: 'ui-monospace, monospace',
+                                                                        color: '#334155',
+                                                                        whiteSpace: 'pre-wrap',
+                                                                        wordBreak: 'break-word',
+                                                                        maxHeight: '260px',
+                                                                        overflowY: 'auto',
+                                                                        lineHeight: '1.45',
+                                                                    }}>
+                                                                        {budget.observaciones}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         )}
                                                     </div>

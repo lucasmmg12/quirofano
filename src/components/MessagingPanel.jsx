@@ -25,6 +25,7 @@ import { supabase } from '../lib/supabase';
 import { CATEGORIAS_DEUDOR } from '../services/deudaService';
 import { fetchMetaTemplates, sendMetaTemplate } from '../services/metaTemplateService';
 import ShortcutManager from './ShortcutManager';
+import { parseBudgetObservaciones } from '../utils/budgetParser';
 
 const EMOJI_LIST = [
     '😀', '😂', '🤣', '😊', '😍', '🥰', '😘', '😎', '🤩', '🥳',
@@ -217,6 +218,8 @@ export default function MessagingPanel({ addToast, currentUser }) {
     const [surgeriesMap, setSurgeriesMap] = useState({});
     // Debt Context for the Conversation List
     const [debtsMap, setDebtsMap] = useState({});
+    // Hospital Pacientes Context for legal name matching
+    const [hospitalPatientsMap, setHospitalPatientsMap] = useState({});
     const [debtFilter, setDebtFilter] = useState('all');
     const [quickFilter, setQuickFilter] = useState('all'); // 'all', 'today', 'week', 'revision', 'autorizado', 'unread', 'con_deuda'
     // Dual WhatsApp line state
@@ -263,25 +266,25 @@ export default function MessagingPanel({ addToast, currentUser }) {
         loadContacts();
     }, []);
 
-    // === Load Surgeries for Conversations ===
-    // Fetches ALL future surgeries and normalizes phones client-side
-    // to guarantee matching regardless of stored format (e.g. 154XXXXXX vs 549264XXXXXXX)
+    // === Load Surgeries & Patients for Conversations ===
+    // Fetches surgeries with full clinical name (paciente) and normalizes phones client-side
+    // to guarantee matching the real patient name over the cellphone pushname
     useEffect(() => {
         async function fetchConvSurgeries() {
             const convPhones = new Set(conversations.map(c => c.phone));
             if (convPhones.size === 0) return;
 
             try {
-                const past14 = new Date();
-                past14.setDate(past14.getDate() - 14);
-                const pastDateStr = past14.toISOString().split('T')[0];
+                const past90 = new Date();
+                past90.setDate(past90.getDate() - 90);
+                const pastDateStr = past90.toISOString().split('T')[0];
 
                 const { data, error } = await supabase
                     .from('surgeries')
-                    .select('telefono, fecha_cirugia, status')
+                    .select('id_paciente, paciente, telefono, fecha_cirugia, status, obra_social, diagnostico, medico')
                     .not('telefono', 'is', null)
                     .gte('fecha_cirugia', pastDateStr)
-                    .order('fecha_cirugia', { ascending: true });
+                    .order('fecha_cirugia', { ascending: false });
 
                 if (error) {
                     console.error("Error fetching surgeries:", error);
@@ -292,7 +295,6 @@ export default function MessagingPanel({ addToast, currentUser }) {
                 const newMap = {};
                 (data || []).forEach(s => {
                     const normalizedTel = normalizeArgentinePhone(s.telefono);
-                    // Only include if this phone has a conversation, and keep the closest future date
                     if (normalizedTel && convPhones.has(normalizedTel) && !newMap[normalizedTel]) {
                         newMap[normalizedTel] = { ...s, _normalizedPhone: normalizedTel };
                     }
@@ -326,9 +328,34 @@ export default function MessagingPanel({ addToast, currentUser }) {
             }
         }
 
+        async function fetchConvHospitalPatients() {
+            try {
+                const { data, error } = await supabase
+                    .from('hospital_pacientes')
+                    .select('id_paciente, nombre, dni, telefono')
+                    .not('telefono', 'is', null)
+                    .order('id_paciente', { ascending: false })
+                    .limit(2000);
+
+                if (error) return;
+
+                const hpMap = {};
+                (data || []).forEach(p => {
+                    const norm = normalizeArgentinePhone(p.telefono);
+                    if (norm && !hpMap[norm]) {
+                        hpMap[norm] = p;
+                    }
+                });
+                setHospitalPatientsMap(hpMap);
+            } catch (err) {
+                console.error('Error fetching hospital patients for list:', err);
+            }
+        }
+
         if (conversations.length > 0) {
             fetchConvSurgeries();
             fetchConvDebts();
+            fetchConvHospitalPatients();
         }
     }, [conversations]);
 
@@ -425,22 +452,46 @@ export default function MessagingPanel({ addToast, currentUser }) {
         async function loadPatientContext() {
             try {
                 const contact = crmContacts[selectedPhone];
-                if (!contact?.id_paciente) { setPatientContext(null); return; }
-                const idPac = String(contact.id_paciente);
+                const surgFromMap = surgeriesMap[selectedPhone];
+                const hospFromMap = hospitalPatientsMap[selectedPhone];
+                let idPac = contact?.id_paciente || surgFromMap?.id_paciente || hospFromMap?.id_paciente || null;
+
                 // Fetch surgery data
-                const { data: surgeries } = await supabase
-                    .from('surgeries')
-                    .select('obra_social, fecha_cirugia, medico, modulo, status')
-                    .eq('id_paciente', idPac)
-                    .order('fecha_cirugia', { ascending: false })
-                    .limit(1);
+                let surgeries = [];
+                if (idPac) {
+                    const { data } = await supabase
+                        .from('surgeries')
+                        .select('id_paciente, paciente, obra_social, fecha_cirugia, medico, modulo, status, nhc')
+                        .eq('id_paciente', String(idPac))
+                        .order('fecha_cirugia', { ascending: false })
+                        .limit(1);
+                    surgeries = data || [];
+                } else {
+                    const phoneDigits = selectedPhone.replace(/\D/g, '').slice(-8);
+                    const { data } = await supabase
+                        .from('surgeries')
+                        .select('id_paciente, paciente, obra_social, fecha_cirugia, medico, modulo, status, nhc')
+                        .ilike('telefono', `%${phoneDigits}%`)
+                        .order('fecha_cirugia', { ascending: false })
+                        .limit(1);
+                    surgeries = data || [];
+                    if (surgeries[0]?.id_paciente) {
+                        idPac = String(surgeries[0].id_paciente);
+                    }
+                }
+
                 // Fetch budget data
-                const { data: budgets } = await supabase
-                    .from('presupuestos')
-                    .select('id_presupuesto, importe_total, fecha, observaciones, aceptado')
-                    .eq('id_paciente', idPac)
-                    .order('fecha', { ascending: false })
-                    .limit(1);
+                let budgets = [];
+                if (idPac) {
+                    const { data: bData } = await supabase
+                        .from('presupuestos')
+                        .select('id_presupuesto, importe_total, fecha, observaciones, aceptado, presup_descripcion')
+                        .eq('id_paciente', String(idPac))
+                        .order('fecha', { ascending: false })
+                        .limit(1);
+                    budgets = bData || [];
+                }
+
                 let budgetItems = [];
                 if (budgets?.[0]?.id_presupuesto) {
                     const { data: items } = await supabase
@@ -450,6 +501,7 @@ export default function MessagingPanel({ addToast, currentUser }) {
                         .order('linea', { ascending: true });
                     budgetItems = items || [];
                 }
+
                 // Fetch debt data (by NHC from surgery, or by name match)
                 let debtData = null;
                 const surgeryNhc = surgeries?.[0]?.nhc;
@@ -461,17 +513,19 @@ export default function MessagingPanel({ addToast, currentUser }) {
                         .maybeSingle();
                     debtData = debt;
                 }
-                if (!debtData && contact?.nombre) {
+                const resolvedName = contact?.nombre || surgeries?.[0]?.paciente || hospFromMap?.nombre;
+                if (!debtData && resolvedName) {
                     // Fallback: search by patient name
                     const { data: debtByName } = await supabase
                         .from('deudas_pacientes')
                         .select('nombre, nhc, deuda_total, cantidad_facturas, fecha_ultima_factura, obra_social, telefono')
-                        .ilike('nombre', `%${contact.nombre.split(' ')[0]}%`)
+                        .ilike('nombre', `%${resolvedName.split(' ')[0]}%`)
                         .gte('deuda_total', 1)
                         .limit(1)
                         .maybeSingle();
                     debtData = debtByName;
                 }
+
                 setPatientContext({
                     surgery: surgeries?.[0] || null,
                     budget: budgets?.[0] || null,
@@ -484,7 +538,7 @@ export default function MessagingPanel({ addToast, currentUser }) {
             }
         }
         loadPatientContext();
-    }, [selectedPhone, crmContacts]);
+    }, [selectedPhone, crmContacts, surgeriesMap, hospitalPatientsMap]);
 
     // === Load messages for selected conversation ===
     useEffect(() => {
@@ -1051,6 +1105,13 @@ export default function MessagingPanel({ addToast, currentUser }) {
                 id_paciente: selectedPatient?.id_paciente || null,
                 dni: selectedPatient?.dni || null,
             });
+            // Si el paciente en hospital_pacientes no tenía teléfono, actualizarlo con este número de contacto
+            if (selectedPatient?.id_paciente && !selectedPatient?.telefono) {
+                await supabase
+                    .from('hospital_pacientes')
+                    .update({ telefono: normalized })
+                    .eq('id_paciente', selectedPatient.id_paciente);
+            }
         } catch (e) { console.error('Error saving CRM contact:', e); }
         setContactNames(prev => ({ ...prev, [normalized]: nombre }));
         setSelectedPhone(normalized);
@@ -1062,7 +1123,8 @@ export default function MessagingPanel({ addToast, currentUser }) {
             if (existing) return prev;
             return [{ phone: normalized, lastMessage: '', lastDate: new Date().toISOString(), direction: 'outgoing', senderName: '', unreadCount: 0 }, ...prev];
         });
-    }, [newChatPhone, newChatName, selectedPatient]);
+        addToast?.('Conversación vinculada e iniciada ✅', 'success');
+    }, [newChatPhone, newChatName, selectedPatient, addToast]);
 
     // === PATIENT SEARCH ===
     const handlePatientSearch = useCallback(async (query) => {
@@ -1079,6 +1141,11 @@ export default function MessagingPanel({ addToast, currentUser }) {
     const selectPatientResult = useCallback((patient) => {
         setSelectedPatient(patient);
         setNewChatName(patient.nombre || '');
+        if (patient.telefono) {
+            setNewChatPhone(patient.telefono);
+        } else {
+            setNewChatPhone('');
+        }
         setPatientResults([]);
     }, []);
 
@@ -1179,15 +1246,49 @@ export default function MessagingPanel({ addToast, currentUser }) {
         };
     };
 
+    // === CLINICAL PATIENT NAME RESOLVER ===
+    // Prioritizes real hospital/legal patient names over the cellphone pushname
+    const getResolvedPatientInfo = useCallback((phone, convSenderName) => {
+        const crm = crmContacts[phone];
+        const surg = surgeriesMap[phone];
+        const debt = debtsMap[phone];
+        const hosp = hospitalPatientsMap[phone];
+
+        // Clinical legal name priority
+        const clinicalName = (crm?.nombre && crm?.id_paciente)
+            ? crm.nombre
+            : (surg?.paciente || hosp?.nombre || debt?.nombre || crm?.nombre || null);
+
+        // WhatsApp / cellphone pseudonym
+        const cellName = convSenderName || '';
+        const isDifferent = Boolean(
+            cellName && clinicalName &&
+            cellName.trim().toLowerCase() !== clinicalName.trim().toLowerCase() &&
+            cellName !== phone
+        );
+
+        return {
+            displayName: clinicalName || cellName || phone,
+            clinicalName,
+            isClinical: !!clinicalName,
+            cellName: isDifferent ? cellName : null,
+            dni: crm?.dni || hosp?.dni || null,
+            idPaciente: crm?.id_paciente || surg?.id_paciente || hosp?.id_paciente || null,
+        };
+    }, [crmContacts, surgeriesMap, debtsMap, hospitalPatientsMap]);
+
     // === FILTERED CONVERSATIONS — unread first ===
     const filtered = useMemo(() => {
         let list = conversations;
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
             list = list.filter(c => {
-                const name = contactNames[c.phone] || c.senderName || '';
-                // Buscar por nombre, teléfono o último mensaje
-                const matchText = c.phone.includes(q) || name.toLowerCase().includes(q) || c.lastMessage.toLowerCase().includes(q);
+                const info = getResolvedPatientInfo(c.phone, c.senderName);
+                // Buscar por nombre clínico, nombre de contacto en el celular, teléfono o último mensaje
+                const matchText = c.phone.includes(q)
+                    || info.displayName.toLowerCase().includes(q)
+                    || (info.cellName && info.cellName.toLowerCase().includes(q))
+                    || c.lastMessage.toLowerCase().includes(q);
                 if (matchText) return true;
                 // Buscar por fecha de cirugía (ej: "6/5", "06/05")
                 const surgery = surgeriesMap[c.phone];
@@ -1243,7 +1344,7 @@ export default function MessagingPanel({ addToast, currentUser }) {
             if (b.unreadCount > 0 && a.unreadCount === 0) return 1;
             return new Date(b.lastDate) - new Date(a.lastDate);
         });
-    }, [conversations, searchQuery, contactNames, surgeriesMap, debtsMap, debtFilter, quickFilter]);
+    }, [conversations, searchQuery, getResolvedPatientInfo, surgeriesMap, debtsMap, debtFilter, quickFilter]);
 
     // Total unread count
     const totalUnread = useMemo(() => conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0), [conversations]);
@@ -1281,9 +1382,20 @@ export default function MessagingPanel({ addToast, currentUser }) {
         return groups;
     }, [messages]);
 
-    const selectedContactName = selectedPhone
-        ? (contactNames[selectedPhone] || conversations.find(c => c.phone === selectedPhone)?.senderName || selectedPhone)
-        : '';
+    const activeConv = useMemo(() => conversations.find(c => c.phone === selectedPhone) || null, [conversations, selectedPhone]);
+
+    const activePatientInfo = useMemo(() => {
+        if (!selectedPhone) return { displayName: '', clinicalName: null, cellName: null, isClinical: false, dni: null };
+        return getResolvedPatientInfo(selectedPhone, activeConv?.senderName);
+    }, [selectedPhone, activeConv, getResolvedPatientInfo]);
+
+    const selectedContactName = activePatientInfo.displayName;
+
+    // Observaciones parseadas de presupuesto del paciente actual (para autorizaciones e ID)
+    const parsedBudgetObs = useMemo(() => {
+        if (!patientContext?.budget?.observaciones) return null;
+        return parseBudgetObservaciones(patientContext.budget.observaciones);
+    }, [patientContext?.budget?.observaciones]);
 
     // ==========================================
     // RENDER MESSAGE CONTENT (images, audio, video, docs, text)
@@ -1580,9 +1692,31 @@ export default function MessagingPanel({ addToast, currentUser }) {
                                     <User size={13} />
                                     <span>{selectedPatient.nombre}</span>
                                     {selectedPatient.dni && <span style={{ color: '#64748B' }}>· DNI {selectedPatient.dni}</span>}
-                                    <button onClick={() => { setSelectedPatient(null); setNewChatName(''); }} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}>
+                                    <button onClick={() => { setSelectedPatient(null); setNewChatName(''); setNewChatPhone(''); }} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}>
                                         <X size={13} />
                                     </button>
+                                </div>
+                            )}
+                            {selectedPatient && !selectedPatient.telefono && (
+                                <div style={{
+                                    padding: '8px 10px', borderRadius: '6px',
+                                    background: '#FEF2F2', border: '1px solid #FECACA',
+                                    fontSize: '0.72rem', color: '#B91C1C',
+                                    display: 'flex', alignItems: 'center', gap: '6px'
+                                }}>
+                                    <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+                                    <span><strong>Sin teléfono en HC.</strong> Ingrese el número del paciente o familiar arriba para vincularlo automáticamente.</span>
+                                </div>
+                            )}
+                            {selectedPatient && selectedPatient.telefono && (
+                                <div style={{
+                                    padding: '6px 10px', borderRadius: '6px',
+                                    background: '#F0FDF4', border: '1px solid #BBF7D0',
+                                    fontSize: '0.72rem', color: '#15803D',
+                                    display: 'flex', alignItems: 'center', gap: '6px'
+                                }}>
+                                    <CheckCircle size={13} style={{ flexShrink: 0 }} />
+                                    <span>Teléfono registrado en HC: <strong>{selectedPatient.telefono}</strong></span>
                                 </div>
                             )}
                             <button className="msg-panel__new-chat-submit" onClick={handleStartNewChat} disabled={!newChatPhone.trim()}>
@@ -1600,7 +1734,8 @@ export default function MessagingPanel({ addToast, currentUser }) {
                         <div className="msg-panel__empty"><MessageSquare size={32} strokeWidth={1.2} /><span>Sin conversaciones para este filtro</span></div>
                     ) : (
                         filtered.map(conv => {
-                            const name = contactNames[conv.phone] || conv.senderName || conv.phone;
+                            const patientInfo = getResolvedPatientInfo(conv.phone, conv.senderName);
+                            const name = patientInfo.displayName;
                             const isActive = selectedPhone === conv.phone;
                             const hasUnread = conv.unreadCount > 0;
                             const dateInfo = getDateInfo(conv.phone);
@@ -1678,9 +1813,26 @@ export default function MessagingPanel({ addToast, currentUser }) {
 
                                         {/* ── FILA 2: Nombre del Contacto y Hora ── */}
                                         <div className="msg-panel__conv-top">
-                                            <span className={`msg-panel__conv-name ${hasUnread ? 'msg-panel__conv-name--bold' : ''}`}>
-                                                {name}
-                                            </span>
+                                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                                                <span className={`msg-panel__conv-name ${hasUnread ? 'msg-panel__conv-name--bold' : ''}`}>
+                                                    {name}
+                                                </span>
+                                                {patientInfo.cellName && (
+                                                    <span style={{
+                                                        fontSize: '0.67rem',
+                                                        color: '#64748B',
+                                                        whiteSpace: 'nowrap',
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '2px',
+                                                        marginTop: '1px'
+                                                    }}>
+                                                        📱 Celu: {patientInfo.cellName}
+                                                    </span>
+                                                )}
+                                            </div>
                                             <span className="msg-panel__conv-time">
                                                 {formatDate(conv.lastDate)}
                                             </span>
@@ -1846,9 +1998,32 @@ export default function MessagingPanel({ addToast, currentUser }) {
                                 <button className="msg-panel__btn-icon msg-panel__back-btn" onClick={() => setSelectedPhone(null)}>
                                     <ArrowLeft size={18} />
                                 </button>
-                                <div className="msg-panel__chat-header-avatar">{selectedContactName.charAt(0).toUpperCase()}</div>
+                                <div className="msg-panel__chat-header-avatar">{activePatientInfo.displayName.charAt(0).toUpperCase()}</div>
                                 <div className="msg-panel__chat-header-info" style={{ flex: 1 }}>
-                                    <span className="msg-panel__chat-header-name">{selectedContactName}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                        <span className="msg-panel__chat-header-name">{activePatientInfo.displayName}</span>
+                                        {activePatientInfo.cellName && (
+                                            <span style={{
+                                                fontSize: '0.68rem',
+                                                padding: '1px 8px',
+                                                borderRadius: '10px',
+                                                background: 'rgba(255,255,255,0.2)',
+                                                color: '#E0F2FE',
+                                                fontWeight: 600,
+                                            }}>
+                                                📱 Celu: {activePatientInfo.cellName}
+                                            </span>
+                                        )}
+                                        {activePatientInfo.dni && (
+                                            <span style={{
+                                                fontSize: '0.7rem',
+                                                color: 'rgba(255,255,255,0.7)',
+                                                fontFamily: 'ui-monospace, monospace',
+                                            }}>
+                                                DNI {activePatientInfo.dni}
+                                            </span>
+                                        )}
+                                    </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <span className="msg-panel__chat-header-phone" style={{ userSelect: 'text', cursor: 'text' }}><Phone size={11} /> {selectedPhone}</span>
                                         <button
@@ -1963,34 +2138,85 @@ export default function MessagingPanel({ addToast, currentUser }) {
                                     </span>
                                 </div>
                             )}
-                            {/* Budget Detail Dropdown */}
-                            {showBudgetDetail && patientContext?.budgetItems?.length > 0 && (
-                                <div className="msg-panel__budget-dropdown animate-fade-in">
-                                    <div className="msg-panel__budget-header-row">
-                                        <FileText size={13} />
-                                        <span style={{ fontWeight: 700 }}>Detalle del Presupuesto</span>
+                            {/* Budget Detail Dropdown with Autorizaciones & Primeros Renglones */}
+                            {showBudgetDetail && patientContext?.budget && (
+                                <div className="msg-panel__budget-dropdown animate-fade-in" style={{
+                                    background: '#FFFFFF',
+                                    border: '1.5px solid #BFDBFE',
+                                    borderRadius: '8px',
+                                    margin: '8px 16px',
+                                    padding: '12px',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
+                                }}>
+                                    <div className="msg-panel__budget-header-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                                        <FileText size={14} style={{ color: '#2563EB', marginRight: '6px' }} />
+                                        <span style={{ fontWeight: 800, color: '#1E40AF', fontSize: '0.82rem' }}>
+                                            Detalle de Presupuesto Quirúrgico
+                                        </span>
                                         {patientContext.surgery?.medico && (
-                                            <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px', color: '#64748B' }}>
+                                            <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px', color: '#64748B', fontSize: '0.72rem' }}>
                                                 <Stethoscope size={12} /> {patientContext.surgery.medico}
                                             </span>
                                         )}
                                     </div>
-                                    <div className="msg-panel__budget-items">
-                                        {patientContext.budgetItems.map((item, i) => (
-                                            <div key={i} className="msg-panel__budget-item">
-                                                <span className="msg-panel__budget-item-desc">
-                                                    {item.cantidad > 1 && <span style={{ fontWeight: 700, color: '#2563EB' }}>{item.cantidad}x </span>}
-                                                    {item.descripcion}
+
+                                    {/* Bloque Destacado de ID Autorización y Cobertura */}
+                                    {(parsedBudgetObs?.idRef || patientContext.budget.id_presupuesto) && (
+                                        <div style={{
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                            padding: '7px 10px', borderRadius: '6px',
+                                            background: '#FEF3C7', border: '1px solid #F59E0B',
+                                            marginBottom: '8px', fontSize: '0.74rem', fontWeight: 800, color: '#92400E',
+                                            flexWrap: 'wrap', gap: '6px'
+                                        }}>
+                                            <span style={{ fontFamily: 'ui-monospace, monospace' }}>
+                                                🔑 ID AUTORIZACIÓN: {parsedBudgetObs?.idRef || `#${patientContext.budget.id_presupuesto}`}
+                                            </span>
+                                            {parsedBudgetObs?.cobertura && (
+                                                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#1E40AF', background: '#DBEAFE', padding: '1px 8px', borderRadius: '4px' }}>
+                                                    🛡️ {parsedBudgetObs.cobertura}
                                                 </span>
-                                                <span className="msg-panel__budget-item-amount">
-                                                    ${Number(item.importe_total || 0).toLocaleString('es-AR')}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div className="msg-panel__budget-total-row">
-                                        <span>TOTAL</span>
-                                        <span style={{ fontWeight: 800, color: '#0F172A', fontSize: '0.9rem' }}>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Primeros Renglones (Lectura rápida para autorizaciones) */}
+                                    {parsedBudgetObs?.primerosRenglones && (
+                                        <div style={{
+                                            padding: '8px 10px', borderRadius: '6px',
+                                            background: '#F8FAFC', border: '1px solid #E2E8F0',
+                                            marginBottom: '8px', fontSize: '0.7rem', color: '#334155',
+                                            fontFamily: 'ui-monospace, monospace', whiteSpace: 'pre-wrap', lineHeight: '1.4'
+                                        }}>
+                                            <div style={{ fontWeight: 700, color: '#0369A1', marginBottom: '3px' }}>📋 Primeros Renglones / Encabezado de Salus:</div>
+                                            {parsedBudgetObs.primerosRenglones}
+                                        </div>
+                                    )}
+
+                                    {/* Ítems del presupuesto */}
+                                    {patientContext.budgetItems?.length > 0 ? (
+                                        <div className="msg-panel__budget-items" style={{ maxHeight: '160px', overflowY: 'auto' }}>
+                                            {patientContext.budgetItems.map((item, i) => (
+                                                <div key={i} className="msg-panel__budget-item" style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #F1F5F9', fontSize: '0.72rem' }}>
+                                                    <span className="msg-panel__budget-item-desc" style={{ color: '#1E293B' }}>
+                                                        {item.cantidad > 1 && <span style={{ fontWeight: 700, color: '#2563EB' }}>{item.cantidad}x </span>}
+                                                        {item.descripcion}
+                                                    </span>
+                                                    <span className="msg-panel__budget-item-amount" style={{ fontWeight: 600, color: '#0F172A', marginLeft: '8px', flexShrink: 0 }}>
+                                                        ${Number(item.importe_total || 0).toLocaleString('es-AR')}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div style={{ fontSize: '0.7rem', color: '#94A3B8', fontStyle: 'italic', margin: '4px 0' }}>
+                                            Sin ítems de desglose cargados
+                                        </div>
+                                    )}
+
+                                    <div className="msg-panel__budget-total-row" style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', paddingTop: '6px', borderTop: '1.5px solid #BFDBFE' }}>
+                                        <span style={{ fontWeight: 700, fontSize: '0.75rem', color: '#1E40AF' }}>TOTAL PRESUPUESTADO</span>
+                                        <span style={{ fontWeight: 800, color: '#1E40AF', fontSize: '0.9rem' }}>
                                             ${Number(patientContext.budget.importe_total || 0).toLocaleString('es-AR')}
                                         </span>
                                     </div>
