@@ -36,7 +36,13 @@ const SMART_SUGGESTIONS = {
     metricas: ['📊 Resumen mensual', '📈 Comparar con mes anterior', '🏥 Métricas por especialidad', '📥 Exportar métricas a Excel'],
     auditoria_historias: ['📊 ¿Cómo auditar historias clínicas?', '📋 Explicar pipeline de auditoría', '💡 ¿Qué significa Sin Fecha de Alta?', '🧭 Llevame a Inicio'],
     facturacion: ['🧾 Fichas pendientes de facturar', '📊 Resumen de facturación del mes', '🔙 Fichas devueltas', '📚 Enseñame facturación'],
-    gobernanza_indicadores: ['🛏️ ¿Cuántos días cama tuvimos en junio 2026?', '🏥 Ocupación en UCI (Intensiva + Intermedia)', '📊 Gráfico de admisiones por especialidad', '📥 Exportar ocupación a Excel'],
+    gobernanza_indicadores: [
+        '🚑 Indicadores de Guardia Clínica (Septiembre 2026)',
+        '⏱️ ¿Cuál es el tiempo de espera en Guardia?',
+        '🔪 Tasa de conversión a cirugía de Guardia',
+        '🛏️ Días cama y ocupación en UCI',
+        '📥 Exportar resumen de Guardia a Excel'
+    ],
     default: ['🔔 ¿Qué hay pendiente?', '📊 Reporte del día', '📥 Exportar datos a Excel', '❓ ¿Cómo funciona esto?'],
 };
 
@@ -76,6 +82,11 @@ const PROACTIVE_NUDGES = {
         '🧾 ¿Querés ver las fichas pendientes de facturar?',
         '📊 Puedo armar un resumen de estado de facturación',
         '🔙 ¿Necesitás devolver fichas a Control de Altas?',
+    ],
+    gobernanza_indicadores: [
+        '🚑 ¿Querés que revisemos los indicadores de Guardia Clínica de este mes?',
+        '⏱️ Puedo darte los tiempos de espera y permanencia en Guardia',
+        '🛏️ ¿Necesitás un reporte de ocupación o días cama de UCI?',
     ],
     default: [
         '👋 ¡Hola! ¿Sabías que puedo generar reportes en PDF?',

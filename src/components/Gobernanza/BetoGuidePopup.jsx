@@ -275,6 +275,29 @@ export default function BetoGuidePopup({ activeView = 'inicio' }) {
                             <ChevronRight size={13} color="#94A3B8" />
                         </button>
                         <button
+                            onClick={() => handleLaunchBeto('¿Cuáles son los indicadores de Guardia Clínica de este mes?')}
+                            style={{
+                                background: '#FFFFFF',
+                                border: '1px solid #E2E8F0',
+                                borderRadius: '8px',
+                                padding: '6px 9px',
+                                fontSize: '0.74rem',
+                                color: '#1E40AF',
+                                fontWeight: 600,
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                transition: 'all 0.15s'
+                            }}
+                            onMouseOver={e => { e.currentTarget.style.borderColor = '#93C5FD'; e.currentTarget.style.background = '#F0F7FF'; }}
+                            onMouseOut={e => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.background = '#FFFFFF'; }}
+                        >
+                            <span>🚨 "Indicadores de Guardia Clínica de este mes"</span>
+                            <ChevronRight size={13} color="#94A3B8" />
+                        </button>
+                        <button
                             onClick={() => handleLaunchBeto('Exportame a Excel la ocupación mensual por servicio de 2026')}
                             style={{
                                 background: '#F0FDF4',

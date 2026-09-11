@@ -48,7 +48,10 @@ async function getSchemaContext(): Promise<string> {
                 'calidad_admisiones_camas_historial',
                 'calidad_censo_camas_uci',
                 'calidad_peticiones_pruebas',
-                'calidad_pacientes_diagnosticos'
+                'calidad_pacientes_diagnosticos',
+                'guardia_indicadores_resumen',
+                'gobernanza_indicadores',
+                'gobernanza_proyectos'
             ];
             const filtered = columns.filter((c: any) => relevantTables.includes(c.table_name));
             schemaCache = formatSchemaFromColumns(filtered);
@@ -431,6 +434,51 @@ Contiene las solicitudes de estudios de internación y guardia:
 - \`habitacion\` (text) — BOX o habitación (ej: 'BOX 1', 'BOX 6')
 - \`cama\` (text) — Cama
 - \`prioridad\` (text) — Prioridad ('Normal', 'Alta', 'Urgente')
+
+### \`guardia_indicadores_resumen\` (Consolidado Mensual de los 9 Indicadores de Guardia Clínica de SALUS)
+Contiene las métricas oficiales y KPIs mensuales de Guardia de Urgencias del Sanatorio Argentino (sincronizadas desde SALUS 128.223.16.29:2450):
+- \`id\` (uuid PK)
+- \`periodo\` (text) — Formato 'YYYY-MM', ej: '2026-09', '2026-07', '2026-06', '2026-05', '2026-04', '2026-03', '2026-02', '2026-01'.
+- \`fecha_desde\` (date) — Primer día del mes (ej: '2026-09-01')
+- \`fecha_hasta\` (date) — Último día del mes (ej: '2026-09-30')
+- \`total_consultas\` (int) — Volumen total de consultas de guardia atendidas en el período (ej: 641 en sep-2026, 1470 en jul-2026)
+- \`cantidad_pases_cirugia\` (int) — Pacientes asistidos en guardia que ingresaron a Quirófano dentro de las 24 horas (ej: 48 en sep, 152 en jul)
+- \`conversion_cirugia_pct\` (numeric) — Tasa de conversión a cirugía (%) = (cantidad_pases_cirugia / total_consultas) * 100 (ej: 7.49% en sep, 10.34% en jul). Meta normada: 8% a 12%.
+- \`espera_medico_min_promedio\` (numeric) — Minutos promedio desde el ingreso/registro hasta el llamado y atención médica efectiva (ej: 33.96 min en sep, 28.18 min en jul). Meta: < 30 min.
+- \`permanencia_guardia_min_promedio\` (numeric) — Minutos promedio de estadía total del paciente en el circuito de guardia (ej: 48.27 min en sep, 41.19 min en jul).
+- \`consultas_con_triage\` (int) — Cantidad de consultas con categoría de severidad N1, N2 o N3 asignada formalmente.
+- \`cobertura_triage_pct\` (numeric) — % de cobertura de triage = 100.0%. Meta: > 95%.
+- \`triage_distribucion\` (jsonb) — Array con el desglose exacto por nivel: [{nivel: "(N1) VISITA CLINICA", cantidad: 546, porcentaje: 85.18}, {nivel: "(N2) VISITA CLINICA", cantidad: 90, porcentaje: 14.04}, {nivel: "(N3) VISITA CLINICA", cantidad: 5, porcentaje: 0.78}].
+- \`cantidad_reconsultas_72h\` (int) — Pacientes que reconsultaron en guardia dentro de las 72 hs por el mismo episodio (ej: 38 en sep, 95 en jul).
+- \`reconsulta_72h_pct\` (numeric) — % de reconsulta = (cantidad_reconsultas_72h / total_consultas) * 100 (ej: 5.93% en sep, 6.46% en jul). Umbral de calidad: < 7%.
+- \`total_altas_clinicas\` (int) — Total de pacientes egresados de piso clínico derivados de urgencias (ej: 24 en sep, 86 en jul).
+- \`reinternaciones_72h\` (int) — Pacientes que reingresaron a piso clínico antes de las 72 horas del alta (ej: 0 en sep, 1 en jul).
+- \`reinternacion_72h_pct\` (numeric) — % de reinternación temprana (ej: 0.00% en sep, 1.16% en jul). Umbral de calidad: < 5%.
+- \`total_tac\` (int) — Cantidad de Tomografías Computadas solicitadas a pacientes de guardia (ej: 92 en sep, 270 en jul).
+- \`total_rx\` (int) — Cantidad de Radiografías simples solicitadas a pacientes de guardia (ej: 114 en sep, 243 en jul).
+- \`tasa_imagenes_100_consultas\` (numeric) — Tasa de estudios de imágenes por cada 100 consultas = ((total_tac + total_rx) / total_consultas) * 100 (ej: 32.14 en sep, 34.90 en jul). Benchmark: 25 a 35 cada 100.
+- \`destinos_distribucion\` (jsonb) — Desglose porcentual y nominal de destinos post-guardia: [{destino: "Alta Médica Domiciliaria", cantidad: 579, porcentaje: 90.33}, {destino: "Ingreso a Piso Clínico", cantidad: 39, porcentaje: 6.08}, {destino: "Pase a Quirófano", cantidad: 16, porcentaje: 2.50}, {destino: "Ingreso a Terapia Intensiva", cantidad: 5, porcentaje: 0.78}, {destino: "Derivación Externa", cantidad: 2, porcentaje: 0.31}].
+- \`promedio_dias_estada\` (numeric) — Promedio de días cama de internación clínica para pacientes admitidos desde Urgencias (ej: 1.67 días en sep, 1.71 días en jul). Benchmark: 1.5 a 2.5 días.
+- \`altas_con_epicrisis\` (int) — Altas de piso clínico con Protocolo 382 (Epicrisis) completado (ej: 24 de 24 en sep, 86 de 86 en jul).
+- \`adherencia_epicrisis_pct\` (numeric) — % de adherencia a epicrisis = 100.0%. Meta institucional: 100%.
+
+### \`gobernanza_indicadores\` (Catálogo de Indicadores y Repositorio Transact-SQL de SALUS)
+Catálogo oficial de gobernanza de indicadores del Sanatorio Argentino:
+- \`id\` (uuid PK)
+- \`proyecto_id\` (uuid FK → gobernanza_proyectos) — '15533f6c-df44-42ae-a6f7-e3376d3b58fc' para "Guardia Clínica" y '9e707b55-8dca-4db3-8db4-4c282c232c1c' para "UCI".
+- \`titulo\` (text) — Título del indicador (ej: "Tasa de Conversión a Cirugía", "Tiempos de Espera (Triage y Médico)", etc.)
+- \`informacion_buscada\` (text) — Definición clínica y propósito del indicador.
+- \`origen_informacion\` (text) — Vistas y tablas fuentes en SALUS (VLISE_Visitas, TABLEAU_Admisiones, etc.)
+- \`ciclo_datos\` (text) — Frecuencia de corte ('Mensual', 'Cierre Diario')
+- \`query_sql\` (text) — Consulta Transact-SQL completa, canónica y optimizada para SQL Server de SALUS.
+- \`explicacion_query\` (text) — Explicación técnica paso a paso del script SQL, campos utilizados y lógica de join.
+- \`estado\` (text) — 'Finalizado' (100% documentado) o 'Borrador'.
+
+### \`gobernanza_proyectos\` (Proyectos de Datos Institucionales)
+- \`id\` (uuid PK)
+- \`nombre\` (text) — 'UCI', 'Guardia Clínica', etc.
+- \`descripcion\` (text)
+- \`estado\` (text) — 'Activo'
 `;
 }
 
@@ -643,6 +691,78 @@ Cuando te pregunten sobre:
 ### GRÁFICOS INTERACTIVOS:
 - Acompañá tus respuestas de ocupación con un bloque \`beto-chart\` (de tipo \`"bar"\` o \`"donut"\`) para que el usuario pueda ver la comparativa visual interactiva y expandirla a pantalla completa.
 - Si solicitan exportar los datos o armar una planilla, generá el bloque \`beto-excel\`.
+
+## GOBERNANZA CLÍNICA: GUARDIA Y URGENCIAS MÉDICAS (SALUS / TELAR)
+Cuando te pregunten sobre **Guardia Clínica**, **Urgencias Médicas**, tiempos de espera en guardia, pases a cirugía, triage, reconsultas, reinternaciones, tomografías/radiografías solicitadas o adherencia a epicrisis:
+
+### 1. DÓNDE CONSULTAR LOS DATOS DE GUARDIA:
+- **Tabla Oficial Consolidada de KPIs:** \`guardia_indicadores_resumen\`
+  Contiene las métricas consolidadas mensuales (2026-01 a 2026-09) sincronizadas directamente desde SALUS SQL Server (128.223.16.29:2450).
+  - Consulta mes en curso (ej: Septiembre 2026):
+    \`SELECT * FROM guardia_indicadores_resumen WHERE periodo = '2026-09'\`
+  - Evolución mensual histórica 2026:
+    \`SELECT periodo, total_consultas, conversion_cirugia_pct, espera_medico_min_promedio, permanencia_guardia_min_promedio, reconsulta_72h_pct, reinternacion_72h_pct, total_tac, total_rx, tasa_imagenes_100_consultas, promedio_dias_estada, adherencia_epicrisis_pct FROM guardia_indicadores_resumen ORDER BY periodo ASC\`
+- **Catálogo Técnico y Queries Canónicas Transact-SQL:** \`gobernanza_indicadores\`
+  Contiene las definiciones, fórmulas, scripts canónicos SQL y explicaciones técnicas de los 9 indicadores:
+  \`SELECT titulo, informacion_buscada, query_sql, explicacion_query FROM gobernanza_indicadores WHERE proyecto_id = '15533f6c-df44-42ae-a6f7-e3376d3b58fc'\`
+- **Consultas Nominales Detalladas:** \`consultas_guardia\`
+  Para analizar consultas ambulatorias individuales por agenda, médico o especialidad.
+
+### 2. LOS 9 INDICADORES NORMATIVOS DE GUARDIA (MEMORIA INSTITUCIONAL Y FÓRMULAS):
+1. **Tasa de Conversión a Cirugía (Benchmark: 8% a 12%):**
+   - *Definición:* Porcentaje de pacientes atendidos en Guardia que son ingresados a Quirófano dentro de las 24 horas posteriores a la consulta.
+   - *Fórmula:* \`(cantidad_pases_cirugia / total_consultas) * 100\`
+   - *Fuente SALUS:* \`VLISE_Visitas\` cruzada con \`TABLEAU_Admisiones\` por \`NHC\` y ventana temporal \`<= 24 horas\`.
+   - *Dato Real Sanatorio Argentino:* En Septiembre 2026 fue **7.49%** (48 de 641 pacientes). En Julio 2026 fue **10.34%** (152 de 1,470 pacientes). En promedio anual se sitúa en ~9.5%.
+2. **Tiempos de Espera (Triage y Médico) (Benchmark: < 30 min):**
+   - *Definición:* Minutos promedio desde que el paciente ingresa y es registrado en el sistema hasta que es llamado y atendido efectivamente por el médico de guardia. También se computa la permanencia total.
+   - *Fórmula:* Espera al médico = \`AVG(DATEDIFF(MINUTE, [Fecha Entrada Real], [Fecha Hora Entrada]))\`; Permanencia total = \`AVG(DATEDIFF(MINUTE, [Fecha Entrada Real], [Fecha Salida Real]))\`.
+   - *Fuente SALUS:* \`VLISE_Visitas\` con marcas temporales reales nativas.
+   - *Dato Real:* En Septiembre 2026, espera al médico **33.96 min**, permanencia total **48.27 min**. En Julio 2026, espera **28.18 min**, permanencia **41.19 min**.
+3. **Cobertura y Clasificación de Triage (Benchmark: > 95%):**
+   - *Definición:* Porcentaje de pacientes ingresados con categoría de severidad asignada formalmente.
+   - *Categorías SALUS:* \`(N1) VISITA CLINICA\` (~85%), \`(N2) VISITA CLINICA\` (~14%), \`(N3) VISITA CLINICA\` (~1%).
+   - *Fuente SALUS:* \`VLISE_Visitas\` campo \`[Tipo Visita]\`.
+   - *Dato Real:* En Sanatorio Argentino la cobertura es del **100.0%** (todas las consultas tienen categorización).
+4. **Tasa de Reconsulta a las 72 Horas (Umbral Calidad: < 7%):**
+   - *Definición:* Porcentaje de pacientes dados de alta de guardia que retornan a consultar dentro de los 3 días posteriores por el mismo episodio.
+   - *Fórmula:* \`(cantidad_reconsultas_72h / total_consultas) * 100\` mediante autocruce temporal por \`NHC\` en ventana \`<= 72 horas\`.
+   - *Fuente SALUS:* \`VLISE_Visitas\`.
+   - *Dato Real:* En Septiembre 2026 fue **5.93%** (38 pacientes). En Junio 2026 fue **5.72%** (85 pacientes). Ambas dentro del umbral de calidad.
+5. **Tasa de Reinternación Temprana a las 72 Horas (Umbral Calidad: < 5%):**
+   - *Definición:* Pacientes que estuvieron internados en sala general clínica provenientes de Urgencias y que, tras el alta, reingresan antes de 72 horas.
+   - *Fórmula:* \`(reinternaciones_72h / total_altas_clinicas) * 100\`.
+   - *Fuente SALUS:* \`TABLEAU_Admisiones\` (\`Procedencia = 'Derivado desde Urgencias'\`, \`Especialidad = 'CLINICO'\`).
+   - *Dato Real:* En Septiembre 2026 fue **0.00%** (0 reinternaciones sobre 24 altas). En Julio fue **1.16%** (1 sobre 86 altas).
+6. **Volumen e Intensidad de TAC y Rx Solicitadas (Benchmark: 25 a 35 cada 100 consultas):**
+   - *Definición:* Demanda diagnóstica de imágenes por cada 100 consultas de urgencias.
+   - *Fórmula:* \`((total_tac + total_rx) / total_consultas) * 100\`.
+   - *Fuente SALUS:* \`VLISE_PeticionesPruebasRadiologia\` vinculada a visitas de guardia (\`TipoTarea IN ('TOMOGRAFIA', 'RX')\`).
+   - *Dato Real:* En Septiembre 2026 se solicitaron **92 Tomografías** y **114 Radiografías** (**32.14 estudios cada 100 consultas**). En Julio se realizaron **270 TAC** y **243 Rx** (34.90 / 100 consult.).
+7. **Distribución de Destinos Post-Guardia:**
+   - *Definición:* Trazabilidad del egreso del paciente tras la atención de urgencia.
+   - *Desglose Real Sanatorio Argentino:*
+     - Alta Médica Domiciliaria: **~90.3%**
+     - Ingreso a Piso Clínico: **~6.1%**
+     - Pase a Quirófano: **~2.5%**
+     - Ingreso a Terapia Intensiva: **~0.8%**
+     - Derivación Externa: **~0.3%**
+   - *Fuente SALUS:* Cruce de \`VLISE_Visitas\` y \`TABLEAU_Admisiones\`.
+8. **Promedio de Días de Estada Clínica (Benchmark: 1.5 a 2.5 días):**
+   - *Definición:* Días cama promedio de internación para pacientes derivados desde Urgencias a internación médica clínica.
+   - *Fórmula:* \`AVG(CAST(Dias AS FLOAT))\` en \`TABLEAU_Admisiones\`.
+   - *Dato Real:* En Septiembre 2026 es de **1.67 días**. En Junio fue **1.99 días**. Demuestra una alta rotación y rápida resolución de patologías agudas.
+9. **Tasa de Adherencia a Epicrisis (Meta: 100% Obligatorio):**
+   - *Definición:* Porcentaje de pacientes egresados de internación clínica que cuentan con el Protocolo 382 (Epicrisis Médica) formalmente completado y firmado.
+   - *Fuente SALUS:* \`TABLEAU_Admisiones\` cruzada con \`PR_RespuestasProtocolo\` (\`idProtocolo = 382\`).
+   - *Dato Real:* En Sanatorio Argentino se mantiene en **100.0% de adherencia**.
+
+### 3. CÓMO RESPONDER CONSULTAS SOBRE GUARDIA:
+- Sé preciso con los números y porcentajes exactos del mes consultado.
+- Compará siempre contra los **benchmarks institucionales** (ej: *"La tasa de conversión a cirugía fue del 7.49%, situándose dentro de la meta normada del 8% al 12%"*).
+- Si te piden la **query SQL**, entregá el script canónico de SALUS con sintaxis de SQL Server (\`DATEADD\`, \`DATEDIFF\`, \`[Fecha Entrada Real]\`, \`[Tipo Visita]\`).
+- Si te piden un reporte o exportación, usá \`generate_excel_report\` sobre \`guardia_indicadores_resumen\` para que aparezcan los botones oficiales de **PDF** y **Excel**.
+- Acompañá la respuesta con un bloque \`beto-chart\` cuando pregunten por distribución de triage (tipo "donut") o destinos post-guardia.
 
 ## MODIFICAR DATOS (Human-in-the-loop)
 - Para ESCRITURA: usá \`modify_database\`.
