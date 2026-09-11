@@ -187,32 +187,97 @@ GO
 -- ====================================================================================================
 
 -- ----------------------------------------------------------------------------------------------------
--- INDICADOR 1: TASA DE CONVERSIÓN A CIRUGÍA
 -- ----------------------------------------------------------------------------------------------------
--- Fórmula: (Consultas de Guardia con ingreso quirúrgico en ≤ 48 hs / Total Consultas de Guardia) * 100
--- Benchmark Sanitario: 6% - 10%
--- Utilidad Clínica: Evalúa la capacidad resolutiva quirúrgica inmediata de la guardia y la carga de urgencias al quirófano central.
+-- INDICADOR 1: TASA DE CONVERSIÓN A CIRUGÍA Y TRAZABILIDAD NOMINAL (VENTANA DE 48 HORAS)
 -- ----------------------------------------------------------------------------------------------------
+-- Fórmula: (Consultas de Guardia con intervención quirúrgica real en ≤ 48 hs / Total Consultas Guardia) * 100
+-- Benchmark Sanitario: 8% - 12%
+-- Justificación Clínica y Temporal (Dra. Paola García / Calidad QOAG):
+--   Se establece una ventana estricta de 48 horas (en lugar del mismo día calendario) para capturar:
+--   1. Pacientes que ingresan en horario nocturno (ej. 22:00 - 23:59 hs) y se operan de madrugada al día siguiente.
+--   2. Pacientes con sospecha de abdomen agudo, litiasis biliar complicada o traumatismos que requieren
+--      estabilización inicial, ecografía/tomografía urgente y ayuno pre-quirúrgico antes de entrar a quirófano.
+-- ----------------------------------------------------------------------------------------------------
+
+-- 1.A REPORTE NOMINAL DE TRAZABILIDAD Y LÍNEA DE TIEMPO (PACIENTE POR PACIENTE)
 SELECT 
-    COUNT(DISTINCT cg.idVisita) AS ConsultasConvertidasAQx,
-    COUNT(DISTINCT total.idVisita) AS TotalConsultasGuardia,
-    CAST(COUNT(DISTINCT cg.idVisita) * 100.0 / NULLIF(COUNT(DISTINCT total.idVisita), 0) AS DECIMAL(5,2)) AS TasaConversionCirugia_Pct
-FROM VLISE_Visitas total
-LEFT JOIN (
-    SELECT v.idVisita, v.NHC, v.[Fecha Entrada Real] AS FechaLlegada
-    FROM VLISE_Visitas v
-    WHERE v.[Grupo Agenda] = 'GUARDIA CLINICA'
-      AND v.[Fecha Visita] >= '2026-05-01' AND v.[Fecha Visita] <= '2026-05-31'
-      AND v.Asistencia = 'Presente'
-) cg ON cg.idVisita = total.idVisita
-LEFT JOIN TABLEAU_Admisiones adm 
-    ON adm.NHC = cg.NHC
-   AND adm.[Fecha ingreso] >= cg.FechaLlegada
-   AND adm.[Fecha ingreso] <= DATEADD(HOUR, 48, cg.FechaLlegada)
-   AND (adm.Especialidad LIKE '%CIRUGIA%' OR adm.Servicio LIKE '%QUIROF%' OR adm.Procedencia = 'Derivado desde Urgencias')
-WHERE total.[Grupo Agenda] = 'GUARDIA CLINICA'
-  AND total.[Fecha Visita] >= '2026-05-01' AND total.[Fecha Visita] <= '2026-05-31'
-  AND total.Asistencia = 'Presente';
+    -- 1. Ingreso a Guardia (Paso 1)
+    v1.[NHC],
+    v1.[Paciente],
+    v1.[Cliente] AS [Obra Social],
+    CAST(v1.[Fecha Visita] AS DATE) AS [Fecha Guardia],
+    v1.[Fecha Entrada Real] AS [FechaHora Llegada Guardia],
+    v1.[Hora Entrada Real] AS [Hora Llegada Guardia],
+    v1.[Responsable] AS [Médico de Guardia],
+    v1.[Tipo Visita] AS [Triage Guardia],
+    
+    -- 2. Admisión e Internación (Paso 2 - si existió cama)
+    a.[Número admisión] AS [Nro Admision],
+    a.[Fecha ingreso] AS [FechaHora Ingreso Admision],
+    a.[Doctor] AS [Médico Admision],
+    a.[Motivo Alta] AS [Motivo Egreso Institucional],
+
+    -- 3. Quirófano y Acto Quirúrgico Real (Paso 3 - TABLEAU_Cirugias)
+    v2.[idvisita] AS [ID Visita Quirurgica],
+    v2.[Fecha Visita] AS [FechaHora Cirugia],
+    DATEDIFF(HOUR, v1.[Fecha Visita], v2.[Fecha Visita]) AS [Horas Transcurridas Guardia a Cx],
+    c.[Nombre cirugía] AS [Procedimiento Quirurgico],
+    c.[Cirujano] AS [Cirujano Real],
+    c.[Anestesista],
+    c.[Instrumentadora],
+    c.[Circulante],
+    c.[Duracion Minutos Cirugia] AS [Duración (Minutos)],
+    c.[Estado] AS [Estado Cirugia]
+
+FROM 
+    [SALUS].[dbo].[VLISE_Visitas con categoria] AS v1
+    
+    -- Cruce con la visita quirúrgica (cx) dentro de la ventana de 48 horas
+    INNER JOIN [SALUS].[dbo].[VLISE_Visitas con categoria] AS v2
+        ON v1.[NHC] = v2.[NHC]
+        AND v2.[Fecha Visita] >= v1.[Fecha Visita]
+        AND v2.[Fecha Visita] <= DATEADD(HOUR, 48, v1.[Fecha Visita])
+        AND v2.[Tipo Visita] LIKE '(cx)%'
+        AND v2.[idvisita] <> v1.[idvisita]
+
+    -- Detalle de parte quirúrgico institucional
+    INNER JOIN [SALUS].[dbo].[TABLEAU_Cirugias] AS c
+        ON v2.[idvisita] = c.[idvisita]
+
+    -- Admisión opcional para no excluir cirugías ambulatorias urgentes
+    LEFT JOIN [SALUS].[dbo].[TABLEAU_Admisiones] AS a 
+        ON v1.[NHC] = a.[NHC] 
+        AND a.[Fecha ingreso] >= CAST(v1.[Fecha Visita] AS DATE)
+        AND a.[Fecha ingreso] <= DATEADD(DAY, 2, CAST(v1.[Fecha Visita] AS DATE))
+        AND a.[Especialidad] <> 'chequeo'
+
+WHERE 
+    v1.[Fecha Visita] >= '2026-05-01' AND v1.[Fecha Visita] <= '2026-05-31 23:59:59'
+    AND v1.[Agenda] = 'guardias clinica'
+    AND v1.[Asistencia] = 'Presente'
+    AND v1.[Tipo Visita] LIKE '%visita clinica%'
+ORDER BY 
+    v1.[Fecha Visita] DESC, [Horas Transcurridas Guardia a Cx] ASC;
+
+
+-- 1.B CÁLCULO DE LA TASA PORCENTUAL DE CONVERSIÓN (%)
+SELECT 
+    COUNT(DISTINCT v1.idVisita) AS TotalConsultasGuardia,
+    COUNT(DISTINCT v2.idVisita) AS ConsultasConvertidasACirugia,
+    CAST(COUNT(DISTINCT v2.idVisita) * 100.0 / NULLIF(COUNT(DISTINCT v1.idVisita), 0) AS DECIMAL(5,2)) AS TasaConversionCirugia_Pct
+FROM [SALUS].[dbo].[VLISE_Visitas con categoria] v1
+LEFT JOIN [SALUS].[dbo].[VLISE_Visitas con categoria] v2
+    ON v1.[NHC] = v2.[NHC]
+   AND v2.[Fecha Visita] >= v1.[Fecha Visita]
+   AND v2.[Fecha Visita] <= DATEADD(HOUR, 48, v1.[Fecha Visita])
+   AND v2.[Tipo Visita] LIKE '(cx)%'
+   AND v2.[idvisita] <> v1.[idvisita]
+LEFT JOIN [SALUS].[dbo].[TABLEAU_Cirugias] c
+    ON v2.[idvisita] = c.[idvisita]
+WHERE v1.[Fecha Visita] >= '2026-05-01' AND v1.[Fecha Visita] <= '2026-05-31 23:59:59'
+  AND v1.[Agenda] = 'guardias clinica'
+  AND v1.[Asistencia] = 'Presente'
+  AND v1.[Tipo Visita] LIKE '%visita clinica%';
 
 
 -- ----------------------------------------------------------------------------------------------------

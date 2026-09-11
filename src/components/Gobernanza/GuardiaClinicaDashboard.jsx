@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { INDICADORES_GUARDIA_CATALOGO } from './telarConfig';
+import GuardiaConversionTimelineModal from './GuardiaConversionTimelineModal';
 
 export default function GuardiaClinicaDashboard({ 
     onOpenDocModal, 
@@ -19,6 +20,7 @@ export default function GuardiaClinicaDashboard({
     const [selectedPeriodo, setSelectedPeriodo] = useState('2026-09');
     const [selectedKpiDetail, setSelectedKpiDetail] = useState(null);
     const [copiedSql, setCopiedSql] = useState(false);
+    const [isConversionModalOpen, setIsConversionModalOpen] = useState(false);
 
     // Cargar datos consolidados desde Supabase
     useEffect(() => {
@@ -277,8 +279,25 @@ export default function GuardiaClinicaDashboard({
                 </div>
 
                 <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
-                    <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.8, textTransform: 'uppercase', fontWeight: 700 }}>Pases a Quirófano</div>
+                    <div 
+                        onClick={() => setIsConversionModalOpen(true)}
+                        style={{
+                            textAlign: 'right',
+                            cursor: 'pointer',
+                            background: 'rgba(255, 255, 255, 0.12)',
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(255, 255, 255, 0.25)',
+                            transition: 'all 0.15s ease'
+                        }}
+                        onMouseOver={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.22)'}
+                        onMouseOut={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)'}
+                        title="Haga clic para ver la Línea de Tiempo y Trazabilidad nominal de cirugías (48 hs)"
+                    >
+                        <div style={{ fontSize: '0.72rem', opacity: 0.9, textTransform: 'uppercase', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                            <span>Cirugías (≤ 48h)</span>
+                            <span style={{ fontSize: '0.62rem', background: '#3B82F6', padding: '1px 5px', borderRadius: '4px' }}>TIMELINE</span>
+                        </div>
                         <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>{currentData.cantidad_pases_cirugia} pac.</div>
                         <div style={{ fontSize: '0.72rem', opacity: 0.9 }}>{currentData.conversion_cirugia_pct}% conversión</div>
                     </div>
@@ -309,12 +328,12 @@ export default function GuardiaClinicaDashboard({
                     icon={<Scissors size={18} color="#2563EB" />}
                     title="Tasa de Conversión a Cirugía"
                     value={`${currentData.conversion_cirugia_pct}%`}
-                    subtitle={`${currentData.cantidad_pases_cirugia} de ${currentData.total_consultas} consultas`}
+                    subtitle={`${currentData.cantidad_pases_cirugia} de ${currentData.total_consultas} consultas (≤ 48 hs)`}
                     meta="Meta: 8% - 12%"
                     metaStatus={currentData.conversion_cirugia_pct >= 8 && currentData.conversion_cirugia_pct <= 12 ? 'ok' : 'info'}
-                    detalle="Pacientes de Guardia ingresados a Quirófano dentro de las 24 horas posteriores a la consulta."
-                    origen="VLISE_Visitas cruzada con TABLEAU_Admisiones"
-                    onClick={() => setSelectedKpiDetail(INDICADORES_GUARDIA_CATALOGO[0])}
+                    detalle="Pacientes de Guardia ingresados a Quirófano dentro de las 48 horas (cruce VLISE_Visitas → TABLEAU_Cirugias). Clic para ver línea de tiempo nominal."
+                    origen="VLISE_Visitas cruzada con TABLEAU_Cirugias (Ventana ≤ 48 hs)"
+                    onClick={() => setIsConversionModalOpen(true)}
                 />
 
                 {/* 2. Tiempos de Espera (Triage y Médico) */}
@@ -788,6 +807,14 @@ export default function GuardiaClinicaDashboard({
                 </div>
             )}
 
+            {/* ─── MODAL DE TRAZABILIDAD Y LÍNEA DE TIEMPO DE CIRUGÍAS (48 HORAS) ─── */}
+            <GuardiaConversionTimelineModal
+                isOpen={isConversionModalOpen}
+                onClose={() => setIsConversionModalOpen(false)}
+                periodo={currentData.periodo}
+                totalConsultas={currentData.total_consultas}
+            />
+
         </div>
     );
 }
@@ -892,19 +919,41 @@ function KpiCard({ icon, title, value, subtitle, meta, metaStatus, detalle, orig
 function getSqlSnippetForIndicator(id) {
     switch (id) {
         case 'guardia_conversion_cirugia':
-            return `-- Indicador 1: Tasa de Conversión a Cirugía
+            return `-- Indicador 1: Tasa de Conversión a Cirugía (Ventana de 48 horas)
 SELECT 
-    COUNT(DISTINCT v.IdVisita) AS TotalConsultasGuardia,
-    COUNT(DISTINCT a.idAdmision) AS PasesACirugia,
-    CAST(COUNT(DISTINCT a.idAdmision) * 100.0 / NULLIF(COUNT(DISTINCT v.IdVisita), 0) AS DECIMAL(5,2)) AS TasaConversionPct
-FROM VLISE_Visitas v
-LEFT JOIN TABLEAU_Admisiones a 
-    ON v.NHC = a.NHC 
-    AND a.Procedencia = 'Derivado desde Urgencias'
-    AND a.[Fecha ingreso] >= v.[Fecha Entrada Real]
-    AND a.[Fecha ingreso] <= DATEADD(HOUR, 24, v.[Fecha Entrada Real])
-WHERE v.[Tipo Visita] IN ('(N1) VISITA CLINICA', '(N2) VISITA CLINICA', '(N3) VISITA CLINICA')
-  AND v.[Fecha Entrada Real] >= '2026-09-01' AND v.[Fecha Entrada Real] < '2026-10-01';`;
+    v1.[NHC],
+    v1.[Paciente],
+    v1.[Cliente] AS [Obra Social],
+    CAST(v1.[Fecha Visita] AS DATE) AS [Fecha Guardia],
+    v1.[Hora Entrada Real] AS [Hora Llegada Guardia],
+    v1.[Responsable] AS [Médico Guardia],
+    v1.[Tipo Visita] AS [Triage Guardia],
+    a.[Número admisión] AS [Nro Admision],
+    CAST(v2.[Fecha Visita] AS DATE) AS [Fecha Cirugia],
+    DATEDIFF(HOUR, v1.[Fecha Visita], v2.[Fecha Visita]) AS [Horas Transcurridas],
+    c.[Nombre cirugía] AS [Procedimiento Quirurgico],
+    c.[Cirujano] AS [Cirujano Real],
+    c.[Anestesista],
+    c.[Duracion Minutos Cirugia] AS [Duracion Minutos],
+    c.[Estado] AS [Estado Cirugia]
+FROM [SALUS].[dbo].[VLISE_Visitas con categoria] AS v1
+INNER JOIN [SALUS].[dbo].[VLISE_Visitas con categoria] AS v2
+    ON v1.[NHC] = v2.[NHC]
+    AND v2.[Fecha Visita] >= v1.[Fecha Visita]
+    AND v2.[Fecha Visita] <= DATEADD(HOUR, 48, v1.[Fecha Visita])
+    AND v2.[Tipo Visita] LIKE '(cx)%'
+    AND v2.[idvisita] <> v1.[idvisita]
+INNER JOIN [SALUS].[dbo].[TABLEAU_Cirugias] AS c
+    ON v2.[idvisita] = c.[idvisita]
+LEFT JOIN [SALUS].[dbo].[TABLEAU_Admisiones] AS a 
+    ON v1.[NHC] = a.[NHC] 
+    AND a.[Fecha ingreso] >= CAST(v1.[Fecha Visita] AS DATE)
+    AND a.[Fecha ingreso] <= DATEADD(DAY, 2, CAST(v1.[Fecha Visita] AS DATE))
+WHERE v1.[Fecha Visita] >= '2026-09-01' AND v1.[Fecha Visita] < '2026-10-01'
+  AND v1.[Agenda] = 'guardias clinica'
+  AND v1.[Asistencia] = 'Presente'
+  AND v1.[Tipo Visita] LIKE '%visita clinica%'
+ORDER BY v1.[Fecha Visita] DESC, [Horas Transcurridas] ASC;`;
 
         case 'guardia_tiempos_espera':
             return `-- Indicador 2: Tiempos de Espera (Triage y Médico)
