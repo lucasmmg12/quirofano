@@ -100,10 +100,14 @@ export default function UciPacienteDossierModal({
                     (async () => {
                         let admMatch = null;
                         if (admisionVal) {
+                            const isNumeric = /^\d+$/.test(String(admisionVal).trim());
+                            const filter = isNumeric 
+                                ? `numero_admision.eq.${admisionVal},id.eq.${admisionVal}` 
+                                : `numero_admision.eq.${admisionVal}`;
                             const { data } = await supabase
                                 .from('altas_administrativas')
                                 .select('*')
-                                .or(`numero_admision.eq.${admisionVal},id.eq.${admisionVal}`)
+                                .or(filter)
                                 .limit(1)
                                 .maybeSingle();
                             admMatch = data;
@@ -189,10 +193,14 @@ export default function UciPacienteDossierModal({
                     (async () => {
                         let moves = [];
                         if (admisionVal) {
+                            const isNumeric = /^\d+$/.test(String(admisionVal).trim());
+                            const filter = isNumeric 
+                                ? `numero_admision.eq.${admisionVal},id_admision.eq.${admisionVal}` 
+                                : `numero_admision.eq.${admisionVal}`;
                             const { data } = await supabase
                                 .from('calidad_admisiones_camas_historial')
                                 .select('*')
-                                .or(`numero_admision.eq.${admisionVal},id_admision.eq.${admisionVal}`)
+                                .or(filter)
                                 .order('fecha_inicio', { ascending: true });
                             if (data && data.length > 0) moves = data;
                         }

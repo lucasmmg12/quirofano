@@ -242,6 +242,19 @@ export default function UciKinesiologiaPanel({ nhc = null, patient = null, recor
         };
     }, [rawKineData]);
 
+    // Seleccionar inteligentemente la pestaña activa según los datos disponibles
+    useEffect(() => {
+        if (timelineARM.length > 0) {
+            setActiveSubView('arm');
+        } else if (notesList.length > 0) {
+            setActiveSubView('bitacora');
+        } else if (timelineIMS.length > 0) {
+            setActiveSubView('movilizacion');
+        } else if (timelineWeaning.length > 0) {
+            setActiveSubView('weaning');
+        }
+    }, [timelineARM.length, notesList.length, timelineIMS.length, timelineWeaning.length]);
+
     if (loading) {
         return (
             <div style={{ padding: '40px', textAlign: 'center', color: '#64748B' }}>
@@ -253,11 +266,13 @@ export default function UciKinesiologiaPanel({ nhc = null, patient = null, recor
 
     if (!rawKineData || rawKineData.length === 0) {
         return (
-            <div style={{ padding: '48px 24px', textAlign: 'center', background: '#F8FAFC', borderRadius: '12px', border: '1px dashed #CBD5E1' }}>
-                <Wind size={40} style={{ margin: '0 auto 12px auto', color: '#94A3B8' }} />
-                <h4 style={{ margin: 0, color: '#1E293B', fontSize: '1rem', fontWeight: 700 }}>Sin registros de Kinesiología en SALUS</h4>
-                <p style={{ margin: '6px 0 0 0', color: '#64748B', fontSize: '0.82rem' }}>
-                    No se encontraron cargas de los protocolos 580 a 585 para este paciente en el período seleccionado.
+            <div style={{ padding: '48px 24px', textAlign: 'center', background: '#F8FAFC', borderRadius: '12px', border: '1.5px dashed #CBD5E1' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px auto', color: '#64748B' }}>
+                    <Wind size={24} />
+                </div>
+                <h4 style={{ margin: 0, color: '#1E293B', fontSize: '1rem', fontWeight: 800 }}>Sin registros de Kinesiología para este paciente</h4>
+                <p style={{ margin: '8px auto 0 auto', maxWidth: '420px', color: '#64748B', fontSize: '0.82rem', lineHeight: 1.5 }}>
+                    No se encontraron cargas de los protocolos 580 a 585 en SALUS para este paciente en esta internación.
                 </p>
             </div>
         );
@@ -281,13 +296,19 @@ export default function UciKinesiologiaPanel({ nhc = null, patient = null, recor
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#64748B', fontSize: '0.74rem', fontWeight: 600 }}>
                         <span>MODO VENTILATORIO</span>
-                        <Wind size={16} style={{ color: '#2563EB' }} />
+                        <Wind size={16} style={{ color: timelineARM.length > 0 ? '#2563EB' : '#94A3B8' }} />
                     </div>
                     <div style={{ marginTop: '8px', fontSize: '1.05rem', fontWeight: 800, color: '#1E293B' }}>
-                        {kpis.lastMode || 'Espontáneo'}
+                        {timelineARM.length > 0 ? (kpis.lastMode || 'Modo Activo') : 'Sin Soporte ARM'}
                     </div>
-                    <div style={{ marginTop: '4px', fontSize: '0.7rem', color: '#059669', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <CheckCircle2 size={12} /> Último registro en ARM
+                    <div style={{ marginTop: '4px', fontSize: '0.7rem', color: timelineARM.length > 0 ? '#059669' : '#64748B', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {timelineARM.length > 0 ? (
+                            <>
+                                <CheckCircle2 size={12} /> Último registro en ARM
+                            </>
+                        ) : (
+                            <span>Ventilación espontánea</span>
+                        )}
                     </div>
                 </div>
 
@@ -301,24 +322,30 @@ export default function UciKinesiologiaPanel({ nhc = null, patient = null, recor
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#64748B', fontSize: '0.74rem', fontWeight: 600 }}>
                         <span>ESCALA IMS MÁXIMA</span>
-                        <Move size={16} style={{ color: '#0D9488' }} />
+                        <Move size={16} style={{ color: timelineIMS.length > 0 ? '#0D9488' : '#94A3B8' }} />
                     </div>
                     <div style={{ marginTop: '8px', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                        <span style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0F766E' }}>{kpis.maxIms}</span>
-                        <span style={{ fontSize: '0.78rem', color: '#64748B' }}>/ 10</span>
-                        <span style={{ 
-                            fontSize: '0.7rem', 
-                            padding: '2px 6px', 
-                            borderRadius: '4px', 
-                            background: IMS_LEVELS[kpis.maxIms]?.bg || '#F1F5F9',
-                            color: IMS_LEVELS[kpis.maxIms]?.color || '#475569',
-                            fontWeight: 700 
-                        }}>
-                            {IMS_LEVELS[kpis.maxIms]?.label.split('(')[0]}
-                        </span>
+                        {timelineIMS.length > 0 ? (
+                            <>
+                                <span style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0F766E' }}>{kpis.maxIms}</span>
+                                <span style={{ fontSize: '0.78rem', color: '#64748B' }}>/ 10</span>
+                                <span style={{ 
+                                    fontSize: '0.7rem', 
+                                    padding: '2px 6px', 
+                                    borderRadius: '4px', 
+                                    background: IMS_LEVELS[kpis.maxIms]?.bg || '#F1F5F9',
+                                    color: IMS_LEVELS[kpis.maxIms]?.color || '#475569',
+                                    fontWeight: 700 
+                                }}>
+                                    {IMS_LEVELS[kpis.maxIms]?.label.split('(')[0]}
+                                </span>
+                            </>
+                        ) : (
+                            <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#64748B' }}>No evaluado</span>
+                        )}
                     </div>
                     <div style={{ marginTop: '4px', fontSize: '0.7rem', color: '#64748B' }}>
-                        Nivel actual/egreso: <strong>{kpis.lastIms} / 10</strong>
+                        {timelineIMS.length > 0 ? `Nivel actual/egreso: ${kpis.lastIms} / 10` : 'Sin registros de protocolo 583'}
                     </div>
                 </div>
 
@@ -332,20 +359,20 @@ export default function UciKinesiologiaPanel({ nhc = null, patient = null, recor
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#64748B', fontSize: '0.74rem', fontWeight: 600 }}>
                         <span>ÍNDICE PaFiO2 (KIRBY)</span>
-                        <Gauge size={16} style={{ color: kpis.minPaFi && kpis.minPaFi < 100 ? '#DC2626' : '#D97706' }} />
+                        <Gauge size={16} style={{ color: kpis.minPaFi && kpis.minPaFi < 100 ? '#DC2626' : (kpis.minPaFi ? '#D97706' : '#94A3B8') }} />
                     </div>
                     <div style={{ marginTop: '8px', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
                         <span style={{ 
                             fontSize: '1.3rem', 
                             fontWeight: 800, 
-                            color: kpis.minPaFi && kpis.minPaFi < 100 ? '#DC2626' : (kpis.minPaFi && kpis.minPaFi < 200 ? '#D97706' : '#059669') 
+                            color: kpis.minPaFi && kpis.minPaFi < 100 ? '#DC2626' : (kpis.minPaFi && kpis.minPaFi < 200 ? '#D97706' : (kpis.minPaFi ? '#059669' : '#64748B')) 
                         }}>
-                            {kpis.minPaFi || '-'}
+                            {kpis.minPaFi || 'N/D'}
                         </span>
-                        <span style={{ fontSize: '0.78rem', color: '#64748B' }}>mínimo reg.</span>
+                        {kpis.minPaFi && <span style={{ fontSize: '0.78rem', color: '#64748B' }}>mínimo reg.</span>}
                     </div>
                     <div style={{ marginTop: '4px', fontSize: '0.7rem', color: kpis.minPaFi && kpis.minPaFi < 100 ? '#DC2626' : '#64748B', fontWeight: 600 }}>
-                        {kpis.minPaFi && kpis.minPaFi < 100 ? '⚠️ Distrés Respiratorio Severo' : (kpis.minPaFi && kpis.minPaFi < 200 ? 'Distrés Moderado' : 'Ventilación Estable')}
+                        {kpis.minPaFi ? (kpis.minPaFi < 100 ? '⚠️ Distrés Respiratorio Severo' : (kpis.minPaFi < 200 ? 'Distrés Moderado' : 'Ventilación Estable')) : 'Sin gases en ARM'}
                     </div>
                 </div>
 
@@ -431,85 +458,137 @@ export default function UciKinesiologiaPanel({ nhc = null, patient = null, recor
             {/* ───────────────────────────────────────────────────────── */}
             {activeSubView === 'arm' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    {/* Gráfico 1: FiO2 vs PEEP vs PaFiO2 */}
-                    <div style={{
-                        background: '#FFFFFF',
-                        borderRadius: '12px',
-                        border: '1px solid #E2E8F0',
-                        padding: '18px',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                            <div>
-                                <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <Wind size={16} style={{ color: '#2563EB' }} />
-                                    Evolución de Oxigenación y Presión Espiratoria (FiO2% vs. PEEP)
-                                </h4>
-                                <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                    Trazabilidad del aporte de oxígeno e invasividad del soporte ventilatorio
-                                </span>
+                    {timelineARM.length === 0 ? (
+                        <div style={{
+                            background: '#F8FAFC',
+                            border: '1.5px dashed #CBD5E1',
+                            borderRadius: '12px',
+                            padding: '36px 20px',
+                            textAlign: 'center',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '12px'
+                        }}>
+                            <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563EB' }}>
+                                <Wind size={24} />
                             </div>
-                        </div>
-
-                        <div style={{ width: '100%', height: 260 }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={timelineARM} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                                    <XAxis dataKey="fechaLabel" tick={{ fontSize: 11, fill: '#64748B' }} />
-                                    <YAxis yAxisId="left" domain={[0, 100]} tick={{ fontSize: 11, fill: '#2563EB' }} label={{ value: 'FiO2 (%)', angle: -90, position: 'insideLeft', fill: '#2563EB', fontSize: 10 }} />
-                                    <YAxis yAxisId="right" orientation="right" domain={[0, 20]} tick={{ fontSize: 11, fill: '#D97706' }} label={{ value: 'PEEP (cmH2O)', angle: 90, position: 'insideRight', fill: '#D97706', fontSize: 10 }} />
-                                    <Tooltip 
-                                        contentStyle={{ backgroundColor: '#1E293B', borderRadius: '8px', border: 'none', color: '#FFFFFF', fontSize: '0.75rem' }}
-                                        formatter={(val, name) => [val, name === 'fio2' ? 'FiO2 (%)' : (name === 'peep' ? 'PEEP (cmH2O)' : name)]}
-                                    />
-                                    <Legend wrapperStyle={{ fontSize: '0.74rem' }} />
-                                    <Line yAxisId="left" type="monotone" dataKey="fio2" name="FiO2 (%)" stroke="#2563EB" strokeWidth={2.5} dot={{ r: 4, fill: '#2563EB' }} activeDot={{ r: 6 }} />
-                                    <Line yAxisId="right" type="stepAfter" dataKey="peep" name="PEEP (cmH2O)" stroke="#D97706" strokeWidth={2} dot={{ r: 3, fill: '#D97706' }} />
-                                </LineChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
-
-                    {/* Gráfico 2: Presiones y Volúmenes (Vt, Presión Pico, Presión de Balón) */}
-                    <div style={{
-                        background: '#FFFFFF',
-                        borderRadius: '12px',
-                        border: '1px solid #E2E8F0',
-                        padding: '18px',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                            <div>
-                                <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <Gauge size={16} style={{ color: '#0D9488' }} />
-                                    Mecánica Ventilatoria (Presión Pico, Volumen Tidal Vt y Balón)
+                            <div style={{ maxWidth: '480px' }}>
+                                <h4 style={{ margin: '0 0 6px 0', fontSize: '0.95rem', fontWeight: 800, color: '#1E293B' }}>
+                                    Sin Registros de Asistencia Respiratoria Mecánica (ARM)
                                 </h4>
-                                <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                    Control barométrico de seguridad y prevención de barotrauma / VILI
-                                </span>
+                                <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748B', lineHeight: 1.5 }}>
+                                    Este paciente no registra asistencia respiratoria mecánica invasiva ni parámetros de FiO2 / PEEP / Presiones (protocolo 584) durante su internación en UCI.
+                                </p>
                             </div>
+                            {notesList.length > 0 && (
+                                <button
+                                    onClick={() => setActiveSubView('bitacora')}
+                                    style={{
+                                        marginTop: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '8px 16px',
+                                        borderRadius: '8px',
+                                        background: '#2563EB',
+                                        color: '#FFFFFF',
+                                        border: 'none',
+                                        fontSize: '0.78rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
+                                    }}
+                                >
+                                    <FileText size={14} />
+                                    Ver Evoluciones en Bitácora ({notesList.length} registro{notesList.length > 1 ? 's' : ''})
+                                    <ChevronRight size={14} />
+                                </button>
+                            )}
                         </div>
+                    ) : (
+                        <>
+                            {/* Gráfico 1: FiO2 vs PEEP vs PaFiO2 */}
+                            <div style={{
+                                background: '#FFFFFF',
+                                borderRadius: '12px',
+                                border: '1px solid #E2E8F0',
+                                padding: '18px',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                    <div>
+                                        <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <Wind size={16} style={{ color: '#2563EB' }} />
+                                            Evolución de Oxigenación y Presión Espiratoria (FiO2% vs. PEEP)
+                                        </h4>
+                                        <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                            Trazabilidad del aporte de oxígeno e invasividad del soporte ventilatorio
+                                        </span>
+                                    </div>
+                                </div>
 
-                        <div style={{ width: '100%', height: 260 }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={timelineARM} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                                    <XAxis dataKey="fechaLabel" tick={{ fontSize: 11, fill: '#64748B' }} />
-                                    <YAxis yAxisId="left" domain={[0, 600]} tick={{ fontSize: 11, fill: '#0D9488' }} label={{ value: 'Volumen Tidal (ml)', angle: -90, position: 'insideLeft', fill: '#0D9488', fontSize: 10 }} />
-                                    <YAxis yAxisId="right" orientation="right" domain={[0, 50]} tick={{ fontSize: 11, fill: '#DC2626' }} label={{ value: 'Presión (cmH2O)', angle: 90, position: 'insideRight', fill: '#DC2626', fontSize: 10 }} />
-                                    <Tooltip 
-                                        contentStyle={{ backgroundColor: '#1E293B', borderRadius: '8px', border: 'none', color: '#FFFFFF', fontSize: '0.75rem' }}
-                                    />
-                                    <Legend wrapperStyle={{ fontSize: '0.74rem' }} />
-                                    {/* Línea de seguridad en 35 cmH2O de Presión Pico */}
-                                    <ReferenceLine yAxisId="right" y={35} stroke="#DC2626" strokeDasharray="4 4" label={{ value: 'Límite Pico Seguro (35 cmH2O)', fill: '#DC2626', fontSize: 9 }} />
-                                    <Line yAxisId="left" type="monotone" dataKey="vt" name="Volumen Corriente (Vt ml)" stroke="#0D9488" strokeWidth={2.5} dot={{ r: 4, fill: '#0D9488' }} />
-                                    <Line yAxisId="right" type="monotone" dataKey="pPico" name="Presión Pico (cmH2O)" stroke="#DC2626" strokeWidth={2} dot={{ r: 3, fill: '#DC2626' }} />
-                                    <Line yAxisId="right" type="monotone" dataKey="balon" name="Balón Neumotaponamiento (cmH2O)" stroke="#8B5CF6" strokeWidth={1.8} dot={{ r: 3, fill: '#8B5CF6' }} />
-                                </LineChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
+                                <div style={{ width: '100%', height: 260, minWidth: 0 }}>
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
+                                        <LineChart data={timelineARM} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+                                            <XAxis dataKey="fechaLabel" tick={{ fontSize: 11, fill: '#64748B' }} />
+                                            <YAxis yAxisId="left" domain={[0, 100]} tick={{ fontSize: 11, fill: '#2563EB' }} label={{ value: 'FiO2 (%)', angle: -90, position: 'insideLeft', fill: '#2563EB', fontSize: 10 }} />
+                                            <YAxis yAxisId="right" orientation="right" domain={[0, 20]} tick={{ fontSize: 11, fill: '#D97706' }} label={{ value: 'PEEP (cmH2O)', angle: 90, position: 'insideRight', fill: '#D97706', fontSize: 10 }} />
+                                            <Tooltip 
+                                                contentStyle={{ backgroundColor: '#1E293B', borderRadius: '8px', border: 'none', color: '#FFFFFF', fontSize: '0.75rem' }}
+                                                formatter={(val, name) => [val, name === 'fio2' ? 'FiO2 (%)' : (name === 'peep' ? 'PEEP (cmH2O)' : name)]}
+                                            />
+                                            <Legend wrapperStyle={{ fontSize: '0.74rem' }} />
+                                            <Line yAxisId="left" type="monotone" dataKey="fio2" name="FiO2 (%)" stroke="#2563EB" strokeWidth={2.5} dot={{ r: 4, fill: '#2563EB' }} activeDot={{ r: 6 }} />
+                                            <Line yAxisId="right" type="stepAfter" dataKey="peep" name="PEEP (cmH2O)" stroke="#D97706" strokeWidth={2} dot={{ r: 3, fill: '#D97706' }} />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+
+                            {/* Gráfico 2: Presiones y Volúmenes (Vt, Presión Pico, Presión de Balón) */}
+                            <div style={{
+                                background: '#FFFFFF',
+                                borderRadius: '12px',
+                                border: '1px solid #E2E8F0',
+                                padding: '18px',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                    <div>
+                                        <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <Gauge size={16} style={{ color: '#0D9488' }} />
+                                            Mecánica Ventilatoria (Presión Pico, Volumen Tidal Vt y Balón)
+                                        </h4>
+                                        <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                            Control barométrico de seguridad y prevención de barotrauma / VILI
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div style={{ width: '100%', height: 260, minWidth: 0 }}>
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
+                                        <LineChart data={timelineARM} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+                                            <XAxis dataKey="fechaLabel" tick={{ fontSize: 11, fill: '#64748B' }} />
+                                            <YAxis yAxisId="left" domain={[0, 600]} tick={{ fontSize: 11, fill: '#0D9488' }} label={{ value: 'Volumen Tidal (ml)', angle: -90, position: 'insideLeft', fill: '#0D9488', fontSize: 10 }} />
+                                            <YAxis yAxisId="right" orientation="right" domain={[0, 50]} tick={{ fontSize: 11, fill: '#DC2626' }} label={{ value: 'Presión (cmH2O)', angle: 90, position: 'insideRight', fill: '#DC2626', fontSize: 10 }} />
+                                            <Tooltip 
+                                                contentStyle={{ backgroundColor: '#1E293B', borderRadius: '8px', border: 'none', color: '#FFFFFF', fontSize: '0.75rem' }}
+                                            />
+                                            <Legend wrapperStyle={{ fontSize: '0.74rem' }} />
+                                            {/* Línea de seguridad en 35 cmH2O de Presión Pico */}
+                                            <ReferenceLine yAxisId="right" y={35} stroke="#DC2626" strokeDasharray="4 4" label={{ value: 'Límite Pico Seguro (35 cmH2O)', fill: '#DC2626', fontSize: 9 }} />
+                                            <Line yAxisId="left" type="monotone" dataKey="vt" name="Volumen Corriente (Vt ml)" stroke="#0D9488" strokeWidth={2.5} dot={{ r: 4, fill: '#0D9488' }} />
+                                            <Line yAxisId="right" type="monotone" dataKey="pPico" name="Presión Pico (cmH2O)" stroke="#DC2626" strokeWidth={2} dot={{ r: 3, fill: '#DC2626' }} />
+                                            <Line yAxisId="right" type="monotone" dataKey="balon" name="Balón Neumotaponamiento (cmH2O)" stroke="#8B5CF6" strokeWidth={1.8} dot={{ r: 3, fill: '#8B5CF6' }} />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        </>
+                    )}
                 </div>
             )}
 
@@ -518,52 +597,101 @@ export default function UciKinesiologiaPanel({ nhc = null, patient = null, recor
             {/* ───────────────────────────────────────────────────────── */}
             {activeSubView === 'movilizacion' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    {/* Gráfico de la Escala IMS */}
-                    <div style={{
-                        background: '#FFFFFF',
-                        borderRadius: '12px',
-                        border: '1px solid #E2E8F0',
-                        padding: '18px',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                            <div>
-                                <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <Move size={16} style={{ color: '#0D9488' }} />
-                                    Curva Evolutiva de Movilización Temprana (Escala IMS 0 al 10)
+                    {timelineIMS.length === 0 ? (
+                        <div style={{
+                            background: '#F8FAFC',
+                            border: '1.5px dashed #CBD5E1',
+                            borderRadius: '12px',
+                            padding: '36px 20px',
+                            textAlign: 'center',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '12px'
+                        }}>
+                            <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#F0FDF4', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#059669' }}>
+                                <Move size={24} />
+                            </div>
+                            <div style={{ maxWidth: '480px' }}>
+                                <h4 style={{ margin: '0 0 6px 0', fontSize: '0.95rem', fontWeight: 800, color: '#1E293B' }}>
+                                    Sin Evaluaciones de Movilización Temprana (IMS / MRC)
                                 </h4>
-                                <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                    Seguimiento de la ganancia motora e independencia funcional en UCI
-                                </span>
+                                <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748B', lineHeight: 1.5 }}>
+                                    No se registraron puntuaciones numéricas de la escala de movilidad de UCI (0-10) o fuerza muscular MRC en el protocolo 583 para este paciente.
+                                </p>
                             </div>
-                            <div style={{ display: 'flex', gap: '6px' }}>
-                                <span style={{ fontSize: '0.7rem', padding: '3px 8px', borderRadius: '4px', background: '#CCFBF1', color: '#0F766E', fontWeight: 700 }}>
-                                    Máximo Alcanzado: {kpis.maxIms} / 10
-                                </span>
-                            </div>
+                            {notesList.length > 0 && (
+                                <button
+                                    onClick={() => setActiveSubView('bitacora')}
+                                    style={{
+                                        marginTop: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '8px 16px',
+                                        borderRadius: '8px',
+                                        background: '#0D9488',
+                                        color: '#FFFFFF',
+                                        border: 'none',
+                                        fontSize: '0.78rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <FileText size={14} />
+                                    Ver Evoluciones en Bitácora ({notesList.length})
+                                    <ChevronRight size={14} />
+                                </button>
+                            )}
                         </div>
+                    ) : (
+                        /* Gráfico de la Escala IMS */
+                        <div style={{
+                            background: '#FFFFFF',
+                            borderRadius: '12px',
+                            border: '1px solid #E2E8F0',
+                            padding: '18px',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                <div>
+                                    <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <Move size={16} style={{ color: '#0D9488' }} />
+                                        Curva Evolutiva de Movilización Temprana (Escala IMS 0 al 10)
+                                    </h4>
+                                    <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                        Seguimiento de la ganancia motora e independencia funcional en UCI
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                    <span style={{ fontSize: '0.7rem', padding: '3px 8px', borderRadius: '4px', background: '#CCFBF1', color: '#0F766E', fontWeight: 700 }}>
+                                        Máximo Alcanzado: {kpis.maxIms} / 10
+                                    </span>
+                                </div>
+                            </div>
 
-                        <div style={{ width: '100%', height: 260 }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={timelineIMS} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                                    <defs>
-                                        <linearGradient id="colorIms" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#0D9488" stopOpacity={0.4}/>
-                                            <stop offset="95%" stopColor="#0D9488" stopOpacity={0.0}/>
-                                        </linearGradient>
-                                    </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                                    <XAxis dataKey="fechaLabel" tick={{ fontSize: 11, fill: '#64748B' }} />
-                                    <YAxis domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} tick={{ fontSize: 11, fill: '#0D9488' }} label={{ value: 'Nivel IMS (0 a 10)', angle: -90, position: 'insideLeft', fill: '#0D9488', fontSize: 10 }} />
-                                    <Tooltip 
-                                        contentStyle={{ backgroundColor: '#1E293B', borderRadius: '8px', border: 'none', color: '#FFFFFF', fontSize: '0.75rem' }}
-                                        formatter={(val) => [`Nivel ${val}: ${IMS_LEVELS[val]?.label || ''}`, 'Escala IMS']}
-                                    />
-                                    <Area type="monotone" dataKey="ims" stroke="#0D9488" strokeWidth={3} fillOpacity={1} fill="url(#colorIms)" dot={{ r: 5, fill: '#0D9488' }} activeDot={{ r: 7 }} />
-                                </AreaChart>
-                            </ResponsiveContainer>
+                            <div style={{ width: '100%', height: 260, minWidth: 0 }}>
+                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
+                                    <AreaChart data={timelineIMS} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                                        <defs>
+                                            <linearGradient id="colorIms" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#0D9488" stopOpacity={0.4}/>
+                                                <stop offset="95%" stopColor="#0D9488" stopOpacity={0.0}/>
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+                                        <XAxis dataKey="fechaLabel" tick={{ fontSize: 11, fill: '#64748B' }} />
+                                        <YAxis domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} tick={{ fontSize: 11, fill: '#0D9488' }} label={{ value: 'Nivel IMS (0 a 10)', angle: -90, position: 'insideLeft', fill: '#0D9488', fontSize: 10 }} />
+                                        <Tooltip 
+                                            contentStyle={{ backgroundColor: '#1E293B', borderRadius: '8px', border: 'none', color: '#FFFFFF', fontSize: '0.75rem' }}
+                                            formatter={(val) => [`Nivel ${val}: ${IMS_LEVELS[val]?.label || ''}`, 'Escala IMS']}
+                                        />
+                                        <Area type="monotone" dataKey="ims" stroke="#0D9488" strokeWidth={3} fillOpacity={1} fill="url(#colorIms)" dot={{ r: 5, fill: '#0D9488' }} activeDot={{ r: 7 }} />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Guía Visual de la Escala IMS para Auditoría Rápida */}
                     <div style={{
@@ -681,7 +809,7 @@ export default function UciKinesiologiaPanel({ nhc = null, patient = null, recor
                         </div>
 
                         {/* Registros de Weaning del Paciente */}
-                        {timelineWeaning.length > 0 && (
+                        {timelineWeaning.length > 0 ? (
                             <div style={{ marginTop: '18px' }}>
                                 <h5 style={{ margin: '0 0 10px 0', fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
                                     REGISTROS DE PROTOCOLOS DE DESVINCULACIÓN CARGADOS
@@ -711,6 +839,22 @@ export default function UciKinesiologiaPanel({ nhc = null, patient = null, recor
                                     </table>
                                 </div>
                             </div>
+                        ) : (
+                            <div style={{
+                                marginTop: '16px',
+                                padding: '14px 16px',
+                                background: '#F8FAFC',
+                                border: '1px dashed #CBD5E1',
+                                borderRadius: '8px',
+                                color: '#64748B',
+                                fontSize: '0.78rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px'
+                            }}>
+                                <AlertTriangle size={16} style={{ color: '#94A3B8', flexShrink: 0 }} />
+                                <span>Sin registros específicos de protocolos de weaning (581) ni extubación (582) cargados para este paciente.</span>
+                            </div>
                         )}
                     </div>
                 </div>
@@ -727,7 +871,21 @@ export default function UciKinesiologiaPanel({ nhc = null, patient = null, recor
                         </span>
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {notesList.length === 0 ? (
+                        <div style={{
+                            padding: '36px 20px',
+                            textAlign: 'center',
+                            background: '#F8FAFC',
+                            border: '1.5px dashed #CBD5E1',
+                            borderRadius: '10px',
+                            color: '#64748B',
+                            fontSize: '0.82rem'
+                        }}>
+                            <FileText size={24} style={{ margin: '0 auto 8px auto', color: '#94A3B8' }} />
+                            <p style={{ margin: 0, fontWeight: 600 }}>Sin notas o evoluciones kinésicas registradas para este paciente.</p>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {notesList.map((n, idx) => (
                             <div 
                                 key={n.id || idx}
@@ -783,7 +941,8 @@ export default function UciKinesiologiaPanel({ nhc = null, patient = null, recor
                                 </div>
                             </div>
                         ))}
-                    </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

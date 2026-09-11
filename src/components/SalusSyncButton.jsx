@@ -30,12 +30,22 @@ export default function SalusSyncButton({ onComplete, addToast, module = null })
     const isFrojo = currentUser?.usuario === 'frojo';
     const isSurgeryOnly = isFrojo || module === 'cirugias';
 
-    // Verificar disponibilidad cada 10s cuando está offline
+    // Verificar disponibilidad (máximo 2 intentos si está offline para evitar spam de ERR_CONNECTION_REFUSED en consola)
     useEffect(() => {
-        const check = () => checkSalusHealth().then(h => setSalusAvailable(h.available));
+        let attempts = 0;
+        let intervalId = null;
+        const check = () => checkSalusHealth().then(h => {
+            setSalusAvailable(h.available);
+            if (!h.available) {
+                attempts++;
+                if (attempts >= 2 && intervalId) {
+                    clearInterval(intervalId);
+                }
+            }
+        });
         check();
-        const interval = setInterval(check, 10000);
-        return () => clearInterval(interval);
+        intervalId = setInterval(check, 10000);
+        return () => { if (intervalId) clearInterval(intervalId); };
     }, []);
 
     const handleSync = async (isFast = true) => {
