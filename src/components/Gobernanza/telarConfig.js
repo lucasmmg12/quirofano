@@ -50,13 +50,12 @@ export const SECTORES_CONFIG = [
     { 
         id: 'GUARDIA', 
         label: 'Guardia y Emergencias', 
-        shortLabel: 'Guardia',
+        shortLabel: 'Guardia Clínica',
         icon: '🚑', 
         camasDefault: 6,
-        serviciosSalus: ['GUARDIA'],
-        descripcion: 'Urgencias Médicas y Shockroom',
-        activo: false,
-        badge: 'Próximamente'
+        serviciosSalus: ['GUARDIA', 'URGENCIAS'],
+        descripcion: 'Urgencias Médicas, Triage y Shockroom',
+        activo: true
     }
 ];
 
@@ -246,4 +245,100 @@ export const INDICADORES_CATALOGO = [
 export const DEFAULT_ACTIVE_INDICATOR_IDS = INDICADORES_CATALOGO
     .filter(i => i.isDefault)
     .map(i => i.id);
+
+// ─── CATÁLOGO DE INDICADORES DE GUARDIA CLÍNICA (SALUS) ───
+export const INDICADORES_GUARDIA_CATALOGO = [
+    {
+        id: 'guardia_conversion_cirugia',
+        label: 'Tasa de Conversión a Cirugía',
+        grupo: 'Resolutividad y Quirófano',
+        tipo: 'kpi',
+        icon: 'Activity',
+        descripcion: 'Porcentaje de pacientes asistidos en Guardia que ingresan a Quirófano dentro de las 24 hs.',
+        benchmark: '8% - 12%',
+        origen: 'VLISE_Visitas cruzada con TABLEAU_Admisiones por NHC'
+    },
+    {
+        id: 'guardia_tiempos_espera',
+        label: 'Tiempos de Espera (Triage y Médico)',
+        grupo: 'Oportunidad y Acceso',
+        tipo: 'kpi',
+        icon: 'Clock',
+        descripcion: 'Minutos promedio desde el ingreso hasta la atención médica efectiva y permanencia total.',
+        benchmark: '< 30 min (Atención)',
+        origen: 'VLISE_Visitas (Marcas de Fecha Entrada Real, Fecha Hora Entrada, Fecha Salida Real)'
+    },
+    {
+        id: 'guardia_cobertura_triage',
+        label: 'Cobertura y Clasificación de Triage',
+        grupo: 'Oportunidad y Acceso',
+        tipo: 'kpi',
+        icon: 'CheckCircle',
+        descripcion: 'Porcentaje de pacientes con nivel de severidad asignado formalmente (N1 a N3).',
+        benchmark: '> 95%',
+        origen: 'VLISE_Visitas ([Tipo Visita] N1, N2, N3)'
+    },
+    {
+        id: 'guardia_reconsulta_72h',
+        label: 'Tasa de Reconsulta (72 hs)',
+        grupo: 'Seguridad y Calidad Clínica',
+        tipo: 'kpi',
+        icon: 'RotateCcw',
+        descripcion: 'Porcentaje de pacientes que retornan a la Guardia dentro de las 72 hs por el mismo episodio.',
+        benchmark: '< 7%',
+        origen: 'VLISE_Visitas (Autocruce temporal por NHC)'
+    },
+    {
+        id: 'guardia_reinternacion_72h',
+        label: 'Tasa de Reinternación Temprana (72 hs)',
+        grupo: 'Seguridad y Calidad Clínica',
+        tipo: 'kpi',
+        icon: 'AlertTriangle',
+        descripcion: 'Pacientes dados de alta de internación clínica que reingresan antes de las 72 horas.',
+        benchmark: '< 5%',
+        origen: 'TABLEAU_Admisiones (Procedencia Urgencias, Especialidad CLINICO)'
+    },
+    {
+        id: 'guardia_volumen_imagenes',
+        label: 'Volumen de TAC y Rx Solicitadas',
+        grupo: 'Apoyo Diagnóstico',
+        tipo: 'kpi',
+        icon: 'Layers',
+        descripcion: 'Intensidad diagnóstica de imágenes: total de estudios TAC y Rx y tasa cada 100 consultas.',
+        benchmark: '25 - 35 / 100 consult.',
+        origen: 'VLISE_PeticionesPruebasRadiologia vinculada a consultas de Guardia'
+    },
+    {
+        id: 'guardia_destinos_post',
+        label: 'Distribución de Destinos Post-Guardia',
+        grupo: 'Gestión de Pacientes',
+        tipo: 'donut',
+        icon: 'PieChart',
+        descripcion: 'Distribución de egresos: Domicilio, Piso de Internación, Terapia, Quirófano o Derivación.',
+        benchmark: 'Trazabilidad 100%',
+        origen: 'VLISE_Visitas cruzada con TABLEAU_Admisiones'
+    },
+    {
+        id: 'guardia_estada_clinica',
+        label: 'Promedio de Días de Estada Clínica',
+        grupo: 'Gestión de Camas',
+        tipo: 'kpi',
+        icon: 'Bed',
+        descripcion: 'Días promedio de internación para pacientes derivados desde Urgencias a sala general clínica.',
+        benchmark: '1.5 - 2.5 días',
+        origen: 'TABLEAU_Admisiones (Especialidad CLINICO, campo Dias)'
+    },
+    {
+        id: 'guardia_adherencia_epicrisis',
+        label: 'Tasa de Adherencia a Epicrisis',
+        grupo: 'Auditoría y Normativa',
+        tipo: 'kpi',
+        icon: 'FileText',
+        descripcion: 'Porcentaje de pacientes egresados con Protocolo 382 (Epicrisis Médica) completado en SALUS.',
+        benchmark: '100% obligatorio',
+        origen: 'TABLEAU_Admisiones y PR RespuestasProtocolo (Protocolo 382)'
+    }
+];
+
+export const DEFAULT_ACTIVE_GUARDIA_IDS = INDICADORES_GUARDIA_CATALOGO.map(i => i.id);
 

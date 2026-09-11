@@ -121,24 +121,6 @@ async function procesarPeriodo(pool, periodo, fechaDesde, fechaHasta) {
               AND adm.Especialidad = 'CLINICO '
               AND adm.[Fecha ingreso] >= @FechaDesde
               AND adm.[Fecha ingreso] <= @FechaHasta
-        ),
-        RadiologiaPeriodo AS (
-            SELECT NHC, TipoTarea, [Fecha Solicitud]
-            FROM VLISE_PeticionesPruebasRadiologia
-            WHERE [Fecha Solicitud] >= @FechaDesde
-              AND [Fecha Solicitud] <= DATEADD(DAY, 2, @FechaHasta)
-        ),
-        ImagenesGuardia AS (
-            SELECT 
-                cg.idVisita,
-                COUNT(CASE WHEN r.TipoTarea = 'TOMOGRAFIA' THEN 1 END) AS CantidadTAC,
-                COUNT(CASE WHEN r.TipoTarea = 'RX' THEN 1 END) AS CantidadRx
-            FROM ConsultasGuardia cg
-            INNER JOIN RadiologiaPeriodo r
-                ON r.NHC = cg.NHC
-               AND r.[Fecha Solicitud] >= cg.FechaHoraLlegada
-               AND r.[Fecha Solicitud] <= DATEADD(HOUR, 24, cg.FechaHoraLlegada)
-            GROUP BY cg.idVisita
         )
         SELECT 
             (SELECT COUNT(*) FROM ConsultasGuardia) AS total_consultas,
@@ -154,10 +136,6 @@ async function procesarPeriodo(pool, periodo, fechaDesde, fechaHasta) {
             (SELECT SUM(EsReinternacion72h) FROM AdmisionesClinicas WHERE FechaAlta IS NOT NULL) AS reinternaciones_72h,
             CAST((SELECT SUM(EsReinternacion72h) FROM AdmisionesClinicas WHERE FechaAlta IS NOT NULL) * 100.0 / 
                  NULLIF((SELECT COUNT(*) FROM AdmisionesClinicas WHERE FechaAlta IS NOT NULL), 0) AS DECIMAL(5,2)) AS reinternacion_72h_pct,
-            ISNULL((SELECT SUM(CantidadTAC) FROM ImagenesGuardia), 0) AS total_tac,
-            ISNULL((SELECT SUM(CantidadRx) FROM ImagenesGuardia), 0) AS total_rx,
-            CAST((ISNULL((SELECT SUM(CantidadTAC) FROM ImagenesGuardia), 0) + ISNULL((SELECT SUM(CantidadRx) FROM ImagenesGuardia), 0)) * 100.0 / 
-                 NULLIF((SELECT COUNT(*) FROM ConsultasGuardia), 0) AS DECIMAL(6,2)) AS tasa_imagenes_100_consultas,
             CAST((SELECT AVG(DiasEstada * 1.0) FROM AdmisionesClinicas WHERE FechaAlta IS NOT NULL) AS DECIMAL(5,2)) AS promedio_dias_estada,
             (SELECT COUNT(*) FROM AdmisionesClinicas WHERE FechaAlta IS NOT NULL) AS altas_con_epicrisis,
             100.00 AS adherencia_epicrisis_pct;

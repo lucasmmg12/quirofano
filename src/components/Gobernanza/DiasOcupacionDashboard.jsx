@@ -17,7 +17,14 @@ import TelarDataModal from './TelarDataModal';
 import UciMortalidadAuditModal from './UciMortalidadAuditModal';
 import UciGanttChart from './UciGanttChart';
 import DraggableChartCard from './DraggableChartCard';
-import { SECTORES_CONFIG, INDICADORES_CATALOGO, DEFAULT_ACTIVE_INDICATOR_IDS } from './telarConfig';
+import { 
+    SECTORES_CONFIG, 
+    INDICADORES_CATALOGO, 
+    DEFAULT_ACTIVE_INDICATOR_IDS,
+    INDICADORES_GUARDIA_CATALOGO,
+    DEFAULT_ACTIVE_GUARDIA_IDS
+} from './telarConfig';
+import GuardiaClinicaDashboard from './GuardiaClinicaDashboard';
 
 const SIDEBAR_INDICATOR_GROUPS = [
     {
@@ -154,6 +161,41 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             try { localStorage.setItem('telar_uci_expanded', String(next)); } catch {}
             return next;
         });
+    };
+
+    const [isGuardiaOpen, setIsGuardiaOpen] = useState(() => {
+        return localStorage.getItem('telar_guardia_expanded') === 'true';
+    });
+
+    const handleToggleGuardia = () => {
+        setIsGuardiaOpen(prev => {
+            const next = !prev;
+            try { localStorage.setItem('telar_guardia_expanded', String(next)); } catch {}
+            return next;
+        });
+    };
+
+    const [activeGuardiaIds, setActiveGuardiaIds] = useState(() => {
+        try {
+            const saved = localStorage.getItem('telar_active_guardia_indicators');
+            return saved ? JSON.parse(saved) : DEFAULT_ACTIVE_GUARDIA_IDS;
+        } catch {
+            return DEFAULT_ACTIVE_GUARDIA_IDS;
+        }
+    });
+
+    const handleToggleGuardiaIndicator = (id) => {
+        setActiveGuardiaIds(prev => {
+            const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+            try { localStorage.setItem('telar_active_guardia_indicators', JSON.stringify(next)); } catch {}
+            return next;
+        });
+    };
+
+    const handleSelectAllGuardiaIndicators = () => {
+        setActiveGuardiaIds(DEFAULT_ACTIVE_GUARDIA_IDS);
+        try { localStorage.setItem('telar_active_guardia_indicators', JSON.stringify(DEFAULT_ACTIVE_GUARDIA_IDS)); } catch {}
+        addToast?.('Todos los indicadores de Guardia activados', 'success');
     };
     const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' | 'gantt'
     const [selectedEspecialidades, setSelectedEspecialidades] = useState(null); // null = todas activas
@@ -342,6 +384,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     
     // Modal de Documentación Técnica
     const [showDocModal, setShowDocModal] = useState(false);
+    const [docModalTab, setDocModalTab] = useState('UCI');
 
     // Manejador para cerrar el dropdown de especialidades al hacer click afuera
     useEffect(() => {
@@ -431,6 +474,11 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     }, [sectorId, fechaDesde, fechaHasta]);
 
     const fetchData = async () => {
+        if (sectorId === 'GUARDIA') {
+            setLoading(false);
+            setLoadingPeticiones(false);
+            return;
+        }
         setLoading(true);
         setLoadingPeticiones(true);
         try {
@@ -1931,7 +1979,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 fontWeight: 700,
                                 border: '1px solid #BFDBFE'
                             }}>
-                                {activeIndicatorIds.length} Indicadores
+                                {sectorId === 'GUARDIA' ? `${activeGuardiaIds.length} Indicadores` : `${activeIndicatorIds.length} Indicadores`}
                             </span>
                         </div>
                         <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
@@ -2018,29 +2066,34 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                     
                     {/* Botón Catálogo de Indicadores */}
-                    <button
-                        onClick={() => setIsCatalogoOpen(true)}
-                        style={{
-                            background: '#FFFFFF',
-                            border: '1px solid #2563EB',
-                            color: '#1E40AF',
-                            borderRadius: '8px',
-                            padding: '6px 12px',
-                            fontSize: '0.8rem',
-                            fontWeight: 700,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        <Sliders size={15} />
-                        Catálogo ({activeIndicatorIds.length})
-                    </button>
+                    {sectorId === 'UCI' && (
+                        <button
+                            onClick={() => setIsCatalogoOpen(true)}
+                            style={{
+                                background: '#FFFFFF',
+                                border: '1px solid #2563EB',
+                                color: '#1E40AF',
+                                borderRadius: '8px',
+                                padding: '6px 12px',
+                                fontSize: '0.8rem',
+                                fontWeight: 700,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <Sliders size={15} />
+                            Catálogo ({activeIndicatorIds.length})
+                        </button>
+                    )}
 
                     {/* Botón Documentación Técnica */}
                     <button
-                        onClick={() => setShowDocModal(true)}
+                        onClick={() => {
+                            setDocModalTab(sectorId);
+                            setShowDocModal(true);
+                        }}
                         style={{
                             background: '#F1F5F9',
                             border: '1px solid #CBD5E1',
@@ -2126,183 +2179,187 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
                     <div style={{ height: '24px', width: '1px', background: '#E2E8F0' }} />
 
-                    {/* Filtro Multi-Especialidad con Casillas de Verificación */}
-                    <div ref={especDropdownRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>Especialidad:</span>
-                        <button
-                            type="button"
-                            onClick={() => setEspecDropdownOpen(prev => !prev)}
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: '6px',
-                                padding: '5px 10px',
-                                borderRadius: '6px',
-                                border: especDropdownOpen ? '1px solid #2563EB' : '1px solid #CBD5E1',
-                                fontSize: '0.8rem',
-                                color: '#1E293B',
-                                background: '#FFFFFF',
-                                minWidth: '130px',
-                                maxWidth: '190px',
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease'
-                            }}
-                        >
-                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>
-                                {selectedEspecialidades === null 
-                                    ? '(Todas)' 
-                                    : selectedEspecialidades.length === 0 
-                                        ? 'Ninguna' 
-                                        : selectedEspecialidades.length === 1 
-                                            ? selectedEspecialidades[0] 
-                                            : `${selectedEspecialidades.length} seleccionadas`}
-                            </span>
-                            <ChevronDown size={14} color="#64748B" style={{ transform: especDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }} />
-                        </button>
+                    {/* Filtro Multi-Especialidad y Camas (exclusivo UCI) */}
+                    {sectorId === 'UCI' && (
+                        <>
+                            <div ref={especDropdownRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>Especialidad:</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setEspecDropdownOpen(prev => !prev)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: '6px',
+                                        padding: '5px 10px',
+                                        borderRadius: '6px',
+                                        border: especDropdownOpen ? '1px solid #2563EB' : '1px solid #CBD5E1',
+                                        fontSize: '0.8rem',
+                                        color: '#1E293B',
+                                        background: '#FFFFFF',
+                                        minWidth: '130px',
+                                        maxWidth: '190px',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>
+                                        {selectedEspecialidades === null 
+                                            ? '(Todas)' 
+                                            : selectedEspecialidades.length === 0 
+                                                ? 'Ninguna' 
+                                                : selectedEspecialidades.length === 1 
+                                                    ? selectedEspecialidades[0] 
+                                                    : `${selectedEspecialidades.length} seleccionadas`}
+                                    </span>
+                                    <ChevronDown size={14} color="#64748B" style={{ transform: especDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }} />
+                                </button>
 
-                        {/* Menú Desplegable con Casillas de Verificación */}
-                        {especDropdownOpen && (
-                            <div style={{
-                                position: 'absolute',
-                                top: 'calc(100% + 5px)',
-                                left: '75px',
-                                background: '#FFFFFF',
-                                border: '1px solid #CBD5E1',
-                                borderRadius: '8px',
-                                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
-                                zIndex: 9999,
-                                width: '230px',
-                                padding: '6px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '4px'
-                            }}>
-                                {/* Acciones Rápidas: Seleccionar Todas / Limpiar */}
-                                <div style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    padding: '4px 6px 6px 6px',
-                                    borderBottom: '1px solid #F1F5F9'
-                                }}>
-                                    <button
-                                        type="button"
-                                        onClick={handleSelectAllEspecialidades}
-                                        style={{
-                                            background: 'transparent',
-                                            border: 'none',
-                                            color: '#2563EB',
-                                            fontSize: '0.72rem',
-                                            fontWeight: 700,
-                                            cursor: 'pointer',
-                                            padding: '2px 4px'
-                                        }}
-                                    >
-                                        Seleccionar todas
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handleClearAllEspecialidades}
-                                        style={{
-                                            background: 'transparent',
-                                            border: 'none',
-                                            color: '#64748B',
-                                            fontSize: '0.72rem',
-                                            fontWeight: 600,
-                                            cursor: 'pointer',
-                                            padding: '2px 4px'
-                                        }}
-                                    >
-                                        Deseleccionar todas
-                                    </button>
-                                </div>
-
-                                {/* Casillas de Verificación por Especialidad */}
-                                <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                    {especialidadesDisponibles.map(esp => {
-                                        const isChecked = selectedEspecialidades === null || selectedEspecialidades.includes(esp);
-                                        return (
-                                            <div
-                                                key={esp}
+                                {/* Menú Desplegable con Casillas de Verificación */}
+                                {especDropdownOpen && (
+                                    <div style={{
+                                        position: 'absolute',
+                                        top: 'calc(100% + 5px)',
+                                        left: '75px',
+                                        background: '#FFFFFF',
+                                        border: '1px solid #CBD5E1',
+                                        borderRadius: '8px',
+                                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+                                        zIndex: 9999,
+                                        width: '230px',
+                                        padding: '6px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '4px'
+                                    }}>
+                                        {/* Acciones Rápidas: Seleccionar Todas / Limpiar */}
+                                        <div style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            padding: '4px 6px 6px 6px',
+                                            borderBottom: '1px solid #F1F5F9'
+                                        }}>
+                                            <button
+                                                type="button"
+                                                onClick={handleSelectAllEspecialidades}
                                                 style={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'space-between',
-                                                    padding: '5px 6px',
-                                                    borderRadius: '6px',
-                                                    background: isChecked ? '#EFF6FF' : 'transparent',
+                                                    background: 'transparent',
+                                                    border: 'none',
+                                                    color: '#2563EB',
+                                                    fontSize: '0.72rem',
+                                                    fontWeight: 700,
                                                     cursor: 'pointer',
-                                                    fontSize: '0.75rem',
-                                                    transition: 'background 0.1s ease'
+                                                    padding: '2px 4px'
                                                 }}
-                                                onClick={() => handleToggleEspecialidad(esp)}
                                             >
-                                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', width: '100%' }}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={isChecked}
-                                                        onChange={() => {}}
-                                                        style={{ accentColor: '#2563EB', cursor: 'pointer' }}
-                                                    />
-                                                    <span style={{
-                                                        color: isChecked ? '#1E40AF' : '#334155',
-                                                        fontWeight: isChecked ? 700 : 500
-                                                    }}>
-                                                        {esp}
-                                                    </span>
-                                                </label>
-                                                <button
-                                                    type="button"
-                                                    title={`Filtrar únicamente ${esp}`}
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleSelectOnlyEspecialidad(esp);
-                                                    }}
-                                                    style={{
-                                                        background: 'transparent',
-                                                        border: 'none',
-                                                        color: '#94A3B8',
-                                                        fontSize: '0.68rem',
-                                                        fontWeight: 600,
-                                                        cursor: 'pointer',
-                                                        padding: '1px 5px',
-                                                        borderRadius: '3px'
-                                                    }}
-                                                    onMouseEnter={(e) => e.currentTarget.style.color = '#2563EB'}
-                                                    onMouseLeave={(e) => e.currentTarget.style.color = '#94A3B8'}
-                                                >
-                                                    solo
-                                                </button>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                                                Seleccionar todas
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleClearAllEspecialidades}
+                                                style={{
+                                                    background: 'transparent',
+                                                    border: 'none',
+                                                    color: '#64748B',
+                                                    fontSize: '0.72rem',
+                                                    fontWeight: 600,
+                                                    cursor: 'pointer',
+                                                    padding: '2px 4px'
+                                                }}
+                                            >
+                                                Deseleccionar todas
+                                            </button>
+                                        </div>
 
-                    {/* Camas Totales */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>Camas:</span>
-                        <input
-                            type="number"
-                            min="1"
-                            max="300"
-                            value={camasTotales}
-                            onChange={(e) => setCamasTotales(Number(e.target.value))}
-                            style={{
-                                width: '55px',
-                                padding: '5px 6px',
-                                borderRadius: '6px',
-                                border: '1px solid #CBD5E1',
-                                fontSize: '0.8rem',
-                                fontWeight: 700,
-                                color: '#1E40AF',
-                                textAlign: 'center'
-                            }}
-                        />
-                    </div>
+                                        {/* Casillas de Verificación por Especialidad */}
+                                        <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                            {especialidadesDisponibles.map(esp => {
+                                                const isChecked = selectedEspecialidades === null || selectedEspecialidades.includes(esp);
+                                                return (
+                                                    <div
+                                                        key={esp}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            padding: '5px 6px',
+                                                            borderRadius: '6px',
+                                                            background: isChecked ? '#EFF6FF' : 'transparent',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.75rem',
+                                                            transition: 'background 0.1s ease'
+                                                        }}
+                                                        onClick={() => handleToggleEspecialidad(esp)}
+                                                    >
+                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', width: '100%' }}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={isChecked}
+                                                                onChange={() => {}}
+                                                                style={{ accentColor: '#2563EB', cursor: 'pointer' }}
+                                                            />
+                                                            <span style={{
+                                                                color: isChecked ? '#1E40AF' : '#334155',
+                                                                fontWeight: isChecked ? 700 : 500
+                                                            }}>
+                                                                {esp}
+                                                            </span>
+                                                        </label>
+                                                        <button
+                                                            type="button"
+                                                            title={`Filtrar únicamente ${esp}`}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleSelectOnlyEspecialidad(esp);
+                                                            }}
+                                                            style={{
+                                                                background: 'transparent',
+                                                                border: 'none',
+                                                                color: '#94A3B8',
+                                                                fontSize: '0.68rem',
+                                                                fontWeight: 600,
+                                                                cursor: 'pointer',
+                                                                padding: '1px 5px',
+                                                                borderRadius: '3px'
+                                                            }}
+                                                            onMouseEnter={(e) => e.currentTarget.style.color = '#2563EB'}
+                                                            onMouseLeave={(e) => e.currentTarget.style.color = '#94A3B8'}
+                                                        >
+                                                            solo
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Camas Totales */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>Camas:</span>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="300"
+                                    value={camasTotales}
+                                    onChange={(e) => setCamasTotales(Number(e.target.value))}
+                                    style={{
+                                        width: '55px',
+                                        padding: '5px 6px',
+                                        borderRadius: '6px',
+                                        border: '1px solid #CBD5E1',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 700,
+                                        color: '#1E40AF',
+                                        textAlign: 'center'
+                                    }}
+                                />
+                            </div>
+                        </>
+                    )}
 
                     {/* Selector de Período Clínico: Este Mes, Mes Anterior y Personalizado */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -2760,13 +2817,168 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     </div>
                                 )}
                             </div>
+
+                            {/* 🚑 SERVICIO: GUARDIA CLÍNICA (EXPANDIBLE AL TOCARLO) */}
+                            <div style={{
+                                borderRadius: '8px',
+                                border: `1.5px solid ${isGuardiaOpen || sectorId === 'GUARDIA' ? '#93C5FD' : '#E2E8F0'}`,
+                                background: '#FFFFFF',
+                                boxShadow: isGuardiaOpen || sectorId === 'GUARDIA' ? '0 4px 12px -2px rgba(37, 99, 235, 0.08)' : '0 1px 2px rgba(0,0,0,0.03)',
+                                overflow: 'hidden',
+                                transition: 'all 0.2s ease'
+                            }}>
+                                {/* Botón Cabecera Guardia */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        handleToggleGuardia();
+                                        if (sectorId !== 'GUARDIA') handleSelectSector('GUARDIA');
+                                    }}
+                                    style={{
+                                        width: '100%',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '11px 12px',
+                                        background: sectorId === 'GUARDIA' ? '#EFF6FF' : '#F8FAFC',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        textAlign: 'left',
+                                        transition: 'background 0.15s ease'
+                                    }}
+                                    onMouseEnter={e => { if (sectorId !== 'GUARDIA') e.currentTarget.style.background = '#F1F5F9'; }}
+                                    onMouseLeave={e => { if (sectorId !== 'GUARDIA') e.currentTarget.style.background = '#F8FAFC'; }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '1.25rem' }}>🚑</span>
+                                        <div>
+                                            <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1E40AF' }}>
+                                                Guardia Clínica
+                                            </div>
+                                            <div style={{ fontSize: '0.68rem', color: '#3B82F6' }}>
+                                                Urgencias & Shockroom
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{
+                                            fontSize: '0.68rem',
+                                            background: sectorId === 'GUARDIA' ? '#2563EB' : '#DBEAFE',
+                                            color: sectorId === 'GUARDIA' ? '#FFFFFF' : '#1E40AF',
+                                            padding: '2px 8px',
+                                            borderRadius: '10px',
+                                            fontWeight: 800
+                                        }}>
+                                            {activeGuardiaIds.length} activos
+                                        </span>
+                                        <span style={{ color: sectorId === 'GUARDIA' ? '#2563EB' : '#94A3B8', display: 'flex', alignItems: 'center' }}>
+                                            {isGuardiaOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                        </span>
+                                    </div>
+                                </button>
+
+                                {/* CONTENIDO DESPLEGABLE DE GUARDIA */}
+                                {isGuardiaOpen && (
+                                    <div style={{
+                                        borderTop: '1px solid #DBEAFE',
+                                        background: '#FFFFFF',
+                                        animation: 'fadeIn 0.2s ease-out'
+                                    }}>
+                                        <div style={{ padding: '10px 12px', background: '#F8FAFC', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
+                                                Indicadores Guardia ({activeGuardiaIds.length})
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={handleSelectAllGuardiaIndicators}
+                                                style={{
+                                                    background: 'transparent',
+                                                    border: 'none',
+                                                    color: '#2563EB',
+                                                    fontSize: '0.68rem',
+                                                    fontWeight: 700,
+                                                    cursor: 'pointer',
+                                                    padding: '1px 4px'
+                                                }}
+                                            >
+                                                Todos
+                                            </button>
+                                        </div>
+
+                                        <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '320px', overflowY: 'auto' }}>
+                                            {INDICADORES_GUARDIA_CATALOGO.map(ind => {
+                                                const isChecked = activeGuardiaIds.includes(ind.id);
+                                                return (
+                                                    <div
+                                                        key={ind.id}
+                                                        onClick={() => {
+                                                            if (sectorId !== 'GUARDIA') handleSelectSector('GUARDIA');
+                                                            handleToggleGuardiaIndicator(ind.id);
+                                                        }}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            padding: '6px 8px',
+                                                            borderRadius: '6px',
+                                                            cursor: 'pointer',
+                                                            background: isChecked && sectorId === 'GUARDIA' ? '#EFF6FF' : 'transparent',
+                                                            border: isChecked && sectorId === 'GUARDIA' ? '1px solid #BFDBFE' : '1px solid transparent',
+                                                            transition: 'all 0.12s ease'
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                                            {isChecked ? (
+                                                                <CheckSquare size={15} color="#1E40AF" />
+                                                            ) : (
+                                                                <Square size={15} color="#94A3B8" />
+                                                            )}
+                                                            <span style={{
+                                                                fontSize: '0.74rem',
+                                                                fontWeight: isChecked ? 700 : 500,
+                                                                color: isChecked ? '#1E293B' : '#475569',
+                                                                whiteSpace: 'nowrap',
+                                                                overflow: 'hidden',
+                                                                textOverflow: 'ellipsis'
+                                                            }}
+                                                            title={ind.descripcion}
+                                                            >
+                                                                {ind.label}
+                                                            </span>
+                                                        </div>
+                                                        <span style={{
+                                                            fontSize: '0.6rem',
+                                                            fontWeight: 700,
+                                                            padding: '1px 4px',
+                                                            borderRadius: '4px',
+                                                            background: ind.tipo === 'kpi' ? '#DBEAFE' : '#D1FAE5',
+                                                            color: ind.tipo === 'kpi' ? '#1E40AF' : '#065F46',
+                                                            flexShrink: 0
+                                                        }}>
+                                                            {ind.tipo === 'kpi' ? 'KPI' : 'Donut'}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 )}
 
                 {/* LIENZO PRINCIPAL DEL TELAR (MODULAR) */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-                    {loading ? (
+                    {sectorId === 'GUARDIA' ? (
+                        <GuardiaClinicaDashboard 
+                            onOpenDocModal={() => setShowDocModal(true)}
+                            activeIndicatorIds={activeGuardiaIds}
+                            onToggleIndicator={handleToggleGuardiaIndicator}
+                            addToast={addToast}
+                        />
+                    ) : loading ? (
                         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '350px', flexDirection: 'column', gap: '12px' }}>
                             <RefreshCw className="animate-spin" size={36} color="#2563EB" />
                             <span style={{ color: '#64748B', fontSize: '0.9rem', fontWeight: 600 }}>
@@ -3175,11 +3387,47 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                             background: '#F8FAFC'
                         }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <BookOpen size={20} color="#1E40AF" />
-                                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0F172A' }}>
-                                    Documentación Técnica y Metodología de Ocupación
-                                </h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <BookOpen size={20} color="#1E40AF" />
+                                    <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
+                                        Documentación Técnica & Repositorio SQL
+                                    </h3>
+                                </div>
+                                <div style={{ display: 'flex', background: '#E2E8F0', padding: '2px', borderRadius: '8px', gap: '2px' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDocModalTab('UCI')}
+                                        style={{
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            padding: '4px 10px',
+                                            fontSize: '0.74rem',
+                                            fontWeight: docModalTab === 'UCI' ? 800 : 600,
+                                            background: docModalTab === 'UCI' ? '#FFFFFF' : 'transparent',
+                                            color: docModalTab === 'UCI' ? '#1E40AF' : '#64748B',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        🏥 Cuidados Críticos (UCI)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDocModalTab('GUARDIA')}
+                                        style={{
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            padding: '4px 10px',
+                                            fontSize: '0.74rem',
+                                            fontWeight: docModalTab === 'GUARDIA' ? 800 : 600,
+                                            background: docModalTab === 'GUARDIA' ? '#FFFFFF' : 'transparent',
+                                            color: docModalTab === 'GUARDIA' ? '#1E40AF' : '#64748B',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        🚑 Guardia Clínica (9 Indicadores)
+                                    </button>
+                                </div>
                             </div>
                             <button
                                 onClick={() => setShowDocModal(false)}
@@ -3190,12 +3438,67 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         </div>
 
                         <div style={{ padding: '24px', overflowY: 'auto', fontSize: '0.88rem', color: '#334155', lineHeight: 1.6 }}>
-                            <h4 style={{ color: '#1E40AF', marginTop: 0 }}>1. Query Canónica de Extracción (SALUS SQL Server)</h4>
-                            <pre style={{
-                                background: '#F1F5F9', padding: '12px', borderRadius: '8px',
-                                fontSize: '0.78rem', overflowX: 'auto', border: '1px solid #CBD5E1',
-                                fontFamily: 'Consolas, monospace'
-                            }}>
+                            {docModalTab === 'GUARDIA' ? (
+                                <div>
+                                    <div style={{ background: '#EFF6FF', padding: '12px 16px', borderRadius: '8px', border: '1px solid #BFDBFE', marginBottom: '16px' }}>
+                                        <strong style={{ color: '#1E40AF' }}>Ecosistema de Guardia Clínica (SALUS 128.223.16.29:2450)</strong>
+                                        <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#1E293B' }}>
+                                            Las métricas de urgencias se nutren del cruce forense de <code>VLISE_Visitas</code> (consultas de guardia con marcas temporales reales), <code>TABLEAU_Admisiones</code> (pases a internación y cirugías), <code>VLISE_PeticionesPruebasRadiologia</code> (TAC y Radiología) y <code>PR_RespuestasProtocolo</code> (Protocolo 382 de Epicrisis).
+                                        </p>
+                                    </div>
+
+                                    <h4 style={{ color: '#1E40AF', marginTop: 0 }}>1. Query Canónica Consolidada de Guardia (Transact-SQL)</h4>
+                                    <p style={{ fontSize: '0.8rem', color: '#64748B', margin: '4px 0 8px 0' }}>
+                                        Archivo en repositorio: <code>sql/indicadores_guardia_clinica_salus.sql</code>
+                                    </p>
+                                    <pre style={{
+                                        background: '#0F172A', color: '#E2E8F0', padding: '14px', borderRadius: '8px',
+                                        fontSize: '0.74rem', overflowX: 'auto', border: '1px solid #1E293B',
+                                        fontFamily: 'Consolas, monospace', lineHeight: 1.45
+                                    }}>
+{`-- GOBERNANZA SALUS: MASTER QUERY GUARDIA CLÍNICA
+SELECT 
+    '2026-09' AS Periodo,
+    COUNT(DISTINCT v.IdVisita) AS TotalConsultasGuardia,
+    AVG(DATEDIFF(MINUTE, v.[Fecha Entrada Real], v.[Fecha Hora Entrada])) AS PromedioEsperaMedicoMin,
+    AVG(DATEDIFF(MINUTE, v.[Fecha Entrada Real], v.[Fecha Salida Real])) AS PromedioPermanenciaMin,
+    CAST(COUNT(DISTINCT a_cirugia.idAdmision) * 100.0 / NULLIF(COUNT(DISTINCT v.IdVisita), 0) AS DECIMAL(5,2)) AS TasaConversionCirugiaPct,
+    CAST(COUNT(DISTINCT v_reconsulta.IdVisita) * 100.0 / NULLIF(COUNT(DISTINCT v.IdVisita), 0) AS DECIMAL(5,2)) AS TasaReconsulta72hPct
+FROM VLISE_Visitas v
+LEFT JOIN TABLEAU_Admisiones a_cirugia 
+    ON v.NHC = a_cirugia.NHC 
+    AND a_cirugia.Procedencia = 'Derivado desde Urgencias'
+    AND a_cirugia.[Fecha ingreso] >= v.[Fecha Entrada Real]
+    AND a_cirugia.[Fecha ingreso] <= DATEADD(HOUR, 24, v.[Fecha Entrada Real])
+LEFT JOIN VLISE_Visitas v_reconsulta
+    ON v.NHC = v_reconsulta.NHC
+    AND v_reconsulta.[Fecha Entrada Real] > v.[Fecha Entrada Real]
+    AND v_reconsulta.[Fecha Entrada Real] <= DATEADD(HOUR, 72, v.[Fecha Entrada Real])
+WHERE v.[Tipo Visita] IN ('(N1) VISITA CLINICA', '(N2) VISITA CLINICA', '(N3) VISITA CLINICA')
+  AND v.[Fecha Entrada Real] >= '2026-09-01' AND v.[Fecha Entrada Real] < '2026-10-01';`}
+                                    </pre>
+
+                                    <h4 style={{ color: '#1E40AF', marginTop: '20px' }}>2. Metodología de los 9 Indicadores Normados</h4>
+                                    <ul style={{ fontSize: '0.82rem', paddingLeft: '20px' }}>
+                                        <li><strong>1. Tasa de Conversión a Cirugía:</strong> <code>(Pases a Quirófano &lt; 24hs / Total Consultas) × 100</code>. Benchmark 8% - 12%.</li>
+                                        <li><strong>2. Tiempos de Espera:</strong> <code>DATEDIFF(MINUTE, [Fecha Entrada Real], [Fecha Hora Entrada])</code>. Benchmark &lt; 30 min.</li>
+                                        <li><strong>3. Cobertura de Triage:</strong> % consultas con clasificación N1, N2 o N3 asignada formalmente.</li>
+                                        <li><strong>4. Tasa de Reconsulta (72 hs):</strong> Autocruce temporal por NHC para reingresos dentro de los 3 días. Benchmark &lt; 7%.</li>
+                                        <li><strong>5. Tasa de Reinternación Temprana (72 hs):</strong> Pacientes dados de alta de internación clínica derivados de urgencias que reingresan antes de 72 hs. Benchmark &lt; 5%.</li>
+                                        <li><strong>6. Demanda de Imágenes (TAC y Rx):</strong> <code>(Total Tomografías + Radiografías / Total Consultas) × 100</code>. Benchmark 25 - 35 cada 100.</li>
+                                        <li><strong>7. Destinos Post-Guardia:</strong> Trazabilidad del egreso (Domicilio, Piso Clínico, UTI, Quirófano, Derivación Externa).</li>
+                                        <li><strong>8. Promedio de Días de Estada Clínica:</strong> Días de permanencia en internación para derivados de Guardia. Benchmark 1.5 - 2.5 días.</li>
+                                        <li><strong>9. Adherencia a Epicrisis:</strong> % de altas clínicas con Protocolo 382 completado. Meta institucional 100%.</li>
+                                    </ul>
+                                </div>
+                            ) : (
+                                <div>
+                                    <h4 style={{ color: '#1E40AF', marginTop: 0 }}>1. Query Canónica de Extracción UCI (SALUS SQL Server)</h4>
+                                    <pre style={{
+                                        background: '#F1F5F9', padding: '12px', borderRadius: '8px',
+                                        fontSize: '0.78rem', overflowX: 'auto', border: '1px solid #CBD5E1',
+                                        fontFamily: 'Consolas, monospace'
+                                    }}>
 {`SELECT 
     b.[Número admisión],
     DATEADD(DAY, v.number, CAST(b.[Fecha ingreso] AS DATE)) AS [Fecha Ocupacion],
@@ -3219,19 +3522,19 @@ JOIN master.dbo.spt_values v
   ON v.type = 'P' 
   AND v.number <= DATEDIFF(DAY, CAST(b.[Fecha ingreso] AS DATE), CAST(ISNULL(b.[Fecha alta], GETDATE()) AS DATE))
 WHERE (b.[Fecha alta] >= '2025-06-01' OR b.[Fecha alta] IS NULL)`}
-                            </pre>
+                                    </pre>
 
-                            <h4 style={{ color: '#1E40AF', marginTop: '20px' }}>2. Queries de Peticiones y Estudios Clínicos (VLISE_PeticionesPruebas)</h4>
-                            <p style={{ fontSize: '0.8rem', color: '#64748B', margin: '4px 0 8px 0' }}>
-                                Utilizadas para entender los estudios clínicos y analíticas en UCI, internación y producción global:
-                            </p>
-                            
-                            <strong style={{ fontSize: '0.82rem', color: '#1E293B' }}>A. Detalle de Peticiones y Pruebas</strong>
-                            <pre style={{
-                                background: '#F1F5F9', padding: '12px', borderRadius: '8px',
-                                fontSize: '0.76rem', overflowX: 'auto', border: '1px solid #CBD5E1',
-                                fontFamily: 'Consolas, monospace', marginTop: '4px'
-                            }}>
+                                    <h4 style={{ color: '#1E40AF', marginTop: '20px' }}>2. Queries de Peticiones y Estudios Clínicos (VLISE_PeticionesPruebas)</h4>
+                                    <p style={{ fontSize: '0.8rem', color: '#64748B', margin: '4px 0 8px 0' }}>
+                                        Utilizadas para entender los estudios clínicos y analíticas en UCI, internación y producción global:
+                                    </p>
+                                    
+                                    <strong style={{ fontSize: '0.82rem', color: '#1E293B' }}>A. Detalle de Peticiones y Pruebas</strong>
+                                    <pre style={{
+                                        background: '#F1F5F9', padding: '12px', borderRadius: '8px',
+                                        fontSize: '0.76rem', overflowX: 'auto', border: '1px solid #CBD5E1',
+                                        fontFamily: 'Consolas, monospace', marginTop: '4px'
+                                    }}>
 {`SELECT 
     CAST(IdPeticionDePrueba AS VARCHAR(50)) AS IdPeticion,
     [Fecha Solicitud],
@@ -3247,36 +3550,19 @@ WHERE (b.[Fecha alta] >= '2025-06-01' OR b.[Fecha alta] IS NULL)`}
 FROM VLISE_PeticionesPruebas
 WHERE [Fecha Solicitud] >= '2025-06-01'
   AND [Fecha Solicitud] IS NOT NULL`}
-                            </pre>
+                                    </pre>
 
-                            <strong style={{ fontSize: '0.82rem', color: '#1E293B', marginTop: '10px', display: 'inline-block' }}>B. Producción Global por Origen</strong>
-                            <pre style={{
-                                background: '#F1F5F9', padding: '12px', borderRadius: '8px',
-                                fontSize: '0.76rem', overflowX: 'auto', border: '1px solid #CBD5E1',
-                                fontFamily: 'Consolas, monospace', marginTop: '4px'
-                            }}>
-{`SELECT 
-    Origen,
-    COUNT(*) AS CantidadEstudios,
-    CAST(
-        COUNT(*) * 100.0 / SUM(COUNT(*)) OVER() 
-    AS DECIMAL(10, 2)) AS PorcentajeProduccion
-FROM VLISE_PeticionesPruebas
-WHERE [Fecha Solicitud] >= '2025-06-01'
-  AND [Fecha Solicitud] IS NOT NULL
-GROUP BY Origen`}
-                            </pre>
-
-                            <h4 style={{ color: '#1E40AF', marginTop: '20px' }}>3. Fórmulas de Indicadores y Metodología</h4>
-                            <ul>
-                                <li><strong>Cantidad de Días Camas Ocupados:</strong> Conteo de pernoctadas naturales efectivas en el período (join con <code>spt_values</code>).</li>
-                                <li><strong>Cantidad de Días Camas Disponibles:</strong> <code>Camas Operativas × Días del Período</code>.</li>
-                                <li><strong>% de Ocupación:</strong> <code>(Días Camas Ocupados / Días Camas Disponibles) × 100</code>.</li>
-                                <li><strong>% de Defunción (Mortalidad Cruda):</strong> <code>(Pacientes únicos fallecidos / Total de egresos) × 100</code>.</li>
-                                <li><strong>Promedio de Estancia (ALOS):</strong> <code>Sumatoria de días de estancia / Total de altas efectivas</code>.</li>
-                                <li><strong>Intensidad Diagnóstica:</strong> <code>Total Estudios Clínicos en la Unidad / Días Camas Ocupados</code> (mide la densidad diagnóstica y soporte de laboratorio/gases por paciente-día).</li>
-                                <li><strong>Reclasificación Forense de Asistencia (Gobernanza):</strong> En SALUS, el 95.6% de los internados tienen <code>Asistencia IS NULL</code> (no pasan por mostrador ambulatorio). Aquellas peticiones de radiología/imágenes clasificadas como "Ambulatorio" pero con <code>Asistencia IS NULL</code>, <code>INTERNADO</code> o <code>URGENCIA</code> (30.743 estudios) son restituidas a internación y guardia, corrigiendo la distorsión del 24.3% nominal al 28.3% real.</li>
-                            </ul>
+                                    <h4 style={{ color: '#1E40AF', marginTop: '20px' }}>3. Fórmulas de Indicadores y Metodología UCI</h4>
+                                    <ul>
+                                        <li><strong>Cantidad de Días Camas Ocupados:</strong> Conteo de pernoctadas naturales efectivas en el período (join con <code>spt_values</code>).</li>
+                                        <li><strong>Cantidad de Días Camas Disponibles:</strong> <code>Camas Operativas × Días del Período</code>.</li>
+                                        <li><strong>% de Ocupación:</strong> <code>(Días Camas Ocupados / Días Camas Disponibles) × 100</code>.</li>
+                                        <li><strong>% de Defunción (Mortalidad Cruda):</strong> <code>(Pacientes únicos fallecidos / Total de egresos) × 100</code>.</li>
+                                        <li><strong>Promedio de Estancia (ALOS):</strong> <code>Sumatoria de días de estancia / Total de altas efectivas</code>.</li>
+                                        <li><strong>Intensidad Diagnóstica:</strong> <code>Total Estudios Clínicos en la Unidad / Días Camas Ocupados</code>.</li>
+                                    </ul>
+                                </div>
+                            )}
                         </div>
 
                         <div style={{ padding: '12px 24px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end' }}>
