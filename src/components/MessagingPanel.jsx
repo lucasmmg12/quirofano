@@ -166,17 +166,17 @@ const getMetaTemplateVariables = (tpl, context, patientName) => {
     });
 };
 
-// Status config matching SurgeryPanel's color system
+// Status config matching SurgeryPanel's color system with enhanced vibrancy and contrast
 const STATUS_CONFIG = {
-    lila: { label: 'Sin Mensaje', color: '#6B7280', bg: '#F3F4F6' },
-    amarillo: { label: 'En Revisión', color: '#EC4899', bg: '#FDF2F8' },
-    verde: { label: 'Autorizado', color: '#22C55E', bg: '#F0FDF4' },
-    azul: { label: 'Confirmado', color: '#3B82F6', bg: '#EFF6FF' },
-    rojo: { label: 'Problema', color: '#EF4444', bg: '#FEF2F2' },
-    precaucion: { label: 'Precaución', color: '#EAB308', bg: '#FEFCE8' },
-    fertilidad: { label: 'Fertilidad', color: '#A855F7', bg: '#FAF5FF' },
-    realizada: { label: 'Realizada', color: '#059669', bg: '#ECFDF5' },
-    suspendida: { label: 'Suspendida', color: '#6B7280', bg: '#F3F4F6' },
+    lila: { label: 'Sin Mensaje', color: '#475569', bg: '#F1F5F9', border: '#CBD5E1', accent: '#94A3B8' },
+    amarillo: { label: 'En Revisión', color: '#BE185D', bg: '#FDF2F8', border: '#F472B6', accent: '#EC4899' },
+    verde: { label: 'Autorizado', color: '#15803D', bg: '#F0FDF4', border: '#86EFAC', accent: '#22C55E' },
+    azul: { label: 'Confirmado', color: '#1D4ED8', bg: '#EFF6FF', border: '#93C5FD', accent: '#3B82F6' },
+    rojo: { label: 'Problema', color: '#B91C1C', bg: '#FEF2F2', border: '#FCA5A5', accent: '#EF4444' },
+    precaucion: { label: 'Precaución', color: '#A16207', bg: '#FEFCE8', border: '#FDE047', accent: '#EAB308' },
+    fertilidad: { label: 'Fertilidad', color: '#7E22CE', bg: '#FAF5FF', border: '#D8B4FE', accent: '#A855F7' },
+    realizada: { label: 'Realizada', color: '#047857', bg: '#ECFDF5', border: '#A7F3D0', accent: '#10B981' },
+    suspendida: { label: 'Suspendida', color: '#475569', bg: '#F8FAFC', border: '#CBD5E1', accent: '#64748B' },
 };
 
 export default function MessagingPanel({ addToast, currentUser }) {
@@ -218,6 +218,7 @@ export default function MessagingPanel({ addToast, currentUser }) {
     // Debt Context for the Conversation List
     const [debtsMap, setDebtsMap] = useState({});
     const [debtFilter, setDebtFilter] = useState('all');
+    const [quickFilter, setQuickFilter] = useState('all'); // 'all', 'today', 'week', 'revision', 'autorizado', 'unread', 'con_deuda'
     // Dual WhatsApp line state
     const [whatsappLines, setWhatsappLines] = useState([]);
     const [assignedLineId, setAssignedLineId] = useState(null);
@@ -271,12 +272,15 @@ export default function MessagingPanel({ addToast, currentUser }) {
             if (convPhones.size === 0) return;
 
             try {
-                const today = new Date().toISOString().split('T')[0];
+                const past14 = new Date();
+                past14.setDate(past14.getDate() - 14);
+                const pastDateStr = past14.toISOString().split('T')[0];
+
                 const { data, error } = await supabase
                     .from('surgeries')
                     .select('telefono, fecha_cirugia, status')
                     .not('telefono', 'is', null)
-                    .gte('fecha_cirugia', today)
+                    .gte('fecha_cirugia', pastDateStr)
                     .order('fecha_cirugia', { ascending: true });
 
                 if (error) {
@@ -1089,6 +1093,92 @@ export default function MessagingPanel({ addToast, currentUser }) {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
     };
 
+    // === FILTER COUNTS ===
+    const filterCounts = useMemo(() => {
+        let todayCount = 0;
+        let weekCount = 0;
+        let revisionCount = 0;
+        let autorizadoCount = 0;
+        let unreadCount = 0;
+        let debtCount = 0;
+
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const next7Days = todayStart + (7 * 24 * 60 * 60 * 1000);
+
+        conversations.forEach(c => {
+            if (c.unreadCount > 0) unreadCount++;
+            if (debtsMap[c.phone]) debtCount++;
+
+            const surg = surgeriesMap[c.phone];
+            if (surg?.fecha_cirugia) {
+                const d = new Date(surg.fecha_cirugia + 'T12:00:00').getTime();
+                if (d === todayStart) todayCount++;
+                if (d >= todayStart && d <= next7Days) weekCount++;
+
+                const st = (surg.status || '').toLowerCase();
+                if (st === 'amarillo') revisionCount++;
+                if (st === 'verde') autorizadoCount++;
+            }
+        });
+
+        return {
+            todayCount,
+            weekCount,
+            revisionCount,
+            autorizadoCount,
+            unreadCount,
+            debtCount
+        };
+    }, [conversations, surgeriesMap, debtsMap]);
+
+    // === DATE & STATUS HELPER FOR CARDS ===
+    const getDateInfo = (phone) => {
+        const surgery = surgeriesMap[phone];
+        if (!surgery || !surgery.fecha_cirugia) return null;
+
+        const d = new Date(surgery.fecha_cirugia + 'T12:00:00');
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const surgDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        const diffDays = Math.round((surgDay - todayStart) / (1000 * 60 * 60 * 24));
+
+        const dayNum = d.getDate();
+        const monthNames = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
+        const monthShort = monthNames[d.getMonth()] || 'MES';
+        const weekdayNames = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
+        const weekdayShort = weekdayNames[d.getDay()] || '';
+
+        const isToday = diffDays === 0;
+        const isTomorrow = diffDays === 1;
+        const isPast = diffDays < 0;
+
+        let label = `${weekdayShort} ${dayNum}/${monthShort}`;
+        if (isToday) {
+            label = `🔴 HOY · ${dayNum}/${monthShort}`;
+        } else if (isTomorrow) {
+            label = `⚡ MAÑANA · ${dayNum}/${monthShort}`;
+        } else if (diffDays === -1) {
+            label = `AYER · ${dayNum}/${monthShort}`;
+        }
+
+        const statusKey = (surgery.status || 'lila').toLowerCase();
+        const cfg = STATUS_CONFIG[statusKey] || STATUS_CONFIG.lila;
+
+        return {
+            label,
+            formattedDate: `${dayNum}/${d.getMonth() + 1}`,
+            dayNum,
+            monthShort,
+            weekdayShort,
+            isToday,
+            isTomorrow,
+            isPast,
+            diffDays,
+            cfg
+        };
+    };
+
     // === FILTERED CONVERSATIONS — unread first ===
     const filtered = useMemo(() => {
         let list = conversations;
@@ -1110,6 +1200,35 @@ export default function MessagingPanel({ addToast, currentUser }) {
                 return false;
             });
         }
+        // Filter by quick operational filter
+        if (quickFilter === 'today') {
+            const now = new Date();
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+            list = list.filter(c => {
+                const surg = surgeriesMap[c.phone];
+                if (!surg?.fecha_cirugia) return false;
+                const d = new Date(surg.fecha_cirugia + 'T12:00:00').getTime();
+                return d === todayStart;
+            });
+        } else if (quickFilter === 'week') {
+            const now = new Date();
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+            const next7Days = todayStart + (7 * 24 * 60 * 60 * 1000);
+            list = list.filter(c => {
+                const surg = surgeriesMap[c.phone];
+                if (!surg?.fecha_cirugia) return false;
+                const d = new Date(surg.fecha_cirugia + 'T12:00:00').getTime();
+                return d >= todayStart && d <= next7Days;
+            });
+        } else if (quickFilter === 'revision') {
+            list = list.filter(c => (surgeriesMap[c.phone]?.status || '').toLowerCase() === 'amarillo');
+        } else if (quickFilter === 'autorizado') {
+            list = list.filter(c => (surgeriesMap[c.phone]?.status || '').toLowerCase() === 'verde');
+        } else if (quickFilter === 'unread') {
+            list = list.filter(c => c.unreadCount > 0);
+        } else if (quickFilter === 'con_deuda') {
+            list = list.filter(c => !!debtsMap[c.phone]);
+        }
         // Filter by debt category
         if (debtFilter !== 'all') {
             list = list.filter(c => {
@@ -1124,7 +1243,7 @@ export default function MessagingPanel({ addToast, currentUser }) {
             if (b.unreadCount > 0 && a.unreadCount === 0) return 1;
             return new Date(b.lastDate) - new Date(a.lastDate);
         });
-    }, [conversations, searchQuery, contactNames, surgeriesMap, debtsMap, debtFilter]);
+    }, [conversations, searchQuery, contactNames, surgeriesMap, debtsMap, debtFilter, quickFilter]);
 
     // Total unread count
     const totalUnread = useMemo(() => conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0), [conversations]);
@@ -1290,47 +1409,136 @@ export default function MessagingPanel({ addToast, currentUser }) {
                     />
                 </div>
 
-                {/* Debt Filter */}
-                {Object.keys(debtsMap).length > 0 && (
-                    <div style={{
-                        display: 'flex', gap: '4px', padding: '4px 12px 6px',
-                        overflowX: 'auto', flexShrink: 0,
-                    }}>
+                {/* ── Quick Operational Filters Bar ── */}
+                <div style={{
+                    display: 'flex', gap: '6px', padding: '4px 16px 8px',
+                    overflowX: 'auto', flexShrink: 0,
+                    scrollbarWidth: 'none'
+                }}>
+                    <button
+                        onClick={() => { setQuickFilter('all'); setDebtFilter('all'); }}
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '5px',
+                            padding: '4px 10px', borderRadius: '16px', border: '1px solid',
+                            fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                            background: quickFilter === 'all' && debtFilter === 'all' ? '#1E293B' : '#FFFFFF',
+                            borderColor: quickFilter === 'all' && debtFilter === 'all' ? '#1E293B' : '#E2E8F0',
+                            color: quickFilter === 'all' && debtFilter === 'all' ? '#FFFFFF' : '#475569',
+                            boxShadow: quickFilter === 'all' && debtFilter === 'all' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                            transition: 'all 0.15s'
+                        }}
+                    >
+                        Todos <span style={{ opacity: 0.75, fontSize: '0.66rem' }}>({conversations.length})</span>
+                    </button>
+
+                    {filterCounts.todayCount > 0 && (
                         <button
-                            onClick={() => setDebtFilter('all')}
+                            onClick={() => { setQuickFilter(quickFilter === 'today' ? 'all' : 'today'); setDebtFilter('all'); }}
                             style={{
-                                padding: '3px 10px', borderRadius: '12px', border: 'none',
-                                fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-                                background: debtFilter === 'all' ? '#1E293B' : '#F1F5F9',
-                                color: debtFilter === 'all' ? '#fff' : '#64748B',
-                                transition: 'all 0.15s',
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                padding: '4px 10px', borderRadius: '16px', border: '1px solid',
+                                fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                                background: quickFilter === 'today' ? '#DC2626' : '#FEF2F2',
+                                borderColor: quickFilter === 'today' ? '#DC2626' : '#FCA5A5',
+                                color: quickFilter === 'today' ? '#FFFFFF' : '#B91C1C',
+                                boxShadow: quickFilter === 'today' ? '0 2px 6px rgba(220,38,38,0.25)' : 'none',
+                                transition: 'all 0.15s'
                             }}
-                        >Todos</button>
+                        >
+                            🔴 Turnos Hoy <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.todayCount})</span>
+                        </button>
+                    )}
+
+                    {filterCounts.weekCount > 0 && (
                         <button
-                            onClick={() => setDebtFilter(debtFilter === 'con_deuda' ? 'all' : 'con_deuda')}
+                            onClick={() => { setQuickFilter(quickFilter === 'week' ? 'all' : 'week'); setDebtFilter('all'); }}
                             style={{
-                                padding: '3px 10px', borderRadius: '12px', border: 'none',
-                                fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-                                background: debtFilter === 'con_deuda' ? '#DC2626' : '#FEF2F2',
-                                color: debtFilter === 'con_deuda' ? '#fff' : '#DC2626',
-                                transition: 'all 0.15s',
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                padding: '4px 10px', borderRadius: '16px', border: '1px solid',
+                                fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                                background: quickFilter === 'week' ? '#2563EB' : '#EFF6FF',
+                                borderColor: quickFilter === 'week' ? '#2563EB' : '#BFDBFE',
+                                color: quickFilter === 'week' ? '#FFFFFF' : '#1D4ED8',
+                                boxShadow: quickFilter === 'week' ? '0 2px 6px rgba(37,99,235,0.25)' : 'none',
+                                transition: 'all 0.15s'
                             }}
-                        >💰 Con deuda</button>
-                        {Object.entries(CATEGORIAS_DEUDOR).map(([key, cfg]) => (
-                            <button
-                                key={key}
-                                onClick={() => setDebtFilter(debtFilter === key ? 'all' : key)}
-                                style={{
-                                    padding: '3px 10px', borderRadius: '12px', border: 'none',
-                                    fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-                                    background: debtFilter === key ? cfg.color : cfg.bg,
-                                    color: debtFilter === key ? '#fff' : cfg.color,
-                                    transition: 'all 0.15s',
-                                }}
-                            >{cfg.icon} {cfg.label}</button>
-                        ))}
-                    </div>
-                )}
+                        >
+                            📅 Esta Semana <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.weekCount})</span>
+                        </button>
+                    )}
+
+                    {filterCounts.revisionCount > 0 && (
+                        <button
+                            onClick={() => { setQuickFilter(quickFilter === 'revision' ? 'all' : 'revision'); setDebtFilter('all'); }}
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                padding: '4px 10px', borderRadius: '16px', border: '1px solid',
+                                fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                                background: quickFilter === 'revision' ? '#BE185D' : '#FDF2F8',
+                                borderColor: quickFilter === 'revision' ? '#BE185D' : '#F472B6',
+                                color: quickFilter === 'revision' ? '#FFFFFF' : '#BE185D',
+                                boxShadow: quickFilter === 'revision' ? '0 2px 6px rgba(190,24,93,0.25)' : 'none',
+                                transition: 'all 0.15s'
+                            }}
+                        >
+                            🌸 En Revisión <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.revisionCount})</span>
+                        </button>
+                    )}
+
+                    {filterCounts.autorizadoCount > 0 && (
+                        <button
+                            onClick={() => { setQuickFilter(quickFilter === 'autorizado' ? 'all' : 'autorizado'); setDebtFilter('all'); }}
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                padding: '4px 10px', borderRadius: '16px', border: '1px solid',
+                                fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                                background: quickFilter === 'autorizado' ? '#15803D' : '#F0FDF4',
+                                borderColor: quickFilter === 'autorizado' ? '#15803D' : '#86EFAC',
+                                color: quickFilter === 'autorizado' ? '#FFFFFF' : '#15803D',
+                                boxShadow: quickFilter === 'autorizado' ? '0 2px 6px rgba(21,128,61,0.25)' : 'none',
+                                transition: 'all 0.15s'
+                            }}
+                        >
+                            🟢 Autorizados <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.autorizadoCount})</span>
+                        </button>
+                    )}
+
+                    {filterCounts.unreadCount > 0 && (
+                        <button
+                            onClick={() => { setQuickFilter(quickFilter === 'unread' ? 'all' : 'unread'); setDebtFilter('all'); }}
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                padding: '4px 10px', borderRadius: '16px', border: '1px solid',
+                                fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                                background: quickFilter === 'unread' ? '#2563EB' : '#EFF6FF',
+                                borderColor: quickFilter === 'unread' ? '#2563EB' : '#93C5FD',
+                                color: quickFilter === 'unread' ? '#FFFFFF' : '#1D4ED8',
+                                boxShadow: quickFilter === 'unread' ? '0 2px 6px rgba(37,99,235,0.25)' : 'none',
+                                transition: 'all 0.15s'
+                            }}
+                        >
+                            📬 Sin Leer <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.unreadCount})</span>
+                        </button>
+                    )}
+
+                    {filterCounts.debtCount > 0 && (
+                        <button
+                            onClick={() => { setQuickFilter(quickFilter === 'con_deuda' ? 'all' : 'con_deuda'); setDebtFilter(quickFilter === 'con_deuda' ? 'all' : 'con_deuda'); }}
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                padding: '4px 10px', borderRadius: '16px', border: '1px solid',
+                                fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                                background: quickFilter === 'con_deuda' ? '#DC2626' : '#FEF2F2',
+                                borderColor: quickFilter === 'con_deuda' ? '#DC2626' : '#FECACA',
+                                color: quickFilter === 'con_deuda' ? '#FFFFFF' : '#DC2626',
+                                boxShadow: quickFilter === 'con_deuda' ? '0 2px 6px rgba(220,38,38,0.25)' : 'none',
+                                transition: 'all 0.15s'
+                            }}
+                        >
+                            💰 Con Deuda <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.debtCount})</span>
+                        </button>
+                    )}
+                </div>
 
                 {/* New Chat Form */}
                 {showNewChat && (
@@ -1389,33 +1597,105 @@ export default function MessagingPanel({ addToast, currentUser }) {
                     {loading ? (
                         <div className="msg-panel__empty"><Loader size={24} className="msg-panel__spinner" /><span>Cargando...</span></div>
                     ) : filtered.length === 0 ? (
-                        <div className="msg-panel__empty"><MessageSquare size={32} strokeWidth={1.2} /><span>Sin conversaciones</span></div>
+                        <div className="msg-panel__empty"><MessageSquare size={32} strokeWidth={1.2} /><span>Sin conversaciones para este filtro</span></div>
                     ) : (
                         filtered.map(conv => {
                             const name = contactNames[conv.phone] || conv.senderName || conv.phone;
                             const isActive = selectedPhone === conv.phone;
                             const hasUnread = conv.unreadCount > 0;
+                            const dateInfo = getDateInfo(conv.phone);
+                            const debt = debtsMap[conv.phone];
+                            const catCfg = debt ? (CATEGORIAS_DEUDOR[debt.categoria] || CATEGORIAS_DEUDOR.sin_gestionar) : null;
+                            const statusCfg = dateInfo?.cfg || (debt ? { accent: '#DC2626', color: '#B91C1C', bg: '#FEF2F2', border: '#FCA5A5', label: 'Con Deuda' } : null);
+
                             return (
                                 <button
                                     key={conv.phone}
                                     className={`msg-panel__conv-item ${isActive ? 'msg-panel__conv-item--active' : ''} ${hasUnread ? 'msg-panel__conv-item--unread' : ''}`}
                                     onClick={() => setSelectedPhone(conv.phone)}
+                                    style={{
+                                        borderLeft: `4px solid ${statusCfg ? statusCfg.accent : '#CBD5E1'}`
+                                    }}
                                 >
-                                    <div className="msg-panel__conv-avatar">
+                                    <div className="msg-panel__conv-avatar" style={{
+                                        background: statusCfg ? `linear-gradient(135deg, ${statusCfg.accent}, ${statusCfg.color})` : undefined
+                                    }}>
                                         {name.charAt(0).toUpperCase()}
                                     </div>
                                     <div className="msg-panel__conv-info">
+                                        {/* ── FILA 1: FECHA Y ESTADO DESTACADOS (PROTAGONISTA VISUAL) ── */}
+                                        {dateInfo && (
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                gap: '6px',
+                                                marginBottom: '6px'
+                                            }}>
+                                                {/* Chip de Fecha de Alto Impacto */}
+                                                <div style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '5px',
+                                                    padding: '2px 8px',
+                                                    borderRadius: '6px',
+                                                    fontSize: '0.74rem',
+                                                    fontWeight: 800,
+                                                    letterSpacing: '0.01em',
+                                                    background: dateInfo.isToday 
+                                                        ? '#DC2626' 
+                                                        : (dateInfo.isTomorrow ? '#D97706' : '#1E293B'),
+                                                    color: '#FFFFFF',
+                                                    boxShadow: dateInfo.isToday ? '0 2px 5px rgba(220,38,38,0.25)' : 'none'
+                                                }}>
+                                                    <Calendar size={12} strokeWidth={2.8} />
+                                                    <span>{dateInfo.label}</span>
+                                                </div>
+
+                                                {/* Chip de Estado Quirúrgico */}
+                                                <span style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    padding: '2px 8px',
+                                                    borderRadius: '6px',
+                                                    fontSize: '0.7rem',
+                                                    fontWeight: 700,
+                                                    background: dateInfo.cfg.bg,
+                                                    color: dateInfo.cfg.color,
+                                                    border: `1px solid ${dateInfo.cfg.border}`,
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '0.01em'
+                                                }}>
+                                                    <span style={{
+                                                        width: '6px', height: '6px', borderRadius: '50%',
+                                                        background: dateInfo.cfg.color, display: 'inline-block'
+                                                    }} />
+                                                    {dateInfo.cfg.label}
+                                                </span>
+                                            </div>
+                                        )}
+
+                                        {/* ── FILA 2: Nombre del Contacto y Hora ── */}
                                         <div className="msg-panel__conv-top">
-                                            <span className={`msg-panel__conv-name ${hasUnread ? 'msg-panel__conv-name--bold' : ''}`}>{name}</span>
-                                            <span className="msg-panel__conv-time">{formatDate(conv.lastDate)}</span>
+                                            <span className={`msg-panel__conv-name ${hasUnread ? 'msg-panel__conv-name--bold' : ''}`}>
+                                                {name}
+                                            </span>
+                                            <span className="msg-panel__conv-time">
+                                                {formatDate(conv.lastDate)}
+                                            </span>
                                         </div>
+
+                                        {/* ── FILA 3: Vista Previa del Mensaje y Contador No Leídos ── */}
                                         <div className="msg-panel__conv-bottom">
                                             <span className="msg-panel__conv-preview">
-                                                {conv.direction === 'outgoing' && '✓ '}
-                                                {conv.lastMessage.length > 45 ? conv.lastMessage.slice(0, 45) + '...' : conv.lastMessage}
+                                                {conv.direction === 'outgoing' && (
+                                                    <span style={{ color: '#2563EB', fontWeight: 800, marginRight: '2px' }}>✓ </span>
+                                                )}
+                                                {conv.lastMessage.length > 55 ? conv.lastMessage.slice(0, 55) + '...' : conv.lastMessage}
                                             </span>
                                             {hasUnread && (
-                                                <>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                                                     <button
                                                         className="msg-panel__btn-read"
                                                         onClick={async (e) => {
@@ -1430,81 +1710,35 @@ export default function MessagingPanel({ addToast, currentUser }) {
                                                         <CheckCheck size={12} />
                                                     </button>
                                                     <span className="msg-panel__conv-badge">{conv.unreadCount}</span>
-                                                </>
+                                                </div>
                                             )}
                                         </div>
-                                        {(() => {
-                                            const surgery = surgeriesMap[conv.phone];
-                                            if (!surgery || !surgery.fecha_cirugia) return null;
 
-                                            // Formatear la fecha
-                                            const d = new Date(surgery.fecha_cirugia + 'T12:00:00');
-                                            const formattedDate = d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
-
-                                            // Obtener configuración de color del STATUS_CONFIG
-                                            const statusKey = (surgery.status || 'lila').toLowerCase();
-                                            const cfg = STATUS_CONFIG[statusKey] || STATUS_CONFIG.lila;
-
-                                            return (
-                                                <div className="msg-panel__conv-lines" style={{ marginTop: '4px' }}>
-                                                    <span
-                                                        className="msg-panel__conv-line-tag"
-                                                        style={{
-                                                            background: cfg.bg,
-                                                            color: cfg.color,
-                                                            border: `1px solid ${cfg.color}25`,
-                                                            padding: '2px 8px',
-                                                            borderRadius: '12px',
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            gap: '4px',
-                                                            fontSize: '0.7rem',
-                                                            fontWeight: 600
-                                                        }}
-                                                    >
-                                                        <span
-                                                            className="msg-panel__conv-line-dot"
-                                                            style={{ 
-                                                                background: cfg.color,
-                                                                width: '6px',
-                                                                height: '6px',
-                                                                borderRadius: '50%',
-                                                                display: 'inline-block'
-                                                            }}
-                                                        />
-                                                        {formattedDate} · {cfg.label}
-                                                    </span>
-                                                </div>
-                                            );
-                                        })()}
-                                        {/* Deuda del paciente */}
-                                        {(() => {
-                                            const debt = debtsMap[conv.phone];
-                                            if (!debt) return null;
-                                            const catCfg = CATEGORIAS_DEUDOR[debt.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
-                                            return (
-                                                <div className="msg-panel__conv-lines" style={{ marginTop: '2px' }}>
-                                                    <span style={{
-                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                        padding: '2px 8px', borderRadius: '12px',
-                                                        background: '#FEF2F2', color: '#DC2626',
-                                                        border: '1px solid #FECACA',
-                                                        fontSize: '0.65rem', fontWeight: 700,
-                                                    }}>
-                                                        💰 ${Number(debt.deuda_total).toLocaleString('es-AR')}
-                                                    </span>
+                                        {/* ── FILA 4: Deuda del Paciente (si aplica) ── */}
+                                        {debt && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '5px' }}>
+                                                <span style={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                    padding: '2px 8px', borderRadius: '6px',
+                                                    background: '#FEF2F2', color: '#DC2626',
+                                                    border: '1px solid #FECACA',
+                                                    fontSize: '0.68rem', fontWeight: 700
+                                                }}>
+                                                    💰 ${Number(debt.deuda_total).toLocaleString('es-AR')}
+                                                </span>
+                                                {catCfg && (
                                                     <span style={{
                                                         display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                                        padding: '2px 6px', borderRadius: '12px',
+                                                        padding: '2px 6px', borderRadius: '6px',
                                                         background: catCfg.bg, color: catCfg.color,
                                                         border: `1px solid ${catCfg.color}25`,
-                                                        fontSize: '0.6rem', fontWeight: 600,
+                                                        fontSize: '0.65rem', fontWeight: 600
                                                     }}>
                                                         {catCfg.icon} {catCfg.label}
                                                     </span>
-                                                </div>
-                                            );
-                                        })()}
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </button>
                             );
@@ -1523,10 +1757,86 @@ export default function MessagingPanel({ addToast, currentUser }) {
             {/* ========== RIGHT: Chat View ========== */}
             <div className="msg-panel__chat">
                 {!selectedPhone ? (
-                    <div className="msg-panel__chat-empty">
-                        <div className="msg-panel__chat-empty-icon"><MessageSquare size={56} strokeWidth={1} /></div>
-                        <h3>Centro de Mensajería</h3>
-                        <p>Seleccione una conversación o inicie una nueva</p>
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: '100%',
+                        padding: '40px 24px',
+                        background: '#F8FAFC',
+                        textAlign: 'center'
+                    }}>
+                        <div style={{
+                            width: '72px', height: '72px', borderRadius: '20px',
+                            background: 'linear-gradient(135deg, #1E40AF, #3B82F6)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: '#FFFFFF',
+                            boxShadow: '0 10px 25px -5px rgba(30, 64, 175, 0.25)',
+                            marginBottom: '20px'
+                        }}>
+                            <MessageSquare size={36} strokeWidth={2} />
+                        </div>
+                        <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0F172A', margin: '0 0 6px 0' }}>
+                            Centro de Mensajería Sanatorio Argentino
+                        </h2>
+                        <p style={{ fontSize: '0.88rem', color: '#64748B', maxWidth: '480px', margin: '0 0 28px 0', lineHeight: 1.5 }}>
+                            Atención de pacientes vía WhatsApp oficial, confirmación de cirugías y turnos ambulatorios. Seleccione una conversación de la columna izquierda para responder.
+                        </p>
+
+                        {/* 3 Tarjetas operativas clave */}
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(3, 1fr)',
+                            gap: '14px',
+                            width: '100%',
+                            maxWidth: '560px'
+                        }}>
+                            <div style={{
+                                background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                padding: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                            }}>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#DC2626', textTransform: 'uppercase' }}>
+                                    Sin Responder
+                                </div>
+                                <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#DC2626', margin: '4px 0' }}>
+                                    {totalUnread}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                    Mensajes pendientes
+                                </div>
+                            </div>
+
+                            <div style={{
+                                background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                padding: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                            }}>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1E40AF', textTransform: 'uppercase' }}>
+                                    Turnos Hoy
+                                </div>
+                                <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#1D4ED8', margin: '4px 0' }}>
+                                    {filterCounts.todayCount}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                    Cirugías para hoy
+                                </div>
+                            </div>
+
+                            <div style={{
+                                background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                padding: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                            }}>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#BE185D', textTransform: 'uppercase' }}>
+                                    En Revisión
+                                </div>
+                                <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#BE185D', margin: '4px 0' }}>
+                                    {filterCounts.revisionCount}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                    Por autorizar
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 ) : (
                     <>
