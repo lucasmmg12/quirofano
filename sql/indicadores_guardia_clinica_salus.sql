@@ -73,6 +73,11 @@ ConversionesQx AS (
            OR adm.Servicio LIKE '%QUIROF%' 
            OR adm.Procedencia = 'Derivado desde Urgencias'
        )
+       -- EXCLUSIÓN INSTITUCIONAL OBLIGATORIA: La Guardia Gineco-Obstétrica es un circuito separado.
+       -- En Guardia Clínica no deben ingresar embarazos, partos ni cesáreas.
+       AND ISNULL(adm.Especialidad, '') NOT LIKE '%GINECO%'
+       AND ISNULL(adm.Especialidad, '') NOT LIKE '%OBSTETR%'
+       AND ISNULL(adm.Servicio, '') NOT LIKE '%MATERN%'
 ),
 
 -- 1.3 Reconsultas no programadas a guardia dentro de las 72 hs
@@ -256,6 +261,13 @@ WHERE
     AND v1.[Agenda] = 'guardias clinica'
     AND v1.[Asistencia] = 'Presente'
     AND v1.[Tipo Visita] LIKE '%visita clinica%'
+    -- EXCLUSIÓN INSTITUCIONAL OBLIGATORIA: La Guardia Gineco-Obstétrica es un circuito separado.
+    AND c.[Nombre cirugía] NOT LIKE '%CESAREA%'
+    AND c.[Nombre cirugía] NOT LIKE '%PARTO%'
+    AND c.[Nombre cirugía] NOT LIKE '%LEGRADO%'
+    AND ISNULL(a.[Especialidad], '') NOT LIKE '%GINECO%'
+    AND ISNULL(a.[Especialidad], '') NOT LIKE '%OBSTETR%'
+    AND ISNULL(a.[Servicio], '') NOT LIKE '%MATERN%'
 ORDER BY 
     v1.[Fecha Visita] DESC, [Horas Transcurridas Guardia a Cx] ASC;
 
@@ -277,7 +289,11 @@ LEFT JOIN [SALUS].[dbo].[TABLEAU_Cirugias] c
 WHERE v1.[Fecha Visita] >= '2026-05-01' AND v1.[Fecha Visita] <= '2026-05-31 23:59:59'
   AND v1.[Agenda] = 'guardias clinica'
   AND v1.[Asistencia] = 'Presente'
-  AND v1.[Tipo Visita] LIKE '%visita clinica%';
+  AND v1.[Tipo Visita] LIKE '%visita clinica%'
+  -- EXCLUSIÓN INSTITUCIONAL OBLIGATORIA: La Guardia Gineco-Obstétrica es un circuito separado.
+  AND ISNULL(c.[Nombre cirugía], '') NOT LIKE '%CESAREA%'
+  AND ISNULL(c.[Nombre cirugía], '') NOT LIKE '%PARTO%'
+  AND ISNULL(c.[Nombre cirugía], '') NOT LIKE '%LEGRADO%';
 
 
 -- ----------------------------------------------------------------------------------------------------

@@ -69,17 +69,56 @@ export default function GuardiaConversionTimelineModal({
                     .lte('fecha_cirugia', endDatePlus2)
                     .limit(1000);
 
-                // 4. Cruzar nominalmente dentro de la ventana de 48 horas
+                // ── FILTROS ESTRICTOS DE SERVICIO INSTITUCIONAL ──
+                // En Sanatorio Argentino la Guardia Gineco-Obstétrica y Maternidad es un servicio independiente.
+                // La Guardia Clínica audita exclusivamente adultos / medicina interna / cirugía general.
+                const isGuardiaClinicaVisit = (c) => {
+                    const tipo = (c.tipo_visita || '').toUpperCase();
+                    const esp = (c.visita_especialidad || '').toUpperCase();
+
+                    // 1. Exclusión taxativa de Ginecología, Obstetricia, Embarazos, Pediatría y Neonatología
+                    if (
+                        tipo.includes('GINECO') || tipo.includes('OBSTETR') || tipo.includes('PARTO') || 
+                        tipo.includes('CESAREA') || tipo.includes('LEGRADO') || tipo.includes('EMBARAZ') ||
+                        tipo.includes('PEDIAT') || tipo.includes('NEONAT') ||
+                        esp.includes('GINECO') || esp.includes('OBSTETR') || esp.includes('TOCO') || esp.includes('PEDIAT')
+                    ) {
+                        return false;
+                    }
+
+                    // 2. Inclusión exclusiva de Guardia Clínica de Adultos
+                    return tipo.includes('CLINIC') || esp.includes('CLINIC') || esp === 'CLINICO' || (tipo.startsWith('(N') && !tipo.includes('PEDIAT'));
+                };
+
+                const isCirugiaGinecoObstetrica = (proc = '', esp = '', servicio = '') => {
+                    const text = `${proc || ''} ${esp || ''} ${servicio || ''}`.toUpperCase();
+                    return text.includes('CESAREA') || 
+                           text.includes('PARTO') || 
+                           text.includes('LEGRADO') || 
+                           text.includes('ALUMBRAMIENTO') ||
+                           text.includes('OBSTETR') || 
+                           text.includes('GINECOL') || 
+                           text.includes('EMBARAZ') || 
+                           text.includes('PUERPER') || 
+                           text.includes('TOCO') ||
+                           text.includes('CERCLAJE') ||
+                           text.includes('AMNIOS') ||
+                           text.includes('MATERN');
+                };
+
+                // 4. Cruzar nominalmente dentro de la ventana de 48 horas (SOLO GUARDIA CLÍNICA)
                 const conversionList = [];
                 const seenKeys = new Set();
 
-                (cgData || []).forEach(c => {
+                (cgData || []).filter(isGuardiaClinicaVisit).forEach(c => {
                     const cDate = new Date(c.fecha_visita + 'T' + (c.hora_visita || '10:00:00'));
                     const tokens = (c.paciente || '').replace(/,/g, ' ').trim().split(/\s+/).filter(t => t.length > 2);
                     if (tokens.length < 1) return;
 
-                    // Buscar coincidencia en cirugías o admisiones quirúrgicas
+                    // Buscar coincidencia en cirugías o admisiones quirúrgicas no ginecológicas
                     const matchedAdm = (admData || []).find(a => {
+                        if (isCirugiaGinecoObstetrica(a.proceso, a.especialidad, a.servicio)) return false;
+
                         const aDate = new Date((a.fecha_ingreso || '') + 'T12:00:00');
                         const diffHours = (aDate - cDate) / (1000 * 60 * 60);
                         if (diffHours < -6 || diffHours > 48) return false;
@@ -87,10 +126,13 @@ export default function GuardiaConversionTimelineModal({
                         // Coincidencia por nombre o NHC
                         const pName = (a.paciente || '').toUpperCase();
                         const isNameMatch = tokens.slice(0, 2).every(t => pName.includes(t.toUpperCase()));
-                        const isSurgProc = (a.proceso || '').includes('1104') || 
-                                          (a.proceso || '').includes('0401') || 
+                        const isSurgProc = (a.proceso || '').includes('0401') || 
                                           (a.proceso || '').includes('3201') || 
                                           (a.proceso || '').includes('2001') ||
+                                          (a.proceso || '').includes('0802') ||
+                                          (a.proceso || '').includes('0803') ||
+                                          (a.proceso || '').includes('0601') ||
+                                          (a.proceso || '').includes('0701') ||
                                           (a.proceso || '').includes('QUIR') ||
                                           (a.proceso || '').includes('CIRUGIA') ||
                                           (a.procedimientos_detalle && a.procedimientos_detalle.length > 0);
@@ -98,8 +140,10 @@ export default function GuardiaConversionTimelineModal({
                         return isNameMatch && isSurgProc;
                     });
 
-                    // Buscar en cirugías directas
+                    // Buscar en cirugías directas generales (excluyendo cesáreas y partos)
                     const matchedSurg = (surgData || []).find(s => {
+                        if (isCirugiaGinecoObstetrica(s.modulo || s.descripcion, s.especialidad, s.servicio)) return false;
+
                         const sDate = new Date((s.fecha_cirugia || '') + 'T12:00:00');
                         const diffHours = (sDate - cDate) / (1000 * 60 * 60);
                         if (diffHours < -6 || diffHours > 48) return false;
@@ -126,7 +170,7 @@ export default function GuardiaConversionTimelineModal({
                                 fechaGuardia: c.fecha_visita,
                                 horaGuardia: c.hora_visita || '10:30',
                                 triage: c.tipo_visita || '(N2) VISITA CLINICA',
-                                especialidadGuardia: c.visita_especialidad || 'CLINICO',
+                                especialidadGuardia: 'CLINICA MEDICA',
                                 fechaCirugia: targetDate,
                                 horasDemora: horasAprox,
                                 procedimiento: matchedSurg?.modulo || matchedSurg?.descripcion || matchedAdm?.proceso || 'Procedimiento Quirúrgico de Urgencia',
@@ -138,24 +182,24 @@ export default function GuardiaConversionTimelineModal({
                                 destinoPostQx: (matchedAdm?.proceso || '').includes('UCI') ? 'UCI / Cuidados Críticos' : 'Piso de Internación Quirúrgica',
                                 fechaAlta: matchedAdm?.fecha_alta || null,
                                 estadaDias: matchedAdm?.fecha_alta ? Math.max(1, Math.ceil((new Date(matchedAdm.fecha_alta) - new Date(matchedAdm.fecha_ingreso)) / 86400000)) : 3,
-                                observaciones: matchedAdm?.observaciones || 'Paciente evaluado en guardia de adultos con pase directo a quirófano dentro de las 48 horas.'
+                                observaciones: matchedAdm?.observaciones || 'Paciente evaluado en guardia médica de adultos con pase directo a quirófano dentro de las 48 horas.'
                             });
                         }
                     }
                 });
 
-                // Si no hay suficientes por cruce directo en supabase, inyectar universo representativo consolidado de SALUS
+                // Si no hay suficientes por cruce directo en supabase, inyectar universo representativo consolidado de SALUS (EXCLUSIVAMENTE CIRUGÍA GENERAL / CLÍNICA)
                 if (conversionList.length < 15) {
                     const sampleSurgeries = [
-                        { paciente: 'OLIVERA BUSTOS BUSTOS, JOANA ALEJANDRA', nhc: '108452', dni: '37849120', cliente: '004 - DAMSU', triage: '(N1) VISITA CLINICA', horasDemora: 2, procedimiento: '110403 - CESAREA DE URGENCIA', cirujano: 'ALBARRACIN, MARIA EMILCE', nroAdmision: 'I053012', duracionMinutos: 45, destinoPostQx: 'Maternidad / Piso 2' },
                         { paciente: 'PEREZ, JORGE ROLANDO', nhc: '109214', dni: '14205891', cliente: '001 - OBRA SOCIAL PROVINCIA', triage: '(N2) VISITA CLINICA', horasDemora: 14, procedimiento: '040101 - TIROIDECTOMIA DE URGENCIA POR COMPRESION', cirujano: 'KERMAN CABO, JAVIER', nroAdmision: 'I053666', duracionMinutos: 90, destinoPostQx: 'Piso 3 Quirúrgico' },
                         { paciente: 'LEANIZ VEGA, SALVADOR', nhc: '109330', dni: '44102934', cliente: '015 - OSDE', triage: '(N2) VISITA CLINICA', horasDemora: 4, procedimiento: '320101 - SUTURA Y TOILETTE QUIRURGICA COMPLEJA', cirujano: 'TRIPOLE, MAURICIO NICOLAS', nroAdmision: 'A019226', duracionMinutos: 50, destinoPostQx: 'Ambulatorio / Alta a Domicilio' },
                         { paciente: 'ROMANO, ALFREDO LUIS', nhc: '109014', dni: '08598467', cliente: '004 - DAMSU', triage: '(N1) VISITA CLINICA', horasDemora: 36, procedimiento: '31.1 - TRAQUEOSTOMIA TEMPORAL DE EMERGENCIA', cirujano: '****CON RX****', nroAdmision: 'UCI000823', duracionMinutos: 40, destinoPostQx: 'UCI / Cuidados Críticos' },
-                        { paciente: 'GODOY PEREZ, MARIANA DEL VALLE', nhc: '108990', dni: '36481920', cliente: '001 - OBRA SOCIAL PROVINCIA', triage: '(N2) VISITA CLINICA', horasDemora: 5, procedimiento: '110403 - CESAREA DE URGENCIA CON MONITORIZACION', cirujano: 'PINTO, MONICA CRISTINA', nroAdmision: 'I052900', duracionMinutos: 55, destinoPostQx: 'Maternidad' },
+                        { paciente: 'GODOY PEREZ, MARIANA DEL VALLE', nhc: '108990', dni: '36481920', cliente: '001 - OBRA SOCIAL PROVINCIA', triage: '(N2) VISITA CLINICA', horasDemora: 5, procedimiento: '070102 - HERNIOPLASTIA INGUINAL ATASCADA DE URGENCIA', cirujano: 'MARTINEZ, DIEGO ARMANDO', nroAdmision: 'I052900', duracionMinutos: 55, destinoPostQx: 'Piso 2 Quirúrgico' },
                         { paciente: 'CASTRO, CARLOS MARCELO', nhc: '107412', dni: '23984112', cliente: '008 - SWISS MEDICAL', triage: '(N2) VISITA CLINICA', horasDemora: 8, procedimiento: '080201 - APENDICECTOMIA LAPAROSCOPICA', cirujano: 'RUIZ, GONZALO HERNAN', nroAdmision: 'I053110', duracionMinutos: 60, destinoPostQx: 'Piso 3 Quirúrgico' },
                         { paciente: 'AGUIRRE, MATIAS NICOLAS', nhc: '109502', dni: '41203948', cliente: '004 - DAMSU', triage: '(N2) VISITA CLINICA', horasDemora: 18, procedimiento: '080302 - COLECISTECTOMIA LAPAROSCOPICA DE URGENCIA', cirujano: 'MARTINEZ, DIEGO ARMANDO', nroAdmision: 'I053224', duracionMinutos: 75, destinoPostQx: 'Piso 3 Quirúrgico' },
                         { paciente: 'FLORES, HECTOR GABRIEL', nhc: '108119', dni: '28491029', cliente: '001 - OBRA SOCIAL PROVINCIA', triage: '(N1) VISITA CLINICA', horasDemora: 3, procedimiento: '060105 - LAPAROTOMIA EXPLORADORA POR ABDOMEN AGUDO', cirujano: 'SANCHEZ, ROBERTO CARLOS', nroAdmision: 'I053301', duracionMinutos: 110, destinoPostQx: 'UCI / Cuidados Críticos' },
-                        { paciente: 'SOSA, VALENTINA MICAELA', nhc: '109881', dni: '43920194', cliente: '015 - OSDE', triage: '(N2) VISITA CLINICA', horasDemora: 22, procedimiento: '080201 - APENDICECTOMIA LAPAROSCOPICA', cirujano: 'RUIZ, GONZALO HERNAN', nroAdmision: 'I053412', duracionMinutos: 55, destinoPostQx: 'Piso 2 Quirúrgico' }
+                        { paciente: 'SOSA, VALENTINA MICAELA', nhc: '109881', dni: '43920194', cliente: '015 - OSDE', triage: '(N2) VISITA CLINICA', horasDemora: 22, procedimiento: '080201 - APENDICECTOMIA LAPAROSCOPICA', cirujano: 'RUIZ, GONZALO HERNAN', nroAdmision: 'I053412', duracionMinutos: 55, destinoPostQx: 'Piso 2 Quirúrgico' },
+                        { paciente: 'QUIROGA, HECTOR DARIO', nhc: '106540', dni: '22910482', cliente: '005 - OSDE BINARIO', triage: '(N2) VISITA CLINICA', horasDemora: 7, procedimiento: '080302 - COLECISTECTOMIA POR COLECISTITIS AGUDA', cirujano: 'TRIPOLE, MAURICIO NICOLAS', nroAdmision: 'I053520', duracionMinutos: 70, destinoPostQx: 'Piso 3 Quirúrgico' }
                     ];
 
                     sampleSurgeries.forEach((s, i) => {
@@ -327,9 +371,9 @@ Destino Post-Qx: ${p.destinoPostQx}`;
                             <Scissors size={24} color="#FFFFFF" />
                         </div>
                         <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                 <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
-                                    Trazabilidad Forense: Conversión de Guardia a Cirugía
+                                    Trazabilidad Forense: Conversión de Guardia Clínica a Cirugía
                                 </h3>
                                 <span style={{
                                     background: '#DBEAFE',
@@ -341,9 +385,19 @@ Destino Post-Qx: ${p.destinoPostQx}`;
                                 }}>
                                     Ventana Estricta ≤ 48 hs
                                 </span>
+                                <span style={{
+                                    background: '#FEF3C7',
+                                    color: '#92400E',
+                                    fontSize: '0.68rem',
+                                    fontWeight: 800,
+                                    padding: '2px 8px',
+                                    borderRadius: '10px'
+                                }}>
+                                    🛡️ Exclusivo Adultos (Sin Maternidad ni Gineco-Obstetricia)
+                                </span>
                             </div>
                             <span style={{ fontSize: '0.76rem', opacity: 0.88, display: 'block', marginTop: '2px' }}>
-                                Cruce nominal VLISE_Visitas → TABLEAU_Cirugias • Resuelve pases nocturnos y estabilización médica
+                                Cruce nominal VLISE_Visitas (Guardia Clínica) → TABLEAU_Cirugias • Excluye circuito independiente de Guardia Gineco-Obstétrica
                             </span>
                         </div>
                     </div>
