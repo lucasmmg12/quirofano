@@ -17,14 +17,127 @@ export default function BetoChartCard({ chartData }) {
 
     const { type = 'bar', title = 'Gráfico Analítico', data = [], xKey = 'label', yKey = 'value', unit = '' } = chartData;
 
-    // Normalizar data asegurando que cada fila tenga label y value
-    const normalizedData = data.map((d, idx) => ({
-        label: d.label || d.name || d.especialidad || d.servicio || `Ítem ${idx + 1}`,
-        value: Number(d.value ?? d.cantidad ?? d.total ?? 0),
-        color: d.color || PALETTE[idx % PALETTE.length]
-    }));
+    // Identificar si vienen series específicas o si se deben autodetectar dinámicamente
+    const autoSeries = React.useMemo(() => {
+        if (chartData.series && Array.isArray(chartData.series) && chartData.series.length > 0) {
+            return chartData.series;
+        }
+        if (chartData.lines && Array.isArray(chartData.lines) && chartData.lines.length > 0) {
+            return chartData.lines;
+        }
 
-    const totalValue = normalizedData.reduce((acc, curr) => acc + curr.value, 0);
+        // Inspeccionar las llaves numéricas de los elementos de data
+        if (!data || data.length === 0) return [];
+        const ignoredKeys = new Set(['label', 'name', 'fecha', 'fechaLabel', 'color', 'key', 'id']);
+        const detectedKeySet = new Set();
+        data.forEach(item => {
+            if (item && typeof item === 'object') {
+                Object.keys(item).forEach(k => {
+                    if (!ignoredKeys.has(k) && typeof item[k] === 'number') {
+                        detectedKeySet.add(k);
+                    }
+                });
+            }
+        });
+        const numericKeys = Array.from(detectedKeySet);
+
+        if (numericKeys.length > 1) {
+            return numericKeys.map((key, idx) => {
+                const kLower = key.toLowerCase();
+                let name = key;
+                let stroke = PALETTE[idx % PALETTE.length];
+                let yAxisId = 'left';
+                let unitStr = unit;
+
+                if (kLower.includes('fio2')) {
+                    name = 'FiO2 (%)';
+                    stroke = '#2563EB';
+                    yAxisId = 'left';
+                    unitStr = '%';
+                } else if (kLower.includes('peep')) {
+                    name = 'PEEP (cmH2O)';
+                    stroke = '#D97706';
+                    yAxisId = 'right';
+                    unitStr = 'cmH2O';
+                } else if (kLower.includes('pafio') || kLower.includes('kirby')) {
+                    name = 'PaFiO2';
+                    stroke = '#0284C7';
+                    unitStr = '';
+                } else if (kLower.includes('sat_fio2') || kLower.includes('sat/fio2')) {
+                    name = 'Sat/FiO2';
+                    stroke = '#0D9488';
+                    unitStr = '';
+                } else if (kLower.includes('pico') || kLower.includes('ppico')) {
+                    name = 'Presión Pico (cmH2O)';
+                    stroke = '#DC2626';
+                    yAxisId = 'right';
+                    unitStr = 'cmH2O';
+                } else if (kLower.includes('vt') || kLower.includes('volumen')) {
+                    name = 'Volumen Tidal (ml)';
+                    stroke = '#059669';
+                    yAxisId = 'left';
+                    unitStr = 'ml';
+                } else if (kLower.includes('balon')) {
+                    name = 'Balón (cmH2O)';
+                    stroke = '#8B5CF6';
+                    yAxisId = 'right';
+                    unitStr = 'cmH2O';
+                } else if (kLower.includes('ims')) {
+                    name = 'Escala IMS (0-10)';
+                    stroke = '#2563EB';
+                } else if (kLower.includes('mrc')) {
+                    name = 'Fuerza MRC (0-60)';
+                    stroke = '#10B981';
+                }
+
+                return {
+                    key,
+                    name,
+                    stroke,
+                    yAxisId,
+                    unit: unitStr
+                };
+            });
+        }
+
+        // Si solo hay una clave numérica o ninguna
+        const singleKey = numericKeys.find(k => k === 'value') || numericKeys[0] || 'value';
+        return [{ key: singleKey, name: title || 'Valor', stroke: '#2563EB', yAxisId: 'left', unit }];
+    }, [chartData, data, title, unit]);
+
+    const hasDualAxis = autoSeries.some(s => s.yAxisId === 'right');
+
+    // Normalizar data asegurando que cada fila tenga su label y valores limpios
+    const normalizedData = React.useMemo(() => {
+        return data.map((d, idx) => {
+            const row = {
+                label: d.label || d.name || d.fechaLabel || d.fecha || d.especialidad || d.servicio || `Ítem ${idx + 1}`,
+                color: d.color || PALETTE[idx % PALETTE.length],
+                ...d
+            };
+
+            autoSeries.forEach(s => {
+                let val = d[s.key];
+                if (val === undefined && s.key === 'value') {
+                    val = d.cantidad ?? d.total ?? d.monto ?? d.count;
+                }
+                // Si FiO2 viene en decimal ej: 0.40 -> 40%
+                if (s.key.toLowerCase().includes('fio2') && val !== null && val !== undefined && val <= 1 && val > 0) {
+                    val = Math.round(val * 100);
+                }
+                row[s.key] = val !== null && val !== undefined ? Number(val) : null;
+            });
+
+            if (row.value === undefined || row.value === null) {
+                const primarySeries = autoSeries[0];
+                row.value = primarySeries ? (row[primarySeries.key] ?? 0) : 0;
+            }
+
+            return row;
+        });
+    }, [data, autoSeries]);
+
+    const totalValue = normalizedData.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
 
     // Exportar a PDF
     const handleDownloadPdf = (e) => {
@@ -40,13 +153,28 @@ export default function BetoChartCard({ chartData }) {
         doc.setTextColor(100, 116, 139);
         doc.text(`Generado automáticamente el ${new Date().toLocaleString('es-AR')}`, 14, 32);
 
-        // Tabla de datos tabulados
-        const head = [['Categoría / Dimensión', 'Valor / Conteo', 'Participación (%)']];
-        const rows = normalizedData.map(d => [
-            d.label,
-            `${d.value.toLocaleString('es-AR')} ${unit}`.trim(),
-            totalValue > 0 ? `${((d.value / totalValue) * 100).toFixed(1)}%` : '-'
-        ]);
+        // Tabla de datos tabulados según series
+        const isMulti = autoSeries.length > 1;
+        const head = isMulti
+            ? [['Punto / Fecha', ...autoSeries.map(s => s.name)]]
+            : [['Categoría / Dimensión', 'Valor / Conteo', 'Participación (%)']];
+
+        const rows = normalizedData.map(d => {
+            if (isMulti) {
+                return [
+                    d.label,
+                    ...autoSeries.map(s => {
+                        const v = d[s.key];
+                        return v !== null && v !== undefined ? `${v.toLocaleString('es-AR')} ${s.unit || ''}`.trim() : '—';
+                    })
+                ];
+            }
+            return [
+                d.label,
+                `${(d.value || 0).toLocaleString('es-AR')} ${unit}`.trim(),
+                totalValue > 0 ? `${(((d.value || 0) / totalValue) * 100).toFixed(1)}%` : '-'
+            ];
+        });
 
         autoTable(doc, {
             head,
@@ -82,7 +210,7 @@ export default function BetoChartCard({ chartData }) {
                             ))}
                         </Pie>
                         <Tooltip 
-                            formatter={(val) => [`${val.toLocaleString('es-AR')} ${unit}`, 'Cantidad']} 
+                            formatter={(val) => [`${(val || 0).toLocaleString('es-AR')} ${unit}`, 'Cantidad']} 
                             contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
                         />
                         <Legend wrapperStyle={{ fontSize: isModal ? '0.85rem' : '0.72rem', paddingTop: '6px' }} />
@@ -94,15 +222,56 @@ export default function BetoChartCard({ chartData }) {
         if (type === 'line') {
             return (
                 <ResponsiveContainer width="100%" height={height}>
-                    <LineChart data={normalizedData} margin={{ top: 10, right: 15, left: -10, bottom: 0 }}>
+                    <LineChart data={normalizedData} margin={{ top: 10, right: hasDualAxis ? 30 : 15, left: -5, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
                         <XAxis dataKey="label" stroke="#64748B" fontSize={isModal ? 12 : 10} />
-                        <YAxis stroke="#64748B" fontSize={isModal ? 12 : 10} />
-                        <Tooltip 
-                            formatter={(val) => [`${val.toLocaleString('es-AR')} ${unit}`, 'Valor']}
-                            contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                        
+                        {/* Eje Y Principal (Izquierdo) */}
+                        <YAxis 
+                            yAxisId="left" 
+                            stroke={hasDualAxis ? '#2563EB' : '#64748B'} 
+                            fontSize={isModal ? 12 : 10} 
+                            domain={['auto', 'auto']}
                         />
-                        <Line type="monotone" dataKey="value" stroke="#2563EB" strokeWidth={3} dot={{ r: 4, fill: '#2563EB' }} />
+
+                        {/* Eje Y Secundario (Derecho) para PEEP, Presión Pico, etc. */}
+                        {hasDualAxis && (
+                            <YAxis 
+                                yAxisId="right" 
+                                orientation="right" 
+                                stroke="#D97706" 
+                                fontSize={isModal ? 12 : 10} 
+                                domain={[0, 'dataMax + 5']}
+                            />
+                        )}
+
+                        <Tooltip 
+                            formatter={(val, name) => {
+                                if (val === null || val === undefined) return ['—', name];
+                                const s = autoSeries.find(item => item.name === name || item.key === name);
+                                const u = s?.unit || unit || '';
+                                return [`${Number(val).toLocaleString('es-AR')} ${u}`.trim(), s?.name || name];
+                            }}
+                            contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem', backgroundColor: '#FFFFFF' }}
+                        />
+                        
+                        <Legend wrapperStyle={{ fontSize: isModal ? '0.82rem' : '0.72rem', paddingTop: '4px' }} />
+
+                        {/* Renderizar cada línea según series detectadas */}
+                        {autoSeries.map(s => (
+                            <Line 
+                                key={s.key}
+                                yAxisId={s.yAxisId || 'left'} 
+                                type="monotone" 
+                                dataKey={s.key} 
+                                name={s.name} 
+                                stroke={s.stroke || '#2563EB'} 
+                                strokeWidth={2.5} 
+                                dot={{ r: 3.5, fill: s.stroke || '#2563EB' }} 
+                                activeDot={{ r: 5.5 }}
+                                connectNulls
+                            />
+                        ))}
                     </LineChart>
                 </ResponsiveContainer>
             );
@@ -116,7 +285,7 @@ export default function BetoChartCard({ chartData }) {
                     <XAxis dataKey="label" stroke="#64748B" fontSize={isModal ? 12 : 10} />
                     <YAxis stroke="#64748B" fontSize={isModal ? 12 : 10} />
                     <Tooltip 
-                        formatter={(val) => [`${val.toLocaleString('es-AR')} ${unit}`, 'Cantidad']}
+                        formatter={(val) => [`${(val || 0).toLocaleString('es-AR')} ${unit}`, 'Cantidad']} 
                         contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
                     />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]}>
@@ -218,7 +387,15 @@ export default function BetoChartCard({ chartData }) {
                     fontSize: '0.7rem',
                     color: '#64748B'
                 }}>
-                    <span>Total acumulado: <strong>{totalValue.toLocaleString('es-AR')} {unit}</strong></span>
+                    <span>
+                        {autoSeries.length > 1 ? (
+                            <>Series: <strong style={{ color: '#1E293B' }}>{autoSeries.map(s => s.name).join(' • ')}</strong></>
+                        ) : type === 'line' ? (
+                            <>Controles evolutivos: <strong style={{ color: '#1E293B' }}>{normalizedData.length} mediciones</strong></>
+                        ) : (
+                            <>Total acumulado: <strong style={{ color: '#1E293B' }}>{totalValue.toLocaleString('es-AR')} {unit}</strong></>
+                        )}
+                    </span>
                     <span style={{ color: '#2563EB', fontWeight: 600 }}>Toca para expandir 🔍</span>
                 </div>
             </div>

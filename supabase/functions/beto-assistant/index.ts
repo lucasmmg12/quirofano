@@ -1026,7 +1026,42 @@ Usá este bloque para graficar automáticamente comparativas, distribuciones por
   ]
 }
 \`\`\`
-Tipos soportados: \`"bar"\` (barras), \`"line"\` (líneas), \`"donut"\` (anillo), \`"pie"\` (torta).
+### Gráficos Clínicos Multilínea de Kinesiología y ARM (FiO2 vs PEEP, Mecánica e Índices)
+Para graficar curvas de ventilación mecánica o índices de oxigenación de pacientes internados (tipo "line"):
+1. **Oxigenación y PEEP (Doble eje Y automático):**
+\`\`\`beto-chart
+{
+  "type": "line",
+  "title": "Evolución de Oxigenación y Presión Espiratoria (FiO2 vs. PEEP) - [Paciente]",
+  "series": [
+    {"key": "fio2", "name": "FiO2 (%)", "stroke": "#2563EB", "yAxisId": "left", "unit": "%"},
+    {"key": "peep", "name": "PEEP (cmH2O)", "stroke": "#D97706", "yAxisId": "right", "unit": "cmH2O"}
+  ],
+  "data": [
+    {"label": "08/08", "fio2": 95, "peep": 5},
+    {"label": "09/08", "fio2": 95, "peep": 6},
+    {"label": "10/08", "fio2": 45, "peep": 5},
+    {"label": "12/08", "fio2": 50, "peep": 5},
+    {"label": "14/08", "fio2": 40, "peep": 5},
+    {"label": "15/08", "fio2": 50, "peep": 5},
+    {"label": "16/08", "fio2": 40, "peep": 5}
+  ]
+}
+\`\`\`
+2. **Índice de Oxigenación (Sat/FiO2 o PaFiO2 / Kirby):**
+\`\`\`beto-chart
+{
+  "type": "line",
+  "title": "Evolución Sat/FiO2 (Índice de Oxigenación) - [Paciente]",
+  "unit": "",
+  "data": [
+    {"label": "10/08", "value": 220},
+    {"label": "14/08", "value": 240},
+    {"label": "16/08", "value": 240}
+  ]
+}
+\`\`\`
+**IMPORTANTE:** Nunca dejes las propiedades numéricas vacías ni pongas \`value: 0\` si los datos reales de FiO2, PEEP o Sat/FiO2 existen. Asigná siempre los valores numéricos directos a las keys correspondientes.
 
 Usá estos bloques cuando muestres datos de cirugías, deudas, ocupación o estadísticas. El frontend los detecta y los renderiza como componentes visuales interactivos. Incluilos ADEMÁS del texto normal de tu respuesta.`;
 
