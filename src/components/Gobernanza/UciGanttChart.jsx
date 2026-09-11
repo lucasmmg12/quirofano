@@ -2,9 +2,10 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
     Calendar, ChevronLeft, ChevronRight, Search, Download, 
     Maximize2, Minimize2, Users, Bed, Clock, Filter, AlertCircle,
-    Activity, ArrowLeftRight, ShieldAlert, Stethoscope
+    Activity, ArrowLeftRight, ShieldAlert, Stethoscope, User, FileText, ExternalLink
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import UciPacienteDossierModal from './UciPacienteDossierModal';
 
 // Definición exacta y absoluta de las 16 camas de UCI
 export const CAMAS_UCI_CONFIG = [
@@ -93,6 +94,7 @@ export default function UciGanttChart({
     const [hoveredPatient, setHoveredPatient] = useState(null);
     const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
     const [selectedPatient, setSelectedPatient] = useState(null);
+    const [dossierPatient, setDossierPatient] = useState(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     // Fechas sincronizadas con el dashboard
@@ -1665,10 +1667,59 @@ export default function UciGanttChart({
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.8rem' }}>
-                            <div style={{ background: '#F8FAFC', padding: '10px 12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                <span style={{ fontSize: '0.68rem', color: '#64748B', display: 'block', fontWeight: 700, textTransform: 'uppercase' }}>Paciente</span>
-                                <strong style={{ fontSize: '0.95rem', color: '#1E293B' }}>{selectedPatient.paciente}</strong>
-                                {selectedPatient.edad && <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Edad: {selectedPatient.edad} años</span>}
+                            <div 
+                                onClick={() => {
+                                    setDossierPatient(selectedPatient);
+                                }}
+                                style={{ 
+                                    background: '#F8FAFC', 
+                                    padding: '12px 14px', 
+                                    borderRadius: '10px', 
+                                    border: '1.5px solid #BFDBFE',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s',
+                                    boxShadow: '0 1px 3px rgba(37, 99, 235, 0.08)'
+                                }}
+                                onMouseOver={e => {
+                                    e.currentTarget.style.background = '#EFF6FF';
+                                    e.currentTarget.style.borderColor = '#2563EB';
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 8px rgba(37, 99, 235, 0.15)';
+                                }}
+                                onMouseOut={e => {
+                                    e.currentTarget.style.background = '#F8FAFC';
+                                    e.currentTarget.style.borderColor = '#BFDBFE';
+                                    e.currentTarget.style.transform = 'none';
+                                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(37, 99, 235, 0.08)';
+                                }}
+                                title="Haga clic aquí para ver todos los datos, diagnósticos y estudios del paciente"
+                            >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                    <span style={{ fontSize: '0.68rem', color: '#1E40AF', display: 'block', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                        Paciente (Clic para ver todo)
+                                    </span>
+                                    <span style={{ 
+                                        fontSize: '0.68rem', 
+                                        color: '#1E40AF', 
+                                        fontWeight: 800, 
+                                        background: '#DBEAFE', 
+                                        padding: '2px 8px', 
+                                        borderRadius: '6px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }}>
+                                        Ver Ficha 360° →
+                                    </span>
+                                </div>
+                                <strong style={{ fontSize: '1.02rem', color: '#0F172A', display: 'block' }}>{selectedPatient.paciente}</strong>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px', fontSize: '0.74rem', color: '#64748B' }}>
+                                    {selectedPatient.edad && <span>Edad: <strong>{selectedPatient.edad} años</strong></span>}
+                                    {selectedPatient.nhc && <span>NHC: <strong>{selectedPatient.nhc}</strong></span>}
+                                    <span style={{ color: '#2563EB', fontWeight: 600, marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                        <ExternalLink size={12} /> Diagnósticos, estudios y cirugías
+                                    </span>
+                                </div>
                             </div>
 
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
@@ -1832,20 +1883,45 @@ export default function UciGanttChart({
                             })()}
                         </div>
 
-                        <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            {selectedPatient.isDefuncion ? (
+                        <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                {selectedPatient.isDefuncion && (
+                                    <button
+                                        onClick={() => {
+                                            if (onOpenMortalidadAudit) {
+                                                onOpenMortalidadAudit(selectedPatient);
+                                                setSelectedPatient(null);
+                                            }
+                                        }}
+                                        style={{
+                                            background: '#DC2626',
+                                            color: '#FFFFFF',
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            padding: '7px 12px',
+                                            fontSize: '0.76rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '5px',
+                                            boxShadow: '0 2px 4px rgba(220, 38, 38, 0.25)'
+                                        }}
+                                    >
+                                        <ShieldAlert size={14} />
+                                        Auditar Defunción →
+                                    </button>
+                                )}
+
                                 <button
                                     onClick={() => {
-                                        if (onOpenMortalidadAudit) {
-                                            onOpenMortalidadAudit(selectedPatient);
-                                            setSelectedPatient(null);
-                                        }
+                                        setDossierPatient(selectedPatient);
                                     }}
                                     style={{
-                                        background: '#DC2626',
+                                        background: 'linear-gradient(135deg, #1E40AF 0%, #2563EB 100%)',
                                         color: '#FFFFFF',
                                         border: 'none',
-                                        borderRadius: '6px',
+                                        borderRadius: '8px',
                                         padding: '7px 14px',
                                         fontSize: '0.78rem',
                                         fontWeight: 700,
@@ -1853,22 +1929,26 @@ export default function UciGanttChart({
                                         display: 'flex',
                                         alignItems: 'center',
                                         gap: '6px',
-                                        boxShadow: '0 2px 4px rgba(220, 38, 38, 0.25)'
+                                        boxShadow: '0 2px 6px rgba(37, 99, 235, 0.3)',
+                                        transition: 'all 0.15s'
                                     }}
+                                    onMouseOver={e => e.currentTarget.style.transform = 'scale(1.02)'}
+                                    onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
                                 >
-                                    <ShieldAlert size={15} />
-                                    Auditar Defunción →
+                                    <User size={14} />
+                                    Ver Ficha 360° (Todos sus datos)
                                 </button>
-                            ) : <div />}
+                            </div>
+
                             <button
                                 onClick={() => setSelectedPatient(null)}
                                 style={{
                                     background: '#F1F5F9',
                                     color: '#334155',
                                     border: '1px solid #CBD5E1',
-                                    borderRadius: '6px',
-                                    padding: '7px 16px',
-                                    fontSize: '0.8rem',
+                                    borderRadius: '8px',
+                                    padding: '7px 14px',
+                                    fontSize: '0.78rem',
                                     fontWeight: 700,
                                     cursor: 'pointer'
                                 }}
@@ -1879,6 +1959,14 @@ export default function UciGanttChart({
                     </div>
                 </div>
             )}
+
+            {/* ─── MODAL DE FICHA CLÍNICA 360° INTEGRAL ─── */}
+            <UciPacienteDossierModal
+                isOpen={!!dossierPatient}
+                onClose={() => setDossierPatient(null)}
+                patient={dossierPatient}
+                historialCamas={historialCamas}
+            />
         </div>
     );
 }
