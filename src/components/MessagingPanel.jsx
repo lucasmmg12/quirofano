@@ -275,28 +275,28 @@ export default function MessagingPanel({ addToast, currentUser }) {
             if (convPhones.size === 0) return;
 
             try {
-                const past90 = new Date();
-                past90.setDate(past90.getDate() - 90);
-                const pastDateStr = past90.toISOString().split('T')[0];
+                const past14 = new Date();
+                past14.setDate(past14.getDate() - 14);
+                const pastDateStr = past14.toISOString().split('T')[0];
 
                 const { data, error } = await supabase
                     .from('surgeries')
-                    .select('id_paciente, paciente, telefono, fecha_cirugia, status, obra_social, diagnostico, medico')
+                    .select('id_paciente, nombre, telefono, fecha_cirugia, status, obra_social, descripcion, medico')
                     .not('telefono', 'is', null)
                     .gte('fecha_cirugia', pastDateStr)
-                    .order('fecha_cirugia', { ascending: false });
+                    .order('fecha_cirugia', { ascending: true });
 
                 if (error) {
                     console.error("Error fetching surgeries:", error);
                     return;
                 }
 
-                // Normalize each surgery phone and map by normalized key
+                // Normalize each surgery phone and map by normalized key (keep closest upcoming date)
                 const newMap = {};
                 (data || []).forEach(s => {
                     const normalizedTel = normalizeArgentinePhone(s.telefono);
                     if (normalizedTel && convPhones.has(normalizedTel) && !newMap[normalizedTel]) {
-                        newMap[normalizedTel] = { ...s, _normalizedPhone: normalizedTel };
+                        newMap[normalizedTel] = { ...s, paciente: s.nombre, _normalizedPhone: normalizedTel };
                     }
                 });
                 setSurgeriesMap(newMap);
@@ -461,20 +461,20 @@ export default function MessagingPanel({ addToast, currentUser }) {
                 if (idPac) {
                     const { data } = await supabase
                         .from('surgeries')
-                        .select('id_paciente, paciente, obra_social, fecha_cirugia, medico, modulo, status, nhc')
+                        .select('id_paciente, nombre, obra_social, fecha_cirugia, medico, modulo, status, nhc, descripcion')
                         .eq('id_paciente', String(idPac))
                         .order('fecha_cirugia', { ascending: false })
                         .limit(1);
-                    surgeries = data || [];
+                    surgeries = (data || []).map(s => ({ ...s, paciente: s.nombre }));
                 } else {
                     const phoneDigits = selectedPhone.replace(/\D/g, '').slice(-8);
                     const { data } = await supabase
                         .from('surgeries')
-                        .select('id_paciente, paciente, obra_social, fecha_cirugia, medico, modulo, status, nhc')
+                        .select('id_paciente, nombre, obra_social, fecha_cirugia, medico, modulo, status, nhc, descripcion')
                         .ilike('telefono', `%${phoneDigits}%`)
                         .order('fecha_cirugia', { ascending: false })
                         .limit(1);
-                    surgeries = data || [];
+                    surgeries = (data || []).map(s => ({ ...s, paciente: s.nombre }));
                     if (surgeries[0]?.id_paciente) {
                         idPac = String(surgeries[0].id_paciente);
                     }
