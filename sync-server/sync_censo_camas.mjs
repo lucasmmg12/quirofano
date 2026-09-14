@@ -26,7 +26,7 @@ const supabase = createClient(
 
 export async function syncCensoCamas() {
     console.log('[sync_censo] Conectando a SALUS SQL Server...');
-    await sql.connect(SQL_CONFIG);
+    const pool = await new sql.ConnectionPool(SQL_CONFIG).connect();
 
     const query = `
         WITH CamasTarget AS (
@@ -123,40 +123,42 @@ export async function syncCensoCamas() {
         FROM CamasTarget c
         LEFT JOIN AdmisionesActivas a ON c.hab_target = a.hab_normalizada AND a.rn = 1
         ORDER BY c.orden;
-    `;
+    let rows = [];
+    try {
+        const result = await pool.request().query(query);
+        rows = result.recordset.map(r => ({
+            hab: r.hab,
+            orden: r.orden,
+            fecha_ingreso: r.fecha_ingreso,
+            paciente: r.paciente,
+            fecha_nacimiento: r.fecha_nacimiento,
+            dni: r.dni,
+            obra_social: r.obra_social,
+            numero_afiliado: r.numero_afiliado,
+            edad: r.edad,
+            telefono: r.telefono,
+            tipo_internacion: r.tipo_internacion,
+            numero_admision: r.numero_admision,
+            estado: r.estado,
+            updated_at: new Date().toISOString()
+        }));
 
-    const result = await sql.query(query);
-    await sql.close();
+        console.log(`[sync_censo] ${rows.length} camas obtenidas de SALUS. Sincronizando con Supabase...`);
 
-    const rows = result.recordset.map(r => ({
-        hab: r.hab,
-        orden: r.orden,
-        fecha_ingreso: r.fecha_ingreso,
-        paciente: r.paciente,
-        fecha_nacimiento: r.fecha_nacimiento,
-        dni: r.dni,
-        obra_social: r.obra_social,
-        numero_afiliado: r.numero_afiliado,
-        edad: r.edad,
-        telefono: r.telefono,
-        tipo_internacion: r.tipo_internacion,
-        numero_admision: r.numero_admision,
-        estado: r.estado,
-        updated_at: new Date().toISOString()
-    }));
+        const { data, error } = await supabase
+            .from('calidad_censo_camas_uci')
+            .upsert(rows, { onConflict: 'hab' });
 
-    console.log(`[sync_censo] ${rows.length} camas obtenidas de SALUS. Sincronizando con Supabase...`);
+        if (error) {
+            console.error('[sync_censo] Error en upsert a Supabase:', error);
+            throw error;
+        }
 
-    const { data, error } = await supabase
-        .from('calidad_censo_camas_uci')
-        .upsert(rows, { onConflict: 'hab' });
-
-    if (error) {
-        console.error('[sync_censo] Error en upsert a Supabase:', error);
-        throw error;
+        console.log(`[sync_censo] ✅ 16 camas sincronizadas exitosamente en calidad_censo_camas_uci.`);
+        return { total: rows.length, upserted: rows.length, success: true };
+    } finally {
+        await pool.close();
     }
-
-    console.log(`[sync_censo] ✅ 16 camas sincronizadas exitosamente en calidad_censo_camas_uci.`);
 }
 
 // Ejecutar si se llama directamente

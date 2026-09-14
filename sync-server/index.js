@@ -20,6 +20,9 @@ import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { syncCensoCamas } from './sync_censo_camas.mjs';
+import { syncDiagnosticos } from './sync_diagnosticos.mjs';
+import { syncKinesiologiaUci } from './sync_kinesiologia_uci.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -540,7 +543,7 @@ async function syncPresupuestos(db, fastSync = false) {
 
     // Upsert cabeceras en lotes
     let insertedHeaders = 0;
-    const BATCH = 50;
+    const BATCH = 500;
     for (let i = 0; i < presupuestos.length; i += BATCH) {
         const batch = presupuestos.slice(i, i + BATCH).map(({ items, lineCounter, ...header }) => header);
         const { data, error } = await supabase
@@ -548,7 +551,7 @@ async function syncPresupuestos(db, fastSync = false) {
             .upsert(batch, { onConflict: 'id_presupuesto', ignoreDuplicates: false })
             .select('id_presupuesto');
         if (!error && data) insertedHeaders += data.length;
-        else if (error) console.error('   âŒ Presupuesto header error:', error.message);
+        else if (error) console.error('   â Œ Presupuesto header error:', error.message);
     }
 
     // Upsert ítems: limpiar y reinsertar
@@ -584,43 +587,52 @@ async function syncDeudas(db, fastSync = false) {
     const syncStartTime = new Date().toISOString();
     console.log(`📊 [3/7] Extrayendo deudas de SALUS... (fastSync: ${fastSync})`);
     const req = db.request();
-    req.timeout = 300000; // 5 minutos — TABLEAU es una vista muy pesada
+    req.timeout = 120000;
     const dateFilter = fastSync ? "T.[Fecha albaran] >= DATEADD(DAY, -30, CAST(GETDATE() AS DATE))" : "T.[Fecha albaran] >= '2025-05-01'";
     const result = await req.query(`
         SELECT
             T.[Fecha albaran], T.Paciente, T.Paciente_NHC, T.Paciente_NIF,
             T.Tarifa, T.Concepto, T.[Numero folio], T.[Cobrado linea],
-            T.[Deuda linea], T.[Núm.Admisión], T.HOSP_Habitacion,
-            CASE 
-                WHEN V.telefono1 IS NOT NULL 
-                THEN '549' + 
-                    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                        LOWER(V.telefono1)
-                    , 'a', ''), 'b', ''), 'c', ''), 'd', ''), 'e', ''), 'f', ''), 'g', ''), 'h', ''), 'i', ''), 'j', '')
-                    , 'k', ''), 'l', ''), 'm', ''), 'n', ''), N'ñ', ''), 'o', ''), 'p', ''), 'q', ''), 'r', ''), 's', '')
-                    , 't', ''), 'u', ''), 'v', ''), 'w', ''), 'x', ''), 'y', ''), 'z', ''), N'á', ''), N'é', ''), N'í', '')
-                    , N'ó', ''), N'ú', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '+', ''), '*', ''), '.', ''), ',', '')
-                ELSE NULL
-            END AS telefono1_formateado,
-            V.email,
-            V.mutua
+            T.[Deuda linea], T.[Núm.Admisión], T.HOSP_Habitacion
         FROM [TABLEAU_Detalle de ventas Facturadas con Gastos y Honorarios] AS T
-        LEFT JOIN VIS_Pacientes AS V ON T.Paciente_NHC = V.NHC
         WHERE T.Tarifa LIKE '042%'
           AND T.[Deuda linea] > 0
-          AND T.[Numero folio] LIKE 'B 00028%'
           AND T.Paciente IS NOT NULL
           AND ${dateFilter}
-        ORDER BY T.[Fecha albaran] DESC
     `);
-    console.log(`   📥 ${result.recordset.length} filas extraídas`);
+    console.log(`   📥 ${result.recordset.length} filas brutas extraídas`);
+
+    // Filtrar folios B 00028 en JS para evitar bloqueo en vista de SALUS
+    const matchingRows = result.recordset.filter(r => {
+        const folio = r['Numero folio'] ? String(r['Numero folio']).trim() : '';
+        return folio.startsWith('B 00028');
+    });
+
+    // Lookup teléfonos y mutua en VIS_Pacientes para solo los NHCs únicos
+    const uniqueNhcs = [...new Set(matchingRows.map(r => r.Paciente_NHC ? String(r.Paciente_NHC).trim() : null).filter(Boolean))];
+    const pacienteInfoMap = new Map();
+    if (uniqueNhcs.length > 0) {
+        const nhcList = uniqueNhcs.map(n => `'${n}'`).join(',');
+        const pRes = await db.request().query(`
+            SELECT NHC, telefono1, email, mutua
+            FROM VIS_Pacientes
+            WHERE NHC IN (${nhcList})
+        `);
+        for (const p of pRes.recordset) {
+            const nhc = String(p.NHC).trim();
+            const phone = normalizePhone(p.telefono1 ? String(p.telefono1) : '');
+            pacienteInfoMap.set(nhc, {
+                telefono: phone.normalized || '',
+                telefono_original: phone.original || '',
+                email: p.email ? String(p.email).trim() : null,
+                mutua: p.mutua ? String(p.mutua).trim() : null,
+            });
+        }
+    }
 
     // Agrupar por folio
     const facturasMap = new Map();
-    for (const r of result.recordset) {
+    for (const r of matchingRows) {
         const nhc = r.Paciente_NHC ? String(r.Paciente_NHC).trim() : '';
         const folio = r['Numero folio'] ? String(r['Numero folio']).trim() : '';
         if (!nhc || !folio) continue;
@@ -638,14 +650,15 @@ async function syncDeudas(db, fastSync = false) {
         };
 
         if (!facturasMap.has(folio)) {
-            let tel = String(r.telefono1_formateado || '').replace(/\D/g, '');
-            let telValido = tel.length === 13 && tel.startsWith('549');
+            const info = pacienteInfoMap.get(nhc) || {};
+            const tel = info.telefono || '';
+            const telValido = tel.length === 13 && tel.startsWith('549');
 
             const dni = r.Paciente_NIF ? String(r.Paciente_NIF).trim() : null;
             facturasMap.set(folio, {
                 nombre: r.Paciente, nhc, dni, folio, codigo: folio,
                 telefono: tel, telefono_invalido: !telValido && tel !== '',
-                obra_social: r.mutua || null,
+                obra_social: info.mutua || null,
                 pendiente: deuda, cobrado, total: deuda + cobrado,
                 lineas: [lineItem],
             });
@@ -674,7 +687,16 @@ async function syncDeudas(db, fastSync = false) {
         porNhc[r.nhc].facturas.push(r);
     }
 
+    // Prefetch de Supabase: pacientes existentes
+    const nhcsToQuery = Object.keys(porNhc);
+    const { data: existPacientes } = await supabase
+        .from('deudas_pacientes')
+        .select('id, nhc, telefono, categoria')
+        .in('nhc', nhcsToQuery);
+    const existPacientesMap = new Map((existPacientes || []).map(p => [p.nhc, p]));
+
     let pacientesNuevos = 0, pacientesActualizados = 0, filasImportadas = 0;
+    const facturasToUpsert = [];
 
     for (const [nhc, grupo] of Object.entries(porNhc)) {
         const deudaTotal = grupo.facturas.reduce((s, f) => s + f.pendiente, 0);
@@ -690,13 +712,7 @@ async function syncDeudas(db, fastSync = false) {
             }
         }
 
-        // Upsert paciente
-        const { data: existente } = await supabase
-            .from('deudas_pacientes')
-            .select('id, telefono, categoria')
-            .eq('nhc', nhc)
-            .maybeSingle();
-
+        const existente = existPacientesMap.get(nhc);
         let pacienteId;
         if (existente) {
             const upd = {
@@ -747,16 +763,16 @@ async function syncDeudas(db, fastSync = false) {
                 })
                 .select('id').single();
             pacienteId = nuevo?.id;
-            pacientesNuevos++;
+            if (pacienteId) pacientesNuevos++;
         }
 
-        // Upsert líneas de factura
+        // Preparar líneas de factura para batch upsert
         if (pacienteId) {
             for (const f of grupo.facturas) {
                 for (let i = 0; i < f.lineas.length; i++) {
                     const linea = f.lineas[i];
                     const cod = f.lineas.length > 1 ? `${f.codigo}::${i}` : f.codigo;
-                    const { error } = await supabase.from('deudas_facturas').upsert({
+                    facturasToUpsert.push({
                         paciente_id: pacienteId,
                         codigo: cod,
                         documento: f.folio, folio: f.folio,
@@ -769,11 +785,19 @@ async function syncDeudas(db, fastSync = false) {
                         fecha_hospitalizacion: linea.fecha_albaran || null,
                         tipo_hospitalizacion: linea.habitacion || null,
                         updated_at: new Date().toISOString(),
-                    }, { onConflict: 'codigo' });
-                    if (!error) filasImportadas++;
+                    });
                 }
             }
         }
+    }
+
+    // Batch upsert facturas (lotes de 500)
+    const BATCH_FACTURAS = 500;
+    for (let i = 0; i < facturasToUpsert.length; i += BATCH_FACTURAS) {
+        const batch = facturasToUpsert.slice(i, i + BATCH_FACTURAS);
+        const { error } = await supabase.from('deudas_facturas').upsert(batch, { onConflict: 'codigo' });
+        if (!error) filasImportadas += batch.length;
+        else console.error('Error upserting facturas batch:', error.message);
     }
 
     // ==========================================
@@ -1335,6 +1359,7 @@ async function syncFacturacionInternada(db) {
     const result = await db.request().query(`
         SELECT 
             [Fecha factura],
+            [Fecha albaran],
             [Paciente],
             [Paciente_NHC],
             [Paciente_NIF],
@@ -1346,13 +1371,10 @@ async function syncFacturacionInternada(db) {
         FROM 
             [SALUS].[dbo].[TABLEAU_Detalle de ventas Facturadas con Gastos y Honorarios]
         WHERE 
-            [Fecha factura] >= DATEADD(DAY, -90, CAST(GETDATE() AS DATE))
-            AND (
-                [Numero factura] LIKE '00021%' 
-                OR [Numero factura] LIKE '00031%'
-            )
+            [Fecha albaran] >= DATEADD(DAY, -90, CAST(GETDATE() AS DATE))
+            AND [Nº Admision] IS NOT NULL
         ORDER BY 
-            [Fecha factura] ASC
+            [Fecha albaran] ASC
     `);
     console.log(`   📥 ${result.recordset.length} líneas de facturación extraídas`);
 
@@ -1369,6 +1391,7 @@ async function syncFacturacionInternada(db) {
         let pdv = null;
         if (numFactura.startsWith('00021') || numFactura.startsWith('21')) pdv = '21';
         else if (numFactura.startsWith('00031') || numFactura.startsWith('31')) pdv = '31';
+        else continue;
 
         const concepto = r.Concepto ? String(r.Concepto).trim() : null;
         if (!concepto) continue;
@@ -1376,7 +1399,7 @@ async function syncFacturacionInternada(db) {
         records.push({
             numero_admision: numAdmision,
             numero_factura: numFactura,
-            fecha_factura: formatDate(r['Fecha factura']),
+            fecha_factura: formatDate(r['Fecha factura'] || r['Fecha albaran']),
             paciente: r.Paciente?.trim() || null,
             paciente_nhc: r.Paciente_NHC ? String(r.Paciente_NHC).trim() : null,
             paciente_nif: r.Paciente_NIF ? String(r.Paciente_NIF).trim() : null,
@@ -1387,15 +1410,13 @@ async function syncFacturacionInternada(db) {
         });
     }
 
-    console.log(`   📦 ${records.length} registros válidos`);
+    console.log(`   📦 ${records.length} registros válidos (PDV 21/31)`);
 
     // Deduplicar por clave única (numero_factura + numero_admision + concepto)
-    // SALUS puede devolver la misma línea duplicada, lo que causa
-    // "ON CONFLICT DO UPDATE command cannot affect row a second time"
     const dedupMap = new Map();
     for (const r of records) {
         const key = `${r.numero_factura}|${r.numero_admision}|${r.concepto}`;
-        dedupMap.set(key, r); // último gana
+        dedupMap.set(key, r);
     }
     const dedupedRecords = [...dedupMap.values()];
     if (dedupedRecords.length < records.length) {
@@ -1403,7 +1424,7 @@ async function syncFacturacionInternada(db) {
     }
 
     let upserted = 0, skipped = 0;
-    const BATCH = 100;
+    const BATCH = 500;
 
     for (let i = 0; i < dedupedRecords.length; i += BATCH) {
         const batch = dedupedRecords.slice(i, i + BATCH);
@@ -1444,19 +1465,23 @@ async function syncFacturacionInternada(db) {
 
     console.log(`   🔗 ${facturadoMap.size} admisiones con factura, cruzando con altas...`);
 
+    const entries = [...facturadoMap.entries()];
+    const CHUNK_SIZE = 25;
     let altasActualizadas = 0;
-    for (const [numAdm, info] of facturadoMap.entries()) {
-        const { error } = await supabase
-            .from('altas_administrativas')
-            .update({
-                facturada: true,
-                facturada_at: info.fecha ? new Date(info.fecha + 'T12:00:00').toISOString() : new Date().toISOString(),
-                usuario_facturo: info.usuario,
-                cantidad_facturas: info.facturas.size,
-            })
-            .eq('numero_admision', numAdm);
-
-        if (!error) altasActualizadas++;
+    for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
+        const chunk = entries.slice(i, i + CHUNK_SIZE);
+        await Promise.all(chunk.map(async ([numAdm, info]) => {
+            const { error } = await supabase
+                .from('altas_administrativas')
+                .update({
+                    facturada: true,
+                    facturada_at: info.fecha ? new Date(info.fecha + 'T12:00:00').toISOString() : new Date().toISOString(),
+                    usuario_facturo: info.usuario,
+                    cantidad_facturas: info.facturas.size,
+                })
+                .eq('numero_admision', numAdm);
+            if (!error) altasActualizadas++;
+        }));
     }
 
     console.log(`   🔗 ${altasActualizadas} altas marcadas como facturadas`);
@@ -2500,15 +2525,22 @@ async function calcularTriageAvanzado() {
 
     if (batchUpdates.length > 0) {
         console.log(`   🔄 Actualizando triage en ${batchUpdates.length} altas...`);
-        for (const update of batchUpdates) {
-            const { error: updError } = await supabase
-                .from('altas_administrativas')
-                .update({ triage_facturacion: update.triage_facturacion })
-                .eq('id', update.id);
-            if (updError) {
-                console.error(`   ❌ Error update triage para ID ${update.id}:`, updError.message);
-            } else {
-                actualizadas++;
+        const CHUNK = 25;
+        for (let i = 0; i < batchUpdates.length; i += CHUNK) {
+            const chunk = batchUpdates.slice(i, i + CHUNK);
+            const promises = chunk.map(update =>
+                supabase
+                    .from('altas_administrativas')
+                    .update({ triage_facturacion: update.triage_facturacion })
+                    .eq('id', update.id)
+            );
+            const responses = await Promise.all(promises);
+            for (const res of responses) {
+                if (res.error) {
+                    console.error(`   ❌ Error update triage:`, res.error.message);
+                } else {
+                    actualizadas++;
+                }
             }
         }
     }
@@ -2646,6 +2678,29 @@ app.get('/api/salus/sync-all', async (req, res) => {
             results.triage = { error: err.message };
         }
 
+        try {
+            results.censoCamas = await syncCensoCamas();
+        } catch (err) {
+            console.error('❌ Error en censo de camas:', err.message);
+            results.censoCamas = { error: err.message };
+        }
+
+        try {
+            const fromKine = fastSync ? '2026-09-01' : '2026-08-01';
+            results.kinesiologiaUci = await syncKinesiologiaUci(fromKine);
+        } catch (err) {
+            console.error('❌ Error en kinesiología UCI:', err.message);
+            results.kinesiologiaUci = { error: err.message };
+        }
+
+        try {
+            const fromDiag = fastSync ? '2026-09-01' : '2026-08-01';
+            results.diagnosticos = await syncDiagnosticos(fromDiag);
+        } catch (err) {
+            console.error('❌ Error en diagnósticos:', err.message);
+            results.diagnosticos = { error: err.message };
+        }
+
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`\n–… ▬▬▬▬▬ SINCRONIZACIÓN COMPLETADA en ${elapsed}s ▬▬▬▬▬ \n`);
 
@@ -2766,6 +2821,25 @@ app.get('/api/salus/sync/diagnosticos', async (req, res) => {
         const { syncDiagnosticos } = await import('./sync_diagnosticos.mjs');
         const fromDate = req.query.from || '2026-06-01';
         const result = await syncDiagnosticos(fromDate);
+        res.json({ success: true, results: result });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/salus/sync/censo-camas', async (req, res) => {
+    try {
+        const result = await syncCensoCamas();
+        res.json({ success: true, results: result });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/salus/sync/kinesiologia-uci', async (req, res) => {
+    try {
+        const fromDate = req.query.from || (req.query.fast === 'true' ? '2026-09-01' : '2026-08-01');
+        const result = await syncKinesiologiaUci(fromDate);
         res.json({ success: true, results: result });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });

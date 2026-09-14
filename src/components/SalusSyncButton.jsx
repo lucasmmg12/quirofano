@@ -10,12 +10,25 @@ import { checkSalusHealth } from '../services/salusSync';
 import { getCurrentUser } from '../services/authService';
 
 const SYNC_MODULES = {
-    uci: { label: 'T. Intensiva (UCI)', icon: '🫁' },
     cirugias: { label: 'Cirugías', icon: '🔪' },
     presupuestos: { label: 'Presupuestos', icon: '💰' },
     deudas: { label: 'Deudas', icon: '📊' },
+    cobros: { label: 'Cobros', icon: '💵' },
+    notasCredito: { label: 'Notas de Crédito', icon: '🧾' },
     altas: { label: 'Altas Adm', icon: '📋' },
-    asociaciones: { label: 'Asociaciones', icon: '🏥' },
+    uci: { label: 'T. Intensiva (UCI)', icon: '🫁' },
+    fojaQuirurgica: { label: 'Foja Quirúrgica', icon: '📝' },
+    facturacionInternada: { label: 'Fact. Internada', icon: '🏥' },
+    facturacion: { label: 'Fact. Ambulatoria', icon: '💳' },
+    visitas: { label: 'Visitas Sede', icon: '🚶' },
+    asociaciones: { label: 'Asociaciones', icon: '🔗' },
+    laboratorios: { label: 'Laboratorios', icon: '🧪' },
+    consultasGuardia: { label: 'Consultas Guardia', icon: '🚑' },
+    recepciones: { label: 'Recepciones', icon: '📥' },
+    triage: { label: 'Triage Facturación', icon: '🚦' },
+    censoCamas: { label: 'Censo Camas UCI', icon: '🛏️' },
+    kinesiologiaUci: { label: 'Kinesiología UCI', icon: '🫁' },
+    diagnosticos: { label: 'Diagnósticos', icon: '🩺' },
 };
 
 export default function SalusSyncButton({ onComplete, addToast, module = null }) {
@@ -28,7 +41,6 @@ export default function SalusSyncButton({ onComplete, addToast, module = null })
 
     const currentUser = getCurrentUser();
     const isFrojo = currentUser?.usuario === 'frojo';
-    const isSurgeryOnly = isFrojo || module === 'cirugias';
 
     // Verificar disponibilidad (máximo 2 intentos si está offline para evitar spam de ERR_CONNECTION_REFUSED en consola)
     useEffect(() => {
@@ -55,21 +67,15 @@ export default function SalusSyncButton({ onComplete, addToast, module = null })
 
         try {
             const SYNC_URL = import.meta.env.VITE_SALUS_SYNC_URL || 'http://127.0.0.1:3456/api/salus';
-            // Si es frojo o estamos en el panel de cirugías, sincronizar EXCLUSIVAMENTE cirugías (ultrarrápido)
-            const endpoint = isSurgeryOnly 
-                ? `${SYNC_URL}/sync/cirugias`
-                : `${SYNC_URL}/sync-all${isFast ? '?fast=true' : ''}`;
+            const endpoint = `${SYNC_URL}/sync-all${isFast ? '?fast=true' : ''}`;
 
-            const res = await fetch(endpoint, { signal: AbortSignal.timeout(300000) });
+            const res = await fetch(endpoint, { signal: AbortSignal.timeout(600000) });
             const json = await res.json();
 
             if (json.success) {
-                const effectiveResults = isSurgeryOnly ? { cirugias: json.results } : json.results;
-                setResults(effectiveResults);
+                setResults(json.results);
                 setLastSync(new Date());
-                const msg = isSurgeryOnly 
-                    ? '✅ Cirugías sincronizadas con SALUS' 
-                    : `✅ Sincronización ${isFast ? 'rápida' : 'completa'} completada`;
+                const msg = `✅ Sincronización ${isFast ? 'rápida' : 'completa'} de todos los módulos finalizada`;
                 addToast?.(msg, 'success');
                 onComplete?.();
             } else {
@@ -233,8 +239,27 @@ export default function SalusSyncButton({ onComplete, addToast, module = null })
     const renderModule = (key) => {
         const mod = SYNC_MODULES[key];
         const r = results?.[key];
-        if (!r) return null;
+        if (!r || !mod) return null;
         const isError = !!r.error;
+
+        let detail = '';
+        if (isError) {
+            detail = `❌ ${r.error}`;
+        } else if (r.actualizadas !== undefined) {
+            detail = `${r.actualizadas} actualizadas`;
+        } else if (r.upserted !== undefined) {
+            detail = `${r.total || r.upserted} filas → ${r.upserted} guardados`;
+        } else if (r.presupuestos !== undefined) {
+            detail = `${r.total} filas → ${r.presupuestos} presupuestos, ${r.items} ítems`;
+        } else if (r.pacientesNuevos !== undefined) {
+            detail = `${r.total} filas → ${r.pacientesNuevos} nuevos, ${r.pacientesActualizados} actualizados`;
+        } else if (r.inserted !== undefined || r.updated !== undefined) {
+            detail = `${r.total || (r.inserted || 0) + (r.updated || 0)} registros → ${r.inserted || 0} nuevos, ${r.updated || 0} actualizados`;
+        } else if (r.count !== undefined) {
+            detail = `${r.count} camas sincronizadas`;
+        } else {
+            detail = `Sincronizado correctamente`;
+        }
 
         return (
             <div key={key} style={{
@@ -254,14 +279,7 @@ export default function SalusSyncButton({ onComplete, addToast, module = null })
                         {mod.label}
                     </div>
                     <div style={{ fontSize: '0.7rem', color: '#6B7280', marginTop: '3px', lineHeight: 1.4 }}>
-                        {isError ? `❌ ${r.error}` : (
-                            key === 'uci' ? `${r.total} registros → ${r.inserted} nuevos, ${r.updated} actualizados` :
-                            key === 'cirugias' ? `${r.total} registros → ${r.inserted} nuevos, ${r.updated} actualizados` :
-                            key === 'presupuestos' ? `${r.total} filas → ${r.presupuestos} presupuestos, ${r.items} ítems` :
-                            key === 'altas' ? `${r.total} registros → ${r.inserted} nuevas, ${r.updated} actualizadas` :
-                            key === 'asociaciones' ? `${r.total} registros → ${r.inserted} nuevos, ${r.updated} actualizados` :
-                            `${r.total} filas → ${r.pacientesNuevos} nuevos, ${r.pacientesActualizados} actualizados`
-                        )}
+                        {detail}
                     </div>
                 </div>
             </div>
@@ -351,7 +369,8 @@ export default function SalusSyncButton({ onComplete, addToast, module = null })
                     marginTop: '6px', zIndex: 1000,
                     background: '#fff', borderRadius: '12px',
                     boxShadow: '0 8px 32px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.05)',
-                    padding: '12px', minWidth: '320px',
+                    padding: '12px', minWidth: '320px', maxWidth: '380px',
+                    maxHeight: '420px', overflowY: 'auto',
                     display: 'flex', flexDirection: 'column', gap: '6px',
                 }}>
                     <div style={{
