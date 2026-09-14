@@ -1320,25 +1320,27 @@ async function syncFojaQuirurgica(db) {
     console.log(`   📦 ${fojaMap.size} admisiones con foja quirúrgica`);
 
     // Calcular triage y actualizar altas_administrativas
+    const entries = Array.from(fojaMap.entries());
     let actualizadas = 0, skipped = 0;
+    const CHUNK = 30;
 
-    for (const [numAdm, procsSet] of fojaMap.entries()) {
-        const procs = [...procsSet];
-        const cantidad = procs.length;
-        // El triage se calculará en el paso de calcularTriageAvanzado
+    for (let i = 0; i < entries.length; i += CHUNK) {
+        const chunk = entries.slice(i, i + CHUNK);
+        const promises = chunk.map(([numAdm, procsSet]) => {
+            const procs = [...procsSet];
+            return supabase
+                .from('altas_administrativas')
+                .update({
+                    cantidad_procedimientos: procs.length,
+                    procedimientos_detalle: procs,
+                })
+                .eq('numero_admision', numAdm);
+        });
 
-        const { error } = await supabase
-            .from('altas_administrativas')
-            .update({
-                cantidad_procedimientos: cantidad,
-                procedimientos_detalle: procs,
-            })
-            .eq('numero_admision', numAdm);
-
-        if (error) {
-            skipped++;
-        } else {
-            actualizadas++;
+        const responses = await Promise.all(promises);
+        for (const res of responses) {
+            if (res.error) skipped++;
+            else actualizadas++;
         }
     }
 

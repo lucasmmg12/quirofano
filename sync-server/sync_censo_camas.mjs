@@ -1,7 +1,11 @@
 import sql from 'mssql';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
-dotenv.config();
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const SQL_CONFIG = {
     server: process.env.SALUS_DB_SERVER || '128.223.16.29',
@@ -19,10 +23,9 @@ const SQL_CONFIG = {
     },
 };
 
-const supabase = createClient(
-    process.env.VITE_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY
-);
+const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://hakysnqiryimxbwdslwe.supabase.co';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function syncCensoCamas() {
     console.log('[sync_censo] Conectando a SALUS SQL Server...');
@@ -123,6 +126,7 @@ export async function syncCensoCamas() {
         FROM CamasTarget c
         LEFT JOIN AdmisionesActivas a ON c.hab_target = a.hab_normalizada AND a.rn = 1
         ORDER BY c.orden;
+    `;
     let rows = [];
     try {
         const result = await pool.request().query(query);
