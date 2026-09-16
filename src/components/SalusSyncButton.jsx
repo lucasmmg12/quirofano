@@ -4,10 +4,11 @@
  * - Si el sync-server está corriendo: botón "Sync SALUS" que ejecuta la sincronización
  * - Si está offline: botón que descarga el launcher .bat para que el usuario lo ejecute
  */
-import { useState, useEffect } from 'react';
-import { Database, Check, AlertTriangle, Loader2, Download, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Database, Check, AlertTriangle, Loader2, Download, ChevronDown, ChevronUp, HelpCircle, Clock } from 'lucide-react';
 import { checkSalusHealth } from '../services/salusSync';
 import { getCurrentUser } from '../services/authService';
+import { supabase } from '../lib/supabase';
 
 const SYNC_MODULES = {
     cirugias: { label: 'Cirugías', icon: '🔪' },
