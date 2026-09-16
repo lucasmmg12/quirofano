@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
     X, User, Bed, Calendar, Clock, Activity, FileText, Stethoscope, 
     FlaskConical, HeartPulse, ShieldAlert, CheckCircle2, Phone, 
     MessageSquare, Download, ExternalLink, FileSpreadsheet, AlertTriangle, 
-    ChevronRight, Building2, Hash, Heart, RefreshCw, Layers, DollarSign,
+    ChevronRight, ChevronLeft, Building2, Hash, Heart, RefreshCw, Layers, DollarSign,
     Receipt, Check, Copy, Wind
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -26,6 +26,13 @@ export default function UciPacienteDossierModal({
     const [activeTab, setActiveTab] = useState(initialTab || 'resumen'); // 'resumen' | 'kinesiologia' | 'diagnosticos' | 'estudios' | 'camas' | 'cirugias' | 'guardia' | 'administrativo'
     const [loading, setLoading] = useState(false);
     const [copied, setCopied] = useState(false);
+    const tabsRef = useRef(null);
+
+    const scrollTabs = (offset) => {
+        if (tabsRef.current) {
+            tabsRef.current.scrollBy({ left: offset, behavior: 'smooth' });
+        }
+    };
 
     // Datos cruzados del paciente
     const [pacienteInfo, setPacienteInfo] = useState(null);
@@ -670,17 +677,58 @@ Movimientos de Cama: ${traslados.length}`;
                     </div>
                 </div>
 
-                {/* ─── PESTAÑAS DE NAVEGACIÓN ─── */}
+                {/* ─── PESTAÑAS DE NAVEGACIÓN DESPLAZABLES HORIZONTALMENTE ─── */}
                 <div style={{
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '0 20px',
+                    gap: '6px',
+                    padding: '0 12px',
                     borderBottom: '1px solid #E2E8F0',
                     background: '#F8FAFC',
                     flexShrink: 0
                 }}>
-                    <div style={{ display: 'flex', gap: '4px' }}>
+                    {/* Botón desplazar izquierda */}
+                    <button
+                        type="button"
+                        onClick={() => scrollTabs(-180)}
+                        title="Desplazar pestañas a la izquierda"
+                        style={{
+                            background: '#FFFFFF',
+                            border: '1px solid #CBD5E1',
+                            borderRadius: '6px',
+                            width: '28px',
+                            height: '28px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#475569',
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                        }}
+                    >
+                        <ChevronLeft size={16} />
+                    </button>
+
+                    {/* Contenedor con scroll horizontal nativo y rueda de mouse */}
+                    <div 
+                        ref={tabsRef}
+                        onWheel={(e) => {
+                            if (tabsRef.current && e.deltaY !== 0) {
+                                tabsRef.current.scrollLeft += e.deltaY;
+                            }
+                        }}
+                        style={{
+                            display: 'flex',
+                            gap: '4px',
+                            overflowX: 'auto',
+                            scrollbarWidth: 'thin',
+                            scrollbarColor: '#CBD5E1 transparent',
+                            scrollBehavior: 'smooth',
+                            flex: 1,
+                            padding: '0 2px'
+                        }}
+                    >
                         {[
                             { id: 'resumen', label: 'Resumen 360°', icon: FileText, count: null },
                             { id: 'kinesiologia', label: 'Kinesiología & ARM', icon: Wind, count: kinesiologia.length, highlight: true },
@@ -709,6 +757,8 @@ Movimientos de Cama: ${traslados.length}`;
                                         fontWeight: isSelected ? 800 : 600,
                                         color: isSelected ? '#1E40AF' : '#64748B',
                                         cursor: 'pointer',
+                                        whiteSpace: 'nowrap',
+                                        flexShrink: 0,
                                         transition: 'all 0.15s'
                                     }}
                                 >
@@ -731,10 +781,33 @@ Movimientos de Cama: ${traslados.length}`;
                         })}
                     </div>
 
+                    {/* Botón desplazar derecha */}
+                    <button
+                        type="button"
+                        onClick={() => scrollTabs(180)}
+                        title="Desplazar pestañas a la derecha"
+                        style={{
+                            background: '#FFFFFF',
+                            border: '1px solid #CBD5E1',
+                            borderRadius: '6px',
+                            width: '28px',
+                            height: '28px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#475569',
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                        }}
+                    >
+                        <ChevronRight size={16} />
+                    </button>
+
                     {loading && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', color: '#2563EB', fontWeight: 600 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', color: '#2563EB', fontWeight: 600, paddingLeft: '6px', flexShrink: 0 }}>
                             <RefreshCw size={13} className="animate-spin" />
-                            <span>Consultando SALUS...</span>
+                            <span>SALUS...</span>
                         </div>
                     )}
                 </div>
