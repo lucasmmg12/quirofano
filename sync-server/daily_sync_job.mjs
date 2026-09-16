@@ -431,6 +431,8 @@ async function runDailySync() {
         syncedDiag = diagRes.upserted || 0;
         log(`Paso 5 completado: ${syncedDiag} diagnósticos actualizados.`);
     } catch (eDiag) {
+        log(`⚠️ Error no bloqueante en Paso 5 (Diagnósticos): ${eDiag.message}`);
+    }
     // ──────────────────────────────────────────────────────────
     // PASO 6: Kinesiología y Terapia Respiratoria en UCI (Últimos 45 días)
     // ──────────────────────────────────────────────────────────

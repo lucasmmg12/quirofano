@@ -11,6 +11,17 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import UciKinesiologiaPanel from './UciKinesiologiaPanel';
 
+const normalizePatientName = (name) => {
+    if (!name) return '';
+    return String(name)
+        .toUpperCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^A-Z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+};
+
 export default function UciMortalidadAuditModal({ 
     isOpen, 
     onClose, 
@@ -270,19 +281,73 @@ export default function UciMortalidadAuditModal({
         return unique.sort((a, b) => new Date(a.fecha_inicio || a.fecha_ingreso || 0) - new Date(b.fecha_inicio || b.fecha_ingreso || 0));
     }, [currentPatientRecord, rawData]);
 
+    // Métodos utilitarios para resolución robusta de diagnósticos y estudios (por NHC y Nombre)
+    const getDiagsForPatient = (patient) => {
+        if (!patient) return [];
+        const nhc = String(patient.nhc || '').trim();
+        const nhcUnpadded = nhc.replace(/^0+/, '');
+        const normName = normalizePatientName(patient.paciente);
+
+        if (nhc && diagnosticosMap[nhc]?.length > 0) return diagnosticosMap[nhc];
+        if (nhcUnpadded && diagnosticosMap[nhcUnpadded]?.length > 0) return diagnosticosMap[nhcUnpadded];
+        if (normName && diagnosticosMap[normName]?.length > 0) return diagnosticosMap[normName];
+        return [];
+    };
+
+    const getPeticionesForPatient = (patient) => {
+        if (!patient) return [];
+        const nhc = String(patient.nhc || '').trim();
+        const nhcUnpadded = nhc.replace(/^0+/, '');
+        const normName = normalizePatientName(patient.paciente);
+
+        const byNhc = (nhc && peticionesMap[nhc]) || (nhcUnpadded && peticionesMap[nhcUnpadded]) || [];
+        const byName = (normName && peticionesMap[normName]) || [];
+        if (byNhc.length === 0) return byName;
+        if (byName.length === 0) return byNhc;
+
+        const seen = new Set(byNhc.map(p => p.id_peticion || p.id));
+        const merged = [...byNhc];
+        byName.forEach(p => {
+            const k = p.id_peticion || p.id;
+            if (!seen.has(k)) {
+                seen.add(k);
+                merged.push(p);
+            }
+        });
+        return merged;
+    };
+
     const singleNhcKey = currentPatientRecord?.nhc ? String(currentPatientRecord.nhc).trim() : null;
-    const singleDiags = singleNhcKey ? (diagnosticosMap[singleNhcKey] || []) : [];
-    const singlePeticiones = singleNhcKey ? (peticionesMap[singleNhcKey] || []) : [];
+    const singleDiags = getDiagsForPatient(currentPatientRecord);
+    const singlePeticiones = getPeticionesForPatient(currentPatientRecord);
 
     // 2. Cargar Diagnósticos y Peticiones asociadas a los pacientes fallecidos
     useEffect(() => {
         if (!isOpen) return;
 
-        const nhcsSet = new Set(defunciones.map(d => d.nhc).filter(Boolean));
-        if (targetPatient?.nhc) nhcsSet.add(targetPatient.nhc);
-        if (selectedCase?.nhc) nhcsSet.add(selectedCase.nhc);
+        const nhcsSet = new Set();
+        defunciones.forEach(d => {
+            if (d.nhc) {
+                const s = String(d.nhc).trim();
+                nhcsSet.add(s);
+                nhcsSet.add(s.padStart(6, '0'));
+                nhcsSet.add(s.replace(/^0+/, ''));
+            }
+        });
+        if (targetPatient?.nhc) {
+            const s = String(targetPatient.nhc).trim();
+            nhcsSet.add(s);
+            nhcsSet.add(s.padStart(6, '0'));
+            nhcsSet.add(s.replace(/^0+/, ''));
+        }
+        if (selectedCase?.nhc) {
+            const s = String(selectedCase.nhc).trim();
+            nhcsSet.add(s);
+            nhcsSet.add(s.padStart(6, '0'));
+            nhcsSet.add(s.replace(/^0+/, ''));
+        }
 
-        const nhcs = Array.from(nhcsSet);
+        const nhcs = Array.from(nhcsSet).filter(Boolean);
         if (nhcs.length === 0) return;
 
         let isMounted = true;
@@ -300,30 +365,89 @@ export default function UciMortalidadAuditModal({
                 if (diagError) console.error('Error fetching diag:', diagError);
 
                 // B. Peticiones y Estudios de SALUS
-                const { data: petData, error: petError } = await supabase
-                    .from('calidad_peticiones_pruebas')
-                    .select('id_paciente, paciente, fecha_solicitud, estudio, tipo_articulo, modalidad, solicitante, habitacion, prioridad')
-                    .in('id_paciente', nhcs)
-                    .order('fecha_solicitud', { ascending: false });
+                // 1) Por id_paciente directo
+                const petPromises = [
+                    supabase
+                        .from('calidad_peticiones_pruebas')
+                        .select('id, id_peticion, id_paciente, paciente, fecha_solicitud, estudio, tipo_articulo, modalidad, solicitante, habitacion, prioridad')
+                        .in('id_paciente', nhcs)
+                        .order('fecha_solicitud', { ascending: false })
+                ];
 
-                if (petError) console.error('Error fetching peticiones:', petError);
+                // 2) Por tokens de nombre para pacientes de defunciones (resuelve cuando SALUS almacena IdEntidad en vez de NHC)
+                const patientNames = Array.from(new Set([
+                    ...defunciones.map(d => d.paciente),
+                    targetPatient?.paciente,
+                    selectedCase?.paciente
+                ].filter(Boolean)));
+
+                patientNames.forEach(pName => {
+                    const tokens = String(pName).replace(/,/g, ' ').trim().split(/\s+/).filter(t => t.length > 2).slice(0, 2);
+                    if (tokens.length > 0) {
+                        let q = supabase
+                            .from('calidad_peticiones_pruebas')
+                            .select('id, id_peticion, id_paciente, paciente, fecha_solicitud, estudio, tipo_articulo, modalidad, solicitante, habitacion, prioridad');
+                        tokens.forEach(t => { q = q.ilike('paciente', `%${t}%`); });
+                        petPromises.push(q.order('fecha_solicitud', { ascending: false }).limit(100));
+                    }
+                });
+
+                const [petByIdRes, ...petByNameResList] = await Promise.all(petPromises);
+
+                const allPets = [...(petByIdRes?.data || [])];
+                const seenPetIds = new Set(allPets.map(p => p.id_peticion || p.id));
+                petByNameResList.forEach(res => {
+                    (res?.data || []).forEach(p => {
+                        const key = p.id_peticion || p.id;
+                        if (!seenPetIds.has(key)) {
+                            seenPetIds.add(key);
+                            allPets.push(p);
+                        }
+                    });
+                });
 
                 if (isMounted) {
-                    // Mapear diagnósticos por NHC
+                    // Mapear diagnósticos por NHC y por nombre normalizado
                     const dMap = {};
                     (diagData || []).forEach(d => {
-                        const nhcKey = String(d.nhc).trim();
-                        if (!dMap[nhcKey]) dMap[nhcKey] = [];
-                        dMap[nhcKey].push(d);
+                        const rawNhc = String(d.nhc || '').trim();
+                        const unpaddedNhc = rawNhc.replace(/^0+/, '');
+                        const normPName = normalizePatientName(d.paciente);
+
+                        if (rawNhc) {
+                            if (!dMap[rawNhc]) dMap[rawNhc] = [];
+                            dMap[rawNhc].push(d);
+                        }
+                        if (unpaddedNhc && unpaddedNhc !== rawNhc) {
+                            if (!dMap[unpaddedNhc]) dMap[unpaddedNhc] = [];
+                            dMap[unpaddedNhc].push(d);
+                        }
+                        if (normPName) {
+                            if (!dMap[normPName]) dMap[normPName] = [];
+                            dMap[normPName].push(d);
+                        }
                     });
                     setDiagnosticosMap(dMap);
 
-                    // Mapear peticiones por NHC
+                    // Mapear peticiones por ID paciente y por nombre normalizado
                     const pMap = {};
-                    (petData || []).forEach(p => {
-                        const nhcKey = String(p.id_paciente).trim();
-                        if (!pMap[nhcKey]) pMap[nhcKey] = [];
-                        pMap[nhcKey].push(p);
+                    allPets.forEach(p => {
+                        const rawId = String(p.id_paciente || '').trim();
+                        const unpaddedId = rawId.replace(/^0+/, '');
+                        const normPName = normalizePatientName(p.paciente);
+
+                        if (rawId) {
+                            if (!pMap[rawId]) pMap[rawId] = [];
+                            pMap[rawId].push(p);
+                        }
+                        if (unpaddedId && unpaddedId !== rawId) {
+                            if (!pMap[unpaddedId]) pMap[unpaddedId] = [];
+                            pMap[unpaddedId].push(p);
+                        }
+                        if (normPName) {
+                            if (!pMap[normPName]) pMap[normPName] = [];
+                            pMap[normPName].push(p);
+                        }
                     });
                     setPeticionesMap(pMap);
                 }
@@ -339,7 +463,7 @@ export default function UciMortalidadAuditModal({
         return () => {
             isMounted = false;
         };
-    }, [isOpen, defunciones]);
+    }, [isOpen, defunciones, targetPatient, selectedCase]);
 
     // 3. Métricas de Severidad y KPIs
     const metrics = useMemo(() => {
@@ -419,7 +543,7 @@ export default function UciMortalidadAuditModal({
             // Filtro por texto de búsqueda
             if (searchTerm.trim()) {
                 const q = searchTerm.toLowerCase().trim();
-                const diags = (diagnosticosMap[String(row.nhc).trim()] || []).map(d => `${d.diagnostico} ${d.motivo}`).join(' ').toLowerCase();
+                const diags = getDiagsForPatient(row).map(d => `${d.diagnostico} ${d.motivo}`).join(' ').toLowerCase();
                 const matchesText = 
                     String(row.paciente || '').toLowerCase().includes(q) ||
                     String(row.nhc || '').toLowerCase().includes(q) ||
@@ -519,9 +643,8 @@ export default function UciMortalidadAuditModal({
 
         // Hoja 2: Listado Nominal Detallado
         const detallePacientes = filteredRows.map(r => {
-            const nhcKey = String(r.nhc).trim();
-            const diags = diagnosticosMap[nhcKey] || [];
-            const pets = peticionesMap[nhcKey] || [];
+            const diags = getDiagsForPatient(r);
+            const pets = getPeticionesForPatient(r);
 
             const diagTexto = diags.map(d => d.diagnostico).filter(Boolean).join(' | ') || 'Sin codificación CIE';
             const petTexto = pets.map(p => p.estudio).filter(Boolean).slice(0, 3).join(' | ') || 'Sin estudios en registro';
@@ -1074,8 +1197,9 @@ export default function UciMortalidadAuditModal({
 
         // Obtener top diagnósticos
         const diagFreq = {};
-        Object.values(diagnosticosMap).forEach(list => {
-            list.forEach(d => {
+        filteredRows.forEach(r => {
+            const diags = getDiagsForPatient(r);
+            diags.forEach(d => {
                 if (d.diagnostico) {
                     const c = d.diagnostico.trim();
                     diagFreq[c] = (diagFreq[c] || 0) + 1;
@@ -1125,9 +1249,8 @@ export default function UciMortalidadAuditModal({
         drawHeader('LISTADO NOMINAL DE PACIENTES AUDITADOS', `Total Casos: ${filteredRows.length} | Sector: ${sectorLabel}`);
 
         const tableBody = filteredRows.map(r => {
-            const nhcKey = String(r.nhc).trim();
-            const diags = (diagnosticosMap[nhcKey] || []).map(d => d.diagnostico).filter(Boolean);
-            const pets = (peticionesMap[nhcKey] || []).map(p => p.estudio).filter(Boolean);
+            const diags = getDiagsForPatient(r).map(d => d.diagnostico).filter(Boolean);
+            const pets = getPeticionesForPatient(r).map(p => p.estudio).filter(Boolean);
 
             const fIng = r.fecha_ingreso ? new Date(r.fecha_ingreso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
             const fAlt = r.fecha_alta ? new Date(r.fecha_alta).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
@@ -1976,8 +2099,8 @@ export default function UciMortalidadAuditModal({
                                     <tbody>
                                         {filteredRows.map((row, idx) => {
                                             const nhcKey = String(row.nhc).trim();
-                                            const diags = diagnosticosMap[nhcKey] || [];
-                                            const peticiones = peticionesMap[nhcKey] || [];
+                                            const diags = getDiagsForPatient(row);
+                                            const peticiones = getPeticionesForPatient(row);
                                             const isExpanded = expandedNhc === nhcKey;
 
                                             const fIng = row.fecha_ingreso ? new Date(row.fecha_ingreso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';

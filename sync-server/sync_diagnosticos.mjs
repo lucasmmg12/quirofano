@@ -42,7 +42,7 @@ function log(msg) {
     console.log(`[${ts}] [SYNC-DIAG] ${msg}`);
 }
 
-export async function syncDiagnosticos(fromDate = '2026-06-01') {
+export async function syncDiagnosticos(fromDate = '2026-02-01') {
     log(`🩺 Iniciando extracción de diagnósticos desde SALUS (desde: ${fromDate})...`);
     let pool;
     try {
