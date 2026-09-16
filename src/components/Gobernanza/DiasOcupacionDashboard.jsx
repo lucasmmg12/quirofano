@@ -779,25 +779,51 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         }
     };
 
-    // Filtrar filas según Sub-Nivel de UCI, Especialidades y Regla Censal de Días Cama:
-    // "Si ingresó 15/09 y salió 16/09 equivale a 1 día. Si ingresó 15/09 y salió el mismo día también equivale a 1 día.
-    // En estancias grandes, el día de alta no se cuenta como día de ocupación."
+    // Normalización de Habitaciones y Detección de Modalidad Clínica
+    const normalizeHab = (hab) => {
+        if (!hab) return 'Sin Asignar';
+        const h = hab.trim().toUpperCase();
+        const boxM = h.match(/^BOX\s*0?([1-8])$/i) || h.match(/^BOX\s*AUXILIAR\s*0?([1-8])$/i);
+        if (boxM) return 'BOX ' + boxM[1];
+        const habIntM = h.match(/^HABITACI[OÓ]N\s*(22[2-9])$/i) || h.match(/^(22[2-9])$/);
+        if (habIntM) return 'HAB ' + habIntM[1];
+        return h;
+    };
+
+    const isUciBed = (normH) => {
+        return /^BOX\s*[1-8]$/.test(normH) || /^HAB\s*22[2-9]$/.test(normH) || /^22[2-9]$/.test(normH);
+    };
+
+    // Filtrar filas según Período General, Sub-Nivel de UCI, Box, Especialidades y Regla Censal de Días Cama:
+    // El filtro de período (fechaDesde -> fechaHasta) es general y mandatorio para todas las métricas y modales.
     const filteredRows = useMemo(() => {
         let list = rows;
+        // 1. Filtro estricto de período general para días camas
+        if (fechaDesde && fechaHasta) {
+            list = list.filter(r => r.fecha_ocupacion >= fechaDesde && r.fecha_ocupacion <= fechaHasta);
+        }
+        // 2. Filtro por Sector y Sub-Nivel
         if (sectorId === 'UCI') {
             if (uciSubNivel === 'INTENSIVA') {
                 list = list.filter(r => (r.servicio || '').trim().toUpperCase() === 'UCI');
             } else if (uciSubNivel === 'INTERMEDIA') {
                 list = list.filter(r => (r.servicio || '').trim().toUpperCase() === 'TERAPIA INTERMEDIA');
             }
+        } else if (sectorId && sectorId !== 'TODOS') {
+            list = list.filter(r => (r.servicio || '').trim().toUpperCase() === sectorId.toUpperCase());
         }
+        // 3. Filtro por Box si se ha seleccionado uno específico
+        if (boxFiltro && boxFiltro !== 'TODOS') {
+            list = list.filter(r => normalizeHab(r.habitacion) === boxFiltro);
+        }
+        // 4. Filtro por Especialidades
         if (selectedEspecialidades !== null) {
             list = list.filter(r => r.especialidad && selectedEspecialidades.includes(r.especialidad.trim()));
         }
-        // Aplicar regla censal hospitalaria: excluir la fila censal del día de alta en estancias multi-día
+        // 5. Aplicar regla censal hospitalaria: excluir la fila censal del día de alta en estancias multi-día
         list = list.filter(r => esDiaOcupadoValido(r.fecha_ocupacion, r.fecha_ingreso, r.fecha_alta));
         return list;
-    }, [rows, sectorId, uciSubNivel, selectedEspecialidades]);
+    }, [rows, fechaDesde, fechaHasta, sectorId, uciSubNivel, boxFiltro, selectedEspecialidades]);
 
     // === CÁLCULO DE KPIS E INDICADORES ===
     const metrics = useMemo(() => {
@@ -1062,20 +1088,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             .sort((a, b) => b.value - a.value)
             .slice(0, 8);
 
-        // 8. Normalización de Habitaciones y Detección de Modalidad Clínica
-        const normalizeHab = (hab) => {
-            if (!hab) return 'Sin Asignar';
-            const h = hab.trim().toUpperCase();
-            const boxM = h.match(/^BOX\s*0?([1-8])$/i) || h.match(/^BOX\s*AUXILIAR\s*0?([1-8])$/i);
-            if (boxM) return 'BOX ' + boxM[1];
-            const habIntM = h.match(/^HABITACI[OÓ]N\s*(22[2-9])$/i) || h.match(/^(22[2-9])$/);
-            if (habIntM) return 'HAB ' + habIntM[1];
-            return h;
-        };
-
-        const isUciBed = (normH) => {
-            return /^BOX\s*[1-8]$/.test(normH) || /^HAB\s*22[2-9]$/.test(normH) || /^22[2-9]$/.test(normH);
-        };
+        // 8. Detección de Modalidad Clínica
 
         const getStudyModality = (p) => {
             const ta = (p.tipo_articulo || '').toLowerCase();
@@ -3893,6 +3906,14 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             {inspectDataIndicator && (
                 <TelarDataModal
                     indicator={inspectDataIndicator}
+                    dateFilter={{ fechaDesde, fechaHasta }}
+                    activeFilters={{
+                        sector: activeSectorConfig.label,
+                        uciSubNivel: sectorId === 'UCI' ? uciSubNivel : null,
+                        boxFiltro: boxFiltro !== 'TODOS' ? boxFiltro : null,
+                        especialidades: selectedEspecialidades,
+                        modalidadFiltro: modalidadFiltro !== 'TODAS' ? modalidadFiltro : null
+                    }}
                     rawData={
                         inspectDataIndicator.dataType === 'peticiones' 
                             ? (inspectDataIndicator.rawData || metrics.peticionesFiltradas) 
