@@ -20,14 +20,17 @@ import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 import { syncCensoCamas } from './sync_censo_camas.mjs';
 import { syncDiagnosticos } from './sync_diagnosticos.mjs';
 import { syncKinesiologiaUci } from './sync_kinesiologia_uci.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Cargar .env del proyecto padre
-config({ path: resolve(__dirname, '..', '.env') });
+// Cargar .env: primero buscar en el directorio actual, luego en el padre
+const envLocal = resolve(__dirname, '.env');
+const envParent = resolve(__dirname, '..', '.env');
+config({ path: fs.existsSync(envLocal) ? envLocal : envParent });
 
 const app = express();
 const PORT = process.env.PORT || 3456;

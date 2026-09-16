@@ -3,9 +3,12 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
+const envLocal = path.join(__dirname, '.env');
+const envParent = path.join(__dirname, '..', '.env');
+dotenv.config({ path: fs.existsSync(envLocal) ? envLocal : envParent });
 
 const SQL_CONFIG = {
     server: process.env.SALUS_DB_SERVER || '128.223.16.29',
