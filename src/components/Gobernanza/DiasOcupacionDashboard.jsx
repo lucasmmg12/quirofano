@@ -385,6 +385,94 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const [boxFiltro, setBoxFiltro] = useState('TODOS'); // 'TODOS' o 'BOX 1', etc.
     const [loadingPeticiones, setLoadingPeticiones] = useState(false);
     
+    // Estado de Última Actualización SALUS
+    const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
+    const [loadingActualizacion, setLoadingActualizacion] = useState(false);
+
+    const fetchUltimaActualizacion = async () => {
+        try {
+            setLoadingActualizacion(true);
+            const [rCenso, rOcup] = await Promise.all([
+                supabase
+                    .from('calidad_censo_camas_uci')
+                    .select('updated_at')
+                    .order('updated_at', { ascending: false, nullsFirst: false })
+                    .limit(1),
+                supabase
+                    .from('calidad_admisiones_ocupacion')
+                    .select('updated_at')
+                    .order('updated_at', { ascending: false, nullsFirst: false })
+                    .limit(1)
+            ]);
+
+            const t1 = rCenso.data?.[0]?.updated_at;
+            const t2 = rOcup.data?.[0]?.updated_at;
+
+            const valid = [t1, t2].filter(Boolean).map(t => new Date(t).getTime());
+            if (valid.length > 0) {
+                setUltimaActualizacion(new Date(Math.max(...valid)));
+            }
+        } catch (err) {
+            console.warn('Error al obtener última actualización de SALUS:', err);
+        } finally {
+            setLoadingActualizacion(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchUltimaActualizacion();
+        const interval = setInterval(fetchUltimaActualizacion, 60000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const actualizacionInfo = useMemo(() => {
+        if (!ultimaActualizacion) {
+            return {
+                fechaTexto: 'Consultando SALUS...',
+                tiempoRelativo: '',
+                isLive: false
+            };
+        }
+        const d = new Date(ultimaActualizacion);
+        if (isNaN(d.getTime())) {
+            return {
+                fechaTexto: 'Fecha no disponible',
+                tiempoRelativo: '',
+                isLive: false
+            };
+        }
+
+        const meses = [
+            'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+            'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+        ];
+        const dia = d.getDate();
+        const mes = meses[d.getMonth()];
+        const anio = d.getFullYear();
+        const horas = String(d.getHours()).padStart(2, '0');
+        const minutos = String(d.getMinutes()).padStart(2, '0');
+
+        const fechaTexto = `${dia} de ${mes} de ${anio} · ${horas}:${minutos} hs`;
+
+        const diffMs = Date.now() - d.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHoras = Math.floor(diffMins / 60);
+        const diffDias = Math.floor(diffHoras / 24);
+
+        let tiempoRelativo = '';
+        if (diffMins < 2) tiempoRelativo = 'Recién sincronizado';
+        else if (diffMins < 60) tiempoRelativo = `Hace ${diffMins} min`;
+        else if (diffHoras < 24) tiempoRelativo = `Hace ${diffHoras} h`;
+        else if (diffDias === 1) tiempoRelativo = 'Ayer';
+        else tiempoRelativo = `Hace ${diffDias} días`;
+
+        return {
+            fechaTexto,
+            tiempoRelativo,
+            isLive: diffHoras < 24
+        };
+    }, [ultimaActualizacion]);
+
     // Modal de Documentación Técnica
     const [showDocModal, setShowDocModal] = useState(false);
     const [docModalTab, setDocModalTab] = useState('UCI');
@@ -2100,141 +2188,291 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 borderBottom: '1px solid #E2E8F0',
                 padding: '12px 24px',
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '16px',
-                flexWrap: 'wrap',
+                flexDirection: 'column',
+                gap: '10px',
                 zIndex: 10
             }}>
-                {/* Lado Izquierdo: Toggle Sidebar + Título del Sector */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <button
-                        onClick={() => setSidebarOpen(prev => !prev)}
-                        title={sidebarOpen ? "Ocultar panel de sectores" : "Mostrar panel de sectores"}
-                        style={{
-                            background: '#F1F5F9',
-                            border: '1px solid #CBD5E1',
-                            borderRadius: '8px',
-                            padding: '7px',
-                            cursor: 'pointer',
-                            color: '#475569',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                        }}
-                    >
-                        {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
-                    </button>
+                {/* FILA SUPERIOR 1: TÍTULO DEL SECTOR, SUB-SELECTORES Y TARJETA DESTACADA DE ÚLTIMA ACTUALIZACIÓN */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '16px',
+                    flexWrap: 'wrap',
+                    paddingBottom: '8px',
+                    borderBottom: '1px solid #F1F5F9'
+                }}>
+                    {/* Lado Izquierdo: Toggle Sidebar + Título del Sector */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                        <button
+                            onClick={() => setSidebarOpen(prev => !prev)}
+                            title={sidebarOpen ? "Ocultar panel de sectores" : "Mostrar panel de sectores"}
+                            style={{
+                                background: '#F1F5F9',
+                                border: '1px solid #CBD5E1',
+                                borderRadius: '8px',
+                                padding: '7px',
+                                cursor: 'pointer',
+                                color: '#475569',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}
+                        >
+                            {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+                        </button>
 
-                    <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '1.2rem' }}>{activeSectorConfig.icon}</span>
-                            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F172A' }}>
-                                {activeSectorConfig.label}
-                            </h2>
-                            <span style={{
-                                fontSize: '0.72rem',
-                                background: '#EFF6FF',
-                                color: '#1E40AF',
-                                padding: '2px 8px',
-                                borderRadius: '12px',
-                                fontWeight: 700,
-                                border: '1px solid #BFDBFE'
-                            }}>
-                                {sectorId === 'GUARDIA' ? `${activeGuardiaIds.length} Indicadores` : `${activeIndicatorIds.length} Indicadores`}
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '1.2rem' }}>{activeSectorConfig.icon}</span>
+                                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F172A' }}>
+                                    {activeSectorConfig.label}
+                                </h2>
+                                <span style={{
+                                    fontSize: '0.72rem',
+                                    background: '#EFF6FF',
+                                    color: '#1E40AF',
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    fontWeight: 700,
+                                    border: '1px solid #BFDBFE'
+                                }}>
+                                    {sectorId === 'GUARDIA' ? `${activeGuardiaIds.length} Indicadores` : `${activeIndicatorIds.length} Indicadores`}
+                                </span>
+                            </div>
+                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                {activeSectorConfig.descripcion}
                             </span>
                         </div>
-                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                            {activeSectorConfig.descripcion}
-                        </span>
+
+                        {/* Sub-Selector Tripartito Exclusivo para UCI (Cuidados Críticos) */}
+                        {sectorId === 'UCI' && (
+                            <div style={{
+                                display: 'flex',
+                                background: '#F1F5F9',
+                                padding: '3px',
+                                borderRadius: '10px',
+                                border: '1px solid #CBD5E1',
+                                gap: '3px',
+                                marginLeft: '8px'
+                            }}>
+                                <button
+                                    onClick={() => handleSelectUciSubNivel('CONSOLIDADO')}
+                                    style={{
+                                        background: uciSubNivel === 'CONSOLIDADO' ? '#2563EB' : 'transparent',
+                                        color: uciSubNivel === 'CONSOLIDADO' ? '#FFFFFF' : '#475569',
+                                        border: 'none',
+                                        borderRadius: '7px',
+                                        padding: '5px 10px',
+                                        fontSize: '0.76rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    <span>⚡</span>
+                                    <span>UCI Total (16 camas)</span>
+                                </button>
+                                <button
+                                    onClick={() => handleSelectUciSubNivel('INTENSIVA')}
+                                    style={{
+                                        background: uciSubNivel === 'INTENSIVA' ? '#1E40AF' : 'transparent',
+                                        color: uciSubNivel === 'INTENSIVA' ? '#FFFFFF' : '#475569',
+                                        border: 'none',
+                                        borderRadius: '7px',
+                                        padding: '5px 10px',
+                                        fontSize: '0.76rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    <span>🔴</span>
+                                    <span>Terapia Intensiva (8)</span>
+                                </button>
+                                <button
+                                    onClick={() => handleSelectUciSubNivel('INTERMEDIA')}
+                                    style={{
+                                        background: uciSubNivel === 'INTERMEDIA' ? '#D97706' : 'transparent',
+                                        color: uciSubNivel === 'INTERMEDIA' ? '#FFFFFF' : '#475569',
+                                        border: 'none',
+                                        borderRadius: '7px',
+                                        padding: '5px 10px',
+                                        fontSize: '0.76rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    <span>🟡</span>
+                                    <span>Terapia Intermedia (8)</span>
+                                </button>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Sub-Selector Tripartito Exclusivo para UCI (Cuidados Críticos) */}
-                    {sectorId === 'UCI' && (
+                    {/* Lado Derecho: TARJETA DESTACADA EN GRANDE - ÚLTIMA ACTUALIZACIÓN SALUS */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        background: '#FFFFFF',
+                        border: '1.5px solid #CBD5E1',
+                        borderRadius: '10px',
+                        padding: '6px 16px',
+                        boxShadow: '0 2px 5px rgba(0, 0, 0, 0.04)',
+                        marginLeft: 'auto'
+                    }}>
                         <div style={{
+                            width: '38px',
+                            height: '38px',
+                            borderRadius: '8px',
+                            background: 'linear-gradient(135deg, #EFF6FF, #DBEAFE)',
+                            border: '1px solid #BFDBFE',
                             display: 'flex',
-                            background: '#F1F5F9',
-                            padding: '3px',
-                            borderRadius: '10px',
-                            border: '1px solid #CBD5E1',
-                            gap: '3px',
-                            marginLeft: '8px'
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#1E40AF',
+                            flexShrink: 0
                         }}>
-                            <button
-                                onClick={() => handleSelectUciSubNivel('CONSOLIDADO')}
-                                style={{
-                                    background: uciSubNivel === 'CONSOLIDADO' ? '#2563EB' : 'transparent',
-                                    color: uciSubNivel === 'CONSOLIDADO' ? '#FFFFFF' : '#475569',
-                                    border: 'none',
-                                    borderRadius: '7px',
-                                    padding: '5px 10px',
-                                    fontSize: '0.76rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '5px',
-                                    transition: 'all 0.15s ease'
-                                }}
-                            >
-                                <span>⚡</span>
-                                <span>UCI Total (16 camas)</span>
-                            </button>
-                            <button
-                                onClick={() => handleSelectUciSubNivel('INTENSIVA')}
-                                style={{
-                                    background: uciSubNivel === 'INTENSIVA' ? '#1E40AF' : 'transparent',
-                                    color: uciSubNivel === 'INTENSIVA' ? '#FFFFFF' : '#475569',
-                                    border: 'none',
-                                    borderRadius: '7px',
-                                    padding: '5px 10px',
-                                    fontSize: '0.76rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '5px',
-                                    transition: 'all 0.15s ease'
-                                }}
-                            >
-                                <span>🔴</span>
-                                <span>Terapia Intensiva (8)</span>
-                            </button>
-                            <button
-                                onClick={() => handleSelectUciSubNivel('INTERMEDIA')}
-                                style={{
-                                    background: uciSubNivel === 'INTERMEDIA' ? '#D97706' : 'transparent',
-                                    color: uciSubNivel === 'INTERMEDIA' ? '#FFFFFF' : '#475569',
-                                    border: 'none',
-                                    borderRadius: '7px',
-                                    padding: '5px 10px',
-                                    fontSize: '0.76rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '5px',
-                                    transition: 'all 0.15s ease'
-                                }}
-                            >
-                                <span>🟡</span>
-                                <span>Terapia Intermedia (8)</span>
-                            </button>
+                            <Clock size={20} />
                         </div>
-                    )}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{
+                                    width: '8px',
+                                    height: '8px',
+                                    borderRadius: '50%',
+                                    background: actualizacionInfo.isLive ? '#10B981' : '#F59E0B',
+                                    boxShadow: actualizacionInfo.isLive ? '0 0 0 2px rgba(16, 185, 129, 0.25)' : 'none',
+                                    display: 'inline-block'
+                                }} />
+                                <span style={{
+                                    fontSize: '0.68rem',
+                                    fontWeight: 800,
+                                    color: '#475569',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.6px'
+                                }}>
+                                    Última Actualización SALUS
+                                </span>
+                                {actualizacionInfo.tiempoRelativo && (
+                                    <span style={{
+                                        fontSize: '0.68rem',
+                                        fontWeight: 700,
+                                        color: actualizacionInfo.isLive ? '#047857' : '#B45309',
+                                        background: actualizacionInfo.isLive ? '#ECFDF5' : '#FFFBEB',
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        border: actualizacionInfo.isLive ? '1px solid #A7F3D0' : '1px solid #FDE68A'
+                                    }}>
+                                        {actualizacionInfo.tiempoRelativo}
+                                    </span>
+                                )}
+                                <button
+                                    onClick={fetchUltimaActualizacion}
+                                    title="Consultar última actualización"
+                                    style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: '#94A3B8',
+                                        cursor: 'pointer',
+                                        padding: '1px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        marginLeft: '2px'
+                                    }}
+                                >
+                                    <RefreshCw size={12} className={loadingActualizacion ? 'animate-spin' : ''} />
+                                </button>
+                            </div>
+                            <div style={{
+                                fontSize: '1.08rem',
+                                fontWeight: 800,
+                                color: '#0F172A',
+                                letterSpacing: '-0.3px',
+                                lineHeight: 1.2
+                            }}>
+                                {actualizacionInfo.fechaTexto}
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Filtros Paramétricos Centrales */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    
-                    {/* Botón Catálogo de Indicadores */}
-                    {sectorId === 'UCI' && (
+                {/* FILA INFERIOR 2: FILTROS PARAMÉTRICOS + SYNC + CENTRO DE EXPORTACIÓN */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    flexWrap: 'wrap'
+                }}>
+                    {/* Filtros Paramétricos Centrales */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        
+                        {/* Botón Catálogo de Indicadores */}
+                        {sectorId === 'UCI' && (
+                            <button
+                                onClick={() => setIsCatalogoOpen(true)}
+                                style={{
+                                    background: '#FFFFFF',
+                                    border: '1px solid #2563EB',
+                                    color: '#1E40AF',
+                                    borderRadius: '8px',
+                                    padding: '6px 12px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 700,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <Sliders size={15} />
+                                Catálogo ({activeIndicatorIds.length})
+                            </button>
+                        )}
+
+                        {/* Botón de Documentación Técnica */}
                         <button
-                            onClick={() => setIsCatalogoOpen(true)}
+                            onClick={() => {
+                                setDocModalTab(sectorId);
+                                setShowDocModal(true);
+                            }}
                             style={{
-                                background: '#FFFFFF',
-                                border: '1px solid #2563EB',
-                                color: '#1E40AF',
+                                background: '#F8FAFC',
+                                border: '1px solid #CBD5E1',
+                                color: '#334155',
+                                borderRadius: '8px',
+                                padding: '6px 12px',
+                                fontSize: '0.8rem',
+                                fontWeight: 600,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <BookOpen size={15} color="#2563EB" />
+                            Fórmulas & SQL
+                        </button>
+
+                        {/* Botón Tablero de Indicadores */}
+                        <button
+                            onClick={() => {}}
+                            style={{
+                                background: '#1E40AF',
+                                color: '#FFFFFF',
+                                border: 'none',
                                 borderRadius: '8px',
                                 padding: '6px 12px',
                                 fontSize: '0.8rem',
@@ -2242,440 +2480,378 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '6px',
-                                cursor: 'pointer'
+                                cursor: 'default'
                             }}
                         >
-                            <Sliders size={15} />
-                            Catálogo ({activeIndicatorIds.length})
+                            <LayoutDashboard size={15} />
+                            Indicadores
                         </button>
-                    )}
 
-                    {/* Botón Documentación Técnica */}
-                    <button
-                        onClick={() => {
-                            setDocModalTab(sectorId);
-                            setShowDocModal(true);
-                        }}
-                        style={{
-                            background: '#F1F5F9',
-                            border: '1px solid #CBD5E1',
-                            color: '#334155',
-                            borderRadius: '8px',
-                            padding: '6px 12px',
-                            fontSize: '0.8rem',
-                            fontWeight: 600,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        <BookOpen size={15} color="#1E40AF" />
-                        Fórmulas & SQL
-                    </button>
-
-                    {/* Selector de Modo: Indicadores vs Gantt de Camas */}
-                    {sectorId === 'UCI' && (
-                        <div style={{
-                            display: 'flex',
-                            background: '#F1F5F9',
-                            padding: '3px',
-                            borderRadius: '8px',
-                            border: '1px solid #CBD5E1',
-                            gap: '3px'
-                        }}>
+                        {/* Botón Gantt Camas UCI */}
+                        {sectorId === 'UCI' && (
                             <button
-                                type="button"
-                                onClick={() => setViewMode('dashboard')}
+                                onClick={() => setIsGanttModalOpen(true)}
                                 style={{
-                                    background: viewMode === 'dashboard' ? '#1E40AF' : 'transparent',
-                                    color: viewMode === 'dashboard' ? '#FFFFFF' : '#475569',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '5px 10px',
-                                    fontSize: '0.78rem',
+                                    background: '#F8FAFC',
+                                    border: '1px solid #CBD5E1',
+                                    color: '#1E40AF',
+                                    borderRadius: '8px',
+                                    padding: '6px 12px',
+                                    fontSize: '0.8rem',
                                     fontWeight: 700,
-                                    cursor: 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '5px',
-                                    transition: 'all 0.15s ease'
+                                    gap: '6px',
+                                    cursor: 'pointer'
                                 }}
+                                title="Abrir cronograma Gantt de ocupación por cama"
                             >
-                                <LayoutDashboard size={14} />
-                                <span>Indicadores</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setViewMode('gantt')}
-                                style={{
-                                    background: viewMode === 'gantt' ? '#1E40AF' : 'transparent',
-                                    color: viewMode === 'gantt' ? '#FFFFFF' : '#475569',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '5px 10px',
-                                    fontSize: '0.78rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '5px',
-                                    transition: 'all 0.15s ease'
-                                }}
-                            >
-                                <Bed size={14} />
-                                <span>Gantt Camas UCI</span>
+                                <Bed size={15} />
+                                Gantt Camas UCI
                                 <span style={{
-                                    background: viewMode === 'gantt' ? '#3B82F6' : '#DBEAFE',
-                                    color: viewMode === 'gantt' ? '#FFFFFF' : '#1E40AF',
                                     fontSize: '0.65rem',
+                                    background: '#DBEAFE',
+                                    color: '#1E40AF',
                                     padding: '1px 5px',
-                                    borderRadius: '6px',
-                                    fontWeight: 800
+                                    borderRadius: '4px',
+                                    fontWeight: 700
                                 }}>
                                     16 Camas
                                 </span>
                             </button>
-                        </div>
-                    )}
+                        )}
 
-                    <div style={{ height: '24px', width: '1px', background: '#E2E8F0' }} />
+                        {/* Selector Especialidad Multi-Select para UCI */}
+                        {sectorId === 'UCI' && (
+                            <>
+                                <div ref={especDropdownRef} style={{ position: 'relative' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setEspecDropdownOpen(prev => !prev)}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '6px 10px',
+                                            borderRadius: '8px',
+                                            border: '1px solid #CBD5E1',
+                                            background: selectedEspecialidades === null ? '#FFFFFF' : '#EFF6FF',
+                                            fontSize: '0.78rem',
+                                            fontWeight: 600,
+                                            color: selectedEspecialidades === null ? '#334155' : '#1E40AF',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        <Filter size={13} color={selectedEspecialidades === null ? '#64748B' : '#1E40AF'} />
+                                        <span>Especialidad:</span>
+                                        <strong style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {selectedEspecialidades === null 
+                                                ? '(Todas)' 
+                                                : selectedEspecialidades.length === 0 
+                                                    ? 'Ninguna' 
+                                                    : selectedEspecialidades.length === 1 
+                                                        ? selectedEspecialidades[0] 
+                                                        : `${selectedEspecialidades.length} selecc.`}
+                                        </strong>
+                                        <ChevronDown size={14} color="#64748B" />
+                                    </button>
 
-                    {/* Filtro Multi-Especialidad y Camas (exclusivo UCI) */}
-                    {sectorId === 'UCI' && (
-                        <>
-                            <div ref={especDropdownRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>Especialidad:</span>
+                                    {/* Dropdown Flotante con Checkboxes */}
+                                    {especDropdownOpen && (
+                                        <div style={{
+                                            position: 'absolute',
+                                            top: 'calc(100% + 4px)',
+                                            left: 0,
+                                            zIndex: 100,
+                                            background: '#FFFFFF',
+                                            border: '1px solid #CBD5E1',
+                                            borderRadius: '8px',
+                                            boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)',
+                                            width: '280px',
+                                            maxHeight: '320px',
+                                            padding: '8px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '6px'
+                                        }}>
+                                            {/* Cabecera del Dropdown: Acciones Rápidas */}
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                paddingBottom: '6px',
+                                                borderBottom: '1px solid #F1F5F9'
+                                            }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSelectAllEspecialidades}
+                                                    style={{
+                                                        background: 'transparent',
+                                                        border: 'none',
+                                                        color: '#2563EB',
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        padding: '2px 4px'
+                                                    }}
+                                                >
+                                                    Seleccionar todas
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleClearAllEspecialidades}
+                                                    style={{
+                                                        background: 'transparent',
+                                                        border: 'none',
+                                                        color: '#64748B',
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: 600,
+                                                        cursor: 'pointer',
+                                                        padding: '2px 4px'
+                                                    }}
+                                                >
+                                                    Deseleccionar todas
+                                                </button>
+                                            </div>
+
+                                            {/* Casillas de Verificación por Especialidad */}
+                                            <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                {especialidadesDisponibles.map(esp => {
+                                                    const isChecked = selectedEspecialidades === null || selectedEspecialidades.includes(esp);
+                                                    return (
+                                                        <div
+                                                            key={esp}
+                                                            style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'space-between',
+                                                                padding: '5px 6px',
+                                                                borderRadius: '6px',
+                                                                background: isChecked ? '#EFF6FF' : 'transparent',
+                                                                cursor: 'pointer',
+                                                                fontSize: '0.75rem',
+                                                                transition: 'background 0.1s ease'
+                                                            }}
+                                                            onClick={() => handleToggleEspecialidad(esp)}
+                                                        >
+                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', width: '100%' }}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isChecked}
+                                                                    onChange={() => {}}
+                                                                    style={{ accentColor: '#2563EB', cursor: 'pointer' }}
+                                                                />
+                                                                <span style={{
+                                                                    color: isChecked ? '#1E40AF' : '#334155',
+                                                                    fontWeight: isChecked ? 700 : 500
+                                                                }}>
+                                                                    {esp}
+                                                                </span>
+                                                            </label>
+                                                            <button
+                                                                type="button"
+                                                                title={`Filtrar únicamente ${esp}`}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleSelectOnlyEspecialidad(esp);
+                                                                }}
+                                                                style={{
+                                                                    background: 'transparent',
+                                                                    border: 'none',
+                                                                    color: '#94A3B8',
+                                                                    fontSize: '0.68rem',
+                                                                    fontWeight: 600,
+                                                                    cursor: 'pointer',
+                                                                    padding: '1px 5px',
+                                                                    borderRadius: '3px'
+                                                                }}
+                                                                onMouseEnter={(e) => e.currentTarget.style.color = '#2563EB'}
+                                                                onMouseLeave={(e) => e.currentTarget.style.color = '#94A3B8'}
+                                                            >
+                                                                solo
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Camas Totales */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>Camas:</span>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="300"
+                                        value={camasTotales}
+                                        onChange={(e) => setCamasTotales(Number(e.target.value))}
+                                        style={{
+                                            width: '55px',
+                                            padding: '5px 6px',
+                                            borderRadius: '6px',
+                                            border: '1px solid #CBD5E1',
+                                            fontSize: '0.8rem',
+                                            fontWeight: 700,
+                                            color: '#1E40AF',
+                                            textAlign: 'center'
+                                        }}
+                                    />
+                                </div>
+                            </>
+                        )}
+
+                        {/* Selector de Período Clínico: Este Mes, Mes Anterior y Personalizado */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {/* Botones de Presets: Este Mes | Mes Anterior | Personalizado */}
+                            <div style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                background: '#F1F5F9',
+                                padding: '2px',
+                                borderRadius: '8px',
+                                border: '1px solid #CBD5E1',
+                                gap: '2px'
+                            }}>
                                 <button
                                     type="button"
-                                    onClick={() => setEspecDropdownOpen(prev => !prev)}
+                                    onClick={() => handleSetDatePreset('este_mes')}
                                     style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        gap: '6px',
-                                        padding: '5px 10px',
+                                        background: datePresetMode === 'este_mes' ? '#1E40AF' : 'transparent',
+                                        color: datePresetMode === 'este_mes' ? '#FFFFFF' : '#475569',
+                                        border: 'none',
                                         borderRadius: '6px',
-                                        border: especDropdownOpen ? '1px solid #2563EB' : '1px solid #CBD5E1',
-                                        fontSize: '0.8rem',
-                                        color: '#1E293B',
-                                        background: '#FFFFFF',
-                                        minWidth: '130px',
-                                        maxWidth: '190px',
+                                        padding: '4px 9px',
+                                        fontSize: '0.74rem',
+                                        fontWeight: datePresetMode === 'este_mes' ? 700 : 500,
                                         cursor: 'pointer',
-                                        transition: 'all 0.15s ease'
+                                        transition: 'all 0.15s ease',
+                                        boxShadow: datePresetMode === 'este_mes' ? '0 1px 2px rgba(30, 64, 175, 0.2)' : 'none'
                                     }}
+                                    title="Filtrar datos del mes en curso"
                                 >
-                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>
-                                        {selectedEspecialidades === null 
-                                            ? '(Todas)' 
-                                            : selectedEspecialidades.length === 0 
-                                                ? 'Ninguna' 
-                                                : selectedEspecialidades.length === 1 
-                                                    ? selectedEspecialidades[0] 
-                                                    : `${selectedEspecialidades.length} seleccionadas`}
-                                    </span>
-                                    <ChevronDown size={14} color="#64748B" style={{ transform: especDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }} />
+                                    Este Mes
                                 </button>
-
-                                {/* Menú Desplegable con Casillas de Verificación */}
-                                {especDropdownOpen && (
-                                    <div style={{
-                                        position: 'absolute',
-                                        top: 'calc(100% + 5px)',
-                                        left: '75px',
-                                        background: '#FFFFFF',
-                                        border: '1px solid #CBD5E1',
-                                        borderRadius: '8px',
-                                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
-                                        zIndex: 9999,
-                                        width: '230px',
-                                        padding: '6px',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: '4px'
-                                    }}>
-                                        {/* Acciones Rápidas: Seleccionar Todas / Limpiar */}
-                                        <div style={{
-                                            display: 'flex',
-                                            justifyContent: 'space-between',
-                                            alignItems: 'center',
-                                            padding: '4px 6px 6px 6px',
-                                            borderBottom: '1px solid #F1F5F9'
-                                        }}>
-                                            <button
-                                                type="button"
-                                                onClick={handleSelectAllEspecialidades}
-                                                style={{
-                                                    background: 'transparent',
-                                                    border: 'none',
-                                                    color: '#2563EB',
-                                                    fontSize: '0.72rem',
-                                                    fontWeight: 700,
-                                                    cursor: 'pointer',
-                                                    padding: '2px 4px'
-                                                }}
-                                            >
-                                                Seleccionar todas
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={handleClearAllEspecialidades}
-                                                style={{
-                                                    background: 'transparent',
-                                                    border: 'none',
-                                                    color: '#64748B',
-                                                    fontSize: '0.72rem',
-                                                    fontWeight: 600,
-                                                    cursor: 'pointer',
-                                                    padding: '2px 4px'
-                                                }}
-                                            >
-                                                Deseleccionar todas
-                                            </button>
-                                        </div>
-
-                                        {/* Casillas de Verificación por Especialidad */}
-                                        <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                            {especialidadesDisponibles.map(esp => {
-                                                const isChecked = selectedEspecialidades === null || selectedEspecialidades.includes(esp);
-                                                return (
-                                                    <div
-                                                        key={esp}
-                                                        style={{
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'space-between',
-                                                            padding: '5px 6px',
-                                                            borderRadius: '6px',
-                                                            background: isChecked ? '#EFF6FF' : 'transparent',
-                                                            cursor: 'pointer',
-                                                            fontSize: '0.75rem',
-                                                            transition: 'background 0.1s ease'
-                                                        }}
-                                                        onClick={() => handleToggleEspecialidad(esp)}
-                                                    >
-                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', width: '100%' }}>
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={isChecked}
-                                                                onChange={() => {}}
-                                                                style={{ accentColor: '#2563EB', cursor: 'pointer' }}
-                                                            />
-                                                            <span style={{
-                                                                color: isChecked ? '#1E40AF' : '#334155',
-                                                                fontWeight: isChecked ? 700 : 500
-                                                            }}>
-                                                                {esp}
-                                                            </span>
-                                                        </label>
-                                                        <button
-                                                            type="button"
-                                                            title={`Filtrar únicamente ${esp}`}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleSelectOnlyEspecialidad(esp);
-                                                            }}
-                                                            style={{
-                                                                background: 'transparent',
-                                                                border: 'none',
-                                                                color: '#94A3B8',
-                                                                fontSize: '0.68rem',
-                                                                fontWeight: 600,
-                                                                cursor: 'pointer',
-                                                                padding: '1px 5px',
-                                                                borderRadius: '3px'
-                                                            }}
-                                                            onMouseEnter={(e) => e.currentTarget.style.color = '#2563EB'}
-                                                            onMouseLeave={(e) => e.currentTarget.style.color = '#94A3B8'}
-                                                        >
-                                                            solo
-                                                        </button>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Camas Totales */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>Camas:</span>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="300"
-                                    value={camasTotales}
-                                    onChange={(e) => setCamasTotales(Number(e.target.value))}
+                                <button
+                                    type="button"
+                                    onClick={() => handleSetDatePreset('mes_anterior')}
                                     style={{
-                                        width: '55px',
-                                        padding: '5px 6px',
+                                        background: datePresetMode === 'mes_anterior' ? '#1E40AF' : 'transparent',
+                                        color: datePresetMode === 'mes_anterior' ? '#FFFFFF' : '#475569',
+                                        border: 'none',
                                         borderRadius: '6px',
-                                        border: '1px solid #CBD5E1',
-                                        fontSize: '0.8rem',
-                                        fontWeight: 700,
-                                        color: '#1E40AF',
-                                        textAlign: 'center'
+                                        padding: '4px 9px',
+                                        fontSize: '0.74rem',
+                                        fontWeight: datePresetMode === 'mes_anterior' ? 700 : 500,
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease',
+                                        boxShadow: datePresetMode === 'mes_anterior' ? '0 1px 2px rgba(30, 64, 175, 0.2)' : 'none'
                                     }}
-                                />
+                                    title="Filtrar datos del mes cerrado anterior"
+                                >
+                                    Mes Anterior
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleSetDatePreset('personalizado')}
+                                    style={{
+                                        background: datePresetMode === 'personalizado' ? '#1E40AF' : 'transparent',
+                                        color: datePresetMode === 'personalizado' ? '#FFFFFF' : '#475569',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '4px 9px',
+                                        fontSize: '0.74rem',
+                                        fontWeight: datePresetMode === 'personalizado' ? 700 : 500,
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease',
+                                        boxShadow: datePresetMode === 'personalizado' ? '0 1px 2px rgba(30, 64, 175, 0.2)' : 'none'
+                                    }}
+                                    title="Seleccionar rango de fechas manual"
+                                >
+                                    Personalizado
+                                </button>
                             </div>
-                        </>
-                    )}
 
-                    {/* Selector de Período Clínico: Este Mes, Mes Anterior y Personalizado */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {/* Botones de Presets: Este Mes | Mes Anterior | Personalizado */}
-                        <div style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            background: '#F1F5F9',
-                            padding: '2px',
-                            borderRadius: '8px',
-                            border: '1px solid #CBD5E1',
-                            gap: '2px'
-                        }}>
-                            <button
-                                type="button"
-                                onClick={() => handleSetDatePreset('este_mes')}
-                                style={{
-                                    background: datePresetMode === 'este_mes' ? '#1E40AF' : 'transparent',
-                                    color: datePresetMode === 'este_mes' ? '#FFFFFF' : '#475569',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '4px 9px',
-                                    fontSize: '0.74rem',
-                                    fontWeight: datePresetMode === 'este_mes' ? 700 : 500,
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s ease',
-                                    boxShadow: datePresetMode === 'este_mes' ? '0 1px 2px rgba(30, 64, 175, 0.2)' : 'none'
-                                }}
-                                title="Filtrar datos del mes en curso"
-                            >
-                                Este Mes
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => handleSetDatePreset('mes_anterior')}
-                                style={{
-                                    background: datePresetMode === 'mes_anterior' ? '#1E40AF' : 'transparent',
-                                    color: datePresetMode === 'mes_anterior' ? '#FFFFFF' : '#475569',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '4px 9px',
-                                    fontSize: '0.74rem',
-                                    fontWeight: datePresetMode === 'mes_anterior' ? 700 : 500,
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s ease',
-                                    boxShadow: datePresetMode === 'mes_anterior' ? '0 1px 2px rgba(30, 64, 175, 0.2)' : 'none'
-                                }}
-                                title="Filtrar datos del mes cerrado anterior"
-                            >
-                                Mes Anterior
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => handleSetDatePreset('personalizado')}
-                                style={{
-                                    background: datePresetMode === 'personalizado' ? '#1E40AF' : 'transparent',
-                                    color: datePresetMode === 'personalizado' ? '#FFFFFF' : '#475569',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '4px 9px',
-                                    fontSize: '0.74rem',
-                                    fontWeight: datePresetMode === 'personalizado' ? 700 : 500,
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s ease',
-                                    boxShadow: datePresetMode === 'personalizado' ? '0 1px 2px rgba(30, 64, 175, 0.2)' : 'none'
-                                }}
-                                title="Seleccionar rango de fechas manual"
-                            >
-                                Personalizado
-                            </button>
-                        </div>
-
-                        {/* Rango de Fechas Interactivo (Desde - Hasta) */}
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            background: datePresetMode === 'personalizado' ? '#EFF6FF' : '#FFFFFF',
-                            border: datePresetMode === 'personalizado' ? '1px solid #93C5FD' : '1px solid #CBD5E1',
-                            borderRadius: '8px',
-                            padding: '2px 8px',
-                            transition: 'all 0.2s ease',
-                            boxShadow: datePresetMode === 'personalizado' ? '0 0 0 2px rgba(59, 130, 246, 0.1)' : 'none'
-                        }}>
-                            <Calendar size={13} color={datePresetMode === 'personalizado' ? '#2563EB' : '#64748B'} />
-                            <input
-                                type="date"
-                                value={fechaDesde}
-                                onChange={(e) => {
-                                    setFechaDesde(e.target.value);
-                                    setDatePresetMode('personalizado');
-                                }}
-                                style={{
-                                    padding: '3px 5px',
-                                    borderRadius: '5px',
-                                    border: '1px solid #CBD5E1',
-                                    fontSize: '0.75rem',
-                                    color: '#1E293B',
-                                    background: '#FFFFFF',
-                                    fontWeight: 600
-                                }}
-                                title="Fecha Desde"
-                            />
-                            <span style={{ color: datePresetMode === 'personalizado' ? '#2563EB' : '#94A3B8', fontSize: '0.75rem', fontWeight: 600 }}>a</span>
-                            <input
-                                type="date"
-                                value={fechaHasta}
-                                onChange={(e) => {
-                                    setFechaHasta(e.target.value);
-                                    setDatePresetMode('personalizado');
-                                }}
-                                style={{
-                                    padding: '3px 5px',
-                                    borderRadius: '5px',
-                                    border: '1px solid #CBD5E1',
-                                    fontSize: '0.75rem',
-                                    color: '#1E293B',
-                                    background: '#FFFFFF',
-                                    fontWeight: 600
-                                }}
-                                title="Fecha Hasta"
-                            />
-                        </div>
-                    </div>
-
-                </div>
-
-                {/* Sincronización y Exportación IA */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <SalusSyncButton />
-                    
-                    {onOpenInfografia && (
-                        <button
-                            onClick={() => onOpenInfografia(activeIndicatorsList, metrics, filteredRows)}
-                            style={{
-                                background: 'linear-gradient(135deg, #4F46E5, #7C3AED)',
-                                color: '#FFFFFF',
-                                border: 'none',
-                                borderRadius: '8px',
-                                padding: '7px 12px',
-                                fontWeight: 600,
-                                fontSize: '0.8rem',
+                            {/* Rango de Fechas Interactivo (Desde - Hasta) */}
+                            <div style={{
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '6px',
-                                cursor: 'pointer',
-                                boxShadow: '0 2px 4px rgba(79, 70, 229, 0.2)'
-                            }}
-                            title="Exportar a PowerPoint PPTX, Excel, PDF, Infografía y Más"
-                        >
-                            <Sparkles size={14} />
-                            Centro de Exportación
-                        </button>
-                    )}
+                                background: '#FFFFFF',
+                                border: '1px solid #CBD5E1',
+                                borderRadius: '8px',
+                                padding: '3px 8px',
+                                gap: '6px'
+                            }}>
+                                <Calendar size={13} color="#2563EB" />
+                                <input
+                                    type="date"
+                                    value={fechaDesde}
+                                    onChange={(e) => {
+                                        setFechaDesde(e.target.value);
+                                        setDatePresetMode('personalizado');
+                                    }}
+                                    style={{
+                                        border: 'none',
+                                        outline: 'none',
+                                        fontSize: '0.75rem',
+                                        color: '#1E293B',
+                                        background: '#FFFFFF',
+                                        fontWeight: 600
+                                    }}
+                                    title="Fecha Desde"
+                                />
+                                <span style={{ color: '#94A3B8', fontSize: '0.72rem' }}>a</span>
+                                <input
+                                    type="date"
+                                    value={fechaHasta}
+                                    onChange={(e) => {
+                                        setFechaHasta(e.target.value);
+                                        setDatePresetMode('personalizado');
+                                    }}
+                                    style={{
+                                        border: 'none',
+                                        outline: 'none',
+                                        fontSize: '0.75rem',
+                                        color: '#1E293B',
+                                        background: '#FFFFFF',
+                                        fontWeight: 600
+                                    }}
+                                    title="Fecha Hasta"
+                                />
+                            </div>
+                        </div>
+
+                    </div>
+
+                    {/* Sincronización y Exportación IA */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <SalusSyncButton onComplete={() => { fetchData(); fetchUltimaActualizacion(); }} />
+                        
+                        {onOpenInfografia && (
+                            <button
+                                onClick={() => onOpenInfografia(activeIndicatorsList, metrics, filteredRows)}
+                                style={{
+                                    background: 'linear-gradient(135deg, #4F46E5, #7C3AED)',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    padding: '7px 12px',
+                                    fontWeight: 600,
+                                    fontSize: '0.8rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    cursor: 'pointer',
+                                    boxShadow: '0 2px 4px rgba(79, 70, 229, 0.2)'
+                                }}
+                                title="Exportar a PowerPoint PPTX, Excel, PDF, Infografía y Más"
+                            >
+                                <Sparkles size={14} />
+                                Centro de Exportación
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
 
