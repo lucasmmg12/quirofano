@@ -318,8 +318,93 @@ export default function UciMortalidadAuditModal({
     };
 
     const singleNhcKey = currentPatientRecord?.nhc ? String(currentPatientRecord.nhc).trim() : null;
-    const singleDiags = getDiagsForPatient(currentPatientRecord);
-    const singlePeticiones = getPeticionesForPatient(currentPatientRecord);
+
+    // Estado clínico directo para el paciente individual auditado (Garantiza 100% de paridad con Dossier 360)
+    const [directPeticiones, setDirectPeticiones] = useState([]);
+    const [directDiags, setDirectDiags] = useState([]);
+    const [loadingDirectClinical, setLoadingDirectClinical] = useState(false);
+
+    useEffect(() => {
+        if (!isOpen || !currentPatientRecord) {
+            setDirectPeticiones([]);
+            setDirectDiags([]);
+            return;
+        }
+
+        let isMounted = true;
+        setLoadingDirectClinical(true);
+
+        const fetchDirectData = async () => {
+            try {
+                const nhcVal = currentPatientRecord.nhc ? String(currentPatientRecord.nhc).trim() : null;
+                const nombreVal = currentPatientRecord.paciente;
+
+                // 1. Diagnósticos directos del paciente
+                let diags = [];
+                if (nhcVal) {
+                    const { data } = await supabase
+                        .from('calidad_pacientes_diagnosticos')
+                        .select('*')
+                        .or(`nhc.eq.${nhcVal},nhc.eq.${nhcVal.padStart(6, '0')},nhc.eq.${nhcVal.replace(/^0+/, '')}`)
+                        .order('fecha_visita', { ascending: false });
+                    diags = data || [];
+                }
+                if (diags.length === 0 && nombreVal) {
+                    const tokens = nombreVal.replace(/,/g, ' ').trim().split(/\s+/).filter(t => t.length > 2);
+                    let q = supabase.from('calidad_pacientes_diagnosticos').select('*');
+                    tokens.slice(0, 2).forEach(t => { q = q.ilike('paciente', `%${t}%`); });
+                    const { data } = await q.order('fecha_visita', { ascending: false }).limit(20);
+                    diags = data || [];
+                }
+
+                // 2. Peticiones directas del paciente (mismo patrón del Dossier 360)
+                let pets = [];
+                if (nhcVal) {
+                    const { data } = await supabase
+                        .from('calidad_peticiones_pruebas')
+                        .select('id, id_peticion, id_paciente, paciente, fecha_solicitud, estudio, tipo_articulo, modalidad, solicitante, habitacion, prioridad')
+                        .eq('id_paciente', nhcVal)
+                        .order('fecha_solicitud', { ascending: false });
+                    if (data && data.length > 0) pets = pets.concat(data);
+                }
+                if (nombreVal) {
+                    const tokens = nombreVal.replace(/,/g, ' ').trim().split(/\s+/).filter(t => t.length > 2);
+                    let q = supabase
+                        .from('calidad_peticiones_pruebas')
+                        .select('id, id_peticion, id_paciente, paciente, fecha_solicitud, estudio, tipo_articulo, modalidad, solicitante, habitacion, prioridad');
+                    tokens.slice(0, 2).forEach(t => { q = q.ilike('paciente', `%${t}%`); });
+                    const { data } = await q.order('fecha_solicitud', { ascending: false }).limit(50);
+                    if (data && data.length > 0) {
+                        const seen = new Set(pets.map(p => p.id_peticion || p.id));
+                        data.forEach(d => {
+                            if (!seen.has(d.id_peticion || d.id)) {
+                                seen.add(d.id_peticion || d.id);
+                                pets.push(d);
+                            }
+                        });
+                    }
+                }
+
+                if (isMounted) {
+                    if (diags.length > 0) setDirectDiags(diags);
+                    if (pets.length > 0) setDirectPeticiones(pets);
+                }
+            } catch (err) {
+                console.error('Error fetching direct clinical data in mortality audit:', err);
+            } finally {
+                if (isMounted) setLoadingDirectClinical(false);
+            }
+        };
+
+        fetchDirectData();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [isOpen, currentPatientRecord?.nhc, currentPatientRecord?.paciente, currentPatientRecord?.numero_admision]);
+
+    const singleDiags = directDiags.length > 0 ? directDiags : getDiagsForPatient(currentPatientRecord);
+    const singlePeticiones = directPeticiones.length > 0 ? directPeticiones : getPeticionesForPatient(currentPatientRecord);
 
     // 2. Cargar Diagnósticos y Peticiones asociadas a los pacientes fallecidos
     useEffect(() => {
