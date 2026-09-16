@@ -1299,7 +1299,7 @@ Movimientos de Cama: ${traslados.length}`;
                     flexShrink: 0
                 }}>
                     <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                        Datos integrados en tiempo real desde <strong>SALUS (Oracle)</strong> y <strong>Supabase (Gobernanza QOAG)</strong>.
+                        Datos integrados en tiempo real desde <strong>SALUS</strong> y <strong>Supabase (Gobernanza QOAG)</strong> · <strong>Innovación y Transformación Digital</strong>.
                     </div>
 
                     <button
