@@ -11,7 +11,7 @@ export const SECTORES_CONFIG = [
         icon: '🏥', 
         camasDefault: 16,
         serviciosSalus: ['UCI', 'TERAPIA INTERMEDIA'],
-        descripcion: '16 camas operativas (UTI 8 + UTIN 8)',
+        descripcion: '16 camas operativas (UTI 8 + Intermedia 8)',
         activo: true
     },
     { 

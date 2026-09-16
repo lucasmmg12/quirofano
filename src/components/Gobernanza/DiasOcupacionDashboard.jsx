@@ -2969,8 +2969,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             <div style={{ display: 'flex', gap: '3px' }}>
                                                 {[
                                                     { id: 'CONSOLIDADO', label: 'Total 16', color: '#2563EB' },
-                                                    { id: 'INTENSIVA', label: 'UTI (8)', color: '#DC2626' },
-                                                    { id: 'INTERMEDIA', label: 'UTIN (8)', color: '#D97706' }
+                                                    { id: 'INTENSIVA', label: 'Intensiva (8)', color: '#DC2626' },
+                                                    { id: 'INTERMEDIA', label: 'Intermedia (8)', color: '#D97706' }
                                                 ].map(sub => {
                                                     const isSel = uciSubNivel === sub.id;
                                                     return (
