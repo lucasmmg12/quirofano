@@ -31,16 +31,109 @@ const SYNC_MODULES = {
     diagnosticos: { label: 'Diagnósticos', icon: '🩺' },
 };
 
-export default function SalusSyncButton({ onComplete, addToast, module = null }) {
+function formatLastSync(date) {
+    if (!date) return null;
+    const d = (date instanceof Date) ? date : new Date(date);
+    if (isNaN(d.getTime())) return null;
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const dia = pad(d.getDate());
+    const mes = pad(d.getMonth() + 1);
+    const anio = d.getFullYear();
+    const hora = pad(d.getHours());
+    const min = pad(d.getMinutes());
+
+    return `${dia}/${mes}/${anio} ${hora}:${min} hs`;
+}
+
+function getRelativeTime(date) {
+    if (!date) return '';
+    const d = (date instanceof Date) ? date : new Date(date);
+    if (isNaN(d.getTime())) return '';
+    const diffMs = Date.now() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return 'hace instantes';
+    if (diffMins === 1) return 'hace 1 min';
+    if (diffMins < 60) return `hace ${diffMins} min`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours === 1) return 'hace 1 h';
+    if (diffHours < 24) return `hace ${diffHours} hs`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return 'hace 1 d';
+    return `hace ${diffDays} d`;
+}
+
+export default function SalusSyncButton({ onComplete, addToast, module = null, showTimestamp = true }) {
     const [salusAvailable, setSalusAvailable] = useState(null);
     const [syncing, setSyncing] = useState(false);
     const [results, setResults] = useState(null);
     const [expanded, setExpanded] = useState(false);
     const [lastSync, setLastSync] = useState(null);
+    const [lastSyncDate, setLastSyncDate] = useState(() => {
+        try {
+            const saved = localStorage.getItem('salus_last_sync_timestamp');
+            return saved ? new Date(saved) : null;
+        } catch (_) {
+            return null;
+        }
+    });
+    const [, setTick] = useState(0);
     const [showDownloadHelp, setShowDownloadHelp] = useState(false);
 
     const currentUser = getCurrentUser();
     const isFrojo = currentUser?.usuario === 'frojo';
+
+    const fetchLatestUpdate = useCallback(async () => {
+        try {
+            const queries = [];
+            if (module === 'cirugias') {
+                queries.push(
+                    supabase.from('surgeries').select('updated_at').order('updated_at', { ascending: false }).limit(1)
+                );
+            } else if (module === 'altas') {
+                queries.push(
+                    supabase.from('altas_administrativas').select('updated_at').order('updated_at', { ascending: false }).limit(1)
+                );
+            } else {
+                queries.push(
+                    supabase.from('surgeries').select('updated_at').order('updated_at', { ascending: false }).limit(1),
+                    supabase.from('altas_administrativas').select('updated_at').order('updated_at', { ascending: false }).limit(1),
+                    supabase.from('calidad_censo_camas_uci').select('updated_at').order('updated_at', { ascending: false }).limit(1)
+                );
+            }
+
+            const resList = await Promise.all(queries);
+            const timestamps = resList
+                .flatMap(r => r.data || [])
+                .map(r => r.updated_at ? new Date(r.updated_at).getTime() : null)
+                .filter(Boolean);
+
+            if (timestamps.length > 0) {
+                const maxTs = Math.max(...timestamps);
+                setLastSyncDate(prev => {
+                    if (!prev || maxTs > prev.getTime()) {
+                        const d = new Date(maxTs);
+                        try {
+                            localStorage.setItem('salus_last_sync_timestamp', d.toISOString());
+                        } catch (_) {}
+                        return d;
+                    }
+                    return prev;
+                });
+            }
+        } catch (err) {
+            console.warn('[SalusSyncButton] Error consultando última actualización:', err);
+        }
+    }, [module]);
+
+    useEffect(() => {
+        fetchLatestUpdate();
+        const interval = setInterval(() => {
+            fetchLatestUpdate();
+            setTick(t => t + 1);
+        }, 60000);
+        return () => clearInterval(interval);
+    }, [fetchLatestUpdate]);
 
     // Verificar disponibilidad (máximo 2 intentos si está offline para evitar spam de ERR_CONNECTION_REFUSED en consola)
     useEffect(() => {
@@ -75,8 +168,13 @@ export default function SalusSyncButton({ onComplete, addToast, module = null })
             const json = await res.json();
 
             if (json.success) {
+                const now = new Date();
                 setResults(json.results);
-                setLastSync(new Date());
+                setLastSync(now);
+                setLastSyncDate(now);
+                try {
+                    localStorage.setItem('salus_last_sync_timestamp', now.toISOString());
+                } catch (_) {}
                 const msg = `✅ Sincronización ${isFast ? 'rápida' : 'completa'} finalizada (${json.elapsed || ''})`;
                 addToast?.(msg, 'success');
                 onComplete?.();
@@ -107,8 +205,11 @@ export default function SalusSyncButton({ onComplete, addToast, module = null })
 
     // ── OFFLINE: Ofrecer descarga del launcher ──
     if (salusAvailable === false) {
+        const formattedSync = formatLastSync(lastSyncDate);
+        const relTime = getRelativeTime(lastSyncDate);
+
         return (
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
                 <button
                     onClick={handleDownloadLauncher}
                     style={{
@@ -128,6 +229,38 @@ export default function SalusSyncButton({ onComplete, addToast, module = null })
                     <Download size={14} />
                     Activar SALUS
                 </button>
+
+                {showTimestamp && formattedSync && (
+                    <div
+                        title={`Última sincronización con SALUS: ${formattedSync}${relTime ? ' (' + relTime + ')' : ''}`}
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '6px 10px',
+                            background: '#F8FAFC',
+                            border: '1px solid #E2E8F0',
+                            borderRadius: '8px',
+                            fontSize: '0.73rem',
+                            color: '#334155',
+                            whiteSpace: 'nowrap',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                            userSelect: 'none',
+                            lineHeight: 1.2,
+                        }}
+                    >
+                        <Clock size={13} style={{ color: '#0284C7', flexShrink: 0 }} />
+                        <span>
+                            <span style={{ color: '#64748B', fontWeight: 500 }}>Actualizado: </span>
+                            <strong style={{ color: '#0F172A', fontWeight: 700 }}>{formattedSync}</strong>
+                            {relTime && (
+                                <span style={{ color: '#0284C7', marginLeft: '5px', fontSize: '0.69rem', fontWeight: 600 }}>
+                                    ({relTime})
+                                </span>
+                            )}
+                        </span>
+                    </div>
+                )}
 
                 {showDownloadHelp && (
                     <div style={{
@@ -292,9 +425,12 @@ export default function SalusSyncButton({ onComplete, addToast, module = null })
         );
     };
 
+    const formattedSync = formatLastSync(lastSyncDate);
+    const relTime = getRelativeTime(lastSyncDate);
+
     return (
         <div style={{ position: 'relative' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <button
                     onClick={() => handleSync(true)}
                     disabled={syncing}
@@ -344,9 +480,44 @@ export default function SalusSyncButton({ onComplete, addToast, module = null })
                     Full Sync
                 </button>
 
-                <div title="Sync Rápido: Últimos 30 días (Segundos)&#10;Full Sync: Histórico Completo (30 Minutos)" style={{ display: 'flex', alignItems: 'center', color: '#9CA3AF', cursor: 'help', padding: '0 4px' }}>
+                <div title="Sync Rápido: Últimos 30 días (Segundos)&#10;Full Sync: Histórico Completo (30 Minutos)" style={{ display: 'flex', alignItems: 'center', color: '#9CA3AF', cursor: 'help', padding: '0 2px' }}>
                     <HelpCircle size={15} />
                 </div>
+
+                {/* Badge Fecha y Hora de Última Actualización */}
+                {showTimestamp && (
+                    <div
+                        title={`Última sincronización con SALUS: ${formattedSync || 'Consultando...'}${relTime ? ' (' + relTime + ')' : ''}\nHaz clic en 'Sync Rápido' para actualizar los datos.`}
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 11px',
+                            background: '#F8FAFC',
+                            border: '1px solid #E2E8F0',
+                            borderRadius: '8px',
+                            fontSize: '0.74rem',
+                            color: '#334155',
+                            whiteSpace: 'nowrap',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                            userSelect: 'none',
+                            lineHeight: 1.2,
+                        }}
+                    >
+                        <Clock size={13} style={{ color: '#0284C7', flexShrink: 0 }} />
+                        <span>
+                            <span style={{ color: '#64748B', fontWeight: 500 }}>Actualizado: </span>
+                            <strong style={{ color: '#0F172A', fontWeight: 700 }}>
+                                {formattedSync || 'Consultando...'}
+                            </strong>
+                            {relTime && (
+                                <span style={{ color: '#0284C7', marginLeft: '5px', fontSize: '0.7rem', fontWeight: 600 }}>
+                                    ({relTime})
+                                </span>
+                            )}
+                        </span>
+                    </div>
+                )}
 
                 {results && (
                     <button
@@ -362,12 +533,6 @@ export default function SalusSyncButton({ onComplete, addToast, module = null })
                     </button>
                 )}
             </div>
-
-            {lastSync && !expanded && (
-                <div style={{ fontSize: '0.65rem', color: '#9CA3AF', marginTop: '4px', fontStyle: 'italic' }}>
-                    Última sync: {lastSync.toLocaleTimeString('es-AR')}
-                </div>
-            )}
 
             {expanded && results && !results.error && (
                 <div style={{
@@ -386,9 +551,9 @@ export default function SalusSyncButton({ onComplete, addToast, module = null })
                         <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#374151' }}>
                             📡 Resultado Sincronización
                         </span>
-                        {lastSync && (
-                            <span style={{ fontSize: '0.65rem', color: '#9CA3AF' }}>
-                                {lastSync.toLocaleTimeString('es-AR')}
+                        {formattedSync && (
+                            <span style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>
+                                {formattedSync}
                             </span>
                         )}
                     </div>
