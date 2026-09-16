@@ -2696,11 +2696,11 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
                         {/* Botón Tablero de Indicadores */}
                         <button
-                            onClick={() => {}}
+                            onClick={() => setViewMode('dashboard')}
                             style={{
-                                background: '#1E40AF',
-                                color: '#FFFFFF',
-                                border: 'none',
+                                background: viewMode === 'dashboard' ? '#1E40AF' : '#F8FAFC',
+                                color: viewMode === 'dashboard' ? '#FFFFFF' : '#1E40AF',
+                                border: viewMode === 'dashboard' ? 'none' : '1px solid #CBD5E1',
                                 borderRadius: '8px',
                                 padding: '6px 12px',
                                 fontSize: '0.8rem',
@@ -2708,7 +2708,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '6px',
-                                cursor: 'default'
+                                cursor: 'pointer'
                             }}
                         >
                             <LayoutDashboard size={15} />
@@ -2718,11 +2718,11 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         {/* Botón Gantt Camas UCI */}
                         {sectorId === 'UCI' && (
                             <button
-                                onClick={() => setIsGanttModalOpen(true)}
+                                onClick={() => setViewMode('gantt')}
                                 style={{
-                                    background: '#F8FAFC',
-                                    border: '1px solid #CBD5E1',
-                                    color: '#1E40AF',
+                                    background: viewMode === 'gantt' ? '#1E40AF' : '#F8FAFC',
+                                    color: viewMode === 'gantt' ? '#FFFFFF' : '#1E40AF',
+                                    border: viewMode === 'gantt' ? 'none' : '1px solid #CBD5E1',
                                     borderRadius: '8px',
                                     padding: '6px 12px',
                                     fontSize: '0.8rem',
@@ -2738,8 +2738,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 Gantt Camas UCI
                                 <span style={{
                                     fontSize: '0.65rem',
-                                    background: '#DBEAFE',
-                                    color: '#1E40AF',
+                                    background: viewMode === 'gantt' ? '#3B82F6' : '#DBEAFE',
+                                    color: viewMode === 'gantt' ? '#FFFFFF' : '#1E40AF',
                                     padding: '1px 5px',
                                     borderRadius: '4px',
                                     fontWeight: 700
