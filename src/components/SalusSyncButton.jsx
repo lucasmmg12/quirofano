@@ -69,13 +69,15 @@ export default function SalusSyncButton({ onComplete, addToast, module = null })
             const SYNC_URL = import.meta.env.VITE_SALUS_SYNC_URL || 'http://127.0.0.1:3456/api/salus';
             const endpoint = `${SYNC_URL}/sync-all${isFast ? '?fast=true' : ''}`;
 
-            const res = await fetch(endpoint, { signal: AbortSignal.timeout(600000) });
+            // Timeout adaptativo: 5 min para sync rápido, 30 min para full sync
+            const timeoutMs = isFast ? 300000 : 1800000;
+            const res = await fetch(endpoint, { signal: AbortSignal.timeout(timeoutMs) });
             const json = await res.json();
 
             if (json.success) {
                 setResults(json.results);
                 setLastSync(new Date());
-                const msg = `✅ Sincronización ${isFast ? 'rápida' : 'completa'} de todos los módulos finalizada`;
+                const msg = `✅ Sincronización ${isFast ? 'rápida' : 'completa'} finalizada (${json.elapsed || ''})`;
                 addToast?.(msg, 'success');
                 onComplete?.();
             } else {
@@ -83,8 +85,12 @@ export default function SalusSyncButton({ onComplete, addToast, module = null })
                 addToast?.(`❌ Error: ${json.error}`, 'error');
             }
         } catch (err) {
-            setResults({ error: err.message });
-            addToast?.('❌ Error de conexión con sync-server', 'error');
+            const isTimeout = err.name === 'TimeoutError' || err.message?.includes('timeout') || err.name === 'AbortError';
+            const errorMsg = isTimeout 
+                ? '⏱️ La sincronización superó el tiempo límite de espera' 
+                : `❌ Error de conexión con sync-server: ${err.message}`;
+            setResults({ error: errorMsg });
+            addToast?.(errorMsg, 'error');
         } finally {
             setSyncing(false);
         }

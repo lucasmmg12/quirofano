@@ -27,6 +27,9 @@ if %ERRORLEVEL% NEQ 0 (
 )
 for /f "tokens=*" %%v in ('node -v') do echo      Node.js %%v detectado correctamente.
 
+:: Desactivar QuickEdit mode para evitar que clics en la consola congelen Node.js
+reg add HKCU\Console /v QuickEdit /t REG_DWORD /d 0 /f >nul 2>&1
+
 :: 2. Liberar puerto 3456 si habia una instancia previa
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr :3456 ^| findstr LISTENING 2^>nul') do (
     echo      Reiniciando instancia previa de sync-server (PID %%p)...
@@ -39,7 +42,7 @@ cd /d "%INSTALL_DIR%"
 
 echo [2/4] Descargando componentes del servidor desde GitHub...
 echo      - index.js
-curl.exe -sL "%REPO_RAW%/sync-server/index.js" -o "%INSTALL_DIR%\index.js"
+curl.exe -4 -sL --connect-timeout 10 "%REPO_RAW%/sync-server/index.js" -o "%INSTALL_DIR%\index.js"
 if %ERRORLEVEL% NEQ 0 (
     if not exist "%INSTALL_DIR%\index.js" (
         echo  ERROR: No se pudo descargar index.js y no hay version local previa.
@@ -51,16 +54,16 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo      - sync_censo_camas.mjs
-curl.exe -sL "%REPO_RAW%/sync-server/sync_censo_camas.mjs" -o "%INSTALL_DIR%\sync_censo_camas.mjs"
+curl.exe -4 -sL --connect-timeout 10 "%REPO_RAW%/sync-server/sync_censo_camas.mjs" -o "%INSTALL_DIR%\sync_censo_camas.mjs"
 
 echo      - sync_diagnosticos.mjs
-curl.exe -sL "%REPO_RAW%/sync-server/sync_diagnosticos.mjs" -o "%INSTALL_DIR%\sync_diagnosticos.mjs"
+curl.exe -4 -sL --connect-timeout 10 "%REPO_RAW%/sync-server/sync_diagnosticos.mjs" -o "%INSTALL_DIR%\sync_diagnosticos.mjs"
 
 echo      - sync_kinesiologia_uci.mjs
-curl.exe -sL "%REPO_RAW%/sync-server/sync_kinesiologia_uci.mjs" -o "%INSTALL_DIR%\sync_kinesiologia_uci.mjs"
+curl.exe -4 -sL --connect-timeout 10 "%REPO_RAW%/sync-server/sync_kinesiologia_uci.mjs" -o "%INSTALL_DIR%\sync_kinesiologia_uci.mjs"
 
 echo      - package.json
-curl.exe -sL "%REPO_RAW%/sync-server/package.json" -o "%INSTALL_DIR%\package.json"
+curl.exe -4 -sL --connect-timeout 10 "%REPO_RAW%/sync-server/package.json" -o "%INSTALL_DIR%\package.json"
 
 :: Generar .env local seguro
 echo VITE_SUPABASE_URL=https://hakysnqiryimxbwdslwe.supabase.co > "%INSTALL_DIR%\.env"
@@ -79,7 +82,8 @@ if not exist "%INSTALL_DIR%\node_modules\express" (
     echo [3/4] Librerias verificadas correctamente.
 )
 
-:: 5. Iniciar servidor
+:: 5. Iniciar servidor con bucle de proteccion
+:run_server
 echo [4/4] Iniciando SALUS Sync Server...
 echo.
 echo ==================================================
@@ -99,4 +103,9 @@ echo ==================================================
 echo  El servidor se ha detenido.
 echo ==================================================
 echo.
-pause
+echo  [R] Reiniciar el servidor
+echo  [S] Salir
+echo.
+choice /C RS /N /M "Seleccione opcion [R / S]: "
+if %ERRORLEVEL% EQU 1 goto run_server
+exit /b 0

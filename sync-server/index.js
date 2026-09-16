@@ -142,10 +142,13 @@ const EXCLUDED_NAME_PREFIXES = ['BLOQUE'];
 // ============================================================================
 // SYNC UCI (TERAPIA INTENSIVA) — SQL Server → Supabase
 // ============================================================================
-async function syncUci(db) {
-    console.log('🫁 [0/X] Extrayendo indicadores de UCI (Terapia Intensiva)...');
+async function syncUci(db, fastSync = false) {
+    console.log(`🫁 [0/X] Extrayendo indicadores de UCI (Terapia Intensiva)... (fastSync: ${fastSync})`);
     
-    // Usar la query proveída por el usuario
+    const dateFilter = fastSync
+        ? "[Fecha ingreso] >= DATEADD(DAY, -30, CAST(GETDATE() AS DATE))"
+        : "YEAR([Fecha ingreso]) IN (2022, 2023, 2024, 2025, 2026)";
+
     const result = await db.request().query(`
         SELECT 
             [Número admisión],
@@ -166,7 +169,7 @@ async function syncUci(db) {
             [Control ADM finalizado]
         FROM TABLEAU_Admisiones
         WHERE Especialidad = 'TERAPIA INTENSIVA'
-          AND YEAR([Fecha ingreso]) IN (2022, 2023, 2024, 2025, 2026)
+          AND ${dateFilter}
         ORDER BY [Fecha ingreso] DESC
     `);
 
@@ -1105,10 +1108,14 @@ async function syncNotasCredito(db, fastSync = false) {
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // SYNC ALTAS ADMINISTRATIVAS — SQL Server â†’ Supabase
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-async function syncAltasAdministrativas(db) {
-    console.log('📋 [4/7] Extrayendo altas administrativas de SALUS...');
+async function syncAltasAdministrativas(db, fastSync = false) {
+    console.log(`📋 [4/7] Extrayendo altas administrativas de SALUS... (fastSync: ${fastSync})`);
 
-    // Rango: últimos 60 días de altas
+    const daysBack = fastSync ? 15 : 60;
+    const openIngresoFilter = fastSync 
+        ? "TA.[Fecha ingreso] >= DATEADD(DAY, -30, CAST(GETDATE() AS DATE))"
+        : "TA.[Fecha ingreso] >= '2025-01-01'";
+
     const result = await db.request().query(`
         SELECT 
             TA.[Número admisión],
@@ -1136,9 +1143,9 @@ async function syncAltasAdministrativas(db) {
         FROM [SALUS].[dbo].[TABLEAU_Admisiones] TA
         WHERE 
             (
-                TA.[Fecha ingreso] >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE))
-                OR TA.[Fecha alta] >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE))
-                OR (TA.[Fecha alta] IS NULL AND TA.[Fecha ingreso] >= '2025-01-01')
+                TA.[Fecha ingreso] >= DATEADD(DAY, -${daysBack}, CAST(GETDATE() AS DATE))
+                OR TA.[Fecha alta] >= DATEADD(DAY, -${daysBack}, CAST(GETDATE() AS DATE))
+                OR (TA.[Fecha alta] IS NULL AND ${openIngresoFilter})
             )
             AND TA.[Fecha ingreso] < DATEADD(DAY, 1, CAST(GETDATE() AS DATE))
     `);
@@ -1188,7 +1195,7 @@ async function syncAltasAdministrativas(db) {
     const existingMap = new Map();
 
     const admNums = uniqueRecords.map(r => r.numero_admision);
-    const FETCH_BATCH = 200;
+    const FETCH_BATCH = 500;
     for (let i = 0; i < admNums.length; i += FETCH_BATCH) {
         const batch = admNums.slice(i, i + FETCH_BATCH);
         const { data: existing } = await supabase
@@ -1218,7 +1225,7 @@ async function syncAltasAdministrativas(db) {
 
     // Upsert en lotes
     let inserted = 0, updated = 0, skipped = 0;
-    const BATCH = 50;
+    const BATCH = 200;
 
     for (let i = 0; i < uniqueRecords.length; i += BATCH) {
         const batch = uniqueRecords.slice(i, i + BATCH).map(row => {
@@ -1275,8 +1282,12 @@ async function syncAltasAdministrativas(db) {
 // Extrae procedimientos quirúrgicos y calcula triage
 // de facturación (Fácil/Media/Difícil) por admisión
 // ═══════════════════════════════════════════════════
-async function syncFojaQuirurgica(db) {
-    console.log('🔪 [4a/10] Extrayendo foja quirúrgica de SALUS...');
+async function syncFojaQuirurgica(db, fastSync = false) {
+    console.log(`🔪 [4a/10] Extrayendo foja quirúrgica de SALUS... (fastSync: ${fastSync})`);
+
+    const dateClause = fastSync
+        ? "[Fecha visita] >= CONVERT(VARCHAR(8), DATEADD(DAY, -15, GETDATE()), 112)"
+        : "[Fecha visita] >= '20260401'";
 
     const result = await db.request().query(`
         SELECT 
@@ -1287,7 +1298,7 @@ async function syncFojaQuirurgica(db) {
             [Procedimiento quirúrgico 3],
             [Procedimiento quirúrgico 4]
         FROM [SALUS].[dbo].[TABLEAU_FojaQuirurgica]
-        WHERE [Fecha visita] >= '20260401'
+        WHERE ${dateClause}
         ORDER BY [Fecha visita] DESC
     `);
     console.log(`   📥 ${result.recordset.length} registros de foja extraídos`);
@@ -1325,7 +1336,7 @@ async function syncFojaQuirurgica(db) {
     // Calcular triage y actualizar altas_administrativas
     const entries = Array.from(fojaMap.entries());
     let actualizadas = 0, skipped = 0;
-    const CHUNK = 30;
+    const CHUNK = 50;
 
     for (let i = 0; i < entries.length; i += CHUNK) {
         const chunk = entries.slice(i, i + CHUNK);
@@ -1358,9 +1369,10 @@ async function syncFojaQuirurgica(db) {
 // Filtra PDV 21 y 31 (facturación internada)
 // Cruza con altas_administrativas por numero_admision
 // ═══════════════════════════════════════════════════
-async function syncFacturacionInternada(db) {
-    console.log('🧾 [4b/10] Extrayendo facturación internada (PDV 21/31) de SALUS...');
+async function syncFacturacionInternada(db, fastSync = false) {
+    console.log(`🧾 [4b/10] Extrayendo facturación internada (PDV 21/31) de SALUS... (fastSync: ${fastSync})`);
 
+    const daysBack = fastSync ? 15 : 90;
     const result = await db.request().query(`
         SELECT 
             [Fecha factura],
@@ -1376,7 +1388,7 @@ async function syncFacturacionInternada(db) {
         FROM 
             [SALUS].[dbo].[TABLEAU_Detalle de ventas Facturadas con Gastos y Honorarios]
         WHERE 
-            [Fecha albaran] >= DATEADD(DAY, -90, CAST(GETDATE() AS DATE))
+            [Fecha albaran] >= DATEADD(DAY, -${daysBack}, CAST(GETDATE() AS DATE))
             AND [Nº Admision] IS NOT NULL
         ORDER BY 
             [Fecha albaran] ASC
@@ -1471,7 +1483,7 @@ async function syncFacturacionInternada(db) {
     console.log(`   🔗 ${facturadoMap.size} admisiones con factura, cruzando con altas...`);
 
     const entries = [...facturadoMap.entries()];
-    const CHUNK_SIZE = 25;
+    const CHUNK_SIZE = 50;
     let altasActualizadas = 0;
     for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
         const chunk = entries.slice(i, i + CHUNK_SIZE);
@@ -1740,7 +1752,7 @@ async function syncVisitasSede(db) {
 
     // Insert en lotes
     let inserted = 0, skipped = 0;
-    const BATCH = 100;
+    const BATCH = 500;
 
     for (let i = 0; i < records.length; i += BATCH) {
         const batch = records.slice(i, i + BATCH);
@@ -1776,8 +1788,12 @@ const ESPECIALIDAD_ASOCIACION = {
     'OTORRINOLARINGOLOGIA': 'ORL (Particular)',
 };
 
-async function syncAsociacionesCirugias(db) {
-    console.log('📦 [7/7] Extrayendo cirugías para asociaciones de SALUS...');
+async function syncAsociacionesCirugias(db, fastSync = false) {
+    console.log(`📦 [7/7] Extrayendo cirugías para asociaciones de SALUS... (fastSync: ${fastSync})`);
+
+    const dateFilter = fastSync
+        ? "CONVERT(DATE, LEFT([Fecha realización], 10), 103) >= DATEADD(DAY, -15, CAST(GETDATE() AS DATE))"
+        : "CONVERT(DATE, LEFT([Fecha realización], 10), 103) >= '20260301'";
 
     const result = await db.request().query(`
         SELECT 
@@ -1793,7 +1809,7 @@ async function syncAsociacionesCirugias(db) {
         WHERE 
             [Fecha realización] IS NOT NULL
             AND LEN([Fecha realización]) >= 10 
-            AND CONVERT(DATE, LEFT([Fecha realización], 10), 103) >= '20260301'
+            AND ${dateFilter}
             AND [Especialidad] IN (
                 'CIRUGIA', 
                 'GASTROENTEROLOGIA',
@@ -1820,6 +1836,10 @@ async function syncAsociacionesCirugias(db) {
     `);
     console.log(`   📥 ${result.recordset.length} registros extraídos`);
 
+    const pediatriaDateFilter = fastSync
+        ? "CAST([Fecha Visita] AS DATE) >= DATEADD(DAY, -15, CAST(GETDATE() AS DATE))"
+        : "CAST([Fecha Visita] AS DATE) >= '2026-05-01'";
+
     const resultPediatria = await db.request().query(`
         SELECT 
             CAST([Fecha Visita] AS DATE) AS [Fecha realización],
@@ -1835,7 +1855,7 @@ async function syncAsociacionesCirugias(db) {
             [Tipo Visita] = '(cx) sutura de herida'
             AND [Visita_Especialidad] IN ('CIRUGIA PEDIATRICA', 'PEDIATRIA')
             AND [Asistencia] = 'Presente'
-            AND CAST([Fecha Visita] AS DATE) >= '2026-05-01'
+            AND ${pediatriaDateFilter}
     `);
     console.log(`   📥 ${resultPediatria.recordset.length} registros pediátricos (suturas) extraídos`);
 
@@ -1914,7 +1934,7 @@ async function syncAsociacionesCirugias(db) {
 
     // Obtener estados existentes para preservarlos
     const existingMap = new Map();
-    const FETCH_BATCH_SIZE = 200;
+    const FETCH_BATCH_SIZE = 500;
 
     const fechas = [...new Set(uniqueRecords.map(r => r.fecha_realizacion))];
     for (let i = 0; i < fechas.length; i += FETCH_BATCH_SIZE) {
@@ -1939,7 +1959,7 @@ async function syncAsociacionesCirugias(db) {
 
     // Upsert en lotes
     let inserted = 0, updated = 0, skipped = 0;
-    const BATCH = 50;
+    const BATCH = 200;
 
     for (let i = 0; i < uniqueRecords.length; i += BATCH) {
         const batch = uniqueRecords.slice(i, i + BATCH).map(row => {
@@ -1974,8 +1994,12 @@ async function syncAsociacionesCirugias(db) {
 // ═══════════════════════════════════════════════════
 // SYNC LABORATORIOS (Anatomía Patológica) — SQL Server → Supabase
 // ═══════════════════════════════════════════════════
-async function syncLaboratorios(db) {
-    console.log('🔬 [8/8] Extrayendo laboratorios de anatomía patológica de SALUS...');
+async function syncLaboratorios(db, fastSync = false) {
+    console.log(`🔬 [8/8] Extrayendo laboratorios de anatomía patológica de SALUS... (fastSync: ${fastSync})`);
+
+    const dateFilter = fastSync
+        ? "AP.[Fecha visita] >= CONVERT(VARCHAR(8), DATEADD(DAY, -15, GETDATE()), 112)"
+        : "AP.[Fecha visita] >= '20260301'";
 
     const result = await db.request().query(`
         SELECT 
@@ -2000,7 +2024,7 @@ async function syncLaboratorios(db) {
               WHERE PP_Sub.[idVisita] = AP.[idvisita]
                 AND PP_Sub.[N.Admision] IS NOT NULL
           ) AS PP
-          WHERE AP.[Fecha visita] >= '20260301'
+          WHERE ${dateFilter}
           ORDER BY AP.[Fecha visita] DESC;
     `);
     console.log(`   📥 ${result.recordset.length} registros extraídos`);
@@ -2053,7 +2077,8 @@ async function syncLaboratorios(db) {
     const FETCH_BATCH_SIZE = 200;
 
     const ids = uniqueRecords.map(r => r.id_visita);
-    for (let i = 0; i < ids.length; i += FETCH_BATCH_SIZE) {
+    const FETCH_BATCH_SIZE_LABS = 500;
+    for (let i = 0; i < ids.length; i += FETCH_BATCH_SIZE_LABS) {
         const batchIds = ids.slice(i, i + FETCH_BATCH_SIZE);
         const { data: existing } = await supabase
             .from('laboratorios_anatomia_patologica')
@@ -2074,7 +2099,7 @@ async function syncLaboratorios(db) {
 
     // Upsert en lotes
     let inserted = 0, updated = 0, skipped = 0;
-    const BATCH = 50;
+    const BATCH = 200;
 
     for (let i = 0; i < uniqueRecords.length; i += BATCH) {
         const batch = uniqueRecords.slice(i, i + BATCH).map(row => {
@@ -2282,13 +2307,17 @@ async function syncConsultasGuardia(db, targetMonthStr = null) {
 // SYNC RECEPCIONES VISITAS — SQL Server → Supabase
 // Fuente: TABLEAU_Visitas ordenadas por agenda (CHQ + ECO)
 // ═══════════════════════════════════════════════════
-async function syncRecepcionesVisitas(db) {
-    console.log('\n🏥 [RECEPCIONES] Extrayendo visitas CHQ/ECO de SALUS...');
+async function syncRecepcionesVisitas(db, fastSync = false) {
+    console.log(`\n🏥 [RECEPCIONES] Extrayendo visitas CHQ/ECO de SALUS... (fastSync: ${fastSync})`);
 
-    // Rango dinámico: desde 30 días atrás (historial reciente + ausentes) + todo lo futuro
+    const daysBack = fastSync ? 7 : 30;
     const desde = new Date();
-    desde.setDate(desde.getDate() - 30);
+    desde.setDate(desde.getDate() - daysBack);
     const desdeStr = desde.toISOString().split('T')[0].replace(/-/g, '');
+
+    const hastaClause = fastSync 
+        ? "AND [FECHA] <= CONVERT(VARCHAR(8), DATEADD(DAY, 15, GETDATE()), 112)" 
+        : "";
 
     const req = db.request();
     req.timeout = 120000;
@@ -2335,6 +2364,7 @@ async function syncRecepcionesVisitas(db) {
               ,[Centro]
           FROM [SALUS].[dbo].[TABLEAU_Visitas ordenadas por agenda]
           WHERE [FECHA] >= '${desdeStr}'
+            ${hastaClause}
             AND (
                   [TIPO VISITA] LIKE '%(CHQ) CHEQUEO PREVENTIVO%' 
                   OR [TIPO VISITA] LIKE '%(ECO)%'
@@ -2417,7 +2447,7 @@ async function syncRecepcionesVisitas(db) {
 
     // Insert en lotes
     let inserted = 0, skipped = 0;
-    const BATCH = 100;
+    const BATCH = 500;
 
     for (let i = 0; i < records.length; i += BATCH) {
         const batch = records.slice(i, i + BATCH);
@@ -2607,37 +2637,37 @@ app.get('/api/salus/sync-all', async (req, res) => {
         }
 
         try {
-            results.altas = await syncAltasAdministrativas(db);
+            results.altas = await syncAltasAdministrativas(db, fastSync);
         } catch (err) {
-            console.error('âŒ Error en altas administrativas:', err.message);
+            console.error('❌ Error en altas administrativas:', err.message);
             results.altas = { error: err.message };
         }
 
         try {
-            results.uci = await syncUci(db);
+            results.uci = await syncUci(db, fastSync);
         } catch (err) {
             console.error('❌ Error en UCI:', err.message);
             results.uci = { error: err.message };
         }
 
         try {
-            results.fojaQuirurgica = await syncFojaQuirurgica(db);
+            results.fojaQuirurgica = await syncFojaQuirurgica(db, fastSync);
         } catch (err) {
             console.error('❌ Error en foja quirúrgica:', err.message);
             results.fojaQuirurgica = { error: err.message };
         }
 
         try {
-            results.facturacionInternada = await syncFacturacionInternada(db);
+            results.facturacionInternada = await syncFacturacionInternada(db, fastSync);
         } catch (err) {
-            console.error('\u274C Error en facturaci\u00F3n internada:', err.message);
+            console.error('❌ Error en facturación internada:', err.message);
             results.facturacionInternada = { error: err.message };
         }
 
         try {
             results.facturacion = await syncFacturacionSede(db);
         } catch (err) {
-            console.error('âŒ Error en facturación sede:', err.message);
+            console.error('❌ Error en facturación sede:', err.message);
             results.facturacion = { error: err.message };
         }
 
@@ -2649,14 +2679,14 @@ app.get('/api/salus/sync-all', async (req, res) => {
         }
 
         try {
-            results.asociaciones = await syncAsociacionesCirugias(db);
+            results.asociaciones = await syncAsociacionesCirugias(db, fastSync);
         } catch (err) {
             console.error('Error en asociaciones:', err.message);
             results.asociaciones = { error: err.message };
         }
 
         try {
-            results.laboratorios = await syncLaboratorios(db);
+            results.laboratorios = await syncLaboratorios(db, fastSync);
         } catch (err) {
             console.error('Error en laboratorios:', err.message);
             results.laboratorios = { error: err.message };
@@ -2670,7 +2700,7 @@ app.get('/api/salus/sync-all', async (req, res) => {
         }
 
         try {
-            results.recepciones = await syncRecepcionesVisitas(db);
+            results.recepciones = await syncRecepcionesVisitas(db, fastSync);
         } catch (err) {
             console.error('Error en recepciones:', err.message);
             results.recepciones = { error: err.message };
@@ -2691,7 +2721,10 @@ app.get('/api/salus/sync-all', async (req, res) => {
         }
 
         try {
-            const fromKine = fastSync ? '2026-09-01' : '2026-08-01';
+            const d15 = new Date();
+            d15.setDate(d15.getDate() - 15);
+            const dynamicDate = d15.toISOString().split('T')[0];
+            const fromKine = fastSync ? dynamicDate : '2026-08-01';
             results.kinesiologiaUci = await syncKinesiologiaUci(fromKine);
         } catch (err) {
             console.error('❌ Error en kinesiología UCI:', err.message);
@@ -2699,7 +2732,10 @@ app.get('/api/salus/sync-all', async (req, res) => {
         }
 
         try {
-            const fromDiag = fastSync ? '2026-09-01' : '2026-08-01';
+            const d15 = new Date();
+            d15.setDate(d15.getDate() - 15);
+            const dynamicDate = d15.toISOString().split('T')[0];
+            const fromDiag = fastSync ? dynamicDate : '2026-08-01';
             results.diagnosticos = await syncDiagnosticos(fromDiag);
         } catch (err) {
             console.error('❌ Error en diagnósticos:', err.message);
@@ -2747,7 +2783,17 @@ app.get('/api/salus/sync-all', async (req, res) => {
 
 // â”€â”€ Endpoints individuales â”€â”€
 app.get('/api/salus/sync/uci', async (req, res) => {
-    try { const db = await getPool(); res.json({ success: true, results: await syncUci(db) }); }
+    try { const db = await getPool(); res.json({ success: true, results: await syncUci(db, req.query.fast === 'true') }); }
+    catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+app.get('/api/salus/sync/altas', async (req, res) => {
+    try { const db = await getPool(); res.json({ success: true, results: await syncAltasAdministrativas(db, req.query.fast === 'true') }); }
+    catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+app.get('/api/salus/sync/foja', async (req, res) => {
+    try { const db = await getPool(); res.json({ success: true, results: await syncFojaQuirurgica(db, req.query.fast === 'true') }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
@@ -2787,12 +2833,12 @@ app.get('/api/salus/sync/visitas', async (req, res) => {
 });
 
 app.get('/api/salus/sync/asociaciones', async (req, res) => {
-    try { const db = await getPool(); res.json({ success: true, results: await syncAsociacionesCirugias(db) }); }
+    try { const db = await getPool(); res.json({ success: true, results: await syncAsociacionesCirugias(db, req.query.fast === 'true') }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
 app.get('/api/salus/sync/laboratorios', async (req, res) => {
-    try { const db = await getPool(); res.json({ success: true, results: await syncLaboratorios(db) }); }
+    try { const db = await getPool(); res.json({ success: true, results: await syncLaboratorios(db, req.query.fast === 'true') }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
@@ -2812,12 +2858,12 @@ app.get('/api/salus/sync/consultas', async (req, res) => {
 });
 
 app.get('/api/salus/sync/recepciones', async (req, res) => {
-    try { const db = await getPool(); res.json({ success: true, results: await syncRecepcionesVisitas(db) }); }
+    try { const db = await getPool(); res.json({ success: true, results: await syncRecepcionesVisitas(db, req.query.fast === 'true') }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
 app.get('/api/salus/sync/facturacion-internada', async (req, res) => {
-    try { const db = await getPool(); res.json({ success: true, results: await syncFacturacionInternada(db) }); }
+    try { const db = await getPool(); res.json({ success: true, results: await syncFacturacionInternada(db, req.query.fast === 'true') }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
@@ -2985,5 +3031,13 @@ process.on('SIGINT', async () => {
     console.log('\n🔒 Cerrando...');
     if (pool) await pool.close();
     process.exit(0);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('❌ Error no capturado (uncaughtException):', err.message);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Promesa rechazada no capturada (unhandledRejection):', reason);
 });
 

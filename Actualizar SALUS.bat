@@ -8,6 +8,8 @@ echo   Conectando a SQL Server local...
 echo =============================================
 echo.
 
+reg add HKCU\Console /v QuickEdit /t REG_DWORD /d 0 /f >nul 2>&1
+
 cd /d "%~dp0sync-server"
 
 :: Verificar si node_modules existe
