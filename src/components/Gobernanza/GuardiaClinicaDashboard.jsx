@@ -150,20 +150,6 @@ export default function GuardiaClinicaDashboard({
                             <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0F172A' }}>
                                 Tablero de Guardia y Urgencias Médicas
                             </h2>
-                            <span style={{
-                                background: '#DCFCE7',
-                                color: '#166534',
-                                fontSize: '0.68rem',
-                                fontWeight: 800,
-                                padding: '2px 8px',
-                                borderRadius: '12px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                            }}>
-                                <ShieldCheck size={12} />
-                                SALUS Live Sync
-                            </span>
                         </div>
                         <span style={{ fontSize: '0.78rem', color: '#64748B' }}>
                             Métricas normadas de Oportunidad, Calidad, Resolutividad e Intensidad Diagnóstica
