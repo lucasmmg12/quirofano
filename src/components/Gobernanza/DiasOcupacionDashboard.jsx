@@ -663,7 +663,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         });
         const alos = countEstancia > 0 ? (sumEstancia / countEstancia).toFixed(1) : '—';
 
-        // 1. Gráfico: Admisiones por Especialidad por Mes
+        // 1. Gráfico: Admisiones por Especialidad por Mes (Admisiones Únicas por Mes)
         const mesesSet = new Set();
         filteredRows.forEach(r => {
             if (r.fecha_ocupacion) {
@@ -672,18 +672,35 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         });
         const mesesSorted = Array.from(mesesSet).sort();
 
+        // Agrupar admisiones únicas por mes para evitar duplicar pacientes con múltiples días de internación
+        const admisionesPorMesMap = new Map(); // mes -> Map(idAdmision -> record)
+        mesesSorted.forEach(m => {
+            admisionesPorMesMap.set(m, new Map());
+        });
+
+        filteredRows.forEach(r => {
+            const m = r.fecha_ocupacion?.substring(0, 7);
+            if (!m || !admisionesPorMesMap.has(m)) return;
+            const key = r.id_admision || r.numero_admision;
+            if (!admisionesPorMesMap.get(m).has(key)) {
+                admisionesPorMesMap.get(m).set(key, r);
+            }
+        });
+
         const especialidadPorMes = {};
         mesesSorted.forEach(m => {
             especialidadPorMes[m] = {};
         });
 
         const topEspecialidadesSet = new Set();
-        filteredRows.forEach(r => {
-            const m = r.fecha_ocupacion?.substring(0, 7);
-            const esp = r.especialidad ? r.especialidad.trim() : 'Sin Especialidad';
-            if (m && especialidadPorMes[m]) {
-                especialidadPorMes[m][esp] = (especialidadPorMes[m][esp] || 0) + 1;
-                topEspecialidadesSet.add(esp);
+        mesesSorted.forEach(m => {
+            const admMap = admisionesPorMesMap.get(m);
+            if (admMap) {
+                admMap.forEach(r => {
+                    const esp = r.especialidad ? r.especialidad.trim() : 'Sin Especialidad';
+                    especialidadPorMes[m][esp] = (especialidadPorMes[m][esp] || 0) + 1;
+                    topEspecialidadesSet.add(esp);
+                });
             }
         });
 
@@ -698,21 +715,14 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             return item;
         });
 
-        // 2. Gráfico: Admisiones Totales por Mes
-        const admisionesPorMesMap = {};
-        admisionesUnicas.forEach(r => {
-            const m = r.fecha_ingreso ? r.fecha_ingreso.substring(0, 7) : null;
-            if (m) {
-                admisionesPorMesMap[m] = (admisionesPorMesMap[m] || 0) + 1;
-            }
-        });
+        // 2. Gráfico: Admisiones Totales por Mes (Consistente con Admisiones Únicas)
         const dataAdmisionesTotales = mesesSorted.map(m => {
             const dObj = new Date(m + '-01T12:00:00');
             const mesNombre = dObj.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' });
             return {
                 mesKey: m,
                 mes: mesNombre,
-                total: admisionesPorMesMap[m] || 0
+                total: admisionesPorMesMap.get(m)?.size || 0
             };
         });
 
@@ -3486,7 +3496,13 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             {inspectDataIndicator && (
                 <TelarDataModal
                     indicator={inspectDataIndicator}
-                    rawData={inspectDataIndicator.dataType === 'peticiones' ? (inspectDataIndicator.rawData || metrics.peticionesFiltradas) : filteredRows}
+                    rawData={
+                        inspectDataIndicator.dataType === 'peticiones' 
+                            ? (inspectDataIndicator.rawData || metrics.peticionesFiltradas) 
+                            : inspectDataIndicator.id === 'kpi_dias_ocupados'
+                                ? filteredRows
+                                : (metrics.admisionesUnicas || filteredRows)
+                    }
                     onClose={() => setInspectDataIndicator(null)}
                 />
             )}

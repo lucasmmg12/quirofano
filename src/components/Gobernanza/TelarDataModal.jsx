@@ -63,7 +63,20 @@ export default function TelarDataModal({ indicator, onClose, dateFilter = {}, ra
         }
 
         // Mapeo de Admisiones / Ocupación
-        return rawData.map(r => {
+        // Deduplicar por admisión a menos que se trate explícitamente del KPI de días camas ocupados
+        let sourceData = rawData;
+        if (indicator?.id !== 'kpi_dias_ocupados') {
+            const seen = new Map();
+            rawData.forEach(r => {
+                const key = r.numero_admision || r.id_admision || r.id;
+                if (key && !seen.has(key)) {
+                    seen.set(key, r);
+                }
+            });
+            sourceData = Array.from(seen.values());
+        }
+
+        return sourceData.map(r => {
             let diasEstancia = '-';
             if (r.fecha_ingreso && r.fecha_alta) {
                 const diffTime = Math.abs(new Date(r.fecha_alta) - new Date(r.fecha_ingreso));
@@ -97,7 +110,7 @@ export default function TelarDataModal({ indicator, onClose, dateFilter = {}, ra
                 cliente: r.cliente || 'Particular'
             };
         });
-    }, [rawData, isPeticiones]);
+    }, [rawData, isPeticiones, indicator?.id]);
 
     // Columnas según tipo de datos
     const tableColumns = useMemo(() => {
