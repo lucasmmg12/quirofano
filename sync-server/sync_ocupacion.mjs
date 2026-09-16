@@ -62,6 +62,22 @@ export function parseSalusDate(str) {
     return new Date(str).toISOString();
 }
 
+export const KNOWN_SEXO_OVERRIDES = {
+    '299195': 'M', // ACOSTA, DOMINGO LIDIO
+    '074600': 'M', // AGUERO, DANTE ARIEL
+    '135616': 'M', // CALIVAR, OMAR DANIEL
+    '078932': 'M', // NAVARRETE, JORGE ABEL
+    '296410': 'M', // SAMBRANO, GILBERTO NELSON
+};
+
+export function resolveSexo(nhc, rawSexo) {
+    const cleanNhc = nhc ? String(nhc).trim() : null;
+    if (cleanNhc && KNOWN_SEXO_OVERRIDES[cleanNhc]) {
+        return KNOWN_SEXO_OVERRIDES[cleanNhc];
+    }
+    return rawSexo ? String(rawSexo).trim() : 'I';
+}
+
 /**
  * 1. Sincronizar Historial Granular de Camas y Traslados (Tramos exactos fechaInicio -> fechaFin)
  * Extrae de [TABLEAU_Admisiones con historial de camas2] JOIN TABLEAU_Admisiones
@@ -131,7 +147,7 @@ export async function syncHistorialCamas(filtroServicio = null) {
                 numero_admision: r['Numero admision'] ? String(r['Numero admision']).trim() : null,
                 paciente: r.Paciente ? String(r.Paciente).trim() : 'SIN NOMBRE',
                 nhc: r.NHC ? String(r.NHC).trim() : null,
-                sexo: r.Sexo ? String(r.Sexo).trim() : 'I',
+                sexo: resolveSexo(r.NHC, r.Sexo),
                 servicio: r.Servicio ? String(r.Servicio).trim() : 'UCI',
                 habitacion: String(r.NombreHabitacion).trim(),
                 cama: r.NombreCama ? String(r.NombreCama).trim() : null,
@@ -247,7 +263,7 @@ export async function syncOcupacion(filtroServicio = null) {
             especialidad: r.Especialidad ? String(r.Especialidad).trim() : 'Sin Especialidad',
             procedencia: r.Procedencia ? String(r.Procedencia).trim() : null,
             nhc: r.NHC ? String(r.NHC).trim() : null,
-            sexo: r.Sexo ? String(r.Sexo).trim() : 'I',
+            sexo: resolveSexo(r.NHC, r.Sexo),
             paciente: r.Paciente ? String(r.Paciente).trim() : null,
             motivo_de_alta: r['Motivo de alta'] ? String(r['Motivo de alta']).trim() : null,
             cliente: r.Cliente ? String(r.Cliente).trim() : null,
