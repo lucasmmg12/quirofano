@@ -150,6 +150,21 @@ const getRangoMesAnterior = () => {
     };
 };
 
+/**
+ * REGLA CLÍNICA MANDATORIA:
+ * Determina si la defunción ocurrió dentro del período auditado evaluando exclusivamente su fecha de alta (deceso).
+ */
+export const isFechaAltaEnRango = (fechaAlta, desde, hasta) => {
+    if (!fechaAlta || !desde || !hasta) return false;
+    const dAlt = new Date(fechaAlta);
+    if (isNaN(dAlt.getTime())) return false;
+    const y = dAlt.getFullYear();
+    const mo = String(dAlt.getMonth() + 1).padStart(2, '0');
+    const d = String(dAlt.getDate()).padStart(2, '0');
+    const altaDateStr = `${y}-${mo}-${d}`;
+    return altaDateStr >= desde && altaDateStr <= hasta;
+};
+
 export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpdate, addToast }) {
     // === ESTADOS DE NAVEGACIÓN Y SECTOR ===
     const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -609,6 +624,37 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 }
             }
 
+            // Complementario: Garantizar que cualquier defunción cuya fecha_alta caiga en el período esté incluida
+            // aunque su pernoctada censal haya iniciado en un mes anterior
+            try {
+                let qDefs = supabase
+                    .from('calidad_admisiones_ocupacion')
+                    .select('id, id_admision, numero_admision, fecha_ocupacion, fecha_ingreso, fecha_alta, especialidad, servicio, paciente, nhc, motivo_de_alta, cliente, procedencia, edad, habitacion, sexo')
+                    .gte('fecha_alta', `${fechaDesde}T00:00:00`)
+                    .lte('fecha_alta', `${fechaHasta}T23:59:59`)
+                    .or('motivo_de_alta.ilike.%defunc%,motivo_de_alta.ilike.%fallec%,motivo_de_alta.ilike.%obito%');
+
+                if (sectorId === 'UCI') {
+                    qDefs = qDefs.in('servicio', ['UCI', 'TERAPIA INTERMEDIA']);
+                } else if (sectorId && sectorId !== 'TODOS') {
+                    qDefs = qDefs.eq('servicio', sectorId);
+                }
+
+                const { data: extraDefs } = await qDefs;
+                if (extraDefs && extraDefs.length > 0) {
+                    const existingKeys = new Set(allRows.map(r => `${r.id_admision || r.numero_admision}_${r.fecha_ocupacion}`));
+                    extraDefs.forEach(ed => {
+                        const k = `${ed.id_admision || ed.numero_admision}_${ed.fecha_ocupacion}`;
+                        if (!existingKeys.has(k)) {
+                            allRows.push(ed);
+                            existingKeys.add(k);
+                        }
+                    });
+                }
+            } catch (errDef) {
+                console.warn('Advertencia cargando defunciones por fecha_alta:', errDef);
+            }
+
             setRows(allRows);
 
             // Extraer especialidades dinámicas
@@ -730,10 +776,15 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         const totalAdmisiones = admisionesUnicas.length;
 
         // Tasa de defunción (% defunción sobre egresos/admisiones únicas)
-        const defunciones = admisionesUnicas.filter(r => {
+        // REGLA CLÍNICA MANDATORIA: Las defunciones se computan por FECHA DE ALTA (momento exacto del deceso),
+        // no por fecha de ingreso ni fecha censal. Si ingresó en julio y falleció en agosto, se imputa a agosto.
+        const defuncionesRows = admisionesUnicas.filter(r => {
             const m = (r.motivo_de_alta || '').toLowerCase();
-            return m.includes('defunci') || m.includes('fallecid') || m.includes('obito');
-        }).length;
+            const esObito = m.includes('defunci') || m.includes('fallecid') || m.includes('óbito') || m.includes('obito');
+            if (!esObito) return false;
+            return isFechaAltaEnRango(r.fecha_alta, fechaDesde, fechaHasta);
+        });
+        const defunciones = defuncionesRows.length;
 
         const porcDefuncion = totalAdmisiones > 0 
             ? ((defunciones / totalAdmisiones) * 100).toFixed(1) 
@@ -819,10 +870,22 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         const motivosMap = {};
         admisionesUnicas.forEach(r => {
             let m = (r.motivo_de_alta || 'Sin Alta Registrada').trim();
-            if (m.toLowerCase().includes('alta m')) m = 'Alta médica';
-            else if (m.toLowerCase().includes('traslado a otro')) m = 'Traslado a otro centro';
-            else if (m.toLowerCase().includes('defunci')) m = 'Defunción';
-            else if (m.toLowerCase().includes('voluntari')) m = 'Alta voluntaria';
+            const esDef = m.toLowerCase().includes('defunci') || m.toLowerCase().includes('fallecid') || m.toLowerCase().includes('obito');
+
+            if (esDef) {
+                // REGLA CLÍNICA: Solo computar Defunción si el deceso (fecha_alta) ocurrió en el período
+                if (isFechaAltaEnRango(r.fecha_alta, fechaDesde, fechaHasta)) {
+                    m = 'Defunción';
+                } else {
+                    m = 'Internado / Sin Alta en Período';
+                }
+            } else if (m.toLowerCase().includes('alta m')) {
+                m = 'Alta médica';
+            } else if (m.toLowerCase().includes('traslado a otro')) {
+                m = 'Traslado a otro centro';
+            } else if (m.toLowerCase().includes('voluntari')) {
+                m = 'Alta voluntaria';
+            }
             motivosMap[m] = (motivosMap[m] || 0) + 1;
         });
         const dataMotivosAlta = Object.keys(motivosMap)

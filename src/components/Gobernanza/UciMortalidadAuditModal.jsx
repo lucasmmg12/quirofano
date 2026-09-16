@@ -45,11 +45,27 @@ export default function UciMortalidadAuditModal({
     }, [targetPatient, isOpen]);
 
     // 1. Filtrar y deduplicar admisiones con motivo de egreso Defunción
+    // REGLA CLÍNICA MANDATORIA: Las defunciones se imputan por FECHA DE ALTA (momento del deceso),
+    // no por fecha de ingreso. Si el paciente ingresó en julio pero falleció en agosto, se imputa a agosto.
     const defunciones = useMemo(() => {
         const defMap = new Map();
         (rawData || []).forEach(r => {
             const motivo = (r.motivo_de_alta || '').toLowerCase();
             if (motivo.includes('defunc') || motivo.includes('fallec') || motivo.includes('óbito') || motivo.includes('obito')) {
+                // Si hay filtro de fechas, validar que la fecha de defunción (alta) caiga en el rango
+                if (dateFilter?.fechaDesde && dateFilter?.fechaHasta) {
+                    if (!r.fecha_alta) return;
+                    const dAlt = new Date(r.fecha_alta);
+                    if (isNaN(dAlt.getTime())) return;
+                    const y = dAlt.getFullYear();
+                    const mo = String(dAlt.getMonth() + 1).padStart(2, '0');
+                    const d = String(dAlt.getDate()).padStart(2, '0');
+                    const altaDateStr = `${y}-${mo}-${d}`;
+                    if (altaDateStr < dateFilter.fechaDesde || altaDateStr > dateFilter.fechaHasta) {
+                        return; // Omitir: falleció fuera del período seleccionado
+                    }
+                }
+
                 const key = r.numero_admision || r.id_admision || `${r.nhc}_${r.fecha_ingreso}`;
                 if (!defMap.has(key)) {
                     // Calcular horas y días de estancia hasta el óbito
@@ -188,7 +204,7 @@ export default function UciMortalidadAuditModal({
             const dateB = new Date(b.fecha_alta || b.fecha_ingreso || 0);
             return dateB - dateA;
         });
-    }, [rawData, targetPatient]);
+    }, [rawData, targetPatient, dateFilter?.fechaDesde, dateFilter?.fechaHasta]);
 
     // Registro consolidado del paciente individual seleccionado
     const currentPatientRecord = useMemo(() => {
@@ -1206,6 +1222,14 @@ export default function UciMortalidadAuditModal({
                                 }}>
                                     {sectorLabel}
                                 </span>
+                                {dateFilter?.fechaDesde && dateFilter?.fechaHasta && (
+                                    <span style={{
+                                        fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: '12px',
+                                        background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA'
+                                    }}>
+                                        🗓️ Decesos por Fecha de Alta: {dateFilter.fechaDesde} al {dateFilter.fechaHasta}
+                                    </span>
+                                )}
                             </div>
                             <p style={{ margin: '3px 0 0 0', fontSize: '0.8rem', color: '#64748B' }}>
                                 {isSinglePatient 

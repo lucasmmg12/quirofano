@@ -248,6 +248,7 @@ export default function SqlDocumentationModal({ isOpen, onClose, initialTab = 'U
                                     <li><strong>% de Ocupación:</strong> <code>(Días Camas Ocupados / Días Camas Disponibles) × 100</code>. Benchmark UCI: 75% - 85%.</li>
                                     <li><strong>Promedio de Estancia (ALOS):</strong> <code>Sumatoria de días de permanencia / Total de admisiones</code>.</li>
                                     <li><strong>Mortalidad Cruda (% de Defunción):</strong> <code>(Fallecidos en UCI / Total de Egresos de UCI) × 100</code>.</li>
+                                    <li><strong>Regla de Imputación Temporal de Defunciones:</strong> Las defunciones se imputan estrictamente por <strong>Fecha de Alta / Óbito</strong> (momento del deceso), no por fecha de ingreso censal. Si un paciente ingresó a fines de un mes (ej. julio) pero falleció en el mes subsiguiente (ej. agosto), el evento y la auditoría clínica se computan formalmente en el mes del deceso (agosto).</li>
                                     <li><strong>Intensidad Diagnóstica:</strong> <code>Total Estudios Clínicos en UCI / Días Camas Ocupados</code>.</li>
                                 </ul>
                             </div>
