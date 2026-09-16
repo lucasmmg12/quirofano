@@ -213,7 +213,10 @@ export async function syncOcupacion(filtroServicio = null) {
             LEFT JOIN FE_Entidades p ON b.NHC = p.NHC
             JOIN master.dbo.spt_values v
               ON v.type = 'P' 
-              AND v.number <= DATEDIFF(DAY, CAST(b.[Fecha ingreso] AS DATE), CAST(ISNULL(b.[Fecha alta], GETDATE()) AS DATE))
+              AND v.number <= CASE 
+                  WHEN DATEDIFF(DAY, CAST(b.[Fecha ingreso] AS DATE), CAST(ISNULL(b.[Fecha alta], GETDATE()) AS DATE)) = 0 THEN 0 
+                  ELSE DATEDIFF(DAY, CAST(b.[Fecha ingreso] AS DATE), CAST(ISNULL(b.[Fecha alta], GETDATE()) AS DATE)) - 1 
+              END
             WHERE (b.[Fecha alta] >= '2025-06-01' OR b.[Fecha alta] IS NULL)
         `;
 

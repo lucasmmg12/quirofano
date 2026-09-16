@@ -104,7 +104,10 @@ async function runDailySync() {
         FROM TABLEAU_Admisiones b
         JOIN master.dbo.spt_values v
           ON v.type = 'P' 
-          AND v.number <= DATEDIFF(DAY, CAST(b.[Fecha ingreso] AS DATE), CAST(ISNULL(b.[Fecha alta], GETDATE()) AS DATE))
+          AND v.number <= CASE 
+              WHEN DATEDIFF(DAY, CAST(b.[Fecha ingreso] AS DATE), CAST(ISNULL(b.[Fecha alta], GETDATE()) AS DATE)) = 0 THEN 0 
+              ELSE DATEDIFF(DAY, CAST(b.[Fecha ingreso] AS DATE), CAST(ISNULL(b.[Fecha alta], GETDATE()) AS DATE)) - 1 
+          END
         WHERE (b.[Fecha alta] >= DATEADD(DAY, -45, GETDATE()) OR b.[Fecha alta] IS NULL)
           AND b.[Fecha ingreso] >= '2025-06-01'
     `);

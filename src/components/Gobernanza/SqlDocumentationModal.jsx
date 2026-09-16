@@ -247,6 +247,7 @@ export default function SqlDocumentationModal({ isOpen, onClose, initialTab = 'U
                                     <li><strong>Días Camas Disponibles:</strong> <code>Camas Operativas × Cantidad de Días del Período</code>.</li>
                                     <li><strong>% de Ocupación:</strong> <code>(Días Camas Ocupados / Días Camas Disponibles) × 100</code>. Benchmark UCI: 75% - 85%.</li>
                                     <li><strong>Promedio de Estancia (ALOS):</strong> <code>Sumatoria de días de permanencia / Total de admisiones</code>.</li>
+                                    <li><strong>Regla Censal de Días Cama / Estancia Hospitalaria:</strong> Si el paciente ingresó y egresó en el mismo día (<code>ingreso = alta</code>), computa exactamente <strong>1 día</strong> de estancia censal. En internaciones de 2 o más días (ej. ingresó 15/09 y egresó 16/09), computa formalmente como <strong>1 día</strong> de estancia, ya que el día del alta médica no se cuenta en el censo hospitalario (noches pernoctadas efectivas).</li>
                                     <li><strong>Mortalidad Cruda (% de Defunción):</strong> <code>(Fallecidos en UCI / Total de Egresos de UCI) × 100</code>.</li>
                                     <li><strong>Regla de Imputación Temporal de Defunciones:</strong> Las defunciones se imputan estrictamente por <strong>Fecha de Alta / Óbito</strong> (momento del deceso), no por fecha de ingreso censal. Si un paciente ingresó a fines de un mes (ej. julio) pero falleció en el mes subsiguiente (ej. agosto), el evento y la auditoría clínica se computan formalmente en el mes del deceso (agosto).</li>
                                     <li><strong>Intensidad Diagnóstica:</strong> <code>Total Estudios Clínicos en UCI / Días Camas Ocupados</code>.</li>
@@ -652,7 +653,10 @@ SELECT
 FROM TABLEAU_Admisiones b
 JOIN master.dbo.spt_values v
   ON v.type = 'P' 
-  AND v.number <= DATEDIFF(DAY, CAST(b.[Fecha ingreso] AS DATE), CAST(ISNULL(b.[Fecha alta], GETDATE()) AS DATE))
+  AND v.number <= CASE 
+      WHEN DATEDIFF(DAY, CAST(b.[Fecha ingreso] AS DATE), CAST(ISNULL(b.[Fecha alta], GETDATE()) AS DATE)) = 0 THEN 0 
+      ELSE DATEDIFF(DAY, CAST(b.[Fecha ingreso] AS DATE), CAST(ISNULL(b.[Fecha alta], GETDATE()) AS DATE)) - 1 
+  END
 WHERE b.Servicio IN ('UCI', 'TERAPIA INTERMEDIA')
   AND (b.[Fecha alta] >= '2025-06-01' OR b.[Fecha alta] IS NULL)
 ORDER BY [Fecha Ocupacion] DESC;`;

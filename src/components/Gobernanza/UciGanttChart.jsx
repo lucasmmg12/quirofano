@@ -395,8 +395,12 @@ export default function UciGanttChart({
                 const leftPx = diffDaysStart * dayWidth;
                 const widthPx = Math.max(16, durationDays * dayWidth);
 
-                // Días totales reales de estancia
-                const totalDays = Math.max(1, Math.ceil((admEnd - admStart) / (1000 * 60 * 60 * 24)));
+                // Días totales reales de estancia según regla censal (mismo día = 1, multi-día = día de alta no se cuenta)
+                const startStr = `${admStart.getFullYear()}-${String(admStart.getMonth() + 1).padStart(2, '0')}-${String(admStart.getDate()).padStart(2, '0')}`;
+                const endStr = `${admEnd.getFullYear()}-${String(admEnd.getMonth() + 1).padStart(2, '0')}-${String(admEnd.getDate()).padStart(2, '0')}`;
+                const totalDays = startStr === endStr 
+                    ? 1 
+                    : Math.max(1, Math.round((new Date(endStr) - new Date(startStr)) / (1000 * 60 * 60 * 24)));
 
                 // Asignar color por cobertura
                 const hash = (adm.cliente || '').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);

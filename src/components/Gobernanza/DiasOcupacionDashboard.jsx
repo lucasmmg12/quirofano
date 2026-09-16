@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { 
     BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, 
-    XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
+    XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList 
 } from 'recharts';
 import { 
     BookOpen, Filter, Calendar, Bed, Activity, Users, 
@@ -164,6 +164,52 @@ export const isFechaAltaEnRango = (fechaAlta, desde, hasta) => {
     const altaDateStr = `${y}-${mo}-${d}`;
     return altaDateStr >= desde && altaDateStr <= hasta;
 };
+
+/**
+ * REGLA DE DÍAS CAMA Y ESTANCIA HOSPITALARIA (CENSO NACIONAL / ESTÁNDAR SANATORIO ARGENTINO):
+ * - Si ingresó 15/09 y egresó 16/09 = 1 día de estadía.
+ * - Si ingresó 15/09 y egresó el mismo día = 1 día de estadía.
+ * - En estancias grandes (multi-día), siempre el día de alta NO se cuenta como día de ocupación.
+ */
+export function calcularDiasEstancia(fechaIngreso, fechaAlta) {
+    if (!fechaIngreso) return 1;
+    const dIng = new Date(fechaIngreso);
+    const dAlt = fechaAlta ? new Date(fechaAlta) : new Date();
+    if (isNaN(dIng.getTime()) || isNaN(dAlt.getTime())) return 1;
+
+    const ingStr = `${dIng.getFullYear()}-${String(dIng.getMonth() + 1).padStart(2, '0')}-${String(dIng.getDate()).padStart(2, '0')}`;
+    const altStr = `${dAlt.getFullYear()}-${String(dAlt.getMonth() + 1).padStart(2, '0')}-${String(dAlt.getDate()).padStart(2, '0')}`;
+
+    if (ingStr === altStr) {
+        return 1;
+    }
+
+    const diffDays = Math.round((new Date(altStr) - new Date(ingStr)) / (1000 * 60 * 60 * 24));
+    return Math.max(1, diffDays);
+}
+
+/**
+ * Filtra si un registro diario de ocupación es computable según la regla censal:
+ * En estancias de más de 1 día, la fecha de ocupación igual a la fecha de alta queda excluida.
+ */
+export function esDiaOcupadoValido(fechaOcupacion, fechaIngreso, fechaAlta) {
+    if (!fechaOcupacion || !fechaIngreso || !fechaAlta) return true;
+    const dOcup = String(fechaOcupacion).substring(0, 10);
+    
+    const dIng = new Date(fechaIngreso);
+    const ingStr = `${dIng.getFullYear()}-${String(dIng.getMonth() + 1).padStart(2, '0')}-${String(dIng.getDate()).padStart(2, '0')}`;
+    
+    const dAlt = new Date(fechaAlta);
+    const altStr = `${dAlt.getFullYear()}-${String(dAlt.getMonth() + 1).padStart(2, '0')}-${String(dAlt.getDate()).padStart(2, '0')}`;
+
+    // Si ingresó y egresó el mismo día, ese único registro es válido (1 día)
+    if (ingStr === altStr) {
+        return dOcup === ingStr;
+    }
+
+    // En estancias grandes, el día de alta NO se cuenta
+    return dOcup !== altStr;
+}
 
 export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpdate, addToast }) {
     // === ESTADOS DE NAVEGACIÓN Y SECTOR ===
@@ -733,7 +779,9 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         }
     };
 
-    // Filtrar filas según Sub-Nivel de UCI y Especialidades seleccionadas (Multi-Select)
+    // Filtrar filas según Sub-Nivel de UCI, Especialidades y Regla Censal de Días Cama:
+    // "Si ingresó 15/09 y salió 16/09 equivale a 1 día. Si ingresó 15/09 y salió el mismo día también equivale a 1 día.
+    // En estancias grandes, el día de alta no se cuenta como día de ocupación."
     const filteredRows = useMemo(() => {
         let list = rows;
         if (sectorId === 'UCI') {
@@ -746,6 +794,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         if (selectedEspecialidades !== null) {
             list = list.filter(r => r.especialidad && selectedEspecialidades.includes(r.especialidad.trim()));
         }
+        // Aplicar regla censal hospitalaria: excluir la fila censal del día de alta en estancias multi-día
+        list = list.filter(r => esDiaOcupadoValido(r.fecha_ocupacion, r.fecha_ingreso, r.fecha_alta));
         return list;
     }, [rows, sectorId, uciSubNivel, selectedEspecialidades]);
 
@@ -790,13 +840,12 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             ? ((defunciones / totalAdmisiones) * 100).toFixed(1) 
             : '0.0';
 
-        // Promedio de Estancia (ALOS)
+        // Promedio de Estancia (ALOS) según estándar censal hospitalario
         let sumEstancia = 0;
         let countEstancia = 0;
         admisionesUnicas.forEach(r => {
             if (r.fecha_ingreso && r.fecha_alta) {
-                const diffTime = Math.abs(new Date(r.fecha_alta) - new Date(r.fecha_ingreso));
-                const days = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+                const days = calcularDiasEstancia(r.fecha_ingreso, r.fecha_alta);
                 sumEstancia += days;
                 countEstancia++;
             }
@@ -888,10 +937,12 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             }
             motivosMap[m] = (motivosMap[m] || 0) + 1;
         });
+        const totalMotivos = Object.values(motivosMap).reduce((a, b) => a + b, 0);
         const dataMotivosAlta = Object.keys(motivosMap)
             .map((k, idx) => ({
                 label: k,
                 value: motivosMap[k],
+                pct: totalMotivos > 0 ? ((motivosMap[k] / totalMotivos) * 100).toFixed(1) : '0.0',
                 color: COLORS_MOTIVO[idx % COLORS_MOTIVO.length]
             }))
             .sort((a, b) => b.value - a.value);
@@ -906,9 +957,11 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             else if (edad <= 65) etarioMap['Adulto (46-65)']++;
             else etarioMap['Mayor (>65)']++;
         });
+        const totalEtario = Object.values(etarioMap).reduce((a, b) => a + b, 0);
         const dataRangoEtario = Object.keys(etarioMap).map((k, idx) => ({
             label: k,
             value: etarioMap[k],
+            pct: totalEtario > 0 ? ((etarioMap[k] / totalEtario) * 100).toFixed(1) : '0.0',
             color: COLORS_ETARIO[idx % COLORS_ETARIO.length]
         }));
 
@@ -956,11 +1009,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             if (r.fecha_ingreso) {
                 const m = r.fecha_ingreso.substring(0, 7);
                 if (estanciasPorMes[m]) {
-                    let dias = 1;
-                    if (r.fecha_alta) {
-                        const diffTime = Math.abs(new Date(r.fecha_alta) - new Date(r.fecha_ingreso));
-                        dias = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-                    }
+                    const dias = calcularDiasEstancia(r.fecha_ingreso, r.fecha_alta);
                     if (dias <= 2) estanciasPorMes[m].corta++;
                     else if (dias <= 7) estanciasPorMes[m].media++;
                     else estanciasPorMes[m].larga++;
@@ -985,10 +1034,12 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             const p = (r.procedencia || 'Sin Procedencia').trim();
             procedenciaMap[p] = (procedenciaMap[p] || 0) + 1;
         });
+        const totalProcedencia = Object.values(procedenciaMap).reduce((a, b) => a + b, 0);
         const dataProcedencia = Object.keys(procedenciaMap)
             .map((k, idx) => ({
                 label: k,
                 value: procedenciaMap[k],
+                pct: totalProcedencia > 0 ? ((procedenciaMap[k] / totalProcedencia) * 100).toFixed(1) : '0.0',
                 color: ESPECIALIDAD_PALETTE[idx % ESPECIALIDAD_PALETTE.length]
             }))
             .sort((a, b) => b.value - a.value)
@@ -1000,10 +1051,12 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             const c = (r.cliente || 'Particular').trim();
             clientesMap[c] = (clientesMap[c] || 0) + 1;
         });
+        const totalClientes = Object.values(clientesMap).reduce((a, b) => a + b, 0);
         const dataClientes = Object.keys(clientesMap)
             .map((k, idx) => ({
                 label: k,
                 value: clientesMap[k],
+                pct: totalClientes > 0 ? ((clientesMap[k] / totalClientes) * 100).toFixed(1) : '0.0',
                 color: ESPECIALIDAD_PALETTE[idx % ESPECIALIDAD_PALETTE.length]
             }))
             .sort((a, b) => b.value - a.value)
@@ -1142,6 +1195,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 box,
                 count,
                 porcentaje: totalEstudiosBaseBox > 0 ? ((count / totalEstudiosBaseBox) * 100).toFixed(1) : '0.0',
+                pct: totalEstudiosBaseBox > 0 ? ((count / totalEstudiosBaseBox) * 100).toFixed(1) : '0.0',
                 color: ESPECIALIDAD_PALETTE[idx % ESPECIALIDAD_PALETTE.length]
             }))
             .sort((a, b) => a.box.localeCompare(b.box, undefined, { numeric: true, sensitivity: 'base' }));
@@ -1155,10 +1209,12 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             else if (est.startsWith('*** PETICION RADIOL')) est = 'Radiología en Cama / Tórax';
             estudiosCounts[est] = (estudiosCounts[est] || 0) + 1;
         });
+        const totalTopEstudios = Object.values(estudiosCounts).reduce((a, b) => a + b, 0);
         const dataTopEstudios = Object.entries(estudiosCounts)
             .map(([label, value], idx) => ({
                 label,
                 value,
+                pct: totalTopEstudios > 0 ? ((value / totalTopEstudios) * 100).toFixed(1) : '0.0',
                 color: ESPECIALIDAD_PALETTE[idx % ESPECIALIDAD_PALETTE.length]
             }))
             .sort((a, b) => b.value - a.value)
@@ -1172,10 +1228,12 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             sol = sol.trim();
             solicitantesCounts[sol] = (solicitantesCounts[sol] || 0) + 1;
         });
+        const totalTopSolicitantes = Object.values(solicitantesCounts).reduce((a, b) => a + b, 0);
         const dataTopSolicitantes = Object.entries(solicitantesCounts)
             .map(([label, value], idx) => ({
                 label,
                 value,
+                pct: totalTopSolicitantes > 0 ? ((value / totalTopSolicitantes) * 100).toFixed(1) : '0.0',
                 color: ESPECIALIDAD_PALETTE[idx % ESPECIALIDAD_PALETTE.length]
             }))
             .sort((a, b) => b.value - a.value)
@@ -1379,12 +1437,19 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                                     <XAxis dataKey="mes" stroke="#64748B" fontSize={11} />
                                     <YAxis stroke="#64748B" fontSize={11} />
-                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
+                                    <Tooltip 
+                                        formatter={(val, name, entry) => {
+                                            const sumMes = (metrics.topEspecialidades || []).reduce((acc, k) => acc + (Number(entry?.payload?.[k]) || 0), 0);
+                                            const pct = sumMes > 0 ? ((val / sumMes) * 100).toFixed(0) : 0;
+                                            return [`${val} (${pct}%)`, name];
+                                        }}
+                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} 
+                                    />
                                     <Legend wrapperStyle={{ fontSize: '0.7rem', paddingTop: '8px' }} />
                                     {metrics.topEspecialidades.map((esp, i) => (
-                                        <Bar key={esp} dataKey={esp} stackId="a" fill={ESPECIALIDAD_PALETTE[i % ESPECIALIDAD_PALETTE.length]} name={esp} />
-                                    ))}
-                                </BarChart>
+                                         <Bar key={esp} dataKey={esp} stackId="a" fill={ESPECIALIDAD_PALETTE[i % ESPECIALIDAD_PALETTE.length]} name={esp} />
+                                     ))}
+                                 </BarChart>
                             </ResponsiveContainer>
                         )}
                     </DraggableChartCard>
@@ -1422,12 +1487,29 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                     >
                         {({ height }) => (
                             <ResponsiveContainer width="100%" height={height}>
-                                <BarChart data={metrics.dataAdmisionesTotales} margin={{ top: 15, right: 10, left: -15, bottom: 0 }}>
+                                <BarChart data={metrics.dataAdmisionesTotales} margin={{ top: 20, right: 10, left: -15, bottom: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                                     <XAxis dataKey="mes" stroke="#64748B" fontSize={11} />
                                     <YAxis stroke="#64748B" fontSize={11} />
-                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
-                                    <Bar dataKey="total" fill="#1E40AF" radius={[4, 4, 0, 0]} name="Admisiones" />
+                                    <Tooltip 
+                                        formatter={(val) => {
+                                            const totalPeriodo = (metrics.dataAdmisionesTotales || []).reduce((acc, d) => acc + (Number(d.total) || 0), 0);
+                                            const pct = totalPeriodo > 0 ? ((val / totalPeriodo) * 100).toFixed(1) : 0;
+                                            return [`${val} admisiones (${pct}% del período)`, 'Admisiones'];
+                                        }}
+                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} 
+                                    />
+                                    <Bar dataKey="total" fill="#1E40AF" radius={[4, 4, 0, 0]} name="Admisiones">
+                                        <LabelList 
+                                            dataKey="total" 
+                                            position="top" 
+                                            formatter={(val) => {
+                                                const totalPeriodo = (metrics.dataAdmisionesTotales || []).reduce((acc, d) => acc + (Number(d.total) || 0), 0);
+                                                return totalPeriodo > 0 ? `${((val / totalPeriodo) * 100).toFixed(0)}%` : '';
+                                            }}
+                                            style={{ fill: '#1E40AF', fontSize: '0.72rem', fontWeight: 700 }} 
+                                        />
+                                    </Bar>
                                 </BarChart>
                             </ResponsiveContainer>
                         )}
@@ -1476,13 +1558,21 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                         innerRadius={Math.round(height * 0.18)}
                                         outerRadius={Math.round(height * 0.34)}
                                         paddingAngle={2}
+                                        label={({ percent }) => percent > 0.04 ? `${(percent * 100).toFixed(0)}%` : ''}
+                                        labelLine={false}
                                     >
                                         {metrics.dataMotivosAlta.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={entry.color} />
                                         ))}
                                     </Pie>
-                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
-                                    <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
+                                    <Tooltip 
+                                        formatter={(val, name, entry) => [`${val} admisiones (${entry?.payload?.pct || 0}%)`, name]}
+                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} 
+                                    />
+                                    <Legend 
+                                        formatter={(value, entry) => `${value} (${entry?.payload?.pct || 0}%)`}
+                                        wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} 
+                                    />
                                 </PieChart>
                             </ResponsiveContainer>
                         )}
@@ -1635,13 +1725,21 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                         innerRadius={Math.round(height * 0.18)}
                                         outerRadius={Math.round(height * 0.34)}
                                         paddingAngle={2}
+                                        label={({ percent }) => percent > 0.04 ? `${(percent * 100).toFixed(0)}%` : ''}
+                                        labelLine={false}
                                     >
                                         {metrics.dataRangoEtario.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={entry.color} />
                                         ))}
                                     </Pie>
-                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
-                                    <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
+                                    <Tooltip 
+                                        formatter={(val, name, entry) => [`${val} pacientes (${entry?.payload?.pct || 0}%)`, name]}
+                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} 
+                                    />
+                                    <Legend 
+                                        formatter={(value, entry) => `${value} (${entry?.payload?.pct || 0}%)`}
+                                        wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} 
+                                    />
                                 </PieChart>
                             </ResponsiveContainer>
                         )}
@@ -1684,7 +1782,14 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                                     <XAxis dataKey="mes" stroke="#64748B" fontSize={10} />
                                     <YAxis stroke="#64748B" fontSize={10} />
-                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
+                                    <Tooltip 
+                                        formatter={(val, name, entry) => {
+                                            const total = (Number(entry?.payload?.corta) || 0) + (Number(entry?.payload?.media) || 0) + (Number(entry?.payload?.larga) || 0);
+                                            const pct = total > 0 ? ((val / total) * 100).toFixed(0) : 0;
+                                            return [`${val} pacientes (${pct}%)`, name];
+                                        }}
+                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} 
+                                    />
                                     <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
                                     <Bar dataKey="corta" stackId="s" fill={COLORS_ESTANCIA.corta} name="1-2 días" />
                                     <Bar dataKey="media" stackId="s" fill={COLORS_ESTANCIA.media} name="3-7 días" />
@@ -1727,12 +1832,22 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                     >
                         {({ height }) => (
                             <ResponsiveContainer width="100%" height={height}>
-                                <BarChart data={metrics.dataProcedencia} layout="vertical" margin={{ top: 5, right: 15, left: 40, bottom: 5 }}>
+                                <BarChart data={metrics.dataProcedencia} layout="vertical" margin={{ top: 5, right: 35, left: 40, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
                                     <XAxis type="number" stroke="#64748B" fontSize={10} />
                                     <YAxis type="category" dataKey="label" stroke="#64748B" fontSize={10} width={90} />
-                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
-                                    <Bar dataKey="value" fill="#3B82F6" radius={[0, 4, 4, 0]} name="Pacientes" />
+                                    <Tooltip 
+                                        formatter={(val, name, entry) => [`${val} pacientes (${entry?.payload?.pct || 0}%)`, name]}
+                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} 
+                                    />
+                                    <Bar dataKey="value" fill="#3B82F6" radius={[0, 4, 4, 0]} name="Pacientes">
+                                        <LabelList 
+                                            dataKey="pct" 
+                                            position="right" 
+                                            formatter={(val) => val && Number(val) > 0 ? `${val}%` : ''} 
+                                            style={{ fill: '#334155', fontSize: '0.72rem', fontWeight: 700 }} 
+                                        />
+                                    </Bar>
                                 </BarChart>
                             </ResponsiveContainer>
                         )}
@@ -1771,12 +1886,22 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                     >
                         {({ height }) => (
                             <ResponsiveContainer width="100%" height={height}>
-                                <BarChart data={metrics.dataClientes} layout="vertical" margin={{ top: 5, right: 15, left: 40, bottom: 5 }}>
+                                <BarChart data={metrics.dataClientes} layout="vertical" margin={{ top: 5, right: 35, left: 40, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
                                     <XAxis type="number" stroke="#64748B" fontSize={10} />
                                     <YAxis type="category" dataKey="label" stroke="#64748B" fontSize={10} width={90} />
-                                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} />
-                                    <Bar dataKey="value" fill="#10B981" radius={[0, 4, 4, 0]} name="Pacientes" />
+                                    <Tooltip 
+                                        formatter={(val, name, entry) => [`${val} pacientes (${entry?.payload?.pct || 0}%)`, name]}
+                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} 
+                                    />
+                                    <Bar dataKey="value" fill="#10B981" radius={[0, 4, 4, 0]} name="Pacientes">
+                                        <LabelList 
+                                            dataKey="pct" 
+                                            position="right" 
+                                            formatter={(val) => val && Number(val) > 0 ? `${val}%` : ''} 
+                                            style={{ fill: '#334155', fontSize: '0.72rem', fontWeight: 700 }} 
+                                        />
+                                    </Bar>
                                 </BarChart>
                             </ResponsiveContainer>
                         )}
@@ -1948,7 +2073,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 <ResponsiveContainer width="100%" height={height}>
                                     <BarChart
                                         data={metrics.dataEstudiosPorBox.slice(0, 10)}
-                                        margin={{ top: 10, right: 10, left: -10, bottom: 20 }}
+                                        margin={{ top: 20, right: 10, left: -10, bottom: 20 }}
                                     >
                                         <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                                         <XAxis
@@ -1973,6 +2098,12 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             cursor="pointer"
                                             onClick={(entry) => setBoxFiltro(entry.box)}
                                         >
+                                            <LabelList 
+                                                dataKey="porcentaje" 
+                                                position="top" 
+                                                formatter={(val) => val && Number(val) > 0 ? `${val}%` : ''} 
+                                                style={{ fill: '#1E40AF', fontSize: '0.72rem', fontWeight: 700 }} 
+                                            />
                                             {metrics.dataEstudiosPorBox.slice(0, 10).map((entry, index) => (
                                                 <Cell
                                                     key={`box-cell-${index}`}
@@ -2035,7 +2166,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     <BarChart
                                         data={metrics.dataTopEstudios}
                                         layout="vertical"
-                                        margin={{ top: 5, right: 20, left: 60, bottom: 5 }}
+                                        margin={{ top: 5, right: 40, left: 60, bottom: 5 }}
                                     >
                                         <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
                                         <XAxis type="number" stroke="#64748B" fontSize={10} />
@@ -2048,10 +2179,20 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             tickFormatter={(v) => v.length > 20 ? v.substring(0, 20) + '...' : v}
                                         />
                                         <Tooltip
-                                            formatter={(val) => [Number(val || 0).toLocaleString('es-AR') + ' solicitudes', 'Cantidad']}
+                                            formatter={(val, name, entry) => [
+                                                `${Number(val || 0).toLocaleString('es-AR')} solicitudes (${entry?.payload?.pct || 0}%)`,
+                                                'Cantidad'
+                                            ]}
                                             contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
                                         />
-                                        <Bar dataKey="value" fill="#2563EB" radius={[0, 4, 4, 0]} name="Solicitudes" />
+                                        <Bar dataKey="value" fill="#2563EB" radius={[0, 4, 4, 0]} name="Solicitudes">
+                                            <LabelList 
+                                                dataKey="pct" 
+                                                position="right" 
+                                                formatter={(val) => val && Number(val) > 0 ? `${val}%` : ''} 
+                                                style={{ fill: '#334155', fontSize: '0.72rem', fontWeight: 700 }} 
+                                            />
+                                        </Bar>
                                     </BarChart>
                                 </ResponsiveContainer>
                             )
@@ -2107,7 +2248,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     <BarChart
                                         data={metrics.dataTopSolicitantes}
                                         layout="vertical"
-                                        margin={{ top: 5, right: 20, left: 60, bottom: 5 }}
+                                        margin={{ top: 5, right: 40, left: 60, bottom: 5 }}
                                     >
                                         <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
                                         <XAxis type="number" stroke="#64748B" fontSize={10} />
@@ -2120,10 +2261,20 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             tickFormatter={(v) => v.length > 18 ? v.substring(0, 18) + '...' : v}
                                         />
                                         <Tooltip
-                                            formatter={(val) => [val, 'Solicitudes']}
+                                            formatter={(val, name, entry) => [
+                                                `${Number(val || 0).toLocaleString('es-AR')} solicitudes (${entry?.payload?.pct || 0}%)`,
+                                                'Solicitudes'
+                                            ]}
                                             contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
                                         />
-                                        <Bar dataKey="value" fill="#8B5CF6" radius={[0, 4, 4, 0]} name="Solicitudes" />
+                                        <Bar dataKey="value" fill="#8B5CF6" radius={[0, 4, 4, 0]} name="Solicitudes">
+                                            <LabelList 
+                                                dataKey="pct" 
+                                                position="right" 
+                                                formatter={(val) => val && Number(val) > 0 ? `${val}%` : ''} 
+                                                style={{ fill: '#334155', fontSize: '0.72rem', fontWeight: 700 }} 
+                                            />
+                                        </Bar>
                                     </BarChart>
                                 </ResponsiveContainer>
                             )

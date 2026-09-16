@@ -79,11 +79,23 @@ export default function TelarDataModal({ indicator, onClose, dateFilter = {}, ra
         return sourceData.map(r => {
             let diasEstancia = '-';
             if (r.fecha_ingreso && r.fecha_alta) {
-                const diffTime = Math.abs(new Date(r.fecha_alta) - new Date(r.fecha_ingreso));
-                diasEstancia = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+                const dIng = new Date(r.fecha_ingreso);
+                const dAlt = new Date(r.fecha_alta);
+                const ingStr = `${dIng.getFullYear()}-${String(dIng.getMonth() + 1).padStart(2, '0')}-${String(dIng.getDate()).padStart(2, '0')}`;
+                const altStr = `${dAlt.getFullYear()}-${String(dAlt.getMonth() + 1).padStart(2, '0')}-${String(dAlt.getDate()).padStart(2, '0')}`;
+                if (ingStr === altStr) {
+                    diasEstancia = 1;
+                } else {
+                    const diffDays = Math.round((new Date(altStr) - new Date(ingStr)) / (1000 * 60 * 60 * 24));
+                    diasEstancia = Math.max(1, diffDays);
+                }
             } else if (r.fecha_ingreso) {
-                const diffTime = Math.abs(new Date() - new Date(r.fecha_ingreso));
-                diasEstancia = `${Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)))} (activo)`;
+                const dIng = new Date(r.fecha_ingreso);
+                const now = new Date();
+                const ingStr = `${dIng.getFullYear()}-${String(dIng.getMonth() + 1).padStart(2, '0')}-${String(dIng.getDate()).padStart(2, '0')}`;
+                const nowStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                const diffDays = Math.round((new Date(nowStr) - new Date(ingStr)) / (1000 * 60 * 60 * 24));
+                diasEstancia = `${Math.max(1, diffDays)} (activo)`;
             }
 
             let fIng = '-';

@@ -68,7 +68,7 @@ export default function UciMortalidadAuditModal({
 
                 const key = r.numero_admision || r.id_admision || `${r.nhc}_${r.fecha_ingreso}`;
                 if (!defMap.has(key)) {
-                    // Calcular horas y días de estancia hasta el óbito
+                    // Calcular horas y días de estancia hasta el óbito según regla censal
                     let horasEstancia = null;
                     let diasEstancia = 1;
                     if (r.fecha_ingreso && r.fecha_alta) {
@@ -76,12 +76,25 @@ export default function UciMortalidadAuditModal({
                         const dAlt = new Date(r.fecha_alta);
                         const diffMs = Math.max(0, dAlt - dIng);
                         horasEstancia = Math.round(diffMs / (1000 * 60 * 60));
-                        diasEstancia = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+                        
+                        // REGLA CENSAL: Mismo día = 1 día. Multi-día = altStr - ingStr (el día de alta no se cuenta)
+                        const ingStr = `${dIng.getFullYear()}-${String(dIng.getMonth() + 1).padStart(2, '0')}-${String(dIng.getDate()).padStart(2, '0')}`;
+                        const altStr = `${dAlt.getFullYear()}-${String(dAlt.getMonth() + 1).padStart(2, '0')}-${String(dAlt.getDate()).padStart(2, '0')}`;
+                        if (ingStr === altStr) {
+                            diasEstancia = 1;
+                        } else {
+                            const diffDays = Math.round((new Date(altStr) - new Date(ingStr)) / (1000 * 60 * 60 * 24));
+                            diasEstancia = Math.max(1, diffDays);
+                        }
                     } else if (r.fecha_ingreso) {
                         const dIng = new Date(r.fecha_ingreso);
                         const diffMs = Math.max(0, new Date() - dIng);
                         horasEstancia = Math.round(diffMs / (1000 * 60 * 60));
-                        diasEstancia = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+                        const ingStr = `${dIng.getFullYear()}-${String(dIng.getMonth() + 1).padStart(2, '0')}-${String(dIng.getDate()).padStart(2, '0')}`;
+                        const now = new Date();
+                        const nowStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                        const diffDays = Math.round((new Date(nowStr) - new Date(ingStr)) / (1000 * 60 * 60 * 24));
+                        diasEstancia = Math.max(1, diffDays);
                     }
 
                     // Clasificación clínica temporal
@@ -132,7 +145,14 @@ export default function UciMortalidadAuditModal({
                 if (dIng && dAlt) {
                     const diffMs = Math.max(0, dAlt - dIng);
                     horasEstancia = Math.round(diffMs / (1000 * 60 * 60));
-                    diasEstancia = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+                    const ingStr = `${dIng.getFullYear()}-${String(dIng.getMonth() + 1).padStart(2, '0')}-${String(dIng.getDate()).padStart(2, '0')}`;
+                    const altStr = `${dAlt.getFullYear()}-${String(dAlt.getMonth() + 1).padStart(2, '0')}-${String(dAlt.getDate()).padStart(2, '0')}`;
+                    if (ingStr === altStr) {
+                        diasEstancia = 1;
+                    } else {
+                        const diffDays = Math.round((new Date(altStr) - new Date(ingStr)) / (1000 * 60 * 60 * 24));
+                        diasEstancia = Math.max(1, diffDays);
+                    }
                 }
 
                 let clasificacion = 'evolutiva';
