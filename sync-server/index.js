@@ -2735,7 +2735,7 @@ app.get('/api/salus/sync-all', async (req, res) => {
             const d15 = new Date();
             d15.setDate(d15.getDate() - 15);
             const dynamicDate = d15.toISOString().split('T')[0];
-            const fromDiag = fastSync ? dynamicDate : '2026-08-01';
+            const fromDiag = fastSync ? dynamicDate : '2026-02-01';
             results.diagnosticos = await syncDiagnosticos(fromDiag);
         } catch (err) {
             console.error('❌ Error en diagnósticos:', err.message);

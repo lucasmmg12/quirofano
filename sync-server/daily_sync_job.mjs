@@ -74,7 +74,7 @@ async function runDailySync() {
     log('========================================================');
 
     log('Conectando al servidor SQL Server de SALUS...');
-    const pool = await sql.connect(SQL_CONFIG);
+    let pool = await sql.connect(SQL_CONFIG);
     log('Conexión establecida con éxito a SALUS.');
 
     // ──────────────────────────────────────────────────────────
@@ -171,6 +171,7 @@ async function runDailySync() {
         log('PASO 1.5: Sincronizando Historial de Traslados de Cama (calidad_admisiones_camas_historial)...');
         await syncHistorialCamas('UCI');
         log('Paso 1.5 completado.');
+        pool = await sql.connect(SQL_CONFIG);
     } catch (errHist) {
         log(`⚠️ Advertencia en Paso 1.5 (Historial Camas): ${errHist.message}`);
     }
