@@ -556,7 +556,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         .select('id, id_peticion, fecha_solicitud, paciente, id_paciente, solicitante, paciente_edad, origen, tipo_visita, tipo_articulo, estudio, habitacion, cama, seccion, modalidad, origen_gobernanza')
                         .gte('fecha_solicitud', fechaDesde + 'T00:00:00')
                         .lte('fecha_solicitud', fechaHasta + 'T23:59:59')
-                        .or('habitacion.ilike.%BOX%,habitacion.ilike.%UNIDAD%,habitacion.ilike.%222%,habitacion.ilike.%223%,habitacion.ilike.%224%,habitacion.ilike.%226%,habitacion.ilike.%227%,habitacion.ilike.%228%,habitacion.ilike.%229%')
+                        .or('habitacion.ilike.%BOX%,habitacion.ilike.%222%,habitacion.ilike.%223%,habitacion.ilike.%224%,habitacion.ilike.%226%,habitacion.ilike.%227%,habitacion.ilike.%228%,habitacion.ilike.%229%')
                         .order('fecha_solicitud', { ascending: false })
                         .range(p * pageSize, (p + 1) * pageSize - 1)
                 );
@@ -863,9 +863,13 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             const h = hab.trim().toUpperCase();
             const boxM = h.match(/^BOX\s*0?([1-8])$/i) || h.match(/^BOX\s*AUXILIAR\s*0?([1-8])$/i);
             if (boxM) return 'BOX ' + boxM[1];
-            const uniM = h.match(/^UNIDAD\s*0?([1-5])$/i);
-            if (uniM) return 'UNIDAD ' + uniM[1].padStart(2, '0');
+            const habIntM = h.match(/^HABITACI[OÓ]N\s*(22[2-9])$/i) || h.match(/^(22[2-9])$/);
+            if (habIntM) return 'HAB ' + habIntM[1];
             return h;
+        };
+
+        const isUciBed = (normH) => {
+            return /^BOX\s*[1-8]$/.test(normH) || /^HAB\s*22[2-9]$/.test(normH) || /^22[2-9]$/.test(normH);
         };
 
         const getStudyModality = (p) => {
@@ -885,6 +889,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         const baseUciPeticiones = peticionesEstudios.filter(p => {
             const normH = normalizeHab(p.habitacion);
             if (sectorId === 'UCI') {
+                if (!isUciBed(normH)) return false;
                 if (uciSubNivel === 'INTENSIVA' && !normH.startsWith('BOX')) return false;
                 if (uciSubNivel === 'INTERMEDIA' && normH.startsWith('BOX')) return false;
             }
@@ -969,6 +974,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             const habNorm = normalizeHab(p.habitacion);
 
             if (sectorId === 'UCI') {
+                if (!isUciBed(habNorm)) return;
                 if (uciSubNivel === 'INTENSIVA' && !habNorm.startsWith('BOX')) return;
                 if (uciSubNivel === 'INTERMEDIA' && habNorm.startsWith('BOX')) return;
             }
