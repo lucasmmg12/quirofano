@@ -87,10 +87,12 @@ export async function syncHistorialCamas(filtroServicio = null) {
                 b.[Motivo de alta],
                 b.Edad,
                 b.NHC,
+                ISNULL(p.sexo, 'I') AS Sexo,
                 ISNULL(h.HOSP_Servicio, b.Servicio) AS Servicio,
                 b.Procedencia
             FROM [TABLEAU_Admisiones con historial de camas2] h
             JOIN TABLEAU_Admisiones b ON h.idadmision = b.idAdmision
+            LEFT JOIN FE_Entidades p ON b.NHC = p.NHC
             WHERE (b.[Fecha alta] >= '2025-06-01' OR b.[Fecha alta] IS NULL)
         `;
 
@@ -129,6 +131,7 @@ export async function syncHistorialCamas(filtroServicio = null) {
                 numero_admision: r['Numero admision'] ? String(r['Numero admision']).trim() : null,
                 paciente: r.Paciente ? String(r.Paciente).trim() : 'SIN NOMBRE',
                 nhc: r.NHC ? String(r.NHC).trim() : null,
+                sexo: r.Sexo ? String(r.Sexo).trim() : 'I',
                 servicio: r.Servicio ? String(r.Servicio).trim() : 'UCI',
                 habitacion: String(r.NombreHabitacion).trim(),
                 cama: r.NombreCama ? String(r.NombreCama).trim() : null,
@@ -196,6 +199,7 @@ export async function syncOcupacion(filtroServicio = null) {
                 b.[Fecha alta],
                 b.Procedencia,
                 b.NHC,
+                ISNULL(p.sexo, 'I') AS Sexo,
                 b.Paciente,
                 b.[Motivo de alta],
                 b.Cliente,
@@ -206,6 +210,7 @@ export async function syncOcupacion(filtroServicio = null) {
                 b.[Motivo Alta],
                 b.[Control ADM finalizado]
             FROM TABLEAU_Admisiones b
+            LEFT JOIN FE_Entidades p ON b.NHC = p.NHC
             JOIN master.dbo.spt_values v
               ON v.type = 'P' 
               AND v.number <= DATEDIFF(DAY, CAST(b.[Fecha ingreso] AS DATE), CAST(ISNULL(b.[Fecha alta], GETDATE()) AS DATE))
@@ -239,6 +244,7 @@ export async function syncOcupacion(filtroServicio = null) {
             especialidad: r.Especialidad ? String(r.Especialidad).trim() : 'Sin Especialidad',
             procedencia: r.Procedencia ? String(r.Procedencia).trim() : null,
             nhc: r.NHC ? String(r.NHC).trim() : null,
+            sexo: r.Sexo ? String(r.Sexo).trim() : 'I',
             paciente: r.Paciente ? String(r.Paciente).trim() : null,
             motivo_de_alta: r['Motivo de alta'] ? String(r['Motivo de alta']).trim() : null,
             cliente: r.Cliente ? String(r.Cliente).trim() : null,

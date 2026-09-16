@@ -571,6 +571,24 @@ Movimientos de Cama: ${traslados.length}`;
                                             <Calendar size={13} /> Edad: <strong>{patient.edad || pacienteInfo?.edad} años</strong>
                                         </span>
                                     )}
+                                    {(patient.sexo || pacienteInfo?.sexo) && (
+                                        <span style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            gap: '4px',
+                                            background: (String(patient.sexo || pacienteInfo?.sexo).toUpperCase().startsWith('F') || String(patient.sexo || pacienteInfo?.sexo).toLowerCase() === 'mujer') 
+                                                ? 'rgba(234, 179, 8, 0.25)' 
+                                                : 'rgba(59, 130, 246, 0.25)',
+                                            border: (String(patient.sexo || pacienteInfo?.sexo).toUpperCase().startsWith('F') || String(patient.sexo || pacienteInfo?.sexo).toLowerCase() === 'mujer')
+                                                ? '1px solid rgba(234, 179, 8, 0.5)'
+                                                : '1px solid rgba(59, 130, 246, 0.5)',
+                                            padding: '1px 7px',
+                                            borderRadius: '6px',
+                                            color: (String(patient.sexo || pacienteInfo?.sexo).toUpperCase().startsWith('F') || String(patient.sexo || pacienteInfo?.sexo).toLowerCase() === 'mujer') ? '#FDE047' : '#93C5FD'
+                                        }}>
+                                            Sexo: <strong>{(String(patient.sexo || pacienteInfo?.sexo).toUpperCase().startsWith('F') || String(patient.sexo || pacienteInfo?.sexo).toLowerCase() === 'mujer') ? 'Mujer' : (String(patient.sexo || pacienteInfo?.sexo).toUpperCase().startsWith('M') || String(patient.sexo || pacienteInfo?.sexo).toLowerCase() === 'hombre') ? 'Hombre' : 'Sin especificar'}</strong>
+                                        </span>
+                                    )}
                                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                         <Building2 size={13} /> Cobertura: <strong style={{ color: '#93C5FD' }}>{currentCliente}</strong>
                                     </span>

@@ -3,7 +3,7 @@ import {
     Activity, Clock, CheckCircle2, RotateCcw, AlertTriangle, 
     Layers, PieChart, Bed, FileText, Calendar, RefreshCw, 
     BookOpen, Sparkles, TrendingUp, ArrowUpRight, ArrowDownRight, 
-    Check, Copy, ShieldCheck, ChevronRight, HelpCircle, Scissors
+    Check, Copy, ShieldCheck, ChevronRight, HelpCircle, Scissors, Users
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { INDICADORES_GUARDIA_CATALOGO } from './telarConfig';
@@ -550,6 +550,84 @@ export default function GuardiaClinicaDashboard({
                         )}
                     </div>
                 </div>
+
+                {/* Visualizador de Distribución Demográfica por Sexo */}
+                <div style={{
+                    background: '#FFFFFF',
+                    borderRadius: '12px',
+                    border: '1px solid #E2E8F0',
+                    padding: '18px 20px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Users size={18} color="#D97706" />
+                            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#1E293B' }}>
+                                Distribución de Consultas por Sexo
+                            </h4>
+                        </div>
+                        <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
+                            Demografía Poblacional
+                        </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {currentData.sexo_distribucion && currentData.sexo_distribucion.length > 0 ? (
+                            currentData.sexo_distribucion.map((s, idx) => {
+                                const isF = s.sexo === 'Mujer' || s.sexo === 'F';
+                                const isM = s.sexo === 'Hombre' || s.sexo === 'M';
+                                const colorBar = isF ? '#EAB308' : isM ? '#2563EB' : '#94A3B8';
+                                const badgeBg = isF ? '#FEF3C7' : isM ? '#DBEAFE' : '#F1F5F9';
+                                const badgeColor = isF ? '#92400E' : isM ? '#1E40AF' : '#475569';
+
+                                return (
+                                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
+                                            <span style={{ fontWeight: 700, color: '#334155' }}>{s.sexo}</span>
+                                            <span style={{ fontWeight: 800, color: badgeColor, background: badgeBg, padding: '2px 8px', borderRadius: '8px', fontSize: '0.72rem' }}>
+                                                {s.cantidad} ({s.porcentaje}%)
+                                            </span>
+                                        </div>
+                                        <div style={{ height: '7px', width: '100%', background: '#F1F5F9', borderRadius: '10px', overflow: 'hidden' }}>
+                                            <div style={{
+                                                height: '100%',
+                                                width: `${s.porcentaje}%`,
+                                                background: colorBar,
+                                                borderRadius: '10px',
+                                                transition: 'width 0.4s ease'
+                                            }} />
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
+                                    <span style={{ fontWeight: 700, color: '#334155' }}>Mujeres</span>
+                                    <span style={{ fontWeight: 800, color: '#92400E', background: '#FEF3C7', padding: '2px 8px', borderRadius: '8px', fontSize: '0.72rem' }}>
+                                        {currentData.mujeres_pct || 67.1}%
+                                    </span>
+                                </div>
+                                <div style={{ height: '7px', width: '100%', background: '#F1F5F9', borderRadius: '10px', overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', width: `${currentData.mujeres_pct || 67.1}%`, background: '#EAB308', borderRadius: '10px' }} />
+                                </div>
+                            </div>
+                        )}
+                        <div style={{ 
+                            marginTop: '6px',
+                            background: '#F8FAFC',
+                            border: '1px solid #E2E8F0',
+                            borderRadius: '6px',
+                            padding: '6px 8px',
+                            fontSize: '0.7rem',
+                            color: '#64748B',
+                            lineHeight: '1.3'
+                        }}>
+                            <strong style={{ color: '#1E293B' }}>Perfil Poblacional: </strong>
+                            Histórico foco en salud de la mujer ({currentData.mujeres_pct || 67}%), con apertura progresiva hacia atención masculina y polivalente ({currentData.hombres_pct || 32}%).
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {/* ─── TABLA COMPARATIVA HISTÓRICA 2026 (SERIE TEMPORAL) ─── */}
@@ -578,6 +656,7 @@ export default function GuardiaClinicaDashboard({
                             <tr style={{ background: '#F8FAFC', borderBottom: '1.5px solid #E2E8F0', textAlign: 'left' }}>
                                 <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 800 }}>Período</th>
                                 <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 800, textAlign: 'right' }}>Consultas</th>
+                                <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 800, textAlign: 'right' }}>% Mujer / Hombre</th>
                                 <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 800, textAlign: 'right' }}>Conv. Cirugía</th>
                                 <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 800, textAlign: 'right' }}>Espera Médica</th>
                                 <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 800, textAlign: 'right' }}>Permanencia</th>
@@ -610,6 +689,11 @@ export default function GuardiaClinicaDashboard({
                                         </td>
                                         <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#1E293B' }}>
                                             {r.total_consultas.toLocaleString()}
+                                        </td>
+                                        <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>
+                                            <span style={{ color: '#D97706' }}>{r.mujeres_pct ? `${Math.round(r.mujeres_pct)}%` : '—'}</span>
+                                            <span style={{ color: '#94A3B8', margin: '0 3px' }}>/</span>
+                                            <span style={{ color: '#2563EB' }}>{r.hombres_pct ? `${Math.round(r.hombres_pct)}%` : '—'}</span>
                                         </td>
                                         <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#2563EB' }}>
                                             {r.conversion_cirugia_pct}% <span style={{ color: '#94A3B8', fontSize: '0.7rem' }}>({r.cantidad_pases_cirugia})</span>

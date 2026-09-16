@@ -210,6 +210,36 @@ async function procesarPeriodo(pool, periodo, fechaDesde, fechaHasta) {
     `;
     const resDestinos = await pool.request().query(queryDestinos);
 
+    // Consultar desglose demográfico por sexo
+    const querySexo = `
+        SELECT 
+            CASE 
+                WHEN p.sexo = 'F' THEN 'Mujer'
+                WHEN p.sexo = 'M' THEN 'Hombre'
+                ELSE 'Sin especificar'
+            END AS sexo,
+            COUNT(*) AS cantidad,
+            CAST(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER() AS DECIMAL(5,2)) AS porcentaje
+        FROM VLISE_Visitas v
+        LEFT JOIN FE_Entidades p ON v.NHC = p.NHC
+        WHERE v.[Grupo Agenda] = 'GUARDIA CLINICA'
+          AND v.[Fecha Visita] >= '${fechaDesde} 00:00:00'
+          AND v.[Fecha Visita] <= '${fechaHasta} 23:59:59'
+          AND v.Asistencia = 'Presente'
+        GROUP BY 
+            CASE 
+                WHEN p.sexo = 'F' THEN 'Mujer'
+                WHEN p.sexo = 'M' THEN 'Hombre'
+                ELSE 'Sin especificar'
+            END;
+    `;
+    const resSexo = await pool.request().query(querySexo);
+    const sexoDistribucion = resSexo.recordset || [];
+    const mujerRow = sexoDistribucion.find(s => s.sexo === 'Mujer');
+    const hombreRow = sexoDistribucion.find(s => s.sexo === 'Hombre');
+    const mujeresPct = mujerRow ? Number(mujerRow.porcentaje) : 0;
+    const hombresPct = hombreRow ? Number(hombreRow.porcentaje) : 0;
+
     const payload = {
         periodo,
         fecha_desde: fechaDesde,
@@ -231,6 +261,9 @@ async function procesarPeriodo(pool, periodo, fechaDesde, fechaHasta) {
         total_rx: row.total_rx || 0,
         tasa_imagenes_100_consultas: Number(row.tasa_imagenes_100_consultas) || 0,
         destinos_distribucion: resDestinos.recordset,
+        sexo_distribucion: sexoDistribucion,
+        mujeres_pct: mujeresPct,
+        hombres_pct: hombresPct,
         promedio_dias_estada: Number(row.promedio_dias_estada) || 0,
         altas_con_epicrisis: row.altas_con_epicrisis || 0,
         adherencia_epicrisis_pct: Number(row.adherencia_epicrisis_pct) || 100,

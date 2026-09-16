@@ -50,6 +50,7 @@ const SIDEBAR_INDICATOR_GROUPS = [
             'chart_especialidades',
             'chart_admisiones_totales',
             'chart_motivos_alta',
+            'chart_sexo_demografia',
             'chart_rango_etario',
             'chart_estancias',
             'chart_procedencia',
@@ -83,6 +84,7 @@ const DEFAULT_CHART_ORDER = [
     'chart_especialidades',
     'chart_admisiones_totales',
     'chart_motivos_alta',
+    'chart_sexo_demografia',
     'chart_rango_etario',
     'chart_estancias',
     'chart_procedencia',
@@ -98,6 +100,7 @@ const DEFAULT_CHART_SIZES = {
     chart_especialidades: { width: 'half', height: 260 },
     chart_admisiones_totales: { width: 'half', height: 260 },
     chart_motivos_alta: { width: 'half', height: 240 },
+    chart_sexo_demografia: { width: 'half', height: 260 },
     chart_rango_etario: { width: 'half', height: 240 },
     chart_estancias: { width: 'half', height: 250 },
     chart_procedencia: { width: 'half', height: 240 },
@@ -491,7 +494,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             while (hasMore) {
                 let q = supabase
                     .from('calidad_admisiones_ocupacion')
-                    .select('id, id_admision, numero_admision, fecha_ocupacion, fecha_ingreso, fecha_alta, especialidad, servicio, paciente, nhc, motivo_de_alta, cliente, procedencia, edad, habitacion')
+                    .select('id, id_admision, numero_admision, fecha_ocupacion, fecha_ingreso, fecha_alta, especialidad, servicio, paciente, nhc, motivo_de_alta, cliente, procedencia, edad, habitacion, sexo')
                     .gte('fecha_ocupacion', fechaDesde)
                     .lte('fecha_ocupacion', fechaHasta)
                     .range(page * pageSize, (page + 1) * pageSize - 1);
@@ -747,6 +750,41 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             color: COLORS_ETARIO[idx % COLORS_ETARIO.length]
         }));
 
+        // 4b. Gráfico: Distribución Demográfica por Sexo (% Mujer vs % Hombre)
+        const sexoMap = { 'Mujer': 0, 'Hombre': 0, 'Sin especificar': 0 };
+        admisionesUnicas.forEach(r => {
+            const s = (r.sexo || '').trim().toUpperCase();
+            if (s === 'F') sexoMap['Mujer']++;
+            else if (s === 'M') sexoMap['Hombre']++;
+            else sexoMap['Sin especificar']++;
+        });
+        const totalSexoValido = sexoMap['Mujer'] + sexoMap['Hombre'] + (sexoMap['Sin especificar'] || 0);
+        const dataSexoDemografia = [
+            {
+                name: 'Mujer',
+                label: 'Mujer',
+                value: sexoMap['Mujer'],
+                pct: totalSexoValido > 0 ? Math.round((sexoMap['Mujer'] / totalSexoValido) * 100) : 0,
+                color: '#EAB308' // Amarillo Institucional (54% en UCI)
+            },
+            {
+                name: 'Hombre',
+                label: 'Hombre',
+                value: sexoMap['Hombre'],
+                pct: totalSexoValido > 0 ? Math.round((sexoMap['Hombre'] / totalSexoValido) * 100) : 0,
+                color: '#2563EB' // Azul Institucional (46% en UCI)
+            }
+        ];
+        if (sexoMap['Sin especificar'] > 0) {
+            dataSexoDemografia.push({
+                name: 'Sin especificar',
+                label: 'Sin especificar',
+                value: sexoMap['Sin especificar'],
+                pct: totalSexoValido > 0 ? Math.round((sexoMap['Sin especificar'] / totalSexoValido) * 100) : 0,
+                color: '#94A3B8'
+            });
+        }
+
         // 5. Gráfico: Categorías de Estancias
         const estanciasPorMes = {};
         mesesSorted.forEach(m => {
@@ -988,6 +1026,10 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             dataAdmisionesTotales,
             dataMotivosAlta,
             dataRangoEtario,
+            dataSexoDemografia,
+            sexoMap,
+            pctMujeres: dataSexoDemografia[0]?.pct || 0,
+            pctHombres: dataSexoDemografia[1]?.pct || 0,
             dataEstancias,
             dataProcedencia,
             dataClientes,
@@ -1275,6 +1317,110 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
                                 </PieChart>
                             </ResponsiveContainer>
+                        )}
+                    </DraggableChartCard>
+                );
+
+            case 'chart_sexo_demografia':
+                return (
+                    <DraggableChartCard
+                        key={chartId}
+                        id={chartId}
+                        title={`Distribución de Pacientes ${sectorId === 'UCI' ? 'UCI ' : ''}por Sexo`}
+                        subtitle="Proporción demográfica poblacional (% Mujer vs % Hombre)"
+                        size={cardSize}
+                        onSizeChange={handleChartSizeChange}
+                        onDragStart={handleDragStartChart}
+                        onDragOver={handleDragOverChart}
+                        onDragLeave={handleDragLeaveChart}
+                        onDrop={handleDropChart}
+                        onDragEnd={handleDragEndChart}
+                        onMoveLeft={() => handleMoveChart(chartId, -1)}
+                        onMoveRight={() => handleMoveChart(chartId, 1)}
+                        isFirst={isFirst}
+                        isLast={isLast}
+                        isDragging={draggedChartId === chartId}
+                        isDropTarget={dragOverChartId === chartId}
+                        actions={
+                            <button 
+                                onClick={() => setInspectDataIndicator({ 
+                                    id: 'chart_sexo_demografia', 
+                                    label: `Distribución de Pacientes ${sectorId === 'UCI' ? 'UCI ' : ''}por Sexo`, 
+                                    sector: activeSectorConfig.label, 
+                                    chartData: metrics.dataSexoDemografia, 
+                                    dataType: 'admisiones' 
+                                })}
+                                style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                title="Expandir gráfico y exportar a Excel"
+                            >
+                                <Maximize2 size={13} /> Expandir / Excel
+                            </button>
+                        }
+                    >
+                        {({ height }) => (
+                            <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+                                <div style={{ flex: 1, minHeight: 0 }}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={metrics.dataSexoDemografia}
+                                                dataKey="value"
+                                                nameKey="label"
+                                                cx="50%"
+                                                cy="50%"
+                                                outerRadius={Math.min(Math.round(height * 0.38), 95)}
+                                                label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, name }) => {
+                                                    const RADIAN = Math.PI / 180;
+                                                    const radius = innerRadius + (outerRadius - innerRadius) * 0.52;
+                                                    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                                                    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                                                    const pctVal = Math.round(percent * 100);
+                                                    return (
+                                                        <text
+                                                            x={x}
+                                                            y={y}
+                                                            fill="#FFFFFF"
+                                                            textAnchor="middle"
+                                                            dominantBaseline="central"
+                                                            style={{
+                                                                fontWeight: 800,
+                                                                fontSize: '0.85rem',
+                                                                filter: 'drop-shadow(0px 1px 2px rgba(0,0,0,0.6))'
+                                                            }}
+                                                        >
+                                                            <tspan x={x} dy="-0.5em">{name}</tspan>
+                                                            <tspan x={x} dy="1.2em">{pctVal}%</tspan>
+                                                        </text>
+                                                    );
+                                                }}
+                                                labelLine={false}
+                                            >
+                                                {metrics.dataSexoDemografia.map((entry, index) => (
+                                                    <Cell key={`cell-sexo-${index}`} fill={entry.color} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip 
+                                                formatter={(val, name, entry) => [`${val} pacientes (${entry.payload.pct}%)`, name]}
+                                                contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} 
+                                            />
+                                            <Legend wrapperStyle={{ fontSize: '0.75rem', paddingTop: '4px' }} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div style={{ 
+                                    background: '#F8FAFC', 
+                                    border: '1px solid #E2E8F0', 
+                                    borderRadius: '8px', 
+                                    padding: '6px 10px', 
+                                    margin: '0 8px 6px 8px',
+                                    fontSize: '0.72rem',
+                                    color: '#475569',
+                                    lineHeight: '1.3'
+                                }}>
+                                    <strong style={{ color: '#1E293B' }}>Evolución Demográfica: </strong>
+                                    Mujeres: <strong style={{ color: '#D97706' }}>{metrics.pctMujeres}%</strong> ({metrics.sexoMap?.Mujer || 0}) · Hombres: <strong style={{ color: '#2563EB' }}>{metrics.pctHombres}%</strong> ({metrics.sexoMap?.Hombre || 0}). Monitoreo demográfico continuo para balancear la transición hacia cuidados críticos polivalentes.
+                                </div>
+                            </div>
                         )}
                     </DraggableChartCard>
                 );

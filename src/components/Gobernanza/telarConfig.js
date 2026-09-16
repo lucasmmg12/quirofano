@@ -158,6 +158,15 @@ export const INDICADORES_CATALOGO = [
 
     // ─── GRUPO 4: DEMOGRAFÍA Y ESTANCIAS ───
     {
+        id: 'chart_sexo_demografia',
+        label: 'Distribución de Pacientes por Sexo',
+        grupo: 'Demografía y Estancias',
+        tipo: 'donut',
+        icon: 'PieChart',
+        descripcion: 'Distribución demográfica por sexo (% Mujer vs % Hombre) en la unidad de internación.',
+        isDefault: true,
+    },
+    {
         id: 'chart_rango_etario',
         label: 'Distribución por Rango Etario',
         grupo: 'Demografía y Estancias',
@@ -317,6 +326,16 @@ export const INDICADORES_GUARDIA_CATALOGO = [
         descripcion: 'Distribución de egresos: Domicilio, Piso de Internación, Terapia, Quirófano o Derivación.',
         benchmark: 'Trazabilidad 100%',
         origen: 'VLISE_Visitas cruzada con TABLEAU_Admisiones'
+    },
+    {
+        id: 'guardia_demografia_sexo',
+        label: 'Distribución Demográfica por Sexo',
+        grupo: 'Gestión de Pacientes',
+        tipo: 'donut',
+        icon: 'PieChart',
+        descripcion: 'Distribución de pacientes asistidos en Guardia por sexo (% Mujeres vs % Hombres).',
+        benchmark: 'Demografía Institucional',
+        origen: 'VLISE_Visitas cruzada con FE_Entidades por NHC'
     },
     {
         id: 'guardia_estada_clinica',
