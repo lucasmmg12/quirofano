@@ -235,10 +235,12 @@ export default function ContactCenterNuevaConversacion({ onCreateChat, onNavigat
                                     onChange={(e) => setUsuarioAsignado(e.target.value)}
                                     style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#0F172A', fontSize: '0.85rem', outline: 'none' }}
                                 >
-                                    <option value="Daniela">Daniela Calivar (Operadora)</option>
-                                    <option value="Sanatorio Argentino">Sanatorio Argentino (Bot / Asistente)</option>
-                                    <option value="Lucas Marinero">Lucas Marinero (Administrador)</option>
                                     <option value="Sin asignar">Sin asignar (A cola general)</option>
+                                    <option value="daniela">Daniela Calivar (Atención al Paciente)</option>
+                                    <option value="sofia">Sofia Morales (Atención al Paciente)</option>
+                                    <option value="virginia">Virginia Quiroga (Atención al Paciente)</option>
+                                    <option value="erica">Erica Gonzalez (Atención al Paciente)</option>
+                                    <option value="lmarinero">Lucas Marinero (Supervisor)</option>
                                 </select>
                             </div>
                         </div>
