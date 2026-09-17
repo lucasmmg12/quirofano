@@ -38,19 +38,36 @@ const SQL_CONFIG = {
 };
 
 const OPENAI_API_KEY = process.env.SIMON_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-const SIMON_SUPABASE_URL = process.env.SIMON_SUPABASE_URL || 'https://dtjmckbrofevgfqbkzli.supabase.co';
-const SIMON_SERVICE_KEY = process.env.SIMON_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SIMON_SUPABASE_URL = process.env.SIMON_SUPABASE_URL;
+const SIMON_SERVICE_KEY = process.env.SIMON_SERVICE_ROLE_KEY;
+
+if (!SIMON_SUPABASE_URL || !SIMON_SERVICE_KEY || !OPENAI_API_KEY) {
+  throw new Error('Faltan variables de entorno para Simon IA (SIMON_SUPABASE_URL, SIMON_SERVICE_ROLE_KEY, OPENAI_API_KEY)');
+}
 
 const sb = createClient(SIMON_SUPABASE_URL, SIMON_SERVICE_KEY);
+
+
 
 
 function extractKeywords(name, text) {
   const kws = new Set();
   
   // Clean name words
-  const cleanName = name.replace(/[(),]/g, ' ').toLowerCase();
-  cleanName.split(/\s+/).filter(w => w.length > 2).forEach(w => kws.add(w));
-  kws.add(name.toLowerCase());
+  const cleanName = name.replace(/[(),]/g, ' ').toLowerCase().trim();
+  const parts = cleanName.split(/\s+/).filter(w => w.length > 2);
+  parts.forEach(w => {
+    kws.add(w);
+    kws.add(`dr ${w}`);
+    kws.add(`dra ${w}`);
+    kws.add(`dr. ${w}`);
+    kws.add(`dra. ${w}`);
+  });
+  kws.add(cleanName);
+  kws.add(`dra ${cleanName}`);
+  kws.add(`dr ${cleanName}`);
+  kws.add(`dra. ${cleanName}`);
+  kws.add(`dr. ${cleanName}`);
 
   // Check for common tokens in text
   const lowerText = text.toLowerCase();
@@ -65,10 +82,14 @@ function extractKeywords(name, text) {
     kws.add(mpMatch[1]);
   }
 
+  kws.add('parametro');
   kws.add('parametros');
   kws.add('tarifas');
-  return Array.from(kws).slice(0, 25);
+  kws.add('valores');
+  kws.add('atencion');
+  return Array.from(kws).slice(0, 40);
 }
+
 
 async function runIngestion() {
   console.log('=== INICIANDO EXTRACCIÓN DE NOTAS DIARIAS DE SALUS ===');
@@ -142,11 +163,13 @@ async function runIngestion() {
       const title = `Tarifas y Parámetros Operativos - ${rec.AgendaNombre}`;
       const keywords = extractKeywords(rec.AgendaNombre, cleanDesc);
 
+      const processedText = `Médico / Agenda: ${rec.AgendaNombre}
+${rec.NumColegiado ? `Matrícula Profesional (MP): ${rec.NumColegiado}\n` : ''}Parámetros Operativos y Condiciones de Atención:
+${cleanDesc}`;
+
       const embedText = `REGLA: ${title}
 Categoría: medico
-Médico / Agenda: ${rec.AgendaNombre}
-${rec.NumColegiado ? `Matrícula Profesional (MP): ${rec.NumColegiado}\n` : ''}Parámetros Operativos y Condiciones de Atención:
-${cleanDesc}
+${processedText}
 Texto original SALUS: ${cleanDesc}`;
 
       // Append to catalog
@@ -167,9 +190,11 @@ Texto original SALUS: ${cleanDesc}`;
         title,
         keywords,
         cleanDesc,
+        processedText,
         rec
       };
     });
+
 
     // Request embeddings from OpenAI
     const textsToEmbed = items.map(it => it.content);
@@ -208,7 +233,7 @@ Texto original SALUS: ${cleanDesc}`;
         nota_id: it.rec.NotaId,
         matricula: it.rec.NumColegiado || null,
         original_text: it.cleanDesc,
-        processed_text: it.cleanDesc,
+        processed_text: it.processedText,
         keywords: it.keywords,
         created_by: 'Sincronizador Automático SALUS',
         created_at: new Date().toISOString(),
