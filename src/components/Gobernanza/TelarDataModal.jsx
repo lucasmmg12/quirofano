@@ -30,8 +30,8 @@ export default function TelarDataModal({
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState(() => (indicator?.chartData && indicator.chartData.length > 0 ? 'chart_summary' : 'detailed'));
     
-    // Modo de vista para días camas: 'censal' (388 días pernoctados) vs 'admisiones' (deduplicado por paciente)
-    const [ocupacionViewMode, setOcupacionViewMode] = useState('censal');
+    // Modo de vista para días camas: 'admisiones' (deduplicado por paciente) vs 'censal' (días pernoctados)
+    const [ocupacionViewMode, setOcupacionViewMode] = useState('admisiones');
 
     // Estado para filtros de columna estilo Excel: { [colKey]: Set<string> }
     const [columnFilters, setColumnFilters] = useState({});
@@ -64,21 +64,44 @@ export default function TelarDataModal({
 
     const isKpiDiasOcupados = indicator?.id === 'kpi_dias_ocupados';
 
-    // 1. Datos Agregados del Gráfico (si están disponibles)
+    // 1. Datos Agregados del Gráfico / Cuadro Resumen
     const aggregatedData = useMemo(() => {
-        if (!indicator?.chartData || !Array.isArray(indicator.chartData)) return [];
-        return indicator.chartData.map((item, idx) => {
-            const label = item.label || item.name || item.mes || item.box || item.especialidad || `Elemento ${idx + 1}`;
-            const value = item.value != null ? item.value : (item.count != null ? item.count : (item.total != null ? item.total : 0));
-            const pct = item.pct || item.porcentaje || null;
-            return {
-                label,
-                value,
-                pct: pct ? `${pct}%` : null,
-                extra: item.extra || item.origen || ''
-            };
-        });
-    }, [indicator]);
+        if (indicator?.chartData && Array.isArray(indicator.chartData) && indicator.chartData.length > 0) {
+            return indicator.chartData.map((item, idx) => {
+                const label = item.label || item.name || item.mes || item.box || item.especialidad || `Elemento ${idx + 1}`;
+                const value = item.value != null ? item.value : (item.count != null ? item.count : (item.total != null ? item.total : 0));
+                const pct = item.pct || item.porcentaje || null;
+                return {
+                    label,
+                    value,
+                    pct: pct ? `${pct}%` : null,
+                    extra: item.extra || item.origen || ''
+                };
+            });
+        }
+
+        // Si es una tarjeta sin chartData previo, armamos el cuadro cuantitativo agrupado por categoría/especialidad
+        if (rawData && rawData.length > 0) {
+            const counts = {};
+            let total = 0;
+            rawData.forEach(r => {
+                const cat = r.especialidad || r.habitacion || r.modalidad || r.servicio || 'General';
+                counts[cat] = (counts[cat] || 0) + 1;
+                total++;
+            });
+            return Object.entries(counts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 15)
+                .map(([cat, val]) => ({
+                    label: cat,
+                    value: val,
+                    pct: total > 0 ? `${((val / total) * 100).toFixed(1)}%` : null,
+                    extra: ''
+                }));
+        }
+
+        return [];
+    }, [indicator, rawData]);
 
     // 2. Mapeo de Registros Nominales Detallados
     const tableData = useMemo(() => {
@@ -406,7 +429,7 @@ export default function TelarDataModal({
     };
 
     // Renderizar Popover flotante estilo Excel para una columna
-    const renderExcelFilterPopover = (colKey, colLabel) => {
+    const renderExcelFilterPopover = (colKey, colLabel, colIdx = 0) => {
         if (openFilterCol !== colKey) return null;
 
         const allValues = columnUniqueValues[colKey] || [];
@@ -417,19 +440,25 @@ export default function TelarDataModal({
             item.val.toLowerCase().includes(colFilterSearch.toLowerCase())
         );
 
+        // Alineación inteligente: Si es de las primeras columnas, alinear a la izquierda para no salirse de la pantalla.
+        // Si es de las últimas 2 columnas, alinear a la derecha.
+        const isNearRight = colIdx >= tableColumns.length - 2;
+        const alignmentStyle = isNearRight ? { right: 0, left: 'auto' } : { left: 0, right: 'auto' };
+
         return (
             <div
                 ref={popoverRef}
                 style={{
                     position: 'absolute',
                     top: '100%',
-                    right: 0,
+                    ...alignmentStyle,
+                    marginTop: '4px',
                     zIndex: 9999,
-                    width: '260px',
+                    width: '270px',
                     background: '#FFFFFF',
                     border: '1px solid #CBD5E1',
                     borderRadius: '10px',
-                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                    boxShadow: '0 12px 28px -4px rgba(0, 0, 0, 0.22), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
                     padding: '12px',
                     display: 'flex',
                     flexDirection: 'column',
@@ -701,7 +730,7 @@ export default function TelarDataModal({
                                     fontSize: '0.8rem', cursor: 'pointer'
                                 }}
                             >
-                                <BarChart2 size={15} /> Resumen del Gráfico ({aggregatedData.length})
+                                <BarChart2 size={15} /> Cuadro Resumen ({aggregatedData.length})
                             </button>
                         )}
                         <button
@@ -883,7 +912,7 @@ export default function TelarDataModal({
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
                                 <thead style={{ position: 'sticky', top: 0, background: '#F8FAFC', zIndex: 10 }}>
                                     <tr style={{ borderBottom: '2px solid #CBD5E1' }}>
-                                        {tableColumns.map(col => {
+                                        {tableColumns.map((col, colIdx) => {
                                             const isFiltered = !!columnFilters[col.key];
                                             const isSorted = sortConfig.key === col.key;
                                             return (
@@ -935,7 +964,7 @@ export default function TelarDataModal({
                                                     </div>
 
                                                     {/* Popover flotante del filtro Excel */}
-                                                    {renderExcelFilterPopover(col.key, col.label)}
+                                                    {renderExcelFilterPopover(col.key, col.label, colIdx)}
                                                 </th>
                                             );
                                         })}
