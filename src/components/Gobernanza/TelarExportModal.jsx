@@ -11,10 +11,12 @@ import pptxgen from 'pptxgenjs';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { getSanatorioLogoBase64 } from '../../utils/sanatorioLogoBase64';
 
 export default function TelarExportModal({ activeIndicators = [], globalMetrics = {}, rawRows = [], onClose }) {
     const [selectedTab, setSelectedTab] = useState('presentation');
     const [selectedTheme, setSelectedTheme] = useState('institutional_blue');
+    const [isExportingPPTX, setIsExportingPPTX] = useState(false);
     
     // Estados para Imagen (Infografía Visual)
     const [imageStatus, setImageStatus] = useState('idle');
@@ -169,62 +171,315 @@ export default function TelarExportModal({ activeIndicators = [], globalMetrics 
         }
     };
 
-    // Generador PPTX con pptxgenjs
-    const generatePPTX = (slidesData) => {
-        let pptx = new pptxgen();
-        
-        let bgColor = 'FFFFFF';
-        let titleColor = '1E293B';
-        let accentColor = '1E40AF'; // Azul Institucional Sanatorio Argentino
-        
-        if (selectedTheme === 'institutional_blue') {
-            titleColor = '0D3B66';
-            accentColor = '1E40AF';
-        } else if (selectedTheme === 'surgical_green') {
-            titleColor = '065F46';
-            accentColor = '059669';
+    // Paletas temáticas ejecutivas para PowerPoint (Sanatorio Argentino)
+    const PPTX_THEMES = {
+        institutional_blue: {
+            coverBg: '0A192F',          // Azul Noche / Navy Institucional Sanatorio
+            coverAccent: '0284C7',      // Cyan Médico
+            coverSecondary: '38BDF8',   // Celeste Luminoso
+            coverCardBg: '112240',      // Tarjeta Medianoche
+            coverCardBorder: '1E3A8A',  // Borde Navy
+            slideBg: 'F8FAFC',          // Lienzo Clínico Blanco Suave
+            topBarPrimary: '0F2942',    // Franja Superior Primaria
+            topBarAccent: '0284C7',     // Franja Superior Secundaria
+            titleColor: '0F172A',       // Título Slate 900
+            subtitleColor: '64748B',    // Subtítulo Slate 500
+            cardBg: 'FFFFFF',           // Tarjeta Blanca Pura
+            cardBorder: 'E2E8F0',       // Borde Slate 200
+            accentPrimary: '1E40AF',    // Azul Real Sanatorio
+            accentSecondary: '0284C7',  // Cyan Asistencial
+            badgeBg: 'EFF6FF',          // Píldora Celeste Suave
+            badgeBorder: 'BFDBFE',
+            badgeText: '1E40AF',
+            bodyColor: '334155',        // Texto Slate 700
+            footerColor: '94A3B8'
+        },
+        surgical_green: {
+            coverBg: '064E3B',          // Verde Bosque Quirúrgico
+            coverAccent: '10B981',      // Esmeralda Quirúrgico
+            coverSecondary: '34D399',   // Menta Suave
+            coverCardBg: '065F46',      // Tarjeta Jade Oscuro
+            coverCardBorder: '047857',  // Borde Verde
+            slideBg: 'F0FDF4',          // Lienzo Clínico Verde Suave
+            topBarPrimary: '064E3B',    // Franja Superior Verde Oscuro
+            topBarAccent: '10B981',     // Franja Superior Esmeralda
+            titleColor: '064E3B',       // Título Verde
+            subtitleColor: '475569',    // Subtítulo Slate 600
+            cardBg: 'FFFFFF',
+            cardBorder: 'D1FAE5',
+            accentPrimary: '059669',
+            accentSecondary: '10B981',
+            badgeBg: 'ECFDF5',
+            badgeBorder: 'A7F3D0',
+            badgeText: '065F46',
+            bodyColor: '334155',
+            footerColor: '94A3B8'
+        },
+        minimalist: {
+            coverBg: '0F172A',          // Pizarra Oscura
+            coverAccent: '475569',      // Gris Neutro
+            coverSecondary: '94A3B8',   // Gris Claro
+            coverCardBg: '1E293B',      // Tarjeta Slate
+            coverCardBorder: '334155',  // Borde
+            slideBg: 'F8FAFC',          // Blanco Clínico
+            topBarPrimary: '0F172A',
+            topBarAccent: '475569',
+            titleColor: '0F172A',
+            subtitleColor: '64748B',
+            cardBg: 'FFFFFF',
+            cardBorder: 'E2E8F0',
+            accentPrimary: '1E293B',
+            accentSecondary: '64748B',
+            badgeBg: 'F1F5F9',
+            badgeBorder: 'CBD5E1',
+            badgeText: '0F172A',
+            bodyColor: '334155',
+            footerColor: '94A3B8'
         }
+    };
 
-        pptx.defineSlideMaster({
-            title: 'MASTER_SLIDE',
-            background: { color: bgColor },
-            objects: [
-                { rect: { x: 0, y: 0, w: '100%', h: 0.8, fill: { color: accentColor } } },
-                { text: { text: 'SANATORIO ARGENTINO — GOBERNANZA CLÍNICA', options: { x: 0.5, y: 0.22, w: 9, h: 0.45, color: 'FFFFFF', fontSize: 16, bold: true } } }
-            ]
-        });
+    // Generador PPTX de Alta Gama con pptxgenjs y Logo Oficial Sanatorio Argentino
+    const generatePPTX = async (slidesData) => {
+        if (!slidesData || slidesData.length === 0) return;
 
-        slidesData.forEach((slide) => {
-            let pptSlide = pptx.addSlide({ masterName: 'MASTER_SLIDE' });
-            
-            // Título
-            pptSlide.addText(slide.title || 'Diapositiva Ejecutiva', {
-                x: 0.6, y: 1.1, w: '88%', h: 0.8, fontSize: 26, bold: true, color: titleColor
+        try {
+            setIsExportingPPTX(true);
+            const pptx = new pptxgen();
+            pptx.layout = 'LAYOUT_16x9'; // Formato moderno panorámico 16:9 (13.33 x 7.5 pulgadas)
+
+            const theme = PPTX_THEMES[selectedTheme] || PPTX_THEMES.institutional_blue;
+            const logoB64 = await getSanatorioLogoBase64();
+
+            const sectorLabel = globalMetrics.sector || 'Cuidados Críticos (UCI)';
+            const subNivelLabel = globalMetrics.subNivel ? ` - ${globalMetrics.subNivel}` : ' (16 Camas)';
+            const periodoLabel = `${globalMetrics.fechaDesde || 'Inicio'} al ${globalMetrics.fechaHasta || 'Fin'}`;
+
+            slidesData.forEach((slide, sIdx) => {
+                const pptSlide = pptx.addSlide();
+
+                if (sIdx === 0) {
+                    // ── DIAPOSITIVA 1: PORTADA EJECUTIVA DE ALTO IMPACTO ──
+                    pptSlide.background = { color: theme.coverBg };
+
+                    // Franjas de acento institucional lateral
+                    pptSlide.addShape(pptx.shapes.RECTANGLE, { x: 0, y: 0, w: 0.28, h: 7.5, fill: { color: theme.coverAccent }, line: { color: theme.coverAccent } });
+                    pptSlide.addShape(pptx.shapes.RECTANGLE, { x: 0.28, y: 0, w: 0.12, h: 7.5, fill: { color: theme.coverSecondary }, line: { color: theme.coverSecondary } });
+
+                    // Insignia contenedor blanco del Logo oficial
+                    pptSlide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x: 1.0, y: 0.75, w: 1.5, h: 1.5, fill: { color: 'FFFFFF' }, line: { color: 'E2E8F0', width: 1 }, rectRadius: 0.15 });
+                    if (logoB64) {
+                        pptSlide.addImage({ data: logoB64, x: 1.15, y: 0.9, w: 1.2, h: 1.2 });
+                    }
+
+                    // Título institucional membretado
+                    pptSlide.addText('SANATORIO ARGENTINO', { 
+                        x: 2.8, y: 0.95, w: 9.5, h: 0.4, 
+                        fontSize: 16, bold: true, color: theme.coverSecondary, 
+                        fontFace: 'Segoe UI', charSpacing: 3 
+                    });
+                    pptSlide.addText('SISTEMA DE GOBERNANZA CLÍNICA & GESTIÓN MÉDICA', { 
+                        x: 2.8, y: 1.35, w: 9.5, h: 0.35, 
+                        fontSize: 11, bold: true, color: '94A3B8', 
+                        fontFace: 'Segoe UI', charSpacing: 1.5 
+                    });
+
+                    // Título y Subtítulo de la Portada
+                    const coverTitle = (slide.title || 'INFORME EJECUTIVO DE GOBERNANZA CLÍNICA').toUpperCase();
+                    pptSlide.addText(coverTitle, { 
+                        x: 1.0, y: 2.65, w: 11.33, h: 1.3, 
+                        fontSize: 30, bold: true, color: 'FFFFFF', 
+                        fontFace: 'Segoe UI', valign: 'top' 
+                    });
+
+                    const coverSubtitle = slide.subtitle || 'Auditoría Integral de Ocupación, Rotación y Seguridad del Paciente';
+                    pptSlide.addText(coverSubtitle, { 
+                        x: 1.0, y: 4.05, w: 11.33, h: 0.65, 
+                        fontSize: 15, color: 'CBD5E1', 
+                        fontFace: 'Segoe UI' 
+                    });
+
+                    // Tarjetas de Metadatos Ejecutivos en la Portada
+                    const metaCards = [
+                        { label: 'SECTOR CLÍNICO', val: `${sectorLabel}${subNivelLabel}` },
+                        { label: 'PERÍODO AUDITADO', val: periodoLabel },
+                        { label: 'OCUPACIÓN GLOBAL', val: globalMetrics.porcOcupacion ? `${globalMetrics.porcOcupacion}% (${globalMetrics.diasOcupados || 0} c-día)` : 'UCI 16 Camas' },
+                        { label: 'CALIDAD ASISTENCIAL', val: 'Sanatorio Argentino' }
+                    ];
+
+                    metaCards.forEach((c, idx) => {
+                        const xPos = 1.0 + idx * 2.85;
+                        pptSlide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { 
+                            x: xPos, y: 5.35, w: 2.7, h: 1.3, 
+                            fill: { color: theme.coverCardBg }, 
+                            line: { color: theme.coverCardBorder, width: 1 }, 
+                            rectRadius: 0.1 
+                        });
+                        pptSlide.addText(c.label, { 
+                            x: xPos + 0.15, y: 5.5, w: 2.4, h: 0.25, 
+                            fontSize: 9, bold: true, color: theme.coverSecondary, 
+                            fontFace: 'Segoe UI', charSpacing: 1 
+                        });
+                        pptSlide.addText(c.val, { 
+                            x: xPos + 0.15, y: 5.8, w: 2.4, h: 0.65, 
+                            fontSize: 12, bold: true, color: 'FFFFFF', 
+                            fontFace: 'Segoe UI' 
+                        });
+                    });
+                } else {
+                    // ── DIAPOSITIVAS 2 A N: CONTENIDO CLÍNICO EJECUTIVO ──
+                    pptSlide.background = { color: theme.slideBg };
+
+                    // Barra superior doble acento
+                    pptSlide.addShape(pptx.shapes.RECTANGLE, { x: 0, y: 0, w: 13.33, h: 0.08, fill: { color: theme.topBarPrimary }, line: { color: theme.topBarPrimary } });
+                    pptSlide.addShape(pptx.shapes.RECTANGLE, { x: 0, y: 0.08, w: 13.33, h: 0.04, fill: { color: theme.topBarAccent }, line: { color: theme.topBarAccent } });
+
+                    // Logo y Membrete Superior
+                    if (logoB64) {
+                        pptSlide.addImage({ data: logoB64, x: 0.8, y: 0.32, w: 0.65, h: 0.65 });
+                    }
+                    pptSlide.addText('SANATORIO ARGENTINO  |  GOBERNANZA CLÍNICA UCI', { 
+                        x: 1.6, y: 0.38, w: 8.5, h: 0.25, 
+                        fontSize: 10, bold: true, color: theme.topBarAccent, 
+                        fontFace: 'Segoe UI', charSpacing: 1.5 
+                    });
+                    pptSlide.addText(slide.title || 'Análisis Clínico y Operativo', { 
+                        x: 1.6, y: 0.65, w: 10.5, h: 0.55, 
+                        fontSize: 22, bold: true, color: theme.titleColor, 
+                        fontFace: 'Segoe UI' 
+                    });
+
+                    const startY = slide.subtitle ? 1.65 : 1.45;
+                    if (slide.subtitle) {
+                        pptSlide.addText(slide.subtitle, { 
+                            x: 1.6, y: 1.2, w: 10.5, h: 0.35, 
+                            fontSize: 12.5, italic: true, color: theme.subtitleColor, 
+                            fontFace: 'Segoe UI' 
+                        });
+                    }
+
+                    const bullets = slide.bullets || [];
+
+                    if (bullets.length <= 4) {
+                        // Tarjetas horizontales de ancho completo
+                        const cardH = bullets.length <= 3 ? 1.1 : 0.95;
+                        const gap = 0.15;
+                        bullets.forEach((b, bIdx) => {
+                            const yPos = startY + bIdx * (cardH + gap);
+
+                            // Contenedor de tarjeta blanca con borde
+                            pptSlide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { 
+                                x: 0.8, y: yPos, w: 11.73, h: cardH, 
+                                fill: { color: theme.cardBg }, 
+                                line: { color: theme.cardBorder, width: 1 }, 
+                                rectRadius: 0.08 
+                            });
+
+                            // Franja vertical de acento en el borde izquierdo
+                            pptSlide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { 
+                                x: 0.8, y: yPos, w: 0.14, h: cardH, 
+                                fill: { color: bIdx % 2 === 0 ? theme.accentPrimary : theme.accentSecondary }, 
+                                line: { color: bIdx % 2 === 0 ? theme.accentPrimary : theme.accentSecondary }, 
+                                rectRadius: 0.08 
+                            });
+
+                            // Píldora de numeración (01, 02...)
+                            pptSlide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { 
+                                x: 1.12, y: yPos + (cardH - 0.55) / 2, w: 0.55, h: 0.55, 
+                                fill: { color: theme.badgeBg }, 
+                                line: { color: theme.badgeBorder, width: 1 }, 
+                                rectRadius: 0.08 
+                            });
+                            pptSlide.addText('0' + (bIdx + 1), { 
+                                x: 1.12, y: yPos + (cardH - 0.55) / 2 + 0.04, w: 0.55, h: 0.45, 
+                                fontSize: 12, bold: true, color: theme.badgeText, 
+                                fontFace: 'Segoe UI', align: 'center' 
+                            });
+
+                            // Separación inteligente de texto (título destacado antes de ':')
+                            const colonIdx = b.indexOf(':');
+                            let textRuns = [];
+                            if (colonIdx > 0 && colonIdx < 40) {
+                                textRuns.push({ text: b.substring(0, colonIdx + 1), options: { bold: true, color: theme.titleColor, fontSize: 13.5, fontFace: 'Segoe UI' } });
+                                textRuns.push({ text: b.substring(colonIdx + 1), options: { bold: false, color: theme.bodyColor, fontSize: 13.5, fontFace: 'Segoe UI' } });
+                            } else {
+                                textRuns.push({ text: b, options: { bold: false, color: theme.bodyColor, fontSize: 13.5, fontFace: 'Segoe UI' } });
+                            }
+                            pptSlide.addText(textRuns, { x: 1.85, y: yPos + 0.1, w: 10.45, h: cardH - 0.2, valign: 'middle' });
+                        });
+                    } else {
+                        // Cuadrícula ejecutiva de 2 columnas balanceadas
+                        const colW = 5.75;
+                        const cardH = 0.9;
+                        const gap = 0.12;
+                        bullets.forEach((b, bIdx) => {
+                            const isCol2 = bIdx >= Math.ceil(bullets.length / 2);
+                            const rowIdx = isCol2 ? bIdx - Math.ceil(bullets.length / 2) : bIdx;
+                            const colX = isCol2 ? 6.78 : 0.8;
+                            const yPos = startY + rowIdx * (cardH + gap);
+
+                            pptSlide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { 
+                                x: colX, y: yPos, w: colW, h: cardH, 
+                                fill: { color: theme.cardBg }, 
+                                line: { color: theme.cardBorder, width: 1 }, 
+                                rectRadius: 0.08 
+                            });
+                            pptSlide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { 
+                                x: colX, y: yPos, w: 0.12, h: cardH, 
+                                fill: { color: bIdx % 2 === 0 ? theme.accentPrimary : theme.accentSecondary }, 
+                                line: { color: bIdx % 2 === 0 ? theme.accentPrimary : theme.accentSecondary }, 
+                                rectRadius: 0.08 
+                            });
+
+                            pptSlide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { 
+                                x: colX + 0.25, y: yPos + 0.18, w: 0.5, h: 0.5, 
+                                fill: { color: theme.badgeBg }, 
+                                line: { color: theme.badgeBorder, width: 1 }, 
+                                rectRadius: 0.08 
+                            });
+                            pptSlide.addText('0' + (bIdx + 1), { 
+                                x: colX + 0.25, y: yPos + 0.2, w: 0.5, h: 0.45, 
+                                fontSize: 11, bold: true, color: theme.badgeText, 
+                                fontFace: 'Segoe UI', align: 'center' 
+                            });
+
+                            const colonIdx = b.indexOf(':');
+                            let textRuns = [];
+                            if (colonIdx > 0 && colonIdx < 35) {
+                                textRuns.push({ text: b.substring(0, colonIdx + 1), options: { bold: true, color: theme.titleColor, fontSize: 12, fontFace: 'Segoe UI' } });
+                                textRuns.push({ text: b.substring(colonIdx + 1), options: { bold: false, color: theme.bodyColor, fontSize: 12, fontFace: 'Segoe UI' } });
+                            } else {
+                                textRuns.push({ text: b, options: { bold: false, color: theme.bodyColor, fontSize: 12, fontFace: 'Segoe UI' } });
+                            }
+                            pptSlide.addText(textRuns, { x: colX + 0.85, y: yPos + 0.08, w: colW - 0.95, h: cardH - 0.16, valign: 'middle' });
+                        });
+                    }
+
+                    // Pie de página institucional
+                    pptSlide.addShape(pptx.shapes.LINE, { x: 0.8, y: 6.82, w: 11.73, h: 0, line: { color: theme.cardBorder, width: 1 } });
+                    pptSlide.addText('Sanatorio Argentino • Informe Oficial de Gobernanza Clínica y Calidad Asistencial • Confidencial', { 
+                        x: 0.8, y: 6.9, w: 8, h: 0.3, 
+                        fontSize: 9, color: theme.footerColor, fontFace: 'Segoe UI' 
+                    });
+                    pptSlide.addText(`Diapositiva ${sIdx + 1} de ${slidesData.length}`, { 
+                        x: 9.53, y: 6.9, w: 3, h: 0.3, 
+                        fontSize: 9, color: theme.footerColor, fontFace: 'Segoe UI', align: 'right' 
+                    });
+                }
+
+                // Notas del orador incrustadas en PowerPoint
+                if (slide.notes) {
+                    pptSlide.addNotes(slide.notes);
+                }
             });
 
-            // Subtítulo
-            if (slide.subtitle) {
-                pptSlide.addText(slide.subtitle, {
-                    x: 0.6, y: 1.8, w: '88%', h: 0.5, fontSize: 16, italic: true, color: '64748B'
-                });
-            }
-
-            // Bullets
-            if (slide.bullets && slide.bullets.length > 0) {
-                const bulletText = slide.bullets.map(b => ({ text: b, options: { bullet: true, fontSize: 15, color: '334155' } }));
-                pptSlide.addText(bulletText, {
-                    x: 0.6, y: 2.4, w: '88%', h: 3.8, valign: 'top'
-                });
-            }
-
-            // Notas del orador
-            if (slide.notes) {
-                pptSlide.addNotes(slide.notes);
-            }
-        });
-
-        const dateStr = new Date().toISOString().split('T')[0];
-        pptx.writeFile({ fileName: `Sanatorio_Argentino_Reporte_UCI_${dateStr}.pptx` });
+            const dateStr = new Date().toISOString().split('T')[0];
+            await pptx.writeFile({ fileName: `Sanatorio_Argentino_Reporte_UCI_${dateStr}.pptx` });
+        } catch (err) {
+            console.error('Error al generar PPTX:', err);
+            alert('Error al generar la presentación PPTX: ' + (err.message || ''));
+        } finally {
+            setIsExportingPPTX(false);
+        }
     };
 
     // Generador OmniFlash (LLM para Presentación, Mapa Conceptual o Guión)
@@ -716,46 +971,174 @@ export default function TelarExportModal({ activeIndicators = [], globalMetrics 
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                                         <div style={{ background: '#FFFFFF', padding: '22px 26px', borderRadius: '12px', border: '1px solid #E2E8F0', boxShadow: '0 2px 4px rgba(0,0,0,0.03)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <div>
-                                                <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#1E293B', fontWeight: 700 }}>Presentación Lista para Descargar</h2>
-                                                <p style={{ margin: '4px 0 0', color: '#64748B', fontSize: '0.85rem' }}>
-                                                    Se estructuraron {flashContent.slides?.length || 0} diapositivas PowerPoint con colores institucionales y notas de orador.
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                    <img src="/logosanatorio.png" alt="Sanatorio Argentino" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
+                                                    <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#1E293B', fontWeight: 700 }}>Presentación Lista para Descargar</h2>
+                                                </div>
+                                                <p style={{ margin: '6px 0 0', color: '#64748B', fontSize: '0.85rem' }}>
+                                                    Estructuradas {flashContent.slides?.length || 0} diapositivas ejecutivas (16:9) con logo oficial, tipografía Segoe UI, colores institucionales y notas de orador.
                                                 </p>
                                             </div>
                                             <button 
                                                 onClick={() => generatePPTX(flashContent.slides)} 
+                                                disabled={isExportingPPTX}
                                                 style={{ 
                                                     display: 'flex', alignItems: 'center', gap: '8px', 
-                                                    padding: '12px 24px', background: '#1E40AF', color: '#FFFFFF', 
-                                                    border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem',
-                                                    boxShadow: '0 4px 6px -1px rgba(30, 64, 175, 0.3)'
+                                                    padding: '12px 24px', 
+                                                    background: isExportingPPTX ? '#94A3B8' : (selectedTheme === 'surgical_green' ? '#059669' : '#1E40AF'), 
+                                                    color: '#FFFFFF', 
+                                                    border: 'none', borderRadius: '8px', cursor: isExportingPPTX ? 'not-allowed' : 'pointer', 
+                                                    fontWeight: 700, fontSize: '0.9rem',
+                                                    boxShadow: '0 4px 6px -1px rgba(30, 64, 175, 0.3)',
+                                                    transition: 'all 0.2s'
                                                 }}
                                             >
-                                                <Download size={18} /> Descargar Archivo PPTX
+                                                {isExportingPPTX ? (
+                                                    <>
+                                                        <Loader2 size={18} style={{ animation: 'spin 1.2s linear infinite' }} />
+                                                        Generando PPTX...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Download size={18} /> Descargar Archivo PPTX (16:9)
+                                                    </>
+                                                )}
                                             </button>
                                         </div>
 
-                                        {/* Vista Previa de Diapositivas */}
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                        {/* Vista Previa Ejecutiva de Diapositivas */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                             {flashContent.slides?.map((slide, sIdx) => (
-                                                <div key={sIdx} style={{ background: '#FFFFFF', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '16px 20px' }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #F1F5F9', paddingBottom: '8px', marginBottom: '10px' }}>
-                                                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1E40AF', textTransform: 'uppercase' }}>
-                                                            Diapositiva {sIdx + 1}
-                                                        </span>
-                                                        {slide.subtitle && <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>{slide.subtitle}</span>}
-                                                    </div>
-                                                    <h4 style={{ margin: '0 0 10px', color: '#0F172A', fontSize: '1rem' }}>{slide.title}</h4>
-                                                    <ul style={{ margin: 0, paddingLeft: '20px', color: '#334155', fontSize: '0.85rem', lineHeight: '1.6' }}>
-                                                        {slide.bullets?.map((b, bIdx) => (
-                                                            <li key={bIdx}>{b}</li>
-                                                        ))}
-                                                    </ul>
-                                                    {slide.notes && (
-                                                        <div style={{ marginTop: '10px', padding: '8px 12px', background: '#F8FAFC', borderRadius: '6px', fontSize: '0.75rem', color: '#64748B', fontStyle: 'italic' }}>
-                                                            💬 <b>Notas del Orador:</b> {slide.notes}
+                                                sIdx === 0 ? (
+                                                    /* Portada Ejecutiva de Alto Impacto */
+                                                    <div key={sIdx} style={{ 
+                                                        background: selectedTheme === 'surgical_green' 
+                                                            ? 'linear-gradient(135deg, #064E3B 0%, #065F46 100%)' 
+                                                            : selectedTheme === 'minimalist' 
+                                                            ? 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)' 
+                                                            : 'linear-gradient(135deg, #0A192F 0%, #0F2942 100%)', 
+                                                        borderRadius: '14px', border: '1px solid rgba(255,255,255,0.12)', padding: '24px 28px', color: '#fff',
+                                                        boxShadow: '0 10px 25px -5px rgba(10, 25, 47, 0.4)', position: 'relative', overflow: 'hidden'
+                                                    }}>
+                                                        <div style={{ position: 'absolute', top: 0, left: 0, width: '6px', height: '100%', background: selectedTheme === 'surgical_green' ? '#10B981' : '#38BDF8' }} />
+                                                        
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '18px' }}>
+                                                            <div style={{ width: '48px', height: '48px', background: '#FFFFFF', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.25)', padding: '5px' }}>
+                                                                <img src="/logosanatorio.png" alt="Sanatorio Argentino" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                                            </div>
+                                                            <div>
+                                                                <div style={{ fontSize: '0.8rem', fontWeight: 800, color: selectedTheme === 'surgical_green' ? '#34D399' : '#38BDF8', letterSpacing: '2px', textTransform: 'uppercase' }}>
+                                                                    Sanatorio Argentino
+                                                                </div>
+                                                                <div style={{ fontSize: '0.7rem', color: '#94A3B8', letterSpacing: '1px', fontWeight: 600 }}>
+                                                                    SISTEMA DE GOBERNANZA CLÍNICA & GESTIÓN MÉDICA
+                                                                </div>
+                                                            </div>
+                                                            <span style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.12)', padding: '4px 12px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 700, color: '#E2E8F0', letterSpacing: '0.5px' }}>
+                                                                DIAPOSITIVA 1 • PORTADA
+                                                            </span>
                                                         </div>
-                                                    )}
-                                                </div>
+
+                                                        <h3 style={{ margin: '0 0 8px', fontSize: '1.35rem', fontWeight: 800, color: '#FFFFFF', lineHeight: '1.3', letterSpacing: '-0.3px' }}>
+                                                            {slide.title}
+                                                        </h3>
+                                                        {slide.subtitle && (
+                                                            <p style={{ margin: '0 0 16px', fontSize: '0.9rem', color: '#CBD5E1', lineHeight: '1.4' }}>
+                                                                {slide.subtitle}
+                                                            </p>
+                                                        )}
+
+                                                        {/* Tarjetas de metadatos integradas en portada */}
+                                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginTop: '14px', paddingTop: '14px', borderTop: '1px solid rgba(255,255,255,0.12)' }}>
+                                                            <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '8px', padding: '8px 12px' }}>
+                                                                <div style={{ fontSize: '0.65rem', color: '#94A3B8', fontWeight: 700 }}>SECTOR AUDITADO</div>
+                                                                <div style={{ fontSize: '0.8rem', color: '#FFFFFF', fontWeight: 600 }}>{globalMetrics.sector || 'Cuidados Críticos'} (16 Camas)</div>
+                                                            </div>
+                                                            <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '8px', padding: '8px 12px' }}>
+                                                                <div style={{ fontSize: '0.65rem', color: '#94A3B8', fontWeight: 700 }}>PERÍODO</div>
+                                                                <div style={{ fontSize: '0.8rem', color: '#FFFFFF', fontWeight: 600 }}>{globalMetrics.fechaDesde || 'Inicio'} al {globalMetrics.fechaHasta || 'Fin'}</div>
+                                                            </div>
+                                                            <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '8px', padding: '8px 12px' }}>
+                                                                <div style={{ fontSize: '0.65rem', color: '#94A3B8', fontWeight: 700 }}>OCUPACIÓN GLOBAL</div>
+                                                                <div style={{ fontSize: '0.8rem', color: '#FFFFFF', fontWeight: 600 }}>{globalMetrics.porcOcupacion ? `${globalMetrics.porcOcupacion}%` : '87.5%'} ({globalMetrics.diasOcupados || 0} c-día)</div>
+                                                            </div>
+                                                            <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '8px', padding: '8px 12px' }}>
+                                                                <div style={{ fontSize: '0.65rem', color: '#94A3B8', fontWeight: 700 }}>AUDITORÍA</div>
+                                                                <div style={{ fontSize: '0.8rem', color: '#FFFFFF', fontWeight: 600 }}>Calidad Asistencial</div>
+                                                            </div>
+                                                        </div>
+
+                                                        {slide.notes && (
+                                                            <div style={{ marginTop: '14px', padding: '8px 12px', background: 'rgba(0,0,0,0.28)', borderRadius: '6px', fontSize: '0.75rem', color: '#94A3B8', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span>💬</span> <b>Notas del Orador:</b> {slide.notes}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    /* Diapositivas Ejecutivas de Contenido */
+                                                    <div key={sIdx} style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E2E8F0', padding: '20px 24px', boxShadow: '0 2px 6px rgba(0,0,0,0.03)', position: 'relative', overflow: 'hidden' }}>
+                                                        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: selectedTheme === 'surgical_green' ? 'linear-gradient(90deg, #064E3B 0%, #10B981 100%)' : 'linear-gradient(90deg, #0F2942 0%, #0284C7 100%)' }} />
+                                                        
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #F1F5F9', paddingBottom: '10px', marginBottom: '14px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <img src="/logosanatorio.png" alt="SA" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                                                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: selectedTheme === 'surgical_green' ? '#059669' : '#1E40AF', letterSpacing: '1px', textTransform: 'uppercase' }}>
+                                                                    Sanatorio Argentino • Gobernanza Clínica UCI
+                                                                </span>
+                                                            </div>
+                                                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', background: '#F1F5F9', padding: '3px 10px', borderRadius: '6px' }}>
+                                                                Diapositiva {sIdx + 1}
+                                                            </span>
+                                                        </div>
+
+                                                        <h4 style={{ margin: '0 0 6px', color: '#0F172A', fontSize: '1.1rem', fontWeight: 700 }}>
+                                                            {slide.title}
+                                                        </h4>
+                                                        {slide.subtitle && (
+                                                            <p style={{ margin: '0 0 14px', fontSize: '0.82rem', color: '#64748B', fontStyle: 'italic' }}>
+                                                                {slide.subtitle}
+                                                            </p>
+                                                        )}
+
+                                                        {/* Tarjetas de bullets con diseño corporativo */}
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+                                                            {slide.bullets?.map((b, bIdx) => {
+                                                                const colonIdx = b.indexOf(':');
+                                                                const hasColon = colonIdx > 0 && colonIdx < 40;
+                                                                const label = hasColon ? b.substring(0, colonIdx + 1) : '';
+                                                                const rest = hasColon ? b.substring(colonIdx + 1) : b;
+                                                                
+                                                                return (
+                                                                    <div key={bIdx} style={{ 
+                                                                        display: 'flex', alignItems: 'center', gap: '12px', 
+                                                                        background: '#F8FAFC', border: '1px solid #E2E8F0', 
+                                                                        borderLeft: `4px solid ${bIdx % 2 === 0 ? (selectedTheme === 'surgical_green' ? '#059669' : '#1E40AF') : (selectedTheme === 'surgical_green' ? '#10B981' : '#0284C7')}`,
+                                                                        borderRadius: '8px', padding: '10px 14px' 
+                                                                    }}>
+                                                                        <span style={{ 
+                                                                            background: selectedTheme === 'surgical_green' ? '#ECFDF5' : '#EFF6FF', 
+                                                                            color: selectedTheme === 'surgical_green' ? '#065F46' : '#1E40AF', 
+                                                                            fontWeight: 800, fontSize: '0.75rem', 
+                                                                            borderRadius: '6px', padding: '3px 8px', flexShrink: 0 
+                                                                        }}>
+                                                                            0{bIdx + 1}
+                                                                        </span>
+                                                                        <div style={{ fontSize: '0.85rem', color: '#334155', lineHeight: '1.45' }}>
+                                                                            {hasColon && <b style={{ color: '#0F172A' }}>{label} </b>}
+                                                                            {rest}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+
+                                                        {slide.notes && (
+                                                            <div style={{ marginTop: '12px', padding: '8px 12px', background: '#F8FAFC', border: '1px dashed #CBD5E1', borderRadius: '6px', fontSize: '0.75rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span>💡</span> <b>Notas del Orador:</b> {slide.notes}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )
                                             ))}
                                         </div>
                                     </div>
