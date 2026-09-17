@@ -4,8 +4,10 @@ import {
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
     ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain, Users, PackageCheck, Microscope,
     Activity, FileSpreadsheet, BookMarked, FolderOpen, Receipt, FileCheck, Shield, Wrench, ShieldCheck,
+    Headphones
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { canUserAccessContactCenter } from '../services/contactCenterService';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '', onOpenBeto, currentUser, selectedModules }) {
     const isFrojo = currentUser?.usuario === 'frojo';
@@ -21,8 +23,8 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             return selectedModules.includes(id);
         }
         
-        // Normal users always see config, manual, actividad_usuarios, Simon IA and Gobernanza
-        if (['config', 'manual', 'actividad_usuarios', 'beto', 'beto_rules', 'beto_analytics', 'simon', 'gobernanza', 'gobernanza_indicadores'].includes(id)) return true;
+        // Normal users always see config, manual, actividad_usuarios, Simon IA, Gobernanza and Contact Center if permitted
+        if (['config', 'manual', 'actividad_usuarios', 'contact_center', 'beto', 'beto_rules', 'beto_analytics', 'simon', 'gobernanza', 'gobernanza_indicadores'].includes(id)) return true;
         
         return selectedModules.includes(id);
     };
@@ -357,6 +359,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
 
                 {/* ─── Items finales ─── */}
                 {[
+                    ...(canUserAccessContactCenter(currentUser) ? [{ id: 'contact_center', label: 'Contact Center', icon: Headphones }] : []),
                     ...(['lmarinero', 'soribarale'].includes(currentUser?.usuario) ? [{ id: 'activos', label: 'Gestión de Activos', icon: Wrench }] : []),
                     ...(currentUser?.usuario === 'lmarinero' ? [{ id: 'actividad_usuarios', label: 'Actividad Usuarios', icon: Activity }] : []),
                     { id: 'manual', label: 'Manual del Sistema', icon: BookMarked },

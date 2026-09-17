@@ -63,6 +63,8 @@ import GobernanzaIndicadoresPanel from './components/Gobernanza/GobernanzaIndica
 import BetoGuidePopup from './components/Gobernanza/BetoGuidePopup.jsx';
 import LiquidacionesPanel from './components/LiquidacionesPanel.jsx';
 import PublicRecordView from './components/PublicShare/PublicRecordView.jsx';
+import ContactCenterPanel from './components/ContactCenter/ContactCenterPanel.jsx';
+import { canUserAccessContactCenter } from './services/contactCenterService';
 import { startSession, endSession, trackModuleChange } from './lib/activityTracker';
 import { supabase } from './lib/supabase';
 import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -167,6 +169,7 @@ const VIEW_LABELS = {
     actividad_usuarios: 'Actividad de Usuarios',
     activos: 'Gestión de Activos',
     liquidaciones: 'Liquidaciones Médicas',
+    contact_center: 'Contact Center',
 };
 
 function App({ currentUser, onLogout }) {
@@ -266,12 +269,16 @@ function App({ currentUser, onLogout }) {
         if (selectedModules.length === 1 && selectedModules[0] !== 'config') {
             isVisible = selectedModules.includes(activeView);
         } else {
-            if (['config', 'manual', 'actividad_usuarios', 'beto', 'simon', 'beto_rules', 'beto_analytics', 'gobernanza', 'gobernanza_indicadores'].includes(activeView)) isVisible = true;
+            if (['config', 'manual', 'actividad_usuarios', 'contact_center', 'beto', 'simon', 'beto_rules', 'beto_analytics', 'gobernanza', 'gobernanza_indicadores'].includes(activeView)) isVisible = true;
             else if (ALWAYS_VISIBLE.includes(activeView)) isVisible = true;
             else isVisible = selectedModules.includes(activeView);
         }
 
         if (activeView === 'activos' && !['lmarinero', 'soribarale'].includes(currentUser?.usuario)) {
+            isVisible = false;
+        }
+
+        if (activeView === 'contact_center' && !canUserAccessContactCenter(currentUser)) {
             isVisible = false;
         }
 
@@ -799,6 +806,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'activos' && (
                     <ActivosPanel currentUser={currentUser} addToast={addToast} />
+                )}
+
+                {activeView === 'contact_center' && canUserAccessContactCenter(currentUser) && (
+                    <ContactCenterPanel currentUser={currentUser} addToast={addToast} />
                 )}
 
                 {activeView === 'historial' && (
