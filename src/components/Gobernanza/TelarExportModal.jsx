@@ -486,6 +486,109 @@ export default function TelarExportModal({ activeIndicators = [], globalMetrics 
         alert('Copiado al portapapeles');
     };
 
+    const [downloadingMermaid, setDownloadingMermaid] = useState(false);
+
+    const handleDownloadMermaidImage = () => {
+        try {
+            setDownloadingMermaid(true);
+            const container = document.getElementById('telar-mermaid-container');
+            const svgElement = container?.querySelector('svg');
+            if (!svgElement) {
+                alert('No se encontró el diagrama visual para exportar.');
+                setDownloadingMermaid(false);
+                return;
+            }
+
+            // Clonar SVG para no alterar el DOM
+            const clonedSvg = svgElement.cloneNode(true);
+
+            // Obtener dimensiones reales del diagrama
+            let width = 1200;
+            let height = 800;
+            const viewBox = svgElement.getAttribute('viewBox');
+            if (viewBox) {
+                const parts = viewBox.split(/\s+/).map(Number);
+                if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
+                    width = parts[2];
+                    height = parts[3];
+                }
+            } else {
+                const bbox = svgElement.getBoundingClientRect();
+                width = bbox.width || 1200;
+                height = bbox.height || 800;
+            }
+
+            // Margen para padding prolijo
+            const padding = 36;
+            const exportWidth = Math.ceil(width + padding * 2);
+            const exportHeight = Math.ceil(height + padding * 2);
+
+            clonedSvg.setAttribute('width', exportWidth);
+            clonedSvg.setAttribute('height', exportHeight);
+            clonedSvg.setAttribute('viewBox', `-${padding} -${padding} ${exportWidth} ${exportHeight}`);
+            clonedSvg.style.backgroundColor = '#FFFFFF';
+
+            // Serializar XML del SVG
+            const serializer = new XMLSerializer();
+            let svgString = serializer.serializeToString(clonedSvg);
+            if (!svgString.match(/^<svg[^>]+xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)) {
+                svgString = svgString.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+            }
+
+            const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+            const URL = window.URL || window.webkitURL || window;
+            const blobURL = URL.createObjectURL(svgBlob);
+
+            const img = new Image();
+            img.onload = () => {
+                const scale = 2; // Resolución HD Retina 2x
+                const canvas = document.createElement('canvas');
+                canvas.width = exportWidth * scale;
+                canvas.height = exportHeight * scale;
+                const ctx = canvas.getContext('2d');
+
+                // Fondo blanco clínico Sanatorio Argentino
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                URL.revokeObjectURL(blobURL);
+
+                canvas.toBlob((blob) => {
+                    setDownloadingMermaid(false);
+                    if (!blob) return;
+                    const dateStr = new Date().toISOString().split('T')[0];
+                    const a = document.createElement('a');
+                    a.download = `Diagrama_Conceptual_UCI_${dateStr}.png`;
+                    a.href = URL.createObjectURL(blob);
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(a.href);
+                }, 'image/png', 1.0);
+            };
+
+            img.onerror = (e) => {
+                setDownloadingMermaid(false);
+                console.warn('Fallback a exportación SVG:', e);
+                const dateStr = new Date().toISOString().split('T')[0];
+                const a = document.createElement('a');
+                a.download = `Diagrama_Conceptual_UCI_${dateStr}.svg`;
+                a.href = blobURL;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            };
+
+            img.src = blobURL;
+        } catch (err) {
+            setDownloadingMermaid(false);
+            console.error('Error al exportar diagrama:', err);
+            alert('Error al exportar imagen: ' + err.message);
+        }
+    };
+
+
     return (
         <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -806,11 +909,40 @@ export default function TelarExportModal({ activeIndicators = [], globalMetrics 
                                 {flashStatus === 'success' && flashContent && (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                                         <div style={{ background: '#FFFFFF', padding: '24px', borderRadius: '12px', border: '1px solid #E2E8F0', overflowX: 'auto' }}>
-                                            <MermaidRenderer chart={flashContent} />
+                                            <MermaidRenderer id="telar-mermaid-container" chart={flashContent} />
                                         </div>
-                                        <button onClick={handleCopyText} style={{ alignSelf: 'center', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', background: '#1E40AF', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
-                                            <Copy size={16} /> Copiar Código Mermaid
-                                        </button>
+                                        <div style={{ alignSelf: 'center', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                                            <button 
+                                                onClick={handleDownloadMermaidImage} 
+                                                disabled={downloadingMermaid}
+                                                style={{ 
+                                                    display: 'flex', alignItems: 'center', gap: '8px', 
+                                                    padding: '10px 22px', background: '#10B981', color: 'white', 
+                                                    border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600,
+                                                    boxShadow: '0 2px 6px rgba(16, 185, 129, 0.25)',
+                                                    transition: 'all 0.15s ease'
+                                                }}
+                                            >
+                                                {downloadingMermaid ? (
+                                                    <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                                                ) : (
+                                                    <Download size={16} />
+                                                )}
+                                                Descargar como Imagen (PNG)
+                                            </button>
+                                            <button 
+                                                onClick={handleCopyText} 
+                                                style={{ 
+                                                    display: 'flex', alignItems: 'center', gap: '8px', 
+                                                    padding: '10px 22px', background: '#1E40AF', color: 'white', 
+                                                    border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600,
+                                                    boxShadow: '0 2px 6px rgba(30, 64, 175, 0.25)',
+                                                    transition: 'all 0.15s ease'
+                                                }}
+                                            >
+                                                <Copy size={16} /> Copiar Código Mermaid
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                             </div>

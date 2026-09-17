@@ -7,8 +7,9 @@ mermaid.initialize({
     securityLevel: 'loose',
 });
 
-export default function MermaidRenderer({ chart }) {
+export default function MermaidRenderer({ chart, id = 'telar-mermaid-container' }) {
     const containerRef = useRef(null);
+
 
     useEffect(() => {
         if (chart && containerRef.current) {
@@ -35,6 +36,7 @@ export default function MermaidRenderer({ chart }) {
 
     return (
         <div 
+            id={id}
             ref={containerRef} 
             className="mermaid-container"
             style={{ 
