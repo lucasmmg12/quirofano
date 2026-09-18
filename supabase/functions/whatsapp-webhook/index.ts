@@ -89,6 +89,24 @@ Deno.serve(async (req) => {
             );
         }
 
+        // Filtrar y descartar canales de noticias de WhatsApp (newsletters), grupos y transmisiones
+        const rawFrom = String(data.from || data.key?.remoteJid || '');
+        if (
+            rawFrom.endsWith('@newsletter') || 
+            rawFrom.includes('newsletter') || 
+            rawFrom.endsWith('@g.us') || 
+            rawFrom.endsWith('@broadcast') || 
+            rawFrom === 'status@broadcast' ||
+            data.broadcast === true ||
+            rawFrom.startsWith('120363')
+        ) {
+            console.log(`[webhook] ⏭️ Ignorando actualización de Canal/Grupo/Newsletter (${rawFrom})`);
+            return new Response(
+                JSON.stringify({ ok: true, skipped: true, reason: 'channel_or_group_ignored', from: rawFrom }),
+                { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
+
         // Crear cliente Supabase con service_role para bypass de RLS
         const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 

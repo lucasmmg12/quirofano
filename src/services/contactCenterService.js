@@ -627,9 +627,20 @@ export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
             return existingChats;
         }
 
-        // Filtro estricto: solo mensajes de contact_center o pertenecientes a conversaciones de contact_center
+        // Filtro estricto: solo mensajes de pacientes humanos en la línea de Contact Center
         const realMessages = rawMessages.filter(msg => {
-            // Excluir de raíz otras líneas de la clínica
+            // 1. Descartar canales de WhatsApp (Newsletters), grupos y transmisiones
+            const rawJid = String(msg.raw_payload?.data?.key?.remoteJid || msg.raw_payload?.data?.from || '');
+            if (
+                rawJid.includes('newsletter') || 
+                rawJid.includes('@g.us') || 
+                rawJid.includes('@broadcast') ||
+                (msg.phone && (msg.phone.startsWith('5491203') || msg.phone.startsWith('1203')))
+            ) {
+                return false;
+            }
+
+            // 2. Excluir de raíz otras líneas de la clínica
             if (['line_recepciones', 'line_b', 'line_a', 'line_c'].includes(msg.line_id)) {
                 return false;
             }
