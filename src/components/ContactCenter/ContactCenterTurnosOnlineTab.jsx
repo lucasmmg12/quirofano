@@ -43,15 +43,15 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                 date: customDate || null
             });
 
-            if (res.success) {
-                setStats(res.stats);
-                setCasos(res.casos);
+            if (res && (res.success || Array.isArray(res.casos))) {
+                setStats(res.stats || { totalPacientesConDuplicados: 0, totalTurnosEnConflicto: 0, totalPendientes: 0, totalContactados: 0, totalResueltos: 0 });
+                setCasos(res.casos || []);
                 // Si había uno expandido que ya no existe, limpiamos
-                if (expandedKey && !res.casos.some(c => c.key === expandedKey)) {
+                if (expandedKey && !res.casos?.some(c => c.key === expandedKey)) {
                     setExpandedKey(null);
                 }
             } else {
-                if (addToast) addToast(res.error || 'Error al consultar SALUS', 'error');
+                if (addToast) addToast(res?.error || 'Error al consultar turnos online', 'error');
             }
         } catch (err) {
             console.error('Error cargando turnos online:', err);

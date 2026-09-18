@@ -97,6 +97,7 @@ export async function fetchTurnosOnlineDuplicados({ days = 1, date = null } = {}
             const totalResueltos = casos.filter(c => c.gestion.estado === 'resuelto').length;
 
             return {
+                success: true,
                 rango: { days, targetDate: date },
                 stats: {
                     totalTurnosAnalizados,
@@ -129,6 +130,7 @@ export async function fetchTurnosOnlineDuplicados({ days = 1, date = null } = {}
     }
 
     return {
+        success: true,
         rango: { days, targetDate: date },
         stats: {
             totalTurnosAnalizados: 0,
