@@ -3,7 +3,7 @@ import {
     AlertTriangle, Calendar, Clock, User, Phone, Mail, 
     Send, CheckCircle2, XCircle, Search, RefreshCw, ChevronDown, 
     ChevronUp, MessageSquare, ShieldAlert, FileText, Check,
-    ExternalLink, Sparkles, Filter, Info
+    ExternalLink, Sparkles, Filter, Info, ArrowLeft
 } from 'lucide-react';
 import { 
     fetchTurnosOnlineDuplicados, 
@@ -12,7 +12,7 @@ import {
     PLANTILLAS_TURNOS_ONLINE 
 } from '../../services/turnosOnlineService';
 
-export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser, addToast, onOpenChatWithPhone }) {
+export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser, addToast, onOpenChatWithPhone, onBackToConsole }) {
     const [loading, setLoading] = useState(false);
     const [filtroDias, setFiltroDias] = useState(1); // 1 = ayer/hoy
     const [fechaCustom, setFechaCustom] = useState('');
@@ -220,8 +220,33 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                     </p>
                 </div>
 
-                {/* Filtros temporales */}
+                {/* Filtros temporales y navegación */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    {onBackToConsole && (
+                        <button
+                            onClick={onBackToConsole}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '6px 14px',
+                                borderRadius: '10px',
+                                border: '1.5px solid #CBD5E1',
+                                background: '#FFFFFF',
+                                color: '#334155',
+                                fontSize: '0.8rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                transition: 'all 0.15s',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                            }}
+                            title="Volver a la consola de chats de Contact Center"
+                        >
+                            <ArrowLeft size={15} />
+                            Volver a Chats
+                        </button>
+                    )}
+
                     <div style={{
                         display: 'flex',
                         background: '#F1F5F9',

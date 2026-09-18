@@ -217,17 +217,18 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
     return (
         <div className="content no-print" style={{ padding: '20px 24px', background: '#F8FAFC', minHeight: 'calc(100vh - 70px)' }}>
-            {/* Header del Módulo Contact Center */}
-            <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '16px',
-                marginBottom: '18px',
-                paddingBottom: '14px',
-                borderBottom: '1px solid #E2E8F0'
-            }}>
+            {/* Header del Módulo Contact Center (Oculto cuando se ve Turnos Online) */}
+            {activeSubTab !== 'turnos_online' && (
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '16px',
+                    marginBottom: '18px',
+                    paddingBottom: '14px',
+                    borderBottom: '1px solid #E2E8F0'
+                }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                     <div style={{
                         width: '44px', height: '44px', borderRadius: '12px',
@@ -401,6 +402,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     </div>
                 </div>
             </div>
+            )}
 
             {/* Vistas del Módulo */}
             {activeSubTab === 'turnos_online' && (
@@ -409,6 +411,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     currentUser={currentUser}
                     addToast={addToast}
                     onOpenChatWithPhone={handleOpenChatWithPhone}
+                    onBackToConsole={() => setActiveSubTab('conversaciones')}
                 />
             )}
 
