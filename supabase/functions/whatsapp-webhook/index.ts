@@ -603,56 +603,85 @@ async function handleChatbotTriage(
         updated_at: new Date().toISOString()
     };
 
-    // Helper de extracción de DNI rápido por expresión regular (7 u 8 dígitos)
-    const dniMatch = cleanText.match(/\b\d{7,8}\b/);
+    // Helper de extracción de DNI rápido por expresión regular (7 u 8 dígitos, con o sin puntos)
+    const normalizedText = cleanText.replace(/\./g, '');
+    const dniMatch = cleanText.match(/\b\d{7,8}\b/) || normalizedText.match(/\b\d{7,8}\b/);
     const candidateDni = dniMatch ? dniMatch[0] : (conv?.dni || null);
 
-    // ETAPA 1: INICIO O ESPERANDO DNI
-    if (currentStage === 'inicio' || currentStage === 'esperando_dni') {
+    // Búsqueda en el padrón real de hospital_pacientes (columnas reales: id_paciente, nombre, dni, coseguro, telefono, email)
+    let paciente = null;
+    if (candidateDni) {
+        const { data: pByDni, error: pacError } = await supabase
+            .from('hospital_pacientes')
+            .select('id_paciente, dni, nombre, coseguro, telefono, email')
+            .eq('dni', candidateDni)
+            .limit(1)
+            .maybeSingle();
+
+        if (pacError) {
+            console.error('[triage-bot] Error consultando hospital_pacientes por DNI:', pacError);
+        } else if (pByDni) {
+            paciente = pByDni;
+            console.log(`[triage-bot] Paciente encontrado por DNI ${candidateDni}: ${paciente.nombre} (${paciente.coseguro})`);
+        }
+    }
+
+    // Fallback de búsqueda por teléfono si no se detectó DNI o no se encontró
+    if (!paciente && phone) {
+        const rawPhoneDigits = phone.replace(/\D/g, '').replace(/^549?/, '');
+        if (rawPhoneDigits.length >= 8) {
+            const { data: pByPhone } = await supabase
+                .from('hospital_pacientes')
+                .select('id_paciente, dni, nombre, coseguro, telefono, email')
+                .ilike('telefono', `%${rawPhoneDigits}%`)
+                .limit(1)
+                .maybeSingle();
+            if (pByPhone) {
+                paciente = pByPhone;
+                console.log(`[triage-bot] Paciente encontrado por Teléfono ${rawPhoneDigits}: ${paciente.nombre}`);
+            }
+        }
+    }
+
+    // ETAPA 1 & RE-EVALUACIÓN: Si el paciente está en el padrón, siempre darle la bienvenida de paciente registrado
+    if (paciente && (currentStage === 'inicio' || currentStage === 'esperando_dni' || currentStage === 'esperando_datos_nuevo')) {
+        // CASO A: PACIENTE EXISTENTE EN EL SANATORIO
+        const fullName = (paciente.nombre || senderName || 'Paciente').trim();
+        const os = (paciente.coseguro || 'Particular / A confirmar').trim();
+
+        updates = {
+            ...updates,
+            dni: paciente.dni || candidateDni,
+            nombre_completo: fullName,
+            obra_social: os,
+            email: paciente.email || updates.email || null,
+            telefono_contacto: paciente.telefono || updates.telefono_contacto || phone,
+            es_paciente_existente: true,
+            bot_stage: 'menu_opciones'
+        };
+        nextStage = 'menu_opciones';
+
+        // MENSAJE ÚNICO CONSOLIDADO: Reconocimiento del paciente + Cobertura + Menú de 3 opciones
+        replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos como paciente registrado con cobertura *${os}*.\n\n¿En qué podemos ayudarte hoy?\n1️⃣ *Solicitar o reprogramar un turno*\n2️⃣ *Autorizaciones y cobertura*\n3️⃣ *Información institucional, sedes o estudios*\n\nResponde con el número *1*, *2* o *3*, o escríbenos qué médico o especialidad buscas.`;
+
+    } else if (currentStage === 'inicio' || currentStage === 'esperando_dni') {
         if (!candidateDni) {
             // El paciente escribió un saludo o consulta sin DNI:
             // Solicitamos DNI y Nombre en UN SOLO mensaje consolidado para ahorrar costos
             replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nPara poder gestionar tu consulta de forma ágil y verificar tu cobertura médica, por favor indícanos en un solo mensaje tu número de *DNI* (sin puntos) y tu *Nombre Completo*.`;
             nextStage = 'esperando_dni';
         } else {
-            // DNI detectado: verificar si ya es paciente del sanatorio en hospital_pacientes
-            const { data: paciente } = await supabase
-                .from('hospital_pacientes')
-                .select('dni, nombre, apellido, obra_social, telefono')
-                .eq('dni', candidateDni)
-                .limit(1)
-                .maybeSingle();
+            // CASO B: PACIENTE NUEVO (No está registrado en el padrón hospital_pacientes)
+            // Se piden las 6 variables indispensables en UN SOLO MENSAJE para no inflar la cantidad de mensajes
+            updates = {
+                ...updates,
+                dni: candidateDni,
+                es_paciente_existente: false,
+                bot_stage: 'esperando_datos_nuevo'
+            };
+            nextStage = 'esperando_datos_nuevo';
 
-            if (paciente) {
-                // CASO A: PACIENTE EXISTENTE EN EL SANATORIO
-                const fullName = (paciente.nombre || paciente.apellido || senderName || 'Paciente').trim();
-                const os = paciente.obra_social || 'A confirmar';
-
-                updates = {
-                    ...updates,
-                    dni: candidateDni,
-                    nombre_completo: fullName,
-                    obra_social: os,
-                    es_paciente_existente: true,
-                    bot_stage: 'menu_opciones'
-                };
-                nextStage = 'menu_opciones';
-
-                // MENSAJE ÚNICO CONSOLIDADO: Confirmación + Menú de 3 opciones
-                replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos como paciente registrado con cobertura *${os}*.\n\n¿En qué podemos ayudarte hoy?\n1️⃣ *Solicitar o reprogramar un turno*\n2️⃣ *Autorizaciones y cobertura*\n3️⃣ *Información institucional, sedes o estudios*\n\nResponde con el número *1*, *2* o *3*, o escríbenos qué médico o especialidad buscas.`;
-            } else {
-                // CASO B: PACIENTE NUEVO (No está registrado)
-                // Se piden las 6 variables indispensables en UN SOLO MENSAJE para no inflar la cantidad de mensajes
-                updates = {
-                    ...updates,
-                    dni: candidateDni,
-                    es_paciente_existente: false,
-                    bot_stage: 'esperando_datos_nuevo'
-                };
-                nextStage = 'esperando_datos_nuevo';
-
-                replyText = `¡Hola! 👋 Tu DNI *${candidateDni}* no figura en nuestro padrón activo, por lo que crearemos tu ficha de atención.\n\nPara completar tu solicitud en un solo paso, por favor responde este mensaje con:\n• *Nombre y apellido completo*\n• *Obra Social o Prepaga*\n• *Fecha de nacimiento* (DD/MM/AAAA)\n• *Email*\n• *Teléfono alternativo*\n• *Departamento donde vives* (San Juan)\n\n¡Puedes enviarnos todo junto en un solo mensaje!`;
-            }
+            replyText = `¡Hola! 👋 Tu DNI *${candidateDni}* no figura en nuestro padrón activo, por lo que crearemos tu ficha de atención.\n\nPara completar tu solicitud en un solo paso, por favor responde este mensaje con:\n• *Nombre y apellido completo*\n• *Obra Social o Prepaga*\n• *Fecha de nacimiento* (DD/MM/AAAA)\n• *Email*\n• *Teléfono alternativo*\n• *Departamento donde vives* (San Juan)\n\n¡Puedes enviarnos todo junto en un solo mensaje!`;
         }
     } else if (currentStage === 'esperando_datos_nuevo') {
         // El paciente nuevo respondió con sus datos:
@@ -666,7 +695,6 @@ async function handleChatbotTriage(
         nextStage = 'menu_opciones';
 
         replyText = `¡Muchas gracias *${extracted.nombre_completo || 'por tu respuesta'}*! ✅ Ya registramos tus datos correctamente.\n\n¿En qué podemos ayudarte hoy?\n1️⃣ *Solicitar o reprogramar un turno*\n2️⃣ *Autorizaciones y cobertura*\n3️⃣ *Información institucional, sedes o estudios*\n\nPor favor responde *1*, *2* o *3*.`;
-
     } else if (currentStage === 'menu_opciones') {
         // Evaluar selección del menú o consulta abierta
         const isOpt1 = cleanText === '1' || /turno|reprogram|medico|doctor|agenda|cita/i.test(cleanText);
