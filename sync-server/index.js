@@ -24,6 +24,7 @@ import fs from 'fs';
 import { syncCensoCamas } from './sync_censo_camas.mjs';
 import { syncDiagnosticos } from './sync_diagnosticos.mjs';
 import { syncKinesiologiaUci } from './sync_kinesiologia_uci.mjs';
+import { syncPacientes, syncSinglePaciente } from './sync_pacientes.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -64,7 +65,11 @@ async function getPool() {
     if (!pool || !pool.connected) {
         console.log('🔌 Conectando a SQL Server SALUS...');
         pool = await sql.connect(SQL_CONFIG);
-        console.log('–… Conectado a SALUS');
+        pool.on('error', err => {
+            console.warn('⚠️ Error en pool SQL Server SALUS (se reiniciará):', err.message);
+            pool = null;
+        });
+        console.log('✅ Conectado a SALUS');
     }
     return pool;
 }
@@ -2897,6 +2902,26 @@ app.get('/api/salus/sync/kinesiologia-uci', async (req, res) => {
     }
 });
 
+app.get('/api/salus/sync/pacientes', async (req, res) => {
+    try {
+        const days = req.query.days ? Number(req.query.days) : (req.query.fast === 'true' ? 7 : 30);
+        const fromDate = req.query.from || (req.query.all === 'true' ? '2026-06-01' : null);
+        const result = await syncPacientes({ days, fromDate, all: req.query.all === 'true' });
+        res.json({ success: true, results: result });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/salus/sync/paciente/:ident', async (req, res) => {
+    try {
+        const result = await syncSinglePaciente(req.params.ident);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // â”€â”€ Health check â”€â”€
 app.get('/api/salus/health', async (req, res) => {
     try {
@@ -2931,7 +2956,8 @@ app.get('/api/salus/paciente/:dni', async (req, res) => {
                     mutua,
                     telefono1
                 FROM PR_FICHA_PACIENTE_QRY
-                WHERE NIF = @dni OR NIF LIKE '%' + @dni
+                WHERE tipoEntidad = 1
+                  AND (NIF = @dni OR NIF LIKE '%' + @dni)
             `);
 
         if (result.recordset && result.recordset.length > 0) {
@@ -2955,8 +2981,9 @@ app.get('/api/salus/paciente/:dni', async (req, res) => {
                     dni: cleanDni,
                     nhc: p.NHC,
                     telefono: p.telefono1,
-                    coseguro: p.mutua
-                }, { onConflict: 'dni' });
+                    coseguro: p.mutua,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'id_paciente' });
             } catch (cacheErr) {
                 console.warn('Error cacheando en hospital_pacientes:', cacheErr.message);
             }
