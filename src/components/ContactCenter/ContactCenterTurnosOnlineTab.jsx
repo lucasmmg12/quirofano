@@ -206,14 +206,6 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                         <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#0F172A' }}>
                             Auditoría de Turnos Online Duplicados
                         </h2>
-                        <span style={{
-                            background: '#EFF6FF', color: '#1E40AF',
-                            fontSize: '0.75rem', fontWeight: 800,
-                            padding: '3px 10px', borderRadius: '12px',
-                            border: '1px solid #BFDBFE'
-                        }}>
-                            SALUS LIVE ETL
-                        </span>
                     </div>
                     <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748B' }}>
                         Detección automática de pacientes con múltiples turnos para el mismo prestador y gestión vía WhatsApp.
