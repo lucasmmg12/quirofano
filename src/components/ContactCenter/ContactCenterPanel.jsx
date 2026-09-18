@@ -43,8 +43,14 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
     const reloadChats = async () => {
         setLoadingLive(true);
         try {
-            const loaded = await fetchLiveAndDemoChats(chats);
+            const loaded = await fetchLiveAndDemoChats(INITIAL_CHATS);
             setChats(loaded);
+            
+            // Priorizar siempre las conversaciones reales de WhatsApp sobre los demos
+            const firstRealChat = loaded.find(c => c.id.startsWith('REAL_'));
+            if (firstRealChat && (activeChatId === '3CMI20' || !loaded.some(c => c.id === activeChatId))) {
+                setActiveChatId(firstRealChat.id);
+            }
         } catch (err) {
             console.warn('Error cargando chats:', err);
         } finally {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
     Search, Paperclip, Send, Lock, Tag, User, 
     Calendar, CheckCircle2, ChevronDown, Check, Star, 
@@ -33,6 +33,7 @@ export default function ContactCenterChatConsole({
     const [doctorQuery, setDoctorQuery] = useState('');
     const [doctorResults, setDoctorResults] = useState([]);
     const [isSearchingDoctor, setIsSearchingDoctor] = useState(false);
+    const messagesEndRef = useRef(null);
 
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
     const selectedChat = chats.find(c => c.id === activeChatId) || chats[0] || {};
@@ -43,6 +44,11 @@ export default function ContactCenterChatConsole({
             setBotActive(selectedChat.botActive !== false && !selectedChat.assignedTo);
         }
     }, [selectedChat?.id, selectedChat?.botActive, selectedChat?.assignedTo]);
+
+    // Auto-scroll al final del chat para ver siempre el último mensaje y el compositor
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [selectedChat?.messages?.length, selectedChat?.id]);
 
     // Búsqueda de médicos en SALUS
     useEffect(() => {
@@ -117,9 +123,10 @@ export default function ContactCenterChatConsole({
     return (
         <div style={{
             display: 'grid',
-            gridTemplateColumns: '330px 1fr 340px',
-            height: 'calc(100vh - 165px)',
-            minHeight: '700px',
+            gridTemplateColumns: '320px 1fr 340px',
+            height: 'calc(100vh - 225px)',
+            maxHeight: 'calc(100vh - 225px)',
+            minHeight: '480px',
             background: '#FFFFFF',
             borderRadius: '16px',
             border: '1px solid #E2E8F0',
@@ -129,11 +136,15 @@ export default function ContactCenterChatConsole({
             {/* ═════════════════════════════════════════════════════════════════ */}
             {/* COLUMNA 1: BANDEJA DE CONVERSACIONES Y FILTROS                  */}
             {/* ═════════════════════════════════════════════════════════════════ */}
-            <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid #E2E8F0', background: '#FFFFFF' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, borderRight: '1px solid #E2E8F0', background: '#FFFFFF' }}>
                 {/* Pestañas de Filtros Superiores AsisteClick */}
                 <div style={{ display: 'flex', gap: '4px', padding: '10px 8px', borderBottom: '1px solid #F1F5F9', overflowX: 'auto', background: '#FAFAFA' }}>
                     <button 
-                        onClick={() => setFilterTab('sin_asignar')}
+                        onClick={() => {
+                            setFilterTab('sin_asignar');
+                            const first = chats.find(c => !c.assignedTo || c.status === 'sin_asignar');
+                            if (first && onSelectChat) onSelectChat(first.id);
+                        }}
                         style={{
                             padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
                             border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
@@ -142,10 +153,14 @@ export default function ContactCenterChatConsole({
                             boxShadow: filterTab === 'sin_asignar' ? '0 2px 4px rgba(2,132,199,0.25)' : 'none'
                         }}
                     >
-                        Sin asignar ({chats.filter(c => !c.assignedTo).length})
+                        Sin asignar ({chats.filter(c => !c.assignedTo || c.status === 'sin_asignar').length})
                     </button>
                     <button 
-                        onClick={() => setFilterTab('asignadas_mi')}
+                        onClick={() => {
+                            setFilterTab('asignadas_mi');
+                            const first = chats.find(c => (c.assignedTo || '').toLowerCase() === activeAgent.id.toLowerCase());
+                            if (first && onSelectChat) onSelectChat(first.id);
+                        }}
                         style={{
                             padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
                             border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
@@ -156,7 +171,11 @@ export default function ContactCenterChatConsole({
                         Mis chats ({chats.filter(c => (c.assignedTo || '').toLowerCase() === activeAgent.id.toLowerCase()).length})
                     </button>
                     <button 
-                        onClick={() => setFilterTab('asignadas_otros')}
+                        onClick={() => {
+                            setFilterTab('asignadas_otros');
+                            const first = chats.find(c => c.assignedTo && (c.assignedTo || '').toLowerCase() !== activeAgent.id.toLowerCase());
+                            if (first && onSelectChat) onSelectChat(first.id);
+                        }}
                         style={{
                             padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
                             border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
@@ -167,7 +186,10 @@ export default function ContactCenterChatConsole({
                         Otras ({chats.filter(c => c.assignedTo && (c.assignedTo || '').toLowerCase() !== activeAgent.id.toLowerCase()).length})
                     </button>
                     <button 
-                        onClick={() => setFilterTab('todos')}
+                        onClick={() => {
+                            setFilterTab('todos');
+                            if (chats.length > 0 && onSelectChat) onSelectChat(chats[0].id);
+                        }}
                         style={{
                             padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
                             border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
@@ -299,10 +321,11 @@ export default function ContactCenterChatConsole({
             {/* ═════════════════════════════════════════════════════════════════ */}
             {/* COLUMNA 2: VISOR DE CHAT Y COMPOSITOR                            */}
             {/* ═════════════════════════════════════════════════════════════════ */}
-            <div style={{ display: 'flex', flexDirection: 'column', background: '#F8FAFC' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden', background: '#F8FAFC' }}>
                 {/* Barra Superior del Chat con Control de Asignación Exclusiva */}
                 <div style={{
                     padding: '12px 20px',
+                    flexShrink: 0,
                     background: '#FFFFFF',
                     borderBottom: '1px solid #E2E8F0',
                     display: 'flex',
@@ -470,11 +493,12 @@ export default function ContactCenterChatConsole({
                 {/* Área de Mensajes con Estilo AsisteClick + Tags de Autoría */}
                 <div style={{
                     flex: 1,
+                    minHeight: 0,
                     overflowY: 'auto',
-                    padding: '20px',
+                    padding: '16px 20px',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '14px',
+                    gap: '12px',
                     backgroundImage: 'radial-gradient(#E2E8F0 1px, transparent 1px)',
                     backgroundSize: '20px 20px'
                 }}>
@@ -583,10 +607,11 @@ export default function ContactCenterChatConsole({
                             </div>
                         );
                     })}
+                    <div ref={messagesEndRef} />
                 </div>
 
-                {/* COMPOSITOR DE MENSAJE: CON CONTROL DE BLOQUEO */}
-                <div style={{ padding: '14px 20px', background: '#FFFFFF', borderTop: '1px solid #E2E8F0' }}>
+                {/* COMPOSITOR DE MENSAJE: CON CONTROL DE BLOQUEO (SIEMPRE VISIBLE) */}
+                <div style={{ flexShrink: 0, padding: '12px 18px', background: '#FFFFFF', borderTop: '1px solid #E2E8F0' }}>
                     {/* Alerta si está bloqueado */}
                     {isLocked ? (
                         <div style={{
@@ -687,8 +712,8 @@ export default function ContactCenterChatConsole({
             {/* ═════════════════════════════════════════════════════════════════ */}
             {/* COLUMNA 3: FICHA DEL PACIENTE Y PARÁMETROS SALUS                */}
             {/* ═════════════════════════════════════════════════════════════════ */}
-            <div style={{ display: 'flex', flexDirection: 'column', borderLeft: '1px solid #E2E8F0', background: '#FFFFFF', overflowY: 'auto' }}>
-                <div style={{ display: 'flex', borderBottom: '1px solid #F1F5F9', background: '#FAFAFA' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, borderLeft: '1px solid #E2E8F0', background: '#FFFFFF', overflowY: 'auto' }}>
+                <div style={{ display: 'flex', flexShrink: 0, borderBottom: '1px solid #F1F5F9', background: '#FAFAFA' }}>
                     <button 
                         onClick={() => setActiveDetailTab('info')}
                         style={{
