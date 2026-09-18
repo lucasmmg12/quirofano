@@ -239,3 +239,86 @@ export function setGestionTurnoOnline({ key, estado, agenteId, agenteNombre, not
     saveGestiones(gestiones);
     return gestiones[key];
 }
+
+/**
+ * Sincroniza los turnos online duplicados detectados en SALUS directamente a Supabase
+ */
+export async function syncTurnosOnlineToSupabase(poolOrOptions, maybeOptions = {}) {
+    let sqlPool = poolOrOptions;
+    let options = maybeOptions;
+    if (poolOrOptions && !poolOrOptions.request && !poolOrOptions.connected) {
+        sqlPool = poolOrOptions.sqlPool;
+        options = poolOrOptions;
+    }
+    const days = options.days || 2;
+    const targetDate = options.targetDate || null;
+    const supabaseClient = options.supabaseClient;
+
+    const result = await getTurnosOnlineDuplicados(sqlPool, { days, targetDate });
+    if (!result || !result.casos || !supabaseClient) return result;
+
+    const ids = result.casos.map(c => c.key);
+    let existingMap = {};
+    if (ids.length > 0) {
+        const { data: existingRows } = await supabaseClient
+            .from('contact_center_turnos_online')
+            .select('id, estado, agente_id, agente_nombre, notas, fecha_contacto')
+            .in('id', ids);
+
+        if (Array.isArray(existingRows)) {
+            for (const row of existingRows) {
+                existingMap[row.id] = row;
+            }
+        }
+    }
+
+    const upsertRows = result.casos.map(c => {
+        const exist = existingMap[c.key] || {};
+        const primerTurno = c.turnos[0];
+        let fechaCreacion;
+        try {
+            const raw = primerTurno?.fechaCreacion;
+            const parsedD = raw ? new Date(raw) : new Date();
+            fechaCreacion = !isNaN(parsedD.getTime()) ? parsedD.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+        } catch {
+            fechaCreacion = new Date().toISOString().split('T')[0];
+        }
+
+        return {
+            id: c.key,
+            dni: c.dni,
+            paciente_nombre: c.nombre,
+            telefono: c.telefono || c.telefonoAlt || null,
+            email: c.email || null,
+            prestador_id: c.idPersonal || null,
+            prestador_nombre: c.profesional || null,
+            agenda_id: c.idAgenda || null,
+            agenda_nombre: c.agenda || null,
+            fecha_creacion: fechaCreacion,
+            total_turnos: c.cantidadTurnos,
+            mismo_dia: c.esMismoDia,
+            fechas_resumen: c.fechasTurnos.join(', '),
+            turnos: c.turnos,
+            estado: exist.estado || c.gestion?.estado || 'pendiente',
+            agente_id: exist.agente_id || c.gestion?.agenteId || null,
+            agente_nombre: exist.agente_nombre || c.gestion?.agenteNombre || null,
+            notas: exist.notas || c.gestion?.notas || null,
+            fecha_contacto: exist.fecha_contacto || null,
+            updated_at: new Date().toISOString()
+        };
+    });
+
+    if (upsertRows.length > 0) {
+        const { error } = await supabaseClient
+            .from('contact_center_turnos_online')
+            .upsert(upsertRows, { onConflict: 'id' });
+        if (error) {
+            console.error('[turnos-online] Error upserting a Supabase:', error);
+        } else {
+            console.log(`[turnos-online] ✅ ${upsertRows.length} casos duplicados guardados en Supabase contact_center_turnos_online`);
+        }
+    }
+
+    return result;
+}
+

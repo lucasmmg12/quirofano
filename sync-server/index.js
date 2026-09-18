@@ -25,7 +25,7 @@ import { syncCensoCamas } from './sync_censo_camas.mjs';
 import { syncDiagnosticos } from './sync_diagnosticos.mjs';
 import { syncKinesiologiaUci } from './sync_kinesiologia_uci.mjs';
 import { syncPacientes, syncSinglePaciente } from './sync_pacientes.mjs';
-import { getTurnosOnlineDuplicados, setGestionTurnoOnline } from './sync_turnos_online.mjs';
+import { getTurnosOnlineDuplicados, setGestionTurnoOnline, syncTurnosOnlineToSupabase } from './sync_turnos_online.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -86,11 +86,23 @@ app.get('/api/salus/turnos-online/duplicados', async (req, res) => {
         const days = parseInt(req.query.days || '1', 10);
         const targetDate = req.query.date || null;
         
-        console.log(`🔍 [Turnos Online] Consultando inconsistencias (days: ${days}, date: ${targetDate || 'auto'})...`);
-        const data = await getTurnosOnlineDuplicados(pool, { days, targetDate });
+        console.log(`🔍 [Turnos Online] Consultando e sincronizando inconsistencias (days: ${days}, date: ${targetDate || 'auto'})...`);
+        const data = await syncTurnosOnlineToSupabase(pool, { days, targetDate, supabaseClient: supabase });
         res.json({ success: true, ...data });
     } catch (err) {
         console.error('❌ Error consultando turnos online duplicados:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/salus/turnos-online/sync', async (req, res) => {
+    try {
+        const pool = await getPool();
+        const days = parseInt(req.body.days || '2', 10);
+        const data = await syncTurnosOnlineToSupabase(pool, { days, supabaseClient: supabase });
+        res.json({ success: true, ...data });
+    } catch (err) {
+        console.error('❌ Error sincronizando turnos online:', err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 });

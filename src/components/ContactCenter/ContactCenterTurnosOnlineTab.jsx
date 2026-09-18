@@ -161,7 +161,8 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                 phone: caso.telefono,
                 text: texto,
                 agente: activeAgent,
-                pacienteNombre: caso.nombre
+                pacienteNombre: caso.nombre,
+                casoKey: caso.key
             });
 
             // Actualizar estado a "contactado"
