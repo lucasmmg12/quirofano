@@ -517,10 +517,11 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                 key={caso.key}
                                 style={{
                                     background: '#FFFFFF',
-                                    borderRadius: '18px',
-                                    border: isExpanded ? '2px solid #1565C0' : '1.5px solid #E2E8F0',
-                                    boxShadow: isExpanded ? '0 6px 20px rgba(21, 101, 192, 0.08)' : '0 2px 6px rgba(0,0,0,0.02)',
-                                    transition: 'all 0.2s',
+                                    borderRadius: '16px',
+                                    border: isExpanded ? '1.5px solid #0F2942' : '1px solid #E2E8F0',
+                                    borderLeft: caso.esMismoDia ? '4px solid #EF4444' : isResuelto ? '4px solid #10B981' : isContactado ? '4px solid #3B82F6' : '4px solid #F59E0B',
+                                    boxShadow: isExpanded ? '0 10px 25px -5px rgba(15, 41, 66, 0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
+                                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                                     overflow: 'hidden'
                                 }}
                             >
@@ -528,77 +529,129 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                 <div 
                                     onClick={() => setExpandedKey(isExpanded ? null : caso.key)}
                                     style={{
-                                        padding: '16px 20px',
+                                        padding: '14px 18px',
                                         cursor: 'pointer',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'space-between',
                                         flexWrap: 'wrap',
                                         gap: '14px',
-                                        background: isExpanded ? '#F8FAFC' : '#FFFFFF'
+                                        background: isExpanded ? '#F8FAFC' : '#FFFFFF',
+                                        transition: 'background 0.15s ease'
                                     }}
                                 >
                                     {/* Paciente y Prestador */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: '280px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '280px' }}>
                                         <div style={{
-                                            width: '44px', height: '44px', borderRadius: '12px',
-                                            background: isPendiente ? '#FEE2E2' : isContactado ? '#EFF6FF' : '#DCFCE7',
-                                            color: isPendiente ? '#DC2626' : isContactado ? '#1E40AF' : '#16A34A',
+                                            width: '40px', height: '40px', borderRadius: '10px',
+                                            background: isResuelto 
+                                                ? 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)' 
+                                                : isContactado
+                                                ? 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)'
+                                                : 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)',
+                                            border: '1px solid',
+                                            borderColor: isResuelto ? '#A7F3D0' : isContactado ? '#BFDBFE' : '#CBD5E1',
+                                            color: isResuelto ? '#059669' : isContactado ? '#1D4ED8' : '#334155',
                                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            fontWeight: 900, fontSize: '1.1rem', flexShrink: 0
+                                            fontWeight: 800, fontSize: '0.95rem', flexShrink: 0
                                         }}>
                                             {caso.nombre[0] || 'P'}
                                         </div>
                                         <div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
+                                                <span style={{ fontSize: '0.96rem', fontWeight: 800, color: '#0F172A', letterSpacing: '-0.01em' }}>
                                                     {caso.nombre}
                                                 </span>
                                                 <span style={{
-                                                    fontSize: '0.74rem', fontWeight: 800,
+                                                    fontSize: '0.72rem', fontWeight: 700,
                                                     background: '#F1F5F9', color: '#475569',
-                                                    padding: '2px 8px', borderRadius: '6px'
+                                                    padding: '2px 7px', borderRadius: '5px',
+                                                    border: '1px solid #E2E8F0',
+                                                    fontFamily: 'monospace'
                                                 }}>
-                                                    DNI: {caso.dni}
+                                                    DNI {caso.dni}
                                                 </span>
                                             </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-                                                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1565C0' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
+                                                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0F2942' }}>
                                                     Dr/a. {caso.profesional}
                                                 </span>
-                                                <span style={{ color: '#94A3B8', fontSize: '0.8rem' }}>•</span>
-                                                <span style={{ fontSize: '0.8rem', color: '#64748B' }}>
+                                                <span style={{ color: '#CBD5E1', fontSize: '0.75rem' }}>•</span>
+                                                <span style={{ fontSize: '0.78rem', color: '#64748B' }}>
                                                     Agenda: {caso.agenda}
                                                 </span>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* Badges de Conflicto y Estado */}
+                                    {/* Indicadores Clínicos y Acción Táctica */}
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        {/* HUD Chip: Contador Clínico de Conflicto */}
                                         <div style={{
-                                            display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                            padding: '4px 10px', borderRadius: '10px',
-                                            background: '#FEF2F2', border: '1px solid #FECACA',
-                                            color: '#DC2626', fontSize: '0.78rem', fontWeight: 800
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '7px',
+                                            padding: '4px 10px',
+                                            borderRadius: '8px',
+                                            background: caso.esMismoDia ? '#FEF2F2' : '#F8FAFC',
+                                            border: `1px solid ${caso.esMismoDia ? '#FECACA' : '#E2E8F0'}`,
+                                            color: caso.esMismoDia ? '#991B1B' : '#334155',
+                                            fontSize: '0.76rem',
+                                            fontWeight: 700
                                         }}>
-                                            <AlertTriangle size={14} />
-                                            {caso.cantidadTurnos} turnos reservados
-                                            {caso.esMismoDia && ' (Mismo día)'}
+                                            <span style={{
+                                                display: 'inline-block',
+                                                width: '6px',
+                                                height: '6px',
+                                                borderRadius: '50%',
+                                                backgroundColor: caso.esMismoDia ? '#DC2626' : '#F59E0B'
+                                            }} />
+                                            <span style={{ color: '#0F172A', fontWeight: 800 }}>
+                                                {caso.cantidadTurnos}
+                                            </span>
+                                            <span style={{ color: '#64748B', fontWeight: 600 }}>turnos</span>
+
+                                            {caso.esMismoDia && (
+                                                <span style={{
+                                                    background: '#EF4444',
+                                                    color: '#FFFFFF',
+                                                    fontSize: '0.62rem',
+                                                    fontWeight: 800,
+                                                    padding: '1px 5px',
+                                                    borderRadius: '4px',
+                                                    letterSpacing: '0.04em',
+                                                    textTransform: 'uppercase'
+                                                }}>
+                                                    Mismo Día
+                                                </span>
+                                            )}
                                         </div>
 
-                                        {/* Pill de Estado */}
+                                        {/* Pill de Estado Estilo Monitor Clínico */}
                                         <div style={{
-                                            padding: '4px 12px', borderRadius: '10px',
-                                            fontSize: '0.78rem', fontWeight: 800,
-                                            background: isPendiente ? '#FEF3C7' : isContactado ? '#DBEAFE' : '#DCFCE7',
-                                            color: isPendiente ? '#B45309' : isContactado ? '#1E40AF' : '#16A34A',
-                                            border: `1px solid ${isPendiente ? '#FDE68A' : isContactado ? '#BFDBFE' : '#BBF7D0'}`
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '4px 10px',
+                                            borderRadius: '8px',
+                                            fontSize: '0.74rem',
+                                            fontWeight: 700,
+                                            background: isPendiente ? '#FFFBEB' : isContactado ? '#EFF6FF' : '#ECFDF5',
+                                            color: isPendiente ? '#92400E' : isContactado ? '#1E40AF' : '#065F46',
+                                            border: `1px solid ${isPendiente ? '#FDE68A' : isContactado ? '#BFDBFE' : '#A7F3D0'}`
                                         }}>
-                                            {isPendiente ? '⏳ Pendiente' : isContactado ? '💬 Contactado' : '✅ Resuelto'}
+                                            <span style={{
+                                                width: '6px',
+                                                height: '6px',
+                                                borderRadius: '50%',
+                                                backgroundColor: isPendiente ? '#F59E0B' : isContactado ? '#2563EB' : '#10B981'
+                                            }} />
+                                            <span>
+                                                {isPendiente ? 'Pendiente' : isContactado ? 'Contactado' : 'Auditado'}
+                                            </span>
                                         </div>
 
-                                        {/* Botón WhatsApp Rápido */}
+                                        {/* Botón Acción Táctica WhatsApp */}
                                         {caso.telefono && (
                                             <button
                                                 type="button"
@@ -607,21 +660,49 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                                     handleOpenWhatsappModal(caso);
                                                 }}
                                                 style={{
-                                                    display: 'flex', alignItems: 'center', gap: '6px',
-                                                    padding: '6px 12px', borderRadius: '10px',
-                                                    background: '#10B981', color: '#FFFFFF',
-                                                    border: 'none', cursor: 'pointer',
-                                                    fontSize: '0.8rem', fontWeight: 800,
-                                                    boxShadow: '0 2px 6px rgba(16, 185, 129, 0.25)'
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '5px',
+                                                    padding: '5px 12px',
+                                                    borderRadius: '8px',
+                                                    background: '#F0FDF4',
+                                                    color: '#15803D',
+                                                    border: '1px solid #BBF7D0',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.76rem',
+                                                    fontWeight: 800,
+                                                    transition: 'all 0.15s ease-in-out',
+                                                    boxShadow: '0 1px 2px rgba(16, 185, 129, 0.06)'
                                                 }}
+                                                onMouseEnter={(e) => {
+                                                    e.currentTarget.style.background = '#DCFCE7';
+                                                    e.currentTarget.style.borderColor = '#86EFAC';
+                                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.18)';
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    e.currentTarget.style.background = '#F0FDF4';
+                                                    e.currentTarget.style.borderColor = '#BBF7D0';
+                                                    e.currentTarget.style.boxShadow = '0 1px 2px rgba(16, 185, 129, 0.06)';
+                                                }}
+                                                title={`Contactar a ${caso.nombre} vía WhatsApp`}
                                             >
-                                                <MessageSquare size={14} />
-                                                Enviar WhatsApp
+                                                <MessageSquare size={13} style={{ color: '#16A34A' }} />
+                                                <span>Contactar</span>
                                             </button>
                                         )}
 
-                                        <div style={{ color: '#94A3B8' }}>
-                                            {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                        <div style={{ 
+                                            color: '#94A3B8',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            width: '24px',
+                                            height: '24px',
+                                            borderRadius: '6px',
+                                            background: isExpanded ? '#F1F5F9' : 'transparent',
+                                            transition: 'all 0.15s'
+                                        }}>
+                                            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                         </div>
                                     </div>
                                 </div>
@@ -760,45 +841,51 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                             {/* Estados de resolución */}
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                 <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748B' }}>
-                                                    Cambiar Estado:
+                                                    Estado:
                                                 </span>
                                                 <button
                                                     disabled={savingKey === caso.key}
                                                     onClick={() => handleUpdateEstado(caso, 'contactado')}
                                                     style={{
-                                                        padding: '6px 12px', borderRadius: '8px',
-                                                        border: isContactado ? '2px solid #1E40AF' : '1px solid #CBD5E1',
+                                                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                        padding: '5px 12px', borderRadius: '8px',
+                                                        border: isContactado ? '1.5px solid #2563EB' : '1px solid #CBD5E1',
                                                         background: isContactado ? '#EFF6FF' : '#FFFFFF',
-                                                        color: '#1E40AF', fontSize: '0.78rem', fontWeight: 800,
+                                                        color: isContactado ? '#1D4ED8' : '#475569', fontSize: '0.76rem', fontWeight: 800,
                                                         cursor: 'pointer'
                                                     }}
                                                 >
-                                                    💬 Contactado
+                                                    <MessageSquare size={13} />
+                                                    Contactado
                                                 </button>
                                                 <button
                                                     disabled={savingKey === caso.key}
                                                     onClick={() => handleUpdateEstado(caso, 'resuelto')}
                                                     style={{
-                                                        padding: '6px 12px', borderRadius: '8px',
-                                                        border: isResuelto ? '2px solid #16A34A' : '1px solid #CBD5E1',
-                                                        background: isResuelto ? '#DCFCE7' : '#FFFFFF',
-                                                        color: '#16A34A', fontSize: '0.78rem', fontWeight: 800,
+                                                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                        padding: '5px 12px', borderRadius: '8px',
+                                                        border: isResuelto ? '1.5px solid #10B981' : '1px solid #CBD5E1',
+                                                        background: isResuelto ? '#ECFDF5' : '#FFFFFF',
+                                                        color: isResuelto ? '#047857' : '#475569', fontSize: '0.76rem', fontWeight: 800,
                                                         cursor: 'pointer'
                                                     }}
                                                 >
-                                                    ✅ Resuelto en SALUS
+                                                    <CheckCircle2 size={13} />
+                                                    Resuelto en SALUS
                                                 </button>
                                                 <button
                                                     disabled={savingKey === caso.key}
                                                     onClick={() => handleUpdateEstado(caso, 'descartado')}
                                                     style={{
-                                                        padding: '6px 12px', borderRadius: '8px',
+                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                        padding: '5px 10px', borderRadius: '8px',
                                                         border: '1px solid #E2E8F0',
                                                         background: '#FFFFFF', color: '#94A3B8',
-                                                        fontSize: '0.78rem', fontWeight: 700,
+                                                        fontSize: '0.76rem', fontWeight: 700,
                                                         cursor: 'pointer'
                                                     }}
                                                 >
+                                                    <XCircle size={13} />
                                                     Descartar
                                                 </button>
                                             </div>
