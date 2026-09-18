@@ -170,6 +170,7 @@ const VIEW_LABELS = {
     activos: 'Gestión de Activos',
     liquidaciones: 'Liquidaciones Médicas',
     contact_center: 'Contact Center',
+    turnos_online: 'Turnos Online Duplicados',
 };
 
 function App({ currentUser, onLogout }) {
@@ -269,7 +270,7 @@ function App({ currentUser, onLogout }) {
         if (selectedModules.length === 1 && selectedModules[0] !== 'config') {
             isVisible = selectedModules.includes(activeView);
         } else {
-            if (['config', 'manual', 'actividad_usuarios', 'contact_center', 'beto', 'simon', 'beto_rules', 'beto_analytics', 'gobernanza', 'gobernanza_indicadores'].includes(activeView)) isVisible = true;
+            if (['config', 'manual', 'actividad_usuarios', 'contact_center', 'turnos_online', 'beto', 'simon', 'beto_rules', 'beto_analytics', 'gobernanza', 'gobernanza_indicadores'].includes(activeView)) isVisible = true;
             else if (ALWAYS_VISIBLE.includes(activeView)) isVisible = true;
             else isVisible = selectedModules.includes(activeView);
         }
@@ -278,7 +279,7 @@ function App({ currentUser, onLogout }) {
             isVisible = false;
         }
 
-        if (activeView === 'contact_center' && !canUserAccessContactCenter(currentUser)) {
+        if ((activeView === 'contact_center' || activeView === 'turnos_online') && !canUserAccessContactCenter(currentUser)) {
             isVisible = false;
         }
 
@@ -808,8 +809,12 @@ function App({ currentUser, onLogout }) {
                     <ActivosPanel currentUser={currentUser} addToast={addToast} />
                 )}
 
-                {activeView === 'contact_center' && canUserAccessContactCenter(currentUser) && (
-                    <ContactCenterPanel currentUser={currentUser} addToast={addToast} />
+                {(activeView === 'contact_center' || activeView === 'turnos_online') && canUserAccessContactCenter(currentUser) && (
+                    <ContactCenterPanel 
+                        currentUser={currentUser} 
+                        addToast={addToast} 
+                        initialTab={activeView === 'turnos_online' ? 'turnos_online' : 'conversaciones'} 
+                    />
                 )}
 
                 {activeView === 'historial' && (

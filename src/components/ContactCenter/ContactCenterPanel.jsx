@@ -18,8 +18,14 @@ import {
 } from '../../services/contactCenterService';
 import { supabase } from '../../lib/supabase';
 
-export default function ContactCenterPanel({ currentUser, addToast }) {
-    const [activeSubTab, setActiveSubTab] = useState('conversaciones');
+export default function ContactCenterPanel({ currentUser, addToast, initialTab = 'conversaciones' }) {
+    const [activeSubTab, setActiveSubTab] = useState(initialTab);
+
+    useEffect(() => {
+        if (initialTab) {
+            setActiveSubTab(initialTab);
+        }
+    }, [initialTab]);
     const [chats, setChats] = useState(INITIAL_CHATS);
     const [activeChatId, setActiveChatId] = useState('3CMI20');
     const [allowedUsers, setAllowedUsers] = useState(['lmarinero', 'daniela', 'sofia', 'virginia', 'erica']);

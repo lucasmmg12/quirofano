@@ -4,7 +4,7 @@ import {
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
     ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain, Users, PackageCheck, Microscope,
     Activity, FileSpreadsheet, BookMarked, FolderOpen, Receipt, FileCheck, Shield, Wrench, ShieldCheck,
-    Headphones
+    Headphones, AlertTriangle
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { canUserAccessContactCenter } from '../services/contactCenterService';
@@ -24,7 +24,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         }
         
         // Normal users always see config, manual, actividad_usuarios, Simon IA, Gobernanza and Contact Center if permitted
-        if (['config', 'manual', 'actividad_usuarios', 'contact_center', 'beto', 'beto_rules', 'beto_analytics', 'simon', 'gobernanza', 'gobernanza_indicadores'].includes(id)) return true;
+        if (['config', 'manual', 'actividad_usuarios', 'contact_center', 'turnos_online', 'beto', 'beto_rules', 'beto_analytics', 'simon', 'gobernanza', 'gobernanza_indicadores'].includes(id)) return true;
         
         return selectedModules.includes(id);
     };
@@ -34,6 +34,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const [cirugiasOpen, setCirugiasOpen] = useState(false);
     const [simonOpen, setSimonOpen] = useState(false);
     const [gobernanzaOpen, setGobernanzaOpen] = useState(false);
+    const [contactCenterOpen, setContactCenterOpen] = useState(() => ['contact_center', 'turnos_online'].includes(activeView));
 
     // Sub-items dentro de "Gobernanza"
     const gobernanzaSubItems = [
@@ -81,11 +82,24 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         { id: 'laboratorios', label: 'Anatomía Pat.', icon: Microscope },
     ].filter(i => isModuleVisible(i.id));
 
+    // Sub-items dentro de "Contact Center"
+    const contactCenterSubItems = [
+        { id: 'contact_center', label: 'Consola y Chats', icon: Headphones },
+        { id: 'turnos_online', label: 'Turnos Online Duplicados', icon: AlertTriangle },
+    ].filter(i => isModuleVisible(i.id));
+
     const isPedidosActive = pedidosSubItems.some(i => activeView === i.id);
     const isMensajeriaActive = mensajeriaSubItems.some(i => activeView === i.id);
     const isAltasActive = altasSubItems.some(i => activeView === i.id);
     const isCirugiasActive = cirugiasSubItems.some(i => activeView === i.id);
     const isSimonActive = simonSubItems.some(i => activeView === i.id);
+    const isContactCenterActive = contactCenterSubItems.some(i => activeView === i.id);
+
+    useEffect(() => {
+        if (isContactCenterActive) {
+            setContactCenterOpen(true);
+        }
+    }, [isContactCenterActive]);
 
     // ── Smooth Accordion component ──
     function AccordionContent({ isOpen, children }) {
@@ -357,9 +371,32 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     subItems: simonSubItems,
                 })}
 
+                {/* ─── Contact Center (grupo colapsable) ─── */}
+                {canUserAccessContactCenter(currentUser) && renderGroup({
+                    label: 'Contact Center',
+                    icon: Headphones,
+                    isOpen: contactCenterOpen,
+                    setOpen: setContactCenterOpen,
+                    isGroupActive: isContactCenterActive,
+                    subItems: contactCenterSubItems,
+                    badge: (
+                        <span style={{
+                            background: '#EF4444',
+                            color: '#FFFFFF',
+                            fontSize: '0.62rem',
+                            padding: '1px 6px',
+                            borderRadius: '10px',
+                            fontWeight: 800,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                        }}>
+                            Alertas
+                        </span>
+                    )
+                })}
+
                 {/* ─── Items finales ─── */}
                 {[
-                    ...(canUserAccessContactCenter(currentUser) ? [{ id: 'contact_center', label: 'Contact Center', icon: Headphones }] : []),
                     ...(['lmarinero', 'soribarale'].includes(currentUser?.usuario) ? [{ id: 'activos', label: 'Gestión de Activos', icon: Wrench }] : []),
                     ...(currentUser?.usuario === 'lmarinero' ? [{ id: 'actividad_usuarios', label: 'Actividad Usuarios', icon: Activity }] : []),
                     { id: 'manual', label: 'Manual del Sistema', icon: BookMarked },
