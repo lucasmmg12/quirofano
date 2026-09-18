@@ -615,16 +615,29 @@ export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
             });
         }
 
-        // 2. Traer últimos 100 mensajes de whatsapp_messages
-        const { data: realMessages, error } = await supabase
+        // 2. Traer mensajes EXCLUSIVOS de la línea de Contact Center
+        // Para asegurar aislamiento estricto: excluimos de raíz recepciones y quirófano/admisión
+        const { data: rawMessages, error } = await supabase
             .from('whatsapp_messages')
             .select('*')
             .order('created_at', { ascending: false })
-            .limit(100);
+            .limit(200);
 
-        if (error || !realMessages || realMessages.length === 0) {
+        if (error || !rawMessages || rawMessages.length === 0) {
             return existingChats;
         }
+
+        // Filtro estricto: solo mensajes de contact_center o pertenecientes a conversaciones de contact_center
+        const realMessages = rawMessages.filter(msg => {
+            // Excluir de raíz otras líneas de la clínica
+            if (['line_recepciones', 'line_b', 'line_a', 'line_c'].includes(msg.line_id)) {
+                return false;
+            }
+            if (msg.line_id === 'contact_center') return true;
+            const norm = normalizeArgentinePhone(msg.phone);
+            if (convByPhone[norm]) return true;
+            return false;
+        });
 
         // Agrupar mensajes reales por teléfono
         const realChatsMap = {};
@@ -804,8 +817,10 @@ export async function sendContactCenterMessage({ chat, text, isNote, activeAgent
                 media_type: 'text',
                 sender_name: activeAgent.name,
                 is_read: true,
+                line_id: 'contact_center', // Exclusivo de la línea oficial Contact Center
                 raw_payload: {
                     source: 'contact_center',
+                    line: 'contact_center',
                     agent: activeAgent.id,
                     agentName: activeAgent.name,
                     isNote: !!isNote
@@ -841,9 +856,10 @@ export async function sendContactCenterMessage({ chat, text, isNote, activeAgent
         try {
             await sendWhatsAppMessage({
                 content: text,
-                number: normalizedPhone
+                number: normalizedPhone,
+                lineId: 'contact_center'
             });
-            console.log(`[contact-center] ✅ Mensaje despachado a BuilderBot: ${normalizedPhone} por ${activeAgent.name}`);
+            console.log(`[contact-center] ✅ Mensaje despachado a BuilderBot (Línea Contact Center): ${normalizedPhone} por ${activeAgent.name}`);
         } catch (bbError) {
             console.error('[contact-center] Error despachando a BuilderBot:', bbError);
         }

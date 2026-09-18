@@ -346,6 +346,9 @@ export default function ContactCenterChatConsole({
                                 <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#16A34A', background: '#DCFCE7', padding: '2px 8px', borderRadius: '10px' }}>
                                     WhatsApp
                                 </span>
+                                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#0369A1', background: '#E0F2FE', padding: '2px 8px', borderRadius: '10px', border: '1px solid #BAE6FD' }}>
+                                    Línea Contact Center (5492645825637)
+                                </span>
                             </div>
                             <div style={{ fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
                                 <span>Tel: {selectedChat.phone}</span>

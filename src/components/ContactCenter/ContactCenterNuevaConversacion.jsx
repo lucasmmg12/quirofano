@@ -232,7 +232,7 @@ export default function ContactCenterNuevaConversacion({ activeAgent, onCreateCh
 
         // 1. Despachar mensaje de WhatsApp oficial
         try {
-            // Guardar en Supabase whatsapp_messages
+            // Guardar en Supabase whatsapp_messages con aislamiento estricto de línea
             await supabase.from('whatsapp_messages').insert({
                 phone: normalizedPhone,
                 direction: 'outgoing',
@@ -240,10 +240,12 @@ export default function ContactCenterNuevaConversacion({ activeAgent, onCreateCh
                 media_type: 'template',
                 sender_name: usuarioAsignado,
                 is_read: true,
+                line_id: 'contact_center', // Exclusivo línea Contact Center
                 raw_payload: {
                     template: currentTemplate.name,
                     category: currentTemplate.category,
                     assignedTo: usuarioAsignado,
+                    line: 'contact_center',
                     department
                 }
             });
@@ -261,10 +263,11 @@ export default function ContactCenterNuevaConversacion({ activeAgent, onCreateCh
                 updated_at: now.toISOString()
             }, { onConflict: 'phone' });
 
-            // Enviar vía API de WhatsApp (BuilderBot)
+            // Enviar vía API de WhatsApp (BuilderBot) con línea contact_center
             await sendWhatsAppMessage({
                 content: finalMessage,
-                number: normalizedPhone
+                number: normalizedPhone,
+                lineId: 'contact_center'
             }).catch(e => {
                 console.warn('Aviso al despachar API WhatsApp:', e.message);
             });
@@ -450,8 +453,7 @@ export default function ContactCenterNuevaConversacion({ activeAgent, onCreateCh
                                     onChange={(e) => setNumeroEnvio(e.target.value)}
                                     style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#0F172A', fontSize: '0.85rem', outline: 'none' }}
                                 >
-                                    <option value="5492645825637">5492645825637 (Sanatorio Argentino Central)</option>
-                                    <option value="5492645000001">5492645000001 (Línea Maternidad)</option>
+                                    <option value="5492645825637">5492645825637 (Línea Oficial Contact Center)</option>
                                 </select>
                             </div>
 

@@ -73,7 +73,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
         reloadChats();
 
-        // 2. Suscripción en Tiempo Real a whatsapp_messages (Supabase Realtime)
+        // 2. Suscripción en Tiempo Real a whatsapp_messages (Exclusivo Línea Contact Center)
         const channel = supabase
             .channel('contact-center-live-stream')
             .on('postgres_changes', {
@@ -81,10 +81,14 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 schema: 'public',
                 table: 'whatsapp_messages'
             }, (payload) => {
-                console.log('[contact-center] ⚡ Evento Realtime entrante:', payload.new);
+                // Aislamiento estricto: descartar mensajes de otras líneas del sanatorio
+                if (['line_recepciones', 'line_b', 'line_a', 'line_c'].includes(payload.new?.line_id)) {
+                    return;
+                }
+                console.log('[contact-center] ⚡ Evento Realtime entrante (Línea Contact Center):', payload.new);
                 reloadChats();
                 if (addToast && payload.new?.direction === 'incoming') {
-                    addToast(`Nuevo mensaje de WhatsApp recibido (${payload.new.phone})`, 'info');
+                    addToast(`Nuevo mensaje en Contact Center (${payload.new.phone})`, 'info');
                 }
             })
             .subscribe();
