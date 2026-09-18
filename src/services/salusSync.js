@@ -29,3 +29,37 @@ export async function syncAll() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
 }
+
+/**
+ * Sincroniza el padrón maestro de pacientes desde SALUS hacia hospital_pacientes
+ * @param {Object} options { days, from, all, fast }
+ */
+export async function syncPacientes(options = {}) {
+    const params = new URLSearchParams();
+    if (options.days) params.append('days', options.days);
+    if (options.from) params.append('from', options.from);
+    if (options.all) params.append('all', 'true');
+    if (options.fast) params.append('fast', 'true');
+
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const res = await fetch(`${SYNC_BASE_URL}/sync/pacientes${qs}`, { signal: AbortSignal.timeout(300000) });
+    if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${res.status}`);
+    }
+    return res.json();
+}
+
+/**
+ * Busca y sincroniza un paciente individual desde SALUS a Supabase en tiempo real
+ */
+export async function syncPacienteIndividual(ident) {
+    const clean = String(ident || '').trim();
+    if (!clean) throw new Error('Identificador requerido');
+    const res = await fetch(`${SYNC_BASE_URL}/sync/paciente/${encodeURIComponent(clean)}`, { signal: AbortSignal.timeout(20000) });
+    if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${res.status}`);
+    }
+    return res.json();
+}

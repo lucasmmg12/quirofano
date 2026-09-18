@@ -8,11 +8,13 @@ import {
     Stethoscope, DollarSign, ClipboardCheck, Activity, Microscope,
     FileText, Phone, Mail, User, Building2, Calendar, AlertCircle,
     CheckCircle, Edit3, Save, Hash, Heart, MessageSquare, ExternalLink,
+    RefreshCw, ChevronDown, Database,
 } from 'lucide-react';
 import {
     fetchPacientes, fetchPacienteDetalle, fetchPacienteStats,
     createPaciente, updatePaciente,
 } from '../services/pacienteUnificadoService';
+import { syncPacientes, syncPacienteIndividual } from '../services/salusSync';
 import { normalizeArgentinePhone } from '../services/builderbotApi';
 import { fetchUnreadCounts, subscribeToAllIncoming } from '../services/chatService';
 import ChatWindow from './ChatWindow';
@@ -99,8 +101,23 @@ export default function PacientesPanel({ addToast, currentUser }) {
     const [chatOpen, setChatOpen] = useState(false);
     const [chatPatient, setChatPatient] = useState({ name: '', phone: '' });
     const [unreadCounts, setUnreadCounts] = useState({});
+    const [syncing, setSyncing] = useState(false);
+    const [syncMenuOpen, setSyncMenuOpen] = useState(false);
+    const [searchingSalus, setSearchingSalus] = useState(false);
+    const syncMenuRef = useRef(null);
     const searchTimer = useRef(null);
     const PAGE_SIZE = 50;
+
+    // ─── Click outside sync menu ───
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (syncMenuRef.current && !syncMenuRef.current.contains(e.target)) {
+                setSyncMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // ─── Load list ───
     const loadList = useCallback(async () => {
@@ -206,6 +223,46 @@ export default function PacientesPanel({ addToast, currentUser }) {
         }
     }, [selectedPaciente, editData, addToast, loadList]);
 
+    // ─── Sincronización con SALUS ───
+    const handleSync = async (days = 30) => {
+        setSyncing(true);
+        setSyncMenuOpen(false);
+        addToast?.(`Sincronizando pacientes desde SALUS (${days} días)...`, 'info');
+        try {
+            const res = await syncPacientes({ days });
+            const count = res.results?.upserted || res.results?.uniqueCount || 0;
+            const durationSec = ((res.results?.durationMs || 0) / 1000).toFixed(1);
+            addToast?.(`Padrón actualizado: ${count.toLocaleString()} pacientes sincronizados en ${durationSec}s`, 'success');
+            await loadList();
+        } catch (err) {
+            console.error('[PacientesPanel] Sync error:', err);
+            addToast?.(`Error sincronizando con SALUS: ${err.message}`, 'error');
+        } finally {
+            setSyncing(false);
+        }
+    };
+
+    const handleSearchSalusLive = async () => {
+        if (!search || search.trim().length < 3) return;
+        setSearchingSalus(true);
+        addToast?.(`Buscando en SALUS en tiempo real "${search}"...`, 'info');
+        try {
+            const res = await syncPacienteIndividual(search.trim());
+            if (res.paciente) {
+                addToast?.(`¡Paciente encontrado en SALUS y registrado!`, 'success');
+                await loadList();
+                openDetail(res.paciente);
+            } else {
+                addToast?.(`No se encontró el paciente en SALUS`, 'warning');
+            }
+        } catch (err) {
+            console.error('[PacientesPanel] Live search error:', err);
+            addToast?.(`Error al consultar SALUS: ${err.message}`, 'error');
+        } finally {
+            setSearchingSalus(false);
+        }
+    };
+
     const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
     // ═══════ LIST VIEW ═══════
@@ -270,6 +327,104 @@ export default function PacientesPanel({ addToast, currentUser }) {
                         )}
                     </div>
 
+                    {/* Botón Sincronizar / Actualizar SALUS */}
+                    <div style={{ position: 'relative' }} ref={syncMenuRef}>
+                        <div style={{
+                            display: 'inline-flex', alignItems: 'stretch',
+                            borderRadius: '10px', overflow: 'hidden',
+                            boxShadow: '0 2px 8px rgba(21, 101, 192, 0.25)',
+                        }}>
+                            <button
+                                onClick={() => handleSync(30)}
+                                disabled={syncing}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '8px',
+                                    padding: '9px 16px',
+                                    background: syncing
+                                        ? 'var(--neutral-400)'
+                                        : 'linear-gradient(135deg, #1565C0, #0D47A1)',
+                                    border: 'none', color: '#fff', fontSize: '0.82rem', fontWeight: 700,
+                                    cursor: syncing ? 'not-allowed' : 'pointer',
+                                    transition: 'all 0.2s',
+                                }}
+                                title="Actualizar padrón desde SALUS (Últimos 30 días)"
+                            >
+                                <RefreshCw size={15} style={{ animation: syncing ? 'spin 1s linear infinite' : 'none' }} />
+                                {syncing ? 'Actualizando...' : 'Actualizar Base'}
+                            </button>
+                            <button
+                                onClick={() => setSyncMenuOpen(prev => !prev)}
+                                disabled={syncing}
+                                style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    padding: '9px 10px',
+                                    background: syncing
+                                        ? 'var(--neutral-500)'
+                                        : 'linear-gradient(135deg, #0D47A1, #0A3880)',
+                                    border: 'none', borderLeft: '1px solid rgba(255,255,255,0.2)',
+                                    color: '#fff', cursor: syncing ? 'not-allowed' : 'pointer',
+                                }}
+                                title="Opciones de sincronización"
+                            >
+                                <ChevronDown size={14} />
+                            </button>
+                        </div>
+
+                        {/* Menú desplegable */}
+                        {syncMenuOpen && (
+                            <div style={{
+                                position: 'absolute', top: 'calc(100% + 6px)', right: 0,
+                                background: '#fff', borderRadius: '12px',
+                                border: '1px solid var(--neutral-200)',
+                                boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)',
+                                zIndex: 60, minWidth: '280px', overflow: 'hidden', padding: '6px'
+                            }}>
+                                <div style={{ padding: '8px 12px 6px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                    Opciones de Actualización SALUS
+                                </div>
+                                <button
+                                    onClick={() => handleSync(7)}
+                                    style={{
+                                        display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                                        width: '100%', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent',
+                                        cursor: 'pointer', textAlign: 'left', transition: 'background 0.15s'
+                                    }}
+                                    onMouseOver={e => e.currentTarget.style.background = '#F0F7FF'}
+                                    onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                                >
+                                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1565C0' }}>⚡ Rápida (Últimos 7 días)</span>
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>Pacientes creados o editados esta semana (~5 seg)</span>
+                                </button>
+                                <button
+                                    onClick={() => handleSync(30)}
+                                    style={{
+                                        display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                                        width: '100%', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent',
+                                        cursor: 'pointer', textAlign: 'left', transition: 'background 0.15s'
+                                    }}
+                                    onMouseOver={e => e.currentTarget.style.background = '#F0F7FF'}
+                                    onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                                >
+                                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1565C0' }}>📅 Estándar (Últimos 30 días)</span>
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>Recomendado. Sincroniza el último mes (~15 seg)</span>
+                                </button>
+                                <button
+                                    onClick={() => handleSync(90)}
+                                    style={{
+                                        display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                                        width: '100%', padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent',
+                                        cursor: 'pointer', textAlign: 'left', transition: 'background 0.15s'
+                                    }}
+                                    onMouseOver={e => e.currentTarget.style.background = '#F0F7FF'}
+                                    onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                                >
+                                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1565C0' }}>🏥 Ampliada (Últimos 90 días)</span>
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>Pacientes del último trimestre (~30 seg)</span>
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
                     <button
                         onClick={() => setShowCreateModal(true)}
                         style={{
@@ -297,7 +452,33 @@ export default function PacientesPanel({ addToast, currentUser }) {
                     ) : pacientes.length === 0 ? (
                         <div style={{ padding: '60px', textAlign: 'center', color: 'var(--neutral-400)' }}>
                             <Users size={48} strokeWidth={1.2} style={{ marginBottom: '12px' }} />
-                            <p style={{ fontSize: '0.9rem', fontWeight: 600 }}>{search ? 'Sin resultados' : 'Sin pacientes'}</p>
+                            <p style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--neutral-700)' }}>
+                                {search ? `Sin resultados para "${search}" en la base local` : 'Sin pacientes'}
+                            </p>
+                            {search && (
+                                <div style={{ marginTop: '16px' }}>
+                                    <button
+                                        onClick={handleSearchSalusLive}
+                                        disabled={searchingSalus}
+                                        style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: '8px',
+                                            padding: '10px 20px', borderRadius: '10px',
+                                            background: 'linear-gradient(135deg, #1565C0, #0D47A1)',
+                                            color: '#fff', border: 'none', fontWeight: 700, fontSize: '0.84rem',
+                                            cursor: searchingSalus ? 'not-allowed' : 'pointer',
+                                            boxShadow: '0 2px 8px rgba(21, 101, 192, 0.3)',
+                                            transition: 'all 0.2s',
+                                        }}
+                                    >
+                                        {searchingSalus ? (
+                                            <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                                        ) : (
+                                            <Search size={16} />
+                                        )}
+                                        {searchingSalus ? 'Consultando en SALUS...' : 'Buscar y Traer desde SALUS en Tiempo Real'}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <>
