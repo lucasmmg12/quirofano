@@ -369,7 +369,7 @@ export default function TurnoKiosco() {
                                     <label style={styles.dniLabel}>
                                         Número de Documento (DNI)
                                     </label>
-                                    <div style={{ color: '#64748B', fontSize: '0.82rem', fontWeight: '600' }}>
+                                    <div style={{ color: '#64748B', fontSize: '0.85rem', fontWeight: '600' }}>
                                         Tocá los números para ingresar tu documento
                                     </div>
                                 </div>
@@ -379,7 +379,7 @@ export default function TurnoKiosco() {
                                         type="text"
                                         value={dni}
                                         readOnly
-                                        placeholder="Ej: 37298023"
+                                        placeholder="Ej: 28456789"
                                         style={{
                                             ...styles.dniInput,
                                             borderColor: pacienteInfo ? '#10B981' : (dni.length >= 6 ? '#1565C0' : '#CBD5E1'),
@@ -387,8 +387,8 @@ export default function TurnoKiosco() {
                                         }}
                                     />
                                     {buscandoPaciente && (
-                                        <div style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)' }}>
-                                            <RefreshCw size={22} style={{ animation: 'spin 1s linear infinite', color: '#1565C0' }} />
+                                        <div style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)' }}>
+                                            <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', color: '#1565C0' }} />
                                         </div>
                                     )}
                                 </div>
@@ -398,7 +398,7 @@ export default function TurnoKiosco() {
                                     <div style={styles.patientConfirmedCard}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <div style={styles.greenCheckIcon}>✓</div>
-                                            <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#065F46', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            <span style={{ fontSize: '1rem', fontWeight: 800, color: '#065F46', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                 Paciente: {pacienteInfo.displayName}
                                             </span>
                                         </div>
@@ -419,7 +419,7 @@ export default function TurnoKiosco() {
                                     <button 
                                         type="button" 
                                         onClick={() => setDni('')}
-                                        style={{ ...styles.keypadBtn, background: '#FEE2E2', color: '#DC2626', borderColor: '#FECACA', fontSize: '2.1rem' }}
+                                        style={{ ...styles.keypadBtn, background: '#FEE2E2', color: '#DC2626', borderColor: '#FECACA', fontSize: '2.4rem' }}
                                     >
                                         C
                                     </button>
@@ -433,7 +433,7 @@ export default function TurnoKiosco() {
                                     <button 
                                         type="button" 
                                         onClick={() => setDni(d => d.slice(0, -1))}
-                                        style={{ ...styles.keypadBtn, background: '#E2E8F0', color: '#334155', borderColor: '#CBD5E1', fontSize: '2.1rem' }}
+                                        style={{ ...styles.keypadBtn, background: '#E2E8F0', color: '#334155', borderColor: '#CBD5E1', fontSize: '2.4rem' }}
                                     >
                                         ⌫
                                     </button>
@@ -451,17 +451,17 @@ export default function TurnoKiosco() {
                                     disabled={loading || !dni || dni.length < 6}
                                     style={{
                                         width: '100%',
-                                        height: '56px',
-                                        minHeight: '56px',
-                                        borderRadius: '14px',
+                                        height: '62px',
+                                        minHeight: '62px',
+                                        borderRadius: '16px',
                                         background: (loading || !dni || dni.length < 6) ? '#94A3B8' : 'linear-gradient(135deg, #1565C0 0%, #0D3B66 100%)',
                                         color: '#fff',
-                                        fontSize: '1.35rem',
+                                        fontSize: '1.45rem',
                                         fontWeight: 900,
                                         border: 'none',
                                         cursor: (loading || !dni || dni.length < 6) ? 'not-allowed' : 'pointer',
                                         transition: 'all 0.2s',
-                                        boxShadow: (loading || !dni || dni.length < 6) ? 'none' : '0 6px 18px rgba(21, 101, 192, 0.35)',
+                                        boxShadow: (loading || !dni || dni.length < 6) ? 'none' : '0 6px 20px rgba(21, 101, 192, 0.35)',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
@@ -686,7 +686,7 @@ const styles = {
     // ── Select step ──
     selectContainer: {
         width: '100%',
-        maxWidth: '520px',
+        maxWidth: '560px',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -695,7 +695,7 @@ const styles = {
     },
     dniForm: {
         width: '100%',
-        maxWidth: '520px',
+        maxWidth: '560px',
         margin: '0 auto',
         display: 'flex',
         flexDirection: 'column',
@@ -704,10 +704,10 @@ const styles = {
     },
     dniSection: {
         background: '#FFFFFF',
-        borderRadius: '22px',
-        padding: '14px 18px 16px',
+        borderRadius: '24px',
+        padding: '16px 20px 18px',
         border: '2px solid #CBD5E1',
-        boxShadow: '0 8px 30px rgba(15, 23, 42, 0.08)',
+        boxShadow: '0 8px 32px rgba(15, 23, 42, 0.08)',
         display: 'flex',
         flexDirection: 'column',
         gap: '8px',
@@ -715,46 +715,46 @@ const styles = {
         boxSizing: 'border-box',
     },
     dniLabel: {
-        display: 'block', fontSize: '1.25rem', fontWeight: 900, color: '#0D3B66',
+        display: 'block', fontSize: '1.3rem', fontWeight: 900, color: '#0D3B66',
         marginBottom: '2px', textAlign: 'center', letterSpacing: '-0.2px',
     },
-    dniOptional: { fontSize: '0.8rem', fontWeight: 600, color: '#94A3B8' },
+    dniOptional: { fontSize: '0.82rem', fontWeight: 600, color: '#94A3B8' },
     dniInput: {
         width: '100%', padding: '6px 14px',
-        borderRadius: '14px',
+        borderRadius: '16px',
         border: '2.5px solid #CBD5E1',
-        fontSize: '2.6rem', fontWeight: 900,
+        fontSize: '2.9rem', fontWeight: 900,
         color: '#0F172A', letterSpacing: '3px',
         outline: 'none', transition: 'all 0.2s',
         background: '#F8FAFC',
         boxSizing: 'border-box',
-        height: '56px',
+        height: '64px',
         textAlign: 'center',
     },
     keypad: {
         display: 'grid',
         gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: '8px',
+        gap: '10px',
         width: '100%',
         margin: '2px 0 0',
     },
     keypadBtn: {
         background: '#F8FAFC',
         border: '2px solid #CBD5E1',
-        borderRadius: '14px',
+        borderRadius: '16px',
         padding: '0',
-        fontSize: '2.6rem',
+        fontSize: '3rem',
         fontWeight: 900,
         color: '#0F172A',
         cursor: 'pointer',
-        boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
+        boxShadow: '0 3px 6px rgba(0,0,0,0.04)',
         transition: 'all 0.1s',
         WebkitTapHighlightColor: 'transparent',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        height: '66px',
-        minHeight: '66px',
+        height: '74px',
+        minHeight: '74px',
     },
     selectTitle: {
         fontSize: '3.5rem', fontWeight: 800, color: '#0D3B66',
