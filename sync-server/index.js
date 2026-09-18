@@ -25,6 +25,7 @@ import { syncCensoCamas } from './sync_censo_camas.mjs';
 import { syncDiagnosticos } from './sync_diagnosticos.mjs';
 import { syncKinesiologiaUci } from './sync_kinesiologia_uci.mjs';
 import { syncPacientes, syncSinglePaciente } from './sync_pacientes.mjs';
+import { getTurnosOnlineDuplicados, setGestionTurnoOnline } from './sync_turnos_online.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -74,9 +75,39 @@ async function getPool() {
     return pool;
 }
 
-// â”€â”€ Middleware â”€â”€
+// ── Middleware ──
 app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
 app.use(express.json());
+
+// ─── Turnos Online Duplicados (Contact Center) ───
+app.get('/api/salus/turnos-online/duplicados', async (req, res) => {
+    try {
+        const pool = await getPool();
+        const days = parseInt(req.query.days || '1', 10);
+        const targetDate = req.query.date || null;
+        
+        console.log(`🔍 [Turnos Online] Consultando inconsistencias (days: ${days}, date: ${targetDate || 'auto'})...`);
+        const data = await getTurnosOnlineDuplicados(pool, { days, targetDate });
+        res.json({ success: true, ...data });
+    } catch (err) {
+        console.error('❌ Error consultando turnos online duplicados:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/salus/turnos-online/gestion', async (req, res) => {
+    try {
+        const { key, estado, agenteId, agenteNombre, notas, templateName } = req.body;
+        if (!key) {
+            return res.status(400).json({ success: false, error: 'Key requerida (dni_prestadorId)' });
+        }
+        const updated = setGestionTurnoOnline({ key, estado, agenteId, agenteNombre, notas, templateName });
+        res.json({ success: true, gestion: updated });
+    } catch (err) {
+        console.error('❌ Error guardando gestión de turno online:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
 
 // â”€â”€ Helpers â”€â”€
 function formatDate(val) {

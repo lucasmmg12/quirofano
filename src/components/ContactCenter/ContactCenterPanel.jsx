@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { 
     MessageSquare, CalendarCheck, PlusCircle, ShieldCheck, 
     Headphones, RefreshCw, Layers, CheckCircle2, Lock, Sparkles,
-    User, ChevronDown
+    User, ChevronDown, AlertTriangle
 } from 'lucide-react';
 import ContactCenterMiSemana from './ContactCenterMiSemana';
 import ContactCenterChatConsole from './ContactCenterChatConsole';
 import ContactCenterNuevaConversacion from './ContactCenterNuevaConversacion';
 import ContactCenterPermisosTab from './ContactCenterPermisosTab';
+import ContactCenterTurnosOnlineTab from './ContactCenterTurnosOnlineTab';
 import { 
     INITIAL_CHATS, fetchAllowedUsers, updateAllowedUsers, 
     canUserAccessContactCenter, MASTER_ADMINS,
@@ -192,6 +193,22 @@ export default function ContactCenterPanel({ currentUser, addToast }) {
         setActiveSubTab('conversaciones');
     };
 
+    const handleOpenChatWithPhone = (phone) => {
+        if (!phone) return;
+        const cleanPhone = phone.replace(/\D/g, '');
+        const existing = chats.find(c => {
+            const p = (c.contactPhone || c.phone || '').replace(/\D/g, '');
+            return p.includes(cleanPhone) || cleanPhone.includes(p);
+        });
+
+        if (existing) {
+            setActiveChatId(existing.id);
+            setActiveSubTab('conversaciones');
+        } else {
+            setActiveSubTab('nueva_conversacion');
+        }
+    };
+
     return (
         <div className="content no-print" style={{ padding: '20px 24px', background: '#F8FAFC', minHeight: 'calc(100vh - 70px)' }}>
             {/* Header del Módulo Contact Center */}
@@ -335,6 +352,29 @@ export default function ContactCenterPanel({ currentUser, addToast }) {
                             Crear Conversación
                         </button>
 
+                        {/* Nueva Pestaña: Turnos Online Duplicados */}
+                        <button
+                            onClick={() => setActiveSubTab('turnos_online')}
+                            style={{
+                                padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                background: activeSubTab === 'turnos_online' ? '#0F2942' : 'transparent',
+                                color: activeSubTab === 'turnos_online' ? '#FFFFFF' : '#DC2626',
+                                transition: 'all 0.15s'
+                            }}
+                        >
+                            <AlertTriangle size={16} />
+                            Turnos Online
+                            <span style={{
+                                background: activeSubTab === 'turnos_online' ? '#DC2626' : '#FEE2E2',
+                                color: activeSubTab === 'turnos_online' ? '#FFFFFF' : '#DC2626',
+                                fontSize: '0.68rem', padding: '1px 6px', borderRadius: '10px', fontWeight: 800
+                            }}>
+                                Alertas
+                            </span>
+                        </button>
+
                         {/* Pestaña de Permisos (Visible EXCLUSIVAMENTE para lmarinero) */}
                         {isLMarinero && (
                             <button
@@ -357,6 +397,15 @@ export default function ContactCenterPanel({ currentUser, addToast }) {
             </div>
 
             {/* Vistas del Módulo */}
+            {activeSubTab === 'turnos_online' && (
+                <ContactCenterTurnosOnlineTab 
+                    activeAgent={activeAgent}
+                    currentUser={currentUser}
+                    addToast={addToast}
+                    onOpenChatWithPhone={handleOpenChatWithPhone}
+                />
+            )}
+
             {activeSubTab === 'conversaciones' && (
                 <ContactCenterChatConsole 
                     chats={chats}
