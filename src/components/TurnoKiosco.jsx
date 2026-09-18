@@ -301,7 +301,7 @@ export default function TurnoKiosco() {
                 {/* ═══ PASO 1: INGRESAR DNI CON BIENVENIDA DE DR. BETO ═══ */}
                 {step === STEPS.DNI && (isHorarioAtencion() || (boxesDisponibles && boxesDisponibles.length > 0)) && (
                     <div style={styles.selectContainer} className="no-print">
-                        <form onSubmit={handleCreateTurno} style={{ maxWidth: '850px', margin: '0 auto', width: '100%' }}>
+                        <form onSubmit={handleCreateTurno} style={{ maxWidth: '480px', margin: '0 auto', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                             
                             {/* Dr. Beto Reception Card */}
                             <div style={styles.betoReceptionCard}>
@@ -319,12 +319,12 @@ export default function TurnoKiosco() {
                                 <div style={styles.betoSpeechWrapper}>
                                     <div style={styles.betoSpeechArrow} />
                                     {pacienteInfo ? (
-                                        <div style={{ animation: 'fadeInUp 0.3s ease-out' }}>
+                                        <div style={{ animation: 'fadeInUp 0.25s ease-out' }}>
                                             <div style={styles.betoGreetingHeader}>
                                                 ¡{saludoActual}, <span style={{ color: '#1565C0', textDecoration: 'underline' }}>{pacienteInfo.displayName}</span>! 👋
                                             </div>
                                             <div style={styles.betoGreetingBody}>
-                                                Qué bueno tenerte en Sanatorio Argentino. Por favor confirmá tu DNI y presioná el botón para obtener tu número de atención.
+                                                Qué bueno tenerte en Sanatorio Argentino. Confirmá tu DNI y presioná el botón para obtener tu turno.
                                             </div>
                                             {pacienteInfo.mutua && (
                                                 <div style={styles.betoInfoPill}>
@@ -356,7 +356,7 @@ export default function TurnoKiosco() {
                                                 ¡Hola! Te damos la bienvenida 👋
                                             </div>
                                             <div style={styles.betoGreetingBody}>
-                                                Por favor ingresá tu número de DNI en la pantalla táctil para sacar tu turno de atención.
+                                                Ingresá tu DNI en el teclado táctil para sacar tu turno de atención.
                                             </div>
                                         </div>
                                     )}
@@ -364,14 +364,16 @@ export default function TurnoKiosco() {
                             </div>
 
                             <div style={styles.dniSection}>
-                                <label style={{ ...styles.dniLabel, fontSize: '1.8rem', marginBottom: '4px', textAlign: 'center' }}>
-                                    Número de Documento (DNI)
-                                </label>
-                                <div style={{ color: '#64748B', fontSize: '1.1rem', fontWeight: '600', marginBottom: '16px', textAlign: 'center' }}>
-                                    Para cualquier tipo de trámite es obligatorio presentar DNI.
+                                <div style={{ textAlign: 'center', marginBottom: '4px' }}>
+                                    <label style={styles.dniLabel}>
+                                        Número de Documento (DNI)
+                                    </label>
+                                    <div style={{ color: '#64748B', fontSize: '0.78rem', fontWeight: '600' }}>
+                                        Para cualquier tipo de trámite es obligatorio presentar DNI.
+                                    </div>
                                 </div>
                                 
-                                <div style={{ position: 'relative', maxWidth: '520px', margin: '0 auto' }}>
+                                <div style={{ position: 'relative', maxWidth: '440px', margin: '0 auto', width: '100%' }}>
                                     <input
                                         type="text"
                                         value={dni}
@@ -379,33 +381,29 @@ export default function TurnoKiosco() {
                                         placeholder="Ej: 37298023"
                                         style={{
                                             ...styles.dniInput,
-                                            textAlign: 'center',
-                                            fontSize: '3.2rem',
-                                            padding: '16px',
-                                            height: '84px',
-                                            borderRadius: '24px',
-                                            cursor: 'default',
                                             borderColor: pacienteInfo ? '#1565C0' : '#CBD5E1',
-                                            boxShadow: pacienteInfo ? '0 0 0 4px rgba(21, 101, 192, 0.15)' : 'none'
+                                            boxShadow: pacienteInfo ? '0 0 0 3px rgba(21, 101, 192, 0.15)' : 'none'
                                         }}
                                     />
                                     {buscandoPaciente && (
-                                        <div style={{ position: 'absolute', right: '20px', top: '50%', transform: 'translateY(-50%)' }}>
-                                            <RefreshCw size={28} style={{ animation: 'spin 1s linear infinite', color: '#1565C0' }} />
+                                        <div style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)' }}>
+                                            <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite', color: '#1565C0' }} />
                                         </div>
                                     )}
                                 </div>
 
                                 {/* Patient found confirmation pill */}
-                                {pacienteInfo && (
+                                {pacienteInfo ? (
                                     <div style={styles.patientConfirmedCard}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <div style={styles.greenCheckIcon}>✓</div>
-                                            <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0D3B66' }}>
+                                            <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#065F46', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                 Paciente identificado: {pacienteInfo.displayName}
                                             </span>
                                         </div>
                                     </div>
+                                ) : (
+                                    <div style={{ height: '6px' }} />
                                 )}
                                 
                                 {/* Teclado numérico en pantalla */}
@@ -454,24 +452,27 @@ export default function TurnoKiosco() {
                                 disabled={loading || !dni || dni.length < 6}
                                 style={{
                                     width: '100%',
-                                    padding: '24px',
-                                    borderRadius: '24px',
+                                    maxWidth: '480px',
+                                    margin: '6px auto 0',
+                                    height: '50px',
+                                    minHeight: '50px',
+                                    borderRadius: '14px',
                                     background: (loading || !dni || dni.length < 6) ? '#94A3B8' : 'linear-gradient(135deg, #1565C0 0%, #0D3B66 100%)',
                                     color: '#fff',
-                                    fontSize: '2.2rem',
+                                    fontSize: '1.25rem',
                                     fontWeight: 800,
                                     border: 'none',
-                                    marginTop: '16px',
                                     cursor: (loading || !dni || dni.length < 6) ? 'not-allowed' : 'pointer',
                                     transition: 'all 0.2s',
-                                    boxShadow: (loading || !dni || dni.length < 6) ? 'none' : '0 10px 28px rgba(21, 101, 192, 0.35)',
+                                    boxShadow: (loading || !dni || dni.length < 6) ? 'none' : '0 6px 18px rgba(21, 101, 192, 0.3)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    gap: '12px'
+                                    gap: '10px',
+                                    flexShrink: 0,
                                 }}
                             >
-                                {loading ? 'Generando Turno...' : pacienteInfo ? `Obtener Número · ${pacienteInfo.displayName} →` : 'Obtener Número →'}
+                                {loading ? 'Generando Turno...' : pacienteInfo ? `Obtener Turno · ${pacienteInfo.displayName} →` : 'Obtener Número →'}
                             </button>
                         </form>
 
@@ -608,14 +609,19 @@ export default function TurnoKiosco() {
                 }
                 .print-only { display: none; }
 
-                /* Touch-friendly: larger tap targets */
-                @media (pointer: coarse) {
-                    button { min-height: 48px; }
+                /* Prevent text selection and scrolling on kiosk */
+                * { 
+                    -webkit-user-select: none; 
+                    user-select: none; 
+                    box-sizing: border-box;
                 }
-
-                /* Prevent text selection on kiosk */
-                * { -webkit-user-select: none; user-select: none; }
                 input { -webkit-user-select: text; user-select: text; }
+                html, body {
+                    overflow: hidden !important;
+                    height: 100% !important;
+                    max-height: 100dvh !important;
+                    touch-action: manipulation;
+                }
             `}</style>
         </div>
     );
@@ -624,11 +630,17 @@ export default function TurnoKiosco() {
 // ─── Estilos (Optimizados para tablet vertical + personas mayores) ───
 const styles = {
     container: {
-        minHeight: '100vh',
+        height: '100dvh',
+        maxHeight: '100dvh',
+        width: '100vw',
+        maxWidth: '100vw',
         background: '#F0F4F8',
         fontFamily: "'Inter', -apple-system, sans-serif",
         position: 'relative',
         overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        boxSizing: 'border-box',
     },
     bgOverlay: {
         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -637,85 +649,99 @@ const styles = {
     },
     header: {
         position: 'relative', zIndex: 10,
-        background: 'rgba(255,255,255,0.95)',
-        borderBottom: '2px solid rgba(21, 101, 192, 0.12)',
-        boxShadow: '0 2px 16px rgba(0,0,0,0.05)',
+        background: 'rgba(255,255,255,0.96)',
+        borderBottom: '1.5px solid rgba(21, 101, 192, 0.12)',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.04)',
+        flexShrink: 0,
     },
     headerInner: {
-        padding: '14px 20px',
+        padding: '6px 16px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     },
-    headerLeft: { display: 'flex', alignItems: 'center', gap: '12px' },
-    logo: { width: '80px', height: '80px', borderRadius: '16px', objectFit: 'contain' },
+    headerLeft: { display: 'flex', alignItems: 'center', gap: '10px' },
+    logo: { width: '42px', height: '42px', borderRadius: '10px', objectFit: 'contain' },
     headerTitle: {
-        margin: 0, fontSize: '2.2rem', fontWeight: 700, color: '#0D3B66',
+        margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#0D3B66', lineHeight: 1.15,
     },
     headerSubtitle: {
-        margin: 0, fontSize: '1.3rem', color: '#64748B', fontWeight: 500,
+        margin: 0, fontSize: '0.75rem', color: '#64748B', fontWeight: 500,
     },
     headerRight: { textAlign: 'right' },
     headerTime: {
-        display: 'block', fontSize: '2.5rem', fontWeight: 800, color: '#0D3B66',
+        display: 'block', fontSize: '1.35rem', fontWeight: 800, color: '#0D3B66', lineHeight: 1.15,
     },
     headerDate: {
-        fontSize: '1.3rem', color: '#64748B', textTransform: 'capitalize',
+        fontSize: '0.75rem', color: '#64748B', textTransform: 'capitalize',
     },
     main: {
         position: 'relative', zIndex: 10,
-        padding: '16px 16px 24px',
-        minHeight: 'calc(100vh - 80px)',
-        display: 'flex', flexDirection: 'column', justifyContent: 'flex-start',
+        padding: '6px 14px 8px',
+        flex: 1,
+        minHeight: 0,
+        display: 'flex', flexDirection: 'column',
+        overflow: 'hidden',
+        boxSizing: 'border-box',
     },
     // ── Select step ──
     selectContainer: {
-        animation: 'fadeInUp 0.4s ease-out',
+        height: '100%',
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        animation: 'fadeInUp 0.3s ease-out',
+        overflow: 'hidden',
     },
     dniSection: {
-        background: 'rgba(255,255,255,0.9)',
-        borderRadius: '24px',
-        padding: '20px',
-        marginBottom: '16px',
-        border: '2px solid #E2E8F0',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
+        background: 'rgba(255,255,255,0.95)',
+        borderRadius: '18px',
+        padding: '8px 12px',
+        border: '1.5px solid #E2E8F0',
+        boxShadow: '0 3px 12px rgba(0,0,0,0.04)',
+        display: 'flex',
+        flexDirection: 'column',
     },
     dniLabel: {
-        display: 'block', fontSize: '1.15rem', fontWeight: 700, color: '#0D3B66',
-        marginBottom: '10px',
+        display: 'block', fontSize: '1.05rem', fontWeight: 800, color: '#0D3B66',
+        marginBottom: '1px', textAlign: 'center',
     },
-    dniOptional: { fontSize: '0.9rem', fontWeight: 500, color: '#94A3B8' },
+    dniOptional: { fontSize: '0.75rem', fontWeight: 500, color: '#94A3B8' },
     dniInput: {
-        width: '100%', padding: '18px 20px',
-        borderRadius: '14px',
+        width: '100%', padding: '4px 12px',
+        borderRadius: '12px',
         border: '2px solid #CBD5E1',
-        fontSize: '1.5rem', fontWeight: 700,
+        fontSize: '2rem', fontWeight: 800,
         color: '#0D3B66', letterSpacing: '2px',
         outline: 'none', transition: 'all 0.2s',
         background: '#FAFBFC',
         boxSizing: 'border-box',
+        height: '48px',
+        textAlign: 'center',
     },
     keypad: {
         display: 'grid',
         gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: '16px',
-        marginTop: '24px',
-        maxWidth: '480px',
-        margin: '24px auto 0',
+        gap: '6px',
+        maxWidth: '440px',
+        margin: '6px auto 0',
+        width: '100%',
     },
     keypadBtn: {
         background: '#F8FAFC',
-        border: '3px solid #E2E8F0',
-        borderRadius: '20px',
-        padding: '16px 0',
-        fontSize: '3rem',
+        border: '2px solid #E2E8F0',
+        borderRadius: '12px',
+        padding: '0',
+        fontSize: '1.75rem',
         fontWeight: 800,
         color: '#0D3B66',
         cursor: 'pointer',
-        boxShadow: '0 6px 16px rgba(0,0,0,0.06)',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
         transition: 'all 0.1s',
         WebkitTapHighlightColor: 'transparent',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        height: '44px',
+        minHeight: '44px',
     },
     selectTitle: {
         fontSize: '3.5rem', fontWeight: 800, color: '#0D3B66',
@@ -933,104 +959,110 @@ const styles = {
     betoReceptionCard: {
         display: 'flex',
         alignItems: 'center',
-        gap: '24px',
+        gap: '12px',
         background: '#FFFFFF',
-        border: '2.5px solid #BFDBFE',
-        borderRadius: '28px',
-        padding: '24px 28px',
-        marginBottom: '24px',
-        boxShadow: '0 8px 32px rgba(21, 101, 192, 0.08)',
+        border: '2px solid #BFDBFE',
+        borderRadius: '16px',
+        padding: '8px 12px',
+        marginBottom: '6px',
+        boxShadow: '0 4px 16px rgba(21, 101, 192, 0.06)',
         position: 'relative',
-        animation: 'fadeInUp 0.35s ease-out',
+        animation: 'fadeInUp 0.3s ease-out',
+        flexShrink: 0,
     },
     betoAvatarWrapper: {
         position: 'relative',
-        width: '120px',
-        height: '120px',
+        width: '60px',
+        height: '60px',
         flexShrink: 0,
     },
     betoAvatarImg: {
         width: '100%',
         height: '100%',
-        borderRadius: '24px',
+        borderRadius: '14px',
         objectFit: 'cover',
         objectPosition: 'top',
-        border: '3px solid #1565C0',
-        boxShadow: '0 6px 20px rgba(21, 101, 192, 0.25)',
+        border: '2.5px solid #1565C0',
+        boxShadow: '0 3px 10px rgba(21, 101, 192, 0.2)',
     },
     betoBadgeTag: {
         position: 'absolute',
-        bottom: '-10px',
+        bottom: '-6px',
         left: '50%',
         transform: 'translateX(-50%)',
         background: '#1565C0',
         color: '#FFFFFF',
-        fontSize: '0.8rem',
+        fontSize: '0.62rem',
         fontWeight: 900,
-        padding: '3px 12px',
-        borderRadius: '12px',
-        letterSpacing: '1px',
+        padding: '2px 7px',
+        borderRadius: '8px',
+        letterSpacing: '0.5px',
         whiteSpace: 'nowrap',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
     },
     betoSpeechWrapper: {
         flex: 1,
         background: '#F0F7FF',
-        border: '2px solid #DBEAFE',
-        borderRadius: '22px',
-        padding: '20px 24px',
+        border: '1.5px solid #DBEAFE',
+        borderRadius: '12px',
+        padding: '6px 12px',
         position: 'relative',
         textAlign: 'left',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
     },
     betoSpeechArrow: {
         position: 'absolute',
-        left: '-12px',
-        top: '36px',
+        left: '-8px',
+        top: '20px',
         width: 0,
         height: 0,
-        borderTop: '10px solid transparent',
-        borderBottom: '10px solid transparent',
-        borderRight: '12px solid #DBEAFE',
+        borderTop: '6px solid transparent',
+        borderBottom: '6px solid transparent',
+        borderRight: '8px solid #DBEAFE',
     },
     betoGreetingHeader: {
-        fontSize: '1.85rem',
+        fontSize: '1.05rem',
         fontWeight: 900,
         color: '#0D3B66',
-        lineHeight: 1.25,
-        marginBottom: '6px',
+        lineHeight: 1.2,
+        marginBottom: '2px',
     },
     betoGreetingBody: {
-        fontSize: '1.2rem',
+        fontSize: '0.8rem',
         color: '#334155',
         fontWeight: 500,
-        lineHeight: 1.45,
+        lineHeight: 1.25,
     },
     betoInfoPill: {
         display: 'inline-flex',
         alignItems: 'center',
-        gap: '6px',
-        marginTop: '12px',
+        gap: '4px',
+        marginTop: '3px',
         background: '#DBEAFE',
         color: '#1E40AF',
-        padding: '6px 14px',
-        borderRadius: '12px',
-        fontSize: '1.05rem',
+        padding: '2px 8px',
+        borderRadius: '8px',
+        fontSize: '0.72rem',
         fontWeight: 700,
     },
     patientConfirmedCard: {
         background: '#ECFDF5',
-        border: '2px solid #6EE7B7',
-        borderRadius: '20px',
-        padding: '14px 24px',
-        marginTop: '16px',
+        border: '1.5px solid #6EE7B7',
+        borderRadius: '10px',
+        padding: '4px 12px',
+        marginTop: '4px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        animation: 'fadeInUp 0.3s ease-out',
+        animation: 'fadeInUp 0.25s ease-out',
+        height: '28px',
+        boxSizing: 'border-box',
     },
     greenCheckIcon: {
-        width: '32px',
-        height: '32px',
+        width: '18px',
+        height: '18px',
         borderRadius: '50%',
         background: '#10B981',
         color: '#FFFFFF',
@@ -1038,7 +1070,7 @@ const styles = {
         alignItems: 'center',
         justifyContent: 'center',
         fontWeight: 900,
-        fontSize: '1.2rem',
+        fontSize: '0.75rem',
         flexShrink: 0,
     },
 
@@ -1046,132 +1078,130 @@ const styles = {
     ticketBetoHero: {
         display: 'flex',
         alignItems: 'center',
-        gap: '28px',
-        marginBottom: '28px',
+        gap: '14px',
+        marginBottom: '10px',
         textAlign: 'left',
         background: '#F0F7FF',
-        padding: '24px 28px',
-        borderRadius: '28px',
-        border: '2.5px solid #BFDBFE',
-        boxShadow: '0 4px 20px rgba(21, 101, 192, 0.08)',
+        padding: '10px 14px',
+        borderRadius: '16px',
+        border: '1.5px solid #BFDBFE',
     },
     ticketBetoAvatarWrapper: {
         position: 'relative',
-        width: '130px',
-        height: '130px',
+        width: '56px',
+        height: '56px',
         flexShrink: 0,
     },
     ticketBetoAvatarImg: {
         width: '100%',
         height: '100%',
-        borderRadius: '28px',
+        borderRadius: '14px',
         objectFit: 'cover',
         objectPosition: 'top',
-        border: '4px solid #1565C0',
-        boxShadow: '0 8px 24px rgba(21, 101, 192, 0.28)',
+        border: '2.5px solid #1565C0',
     },
     ticketBetoCheckBadge: {
         position: 'absolute',
-        bottom: '-6px',
-        right: '-6px',
+        bottom: '-4px',
+        right: '-4px',
         background: '#10B981',
         borderRadius: '50%',
-        width: '42px',
-        height: '42px',
+        width: '24px',
+        height: '24px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.45)',
-        border: '3px solid #FFFFFF',
+        boxShadow: '0 2px 6px rgba(16, 185, 129, 0.45)',
+        border: '2px solid #FFFFFF',
     },
     ticketBetoRoleTag: {
         display: 'inline-block',
         background: '#1565C0',
         color: '#FFFFFF',
-        fontSize: '0.85rem',
+        fontSize: '0.62rem',
         fontWeight: 900,
-        padding: '4px 14px',
-        borderRadius: '12px',
-        letterSpacing: '1px',
-        marginBottom: '8px',
+        padding: '2px 7px',
+        borderRadius: '6px',
+        letterSpacing: '0.5px',
+        marginBottom: '2px',
     },
     ticketPersonalGreeting: {
-        margin: '0 0 6px',
-        fontSize: '2.4rem',
+        margin: '0 0 2px',
+        fontSize: '1.25rem',
         fontWeight: 900,
         color: '#0D3B66',
-        lineHeight: 1.2,
+        lineHeight: 1.15,
     },
     ticketPersonalSub: {
         margin: 0,
-        fontSize: '1.25rem',
+        fontSize: '0.78rem',
         color: '#475569',
         fontWeight: 500,
     },
     ticketNumberWrapper: {
         background: '#FFFFFF',
-        border: '3px solid #1565C0',
-        borderRadius: '24px',
-        padding: '24px',
-        margin: '20px 0',
-        boxShadow: '0 8px 30px rgba(21, 101, 192, 0.12)',
+        border: '2px solid #1565C0',
+        borderRadius: '16px',
+        padding: '8px',
+        margin: '8px 0',
+        boxShadow: '0 4px 16px rgba(21, 101, 192, 0.1)',
     },
     ticketNumberLabel: {
         display: 'block',
-        fontSize: '1.2rem',
+        fontSize: '0.75rem',
         fontWeight: 800,
         color: '#64748B',
-        letterSpacing: '2px',
-        marginBottom: '6px',
+        letterSpacing: '1.5px',
+        marginBottom: '2px',
     },
     ticketNumberBig: {
-        fontSize: '7.5rem',
+        fontSize: '4.2rem',
         fontWeight: 900,
         color: '#1565C0',
-        letterSpacing: '4px',
+        letterSpacing: '3px',
         lineHeight: 1,
         animation: 'pulseNumber 3s ease-in-out infinite',
     },
     ticketMetaGrid: {
         display: 'grid',
         gridTemplateColumns: 'repeat(2, 1fr)',
-        gap: '16px',
-        marginBottom: '20px',
+        gap: '8px',
+        marginBottom: '8px',
     },
     ticketMetaCard: {
         background: '#F8FAFC',
-        border: '2px solid #E2E8F0',
-        borderRadius: '20px',
-        padding: '16px',
+        border: '1.5px solid #E2E8F0',
+        borderRadius: '12px',
+        padding: '8px',
         textAlign: 'center',
     },
     ticketMetaLabel: {
         display: 'block',
-        fontSize: '1rem',
+        fontSize: '0.72rem',
         fontWeight: 700,
         color: '#64748B',
-        marginBottom: '4px',
+        marginBottom: '2px',
     },
     ticketMetaValue: {
-        fontSize: '1.8rem',
+        fontSize: '1.2rem',
         fontWeight: 900,
         color: '#0D3B66',
     },
     ticketWaitCard: {
         background: '#EFF6FF',
-        border: '2px solid #BFDBFE',
-        borderRadius: '22px',
-        padding: '20px 24px',
-        marginBottom: '24px',
+        border: '1.5px solid #BFDBFE',
+        borderRadius: '12px',
+        padding: '8px 12px',
+        marginBottom: '8px',
         textAlign: 'center',
     },
     ticketAutoResetWrapper: {
         width: '100%',
-        marginBottom: '20px',
+        marginBottom: '8px',
     },
     ticketProgressBarBg: {
         width: '100%',
-        height: '8px',
+        height: '6px',
         background: '#E2E8F0',
         borderRadius: '6px',
         overflow: 'hidden',
@@ -1184,15 +1214,15 @@ const styles = {
     },
     ticketNewTurnoBtn: {
         width: '100%',
-        padding: '18px 24px',
-        borderRadius: '18px',
+        padding: '10px 16px',
+        borderRadius: '12px',
         background: '#FFFFFF',
         color: '#475569',
         border: '2px solid #CBD5E1',
-        fontSize: '1.3rem',
+        fontSize: '1.05rem',
         fontWeight: 800,
         cursor: 'pointer',
         transition: 'all 0.2s',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
     },
 };
