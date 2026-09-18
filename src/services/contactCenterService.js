@@ -19,12 +19,12 @@ const CONFIG_KEY = 'contact_center_allowed_users';
 // Administradores con acceso maestro permanente
 export const MASTER_ADMINS = ['lmarinero', 'admin'];
 
-// 4 Agentes activas del Contact Center de Sanatorio Argentino
+// 4 Agentes canónicas del Contact Center de Sanatorio Argentino
 export const CONTACT_CENTER_AGENTS = [
-    { id: 'daniela', name: 'Daniela', fullName: 'Daniela Calivar', role: 'Atención al Paciente', color: '#E11D48', avatar: 'D' },
-    { id: 'sofia', name: 'Sofia', fullName: 'Sofia Morales', role: 'Atención al Paciente', color: '#8B5CF6', avatar: 'S' },
-    { id: 'virginia', name: 'Virginia', fullName: 'Virginia Quiroga', role: 'Atención al Paciente', color: '#059669', avatar: 'V' },
-    { id: 'erica', name: 'Erica', fullName: 'Erica Gonzalez', role: 'Atención al Paciente', color: '#D97706', avatar: 'E' },
+    { id: 'daniela', name: 'Daniela Aguilera', fullName: 'Daniela Aguilera', role: 'Atención al Paciente', color: '#E11D48', avatar: 'DA' },
+    { id: 'sofia', name: 'Sofia Olivieri', fullName: 'Sofia Olivieri', role: 'Atención al Paciente', color: '#8B5CF6', avatar: 'SO' },
+    { id: 'virginia', name: 'Virginia Jacques', fullName: 'Virginia Jacques', role: 'Atención al Paciente', color: '#059669', avatar: 'VJ' },
+    { id: 'erica', name: 'Erica Leal', fullName: 'Erica Leal', role: 'Atención al Paciente', color: '#D97706', avatar: 'EL' },
 ];
 
 /**
@@ -419,10 +419,10 @@ export const INITIAL_CHATS = [
 
 export const SYSTEM_KNOWN_USERS = [
     { usuario: 'lmarinero', nombre: 'Lucas Marinero', rol: 'Supervisor General / Sistemas', avatar: 'LM' },
-    { usuario: 'daniela', nombre: 'Daniela Calivar', rol: 'Atención al Paciente / Contact Center', avatar: 'DC' },
-    { usuario: 'sofia', nombre: 'Sofia Morales', rol: 'Atención al Paciente / Contact Center', avatar: 'SM' },
-    { usuario: 'virginia', nombre: 'Virginia Quiroga', rol: 'Atención al Paciente / Contact Center', avatar: 'VQ' },
-    { usuario: 'erica', nombre: 'Erica Gonzalez', rol: 'Atención al Paciente / Contact Center', avatar: 'EG' },
+    { usuario: 'daniela', nombre: 'Daniela Aguilera', rol: 'Atención al Paciente / Contact Center', avatar: 'DA' },
+    { usuario: 'sofia', nombre: 'Sofia Olivieri', rol: 'Atención al Paciente / Contact Center', avatar: 'SO' },
+    { usuario: 'virginia', nombre: 'Virginia Jacques', rol: 'Atención al Paciente / Contact Center', avatar: 'VJ' },
+    { usuario: 'erica', nombre: 'Erica Leal', rol: 'Atención al Paciente / Contact Center', avatar: 'EL' },
     { usuario: 'jcorrea', nombre: 'Javier Correa', rol: 'Jefatura de Facturación y Altas', avatar: 'JC' },
     { usuario: 'frojo', nombre: 'Florencia Rojo', rol: 'Auditoría Médica y Gobernanza', avatar: 'FR' },
     { usuario: 'marcela', nombre: 'Marcela Quiroga', rol: 'Emisión y Despacho de Pedidos', avatar: 'MQ' }
@@ -459,18 +459,35 @@ export function assignChatExclusively(chat, targetAgent, currentUser) {
     const now = new Date();
     const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 
+    // Persistir en Supabase contact_center_conversations y APAGAR BOT
+    if (chat.phone) {
+        const norm = normalizeArgentinePhone(chat.phone);
+        supabase.from('contact_center_conversations').upsert({
+            phone: norm,
+            status: 'abierto',
+            assigned_agent_id: targetAgent.id,
+            assigned_agent_name: targetAgent.name,
+            assigned_at: now.toISOString(),
+            bot_active: false, // BOT MUTEADO INMEDIATAMENTE
+            updated_at: now.toISOString()
+        }, { onConflict: 'phone' }).then(({ error }) => {
+            if (error) console.warn('[contact-center] Error guardando asignación:', error.message);
+        });
+    }
+
     const updatedChat = {
         ...chat,
         status: 'abierto',
         assignedTo: targetAgent.id,
         assignedToName: targetAgent.name,
         assignedAt: now.toISOString(),
+        botActive: false,
         messages: [
             ...(chat.messages || []),
             {
                 id: 'sys_' + Date.now(),
                 sender: 'system',
-                text: `${targetAgent.name} se asignó la conversación exclusivamente`,
+                text: `${targetAgent.name} se asignó la conversación. El chatbot se ha pausado.`,
                 timestamp: timeStr
             }
         ]
@@ -492,6 +509,20 @@ export function unassignChat(chat, currentAgent, currentUser) {
 
     const now = new Date();
     const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+
+    // Persistir liberación en Supabase
+    if (chat.phone) {
+        const norm = normalizeArgentinePhone(chat.phone);
+        supabase.from('contact_center_conversations').update({
+            status: 'sin_asignar',
+            assigned_agent_id: null,
+            assigned_agent_name: null,
+            assigned_at: null,
+            updated_at: now.toISOString()
+        }).eq('phone', norm).then(({ error }) => {
+            if (error) console.warn('[contact-center] Error liberando chat:', error.message);
+        });
+    }
 
     const updatedChat = {
         ...chat,
@@ -526,12 +557,27 @@ export function transferChatToAgent(chat, fromAgent, toAgent, currentUser) {
     const now = new Date();
     const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 
+    if (chat.phone) {
+        const norm = normalizeArgentinePhone(chat.phone);
+        supabase.from('contact_center_conversations').update({
+            status: 'abierto',
+            assigned_agent_id: toAgent.id,
+            assigned_agent_name: toAgent.name,
+            assigned_at: now.toISOString(),
+            bot_active: false,
+            updated_at: now.toISOString()
+        }).eq('phone', norm).then(({ error }) => {
+            if (error) console.warn('[contact-center] Error transfiriendo chat:', error.message);
+        });
+    }
+
     const updatedChat = {
         ...chat,
         status: 'abierto',
         assignedTo: toAgent.id,
         assignedToName: toAgent.name,
         assignedAt: now.toISOString(),
+        botActive: false,
         messages: [
             ...(chat.messages || []),
             {
@@ -557,7 +603,19 @@ export function transferChatToAgent(chat, fromAgent, toAgent, currentUser) {
  */
 export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
     try {
-        // Traer últimos 100 mensajes de whatsapp_messages
+        // 1. Traer conversaciones estructuradas de contact_center_conversations
+        const { data: convData, error: convError } = await supabase
+            .from('contact_center_conversations')
+            .select('*');
+
+        const convByPhone = {};
+        if (convData && !convError) {
+            convData.forEach(c => {
+                if (c.phone) convByPhone[normalizeArgentinePhone(c.phone)] = c;
+            });
+        }
+
+        // 2. Traer últimos 100 mensajes de whatsapp_messages
         const { data: realMessages, error } = await supabase
             .from('whatsapp_messages')
             .select('*')
@@ -587,6 +645,7 @@ export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
             // Ordenar cronológicamente (asc)
             const chronological = [...messages].reverse();
             const lastMsg = messages[0]; // el más reciente
+            const conv = convByPhone[phone];
 
             const existingIdx = mergedChats.findIndex(c => normalizeArgentinePhone(c.phone) === phone);
 
@@ -614,46 +673,65 @@ export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
                 timestamp: new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
             }));
 
+            const patientFields = {
+                dni: conv?.dni || (existingIdx >= 0 ? mergedChats[existingIdx].customFields?.dni : 'A verificar'),
+                pacienteNombre: conv?.nombre_completo || lastMsg.sender_name || (existingIdx >= 0 ? mergedChats[existingIdx].customFields?.pacienteNombre : 'Paciente'),
+                obraSocial: conv?.obra_social || (existingIdx >= 0 ? mergedChats[existingIdx].customFields?.obraSocial : 'A consultar'),
+                fechaNacimiento: conv?.fecha_nacimiento || 'No informada',
+                email: conv?.email || 'No informado',
+                pacienteContacto: conv?.telefono_contacto || phone,
+                departamento: conv?.departamento || 'San Juan',
+                esPacienteExistente: conv?.es_paciente_existente ?? null,
+                motivoConsulta: conv?.motivo_consulta || (existingIdx >= 0 ? mergedChats[existingIdx].customFields?.turnosDiaHora : 'Consulta entrante'),
+                medicoOEspecialidad: conv?.medico_o_especialidad || 'A convenir',
+                botActive: conv?.bot_active ?? true,
+                botStage: conv?.bot_stage || 'saludo_dni',
+                pedidoMedicoFoto: lastMsg.media_type !== 'text' ? 'Adjunto en chat' : 'No adjuntado'
+            };
+
             if (existingIdx >= 0) {
-                // Actualizar chat existente con mensajes reales
+                // Actualizar chat existente con mensajes reales y datos de conversación
                 mergedChats[existingIdx] = {
                     ...mergedChats[existingIdx],
+                    status: conv?.status || mergedChats[existingIdx].status,
+                    assignedTo: conv?.assigned_agent_id || mergedChats[existingIdx].assignedTo,
+                    assignedToName: conv?.assigned_agent_name || mergedChats[existingIdx].assignedToName,
+                    assignedAt: conv?.assigned_at || mergedChats[existingIdx].assignedAt,
+                    botActive: conv?.bot_active ?? mergedChats[existingIdx].botActive,
                     lastMessage: lastMsg.content || `[${lastMsg.media_type}]`,
                     timeAgo: 'hace instantes',
                     lastResponder: lastRespName,
                     lastResponderRole: lastRespRole,
+                    customFields: {
+                        ...mergedChats[existingIdx].customFields,
+                        ...patientFields
+                    },
                     messages: formattedMessages
                 };
             } else {
-                // Crear nueva conversación en vivo en la bandeja "sin_asignar" (ej: el teléfono de prueba del usuario)
+                // Crear nueva conversación en vivo
                 const newRealChat = {
                     id: 'REAL_' + phone.slice(-6),
-                    contactName: lastMsg.sender_name || `Paciente (${phone.slice(-4)})`,
+                    contactName: conv?.nombre_completo || lastMsg.sender_name || `Paciente (${phone.slice(-4)})`,
                     phone: phone,
                     channel: 'WHATSAPP',
                     channelNumber: '5492645825637',
-                    status: 'sin_asignar',
+                    status: conv?.status || 'sin_asignar',
                     unread: true,
                     lastMessage: lastMsg.content || `[${lastMsg.media_type}]`,
                     timeAgo: 'hace un momento',
                     department: 'Atención al cliente',
-                    assignedTo: null,
-                    assignedToName: null,
-                    assignedAt: null,
+                    assignedTo: conv?.assigned_agent_id || null,
+                    assignedToName: conv?.assigned_agent_name || null,
+                    assignedAt: conv?.assigned_at || null,
+                    botActive: conv?.bot_active ?? true,
                     lastResponder: lastRespName,
                     lastResponderRole: lastRespRole,
                     lastResponseAt: 'hace un momento',
-                    chatbot: '#numero-de-prueba',
+                    chatbot: '#triage-sanatorio',
                     avatarColor: '#059669',
                     tags: ['En Vivo', 'WhatsApp Real'],
-                    customFields: {
-                        dni: 'A verificar',
-                        turnosDiaHora: 'Consulta entrante',
-                        pedidoMedicoFoto: lastMsg.media_type !== 'text' ? 'Adjunto en chat' : 'No adjuntado',
-                        pacienteNombre: lastMsg.sender_name || 'Paciente',
-                        pacienteContacto: phone,
-                        obraSocial: 'A consultar'
-                    },
+                    customFields: patientFields,
                     messages: formattedMessages
                 };
                 mergedChats = [newRealChat, ...mergedChats];
@@ -672,6 +750,7 @@ export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
  * - Si es nota privada: se guarda en BD para uso interno sin enviar a WhatsApp.
  * - Si es mensaje público: se despacha por BuilderBot al teléfono y se guarda en BD.
  * Deja tag con el agente que respondió y actualiza lastResponder.
+ * Inmediatamente pausa el chatbot para que no interfiera.
  */
 export async function sendContactCenterMessage({ chat, text, isNote, activeAgent, currentUser }) {
     const isLocked = isChatLockedForUser(chat, activeAgent.id, currentUser);
@@ -709,7 +788,24 @@ export async function sendContactCenterMessage({ chat, text, isNote, activeAgent
         console.warn('Error en persistencia Supabase:', err);
     }
 
-    // 2. Si NO es nota privada, despachar vía BuilderBot Edge Function
+    // 2. Si es respuesta de agente, silenciar el chatbot automáticamente en contact_center_conversations
+    if (!isNote && normalizedPhone) {
+        try {
+            await supabase
+                .from('contact_center_conversations')
+                .update({
+                    bot_active: false,
+                    last_message_text: text,
+                    last_message_at: now.toISOString(),
+                    updated_at: now.toISOString()
+                })
+                .eq('phone', normalizedPhone);
+        } catch (botMuteErr) {
+            console.warn('Error muting bot in DB:', botMuteErr);
+        }
+    }
+
+    // 3. Si NO es nota privada, despachar vía BuilderBot Edge Function
     if (!isNote && normalizedPhone) {
         try {
             await sendWhatsAppMessage({
@@ -719,11 +815,10 @@ export async function sendContactCenterMessage({ chat, text, isNote, activeAgent
             console.log(`[contact-center] ✅ Mensaje despachado a BuilderBot: ${normalizedPhone} por ${activeAgent.name}`);
         } catch (bbError) {
             console.error('[contact-center] Error despachando a BuilderBot:', bbError);
-            // Non-fatal para testing, pero advertir
         }
     }
 
-    // 3. Crear mensaje formateado para actualizar estado local
+    // 4. Crear mensaje formateado para actualizar estado local
     const newMsg = {
         id: 'msg_' + Date.now(),
         sender: isNote ? 'note' : 'agent',
@@ -739,6 +834,7 @@ export async function sendContactCenterMessage({ chat, text, isNote, activeAgent
 
     const updatedChat = {
         ...chat,
+        botActive: false,
         lastMessage: isNote ? `[Nota interna] ${text}` : text,
         timeAgo: 'hace unos segundos',
         lastResponder: activeAgent.name,
@@ -748,4 +844,70 @@ export async function sendContactCenterMessage({ chat, text, isNote, activeAgent
     };
 
     return { newMsg, updatedChat };
+}
+
+/**
+ * Alterna el estado del bot (Activo / Silenciado) para una conversación
+ */
+export async function toggleBotActive(phone, botActive) {
+    if (!phone) return false;
+    const norm = normalizeArgentinePhone(phone);
+    try {
+        const { error } = await supabase
+            .from('contact_center_conversations')
+            .update({
+                bot_active: !!botActive,
+                updated_at: new Date().toISOString()
+            })
+            .eq('phone', norm);
+        return !error;
+    } catch (err) {
+        console.error('Error in toggleBotActive:', err);
+        return false;
+    }
+}
+
+/**
+ * Actualiza los datos o variables clínicas del paciente
+ */
+export async function updatePatientVariables(phone, variables) {
+    if (!phone) return false;
+    const norm = normalizeArgentinePhone(phone);
+    try {
+        const { error } = await supabase
+            .from('contact_center_conversations')
+            .update({
+                ...variables,
+                updated_at: new Date().toISOString()
+            })
+            .eq('phone', norm);
+        return !error;
+    } catch (err) {
+        console.error('Error in updatePatientVariables:', err);
+        return false;
+    }
+}
+
+/**
+ * Consulta la base de parámetros y honorarios de médicos
+ */
+export async function fetchDoctorParameters(query = '') {
+    try {
+        let q = supabase
+            .from('contact_center_doctor_parameters')
+            .select('*')
+            .order('profesional_nombre', { ascending: true })
+            .limit(100);
+
+        if (query && query.trim().length > 1) {
+            q = q.or(`profesional_nombre.ilike.%${query}%,especialidad.ilike.%${query}%,condiciones_consulta.ilike.%${query}%`);
+        }
+
+        const { data, error } = await q;
+        if (error) throw error;
+        return data || [];
+    } catch (err) {
+        console.error('Error fetching doctor parameters:', err);
+        return [];
+    }
 }

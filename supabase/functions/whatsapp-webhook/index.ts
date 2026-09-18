@@ -266,6 +266,18 @@ Deno.serve(async (req) => {
 
         console.log(`[webhook] Mensaje ${direction} guardado — line: ${lineId}, phone: ${phone}, media: ${finalMediaType}, persisted: ${mediaUrl !== originalMediaUrl}`);
 
+        // =============================================
+        // CHATBOT TRIAGE ULTRA-COST-SAVING (ASISTECLICK STYLE)
+        // Solo para mensajes entrantes de pacientes
+        // =============================================
+        if (direction === 'incoming' && phone) {
+            try {
+                await handleChatbotTriage(supabase, phone, content, senderName, lineId);
+            } catch (triageError: any) {
+                console.error('[webhook] Error en handleChatbotTriage (non-fatal):', triageError?.message || triageError);
+            }
+        }
+
         return new Response(
             JSON.stringify({ ok: true, direction, phone, mediaType, hasMedia: !!mediaUrl, persisted: mediaUrl !== originalMediaUrl, lineId }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -546,3 +558,328 @@ function findMediaUrl(obj, depth = 0) {
 
     return null;
 }
+
+// =============================================
+// MOTOR DE TRIAGE DEL CHATBOT (AHORRO DE MENSAJES Y EXTRACCIÓN CON IA)
+// =============================================
+
+async function handleChatbotTriage(
+    supabase: any,
+    phone: string,
+    incomingText: string,
+    senderName: string | null,
+    lineId: string | null
+) {
+    if (!phone || !incomingText) return;
+    const cleanText = incomingText.trim();
+
+    // 1. Obtener estado actual de la conversación
+    const { data: conv } = await supabase
+        .from('contact_center_conversations')
+        .select('*')
+        .eq('phone', phone)
+        .maybeSingle();
+
+    // Si ya está asignada a un agente humano (Daniela Aguilera, Sofia Olivieri, Virginia Jacques, Erica Leal)
+    // O si el bot fue silenciado/pausado manualmente, NO responder
+    if (conv) {
+        if (conv.assigned_agent_id || conv.bot_active === false) {
+            console.log(`[triage-bot] Chat ${phone} asignado a ${conv.assigned_agent_name || conv.assigned_agent_id} o bot_active=false. Bot en silencio.`);
+            await supabase.from('contact_center_conversations').update({
+                last_message_text: cleanText,
+                last_message_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            }).eq('phone', phone);
+            return;
+        }
+    }
+
+    const currentStage = conv?.bot_stage || 'inicio';
+    let replyText = '';
+    let nextStage = currentStage;
+    let updates: Record<string, any> = {
+        last_message_text: cleanText,
+        last_message_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+    };
+
+    // Helper de extracción de DNI rápido por expresión regular (7 u 8 dígitos)
+    const dniMatch = cleanText.match(/\b\d{7,8}\b/);
+    const candidateDni = dniMatch ? dniMatch[0] : (conv?.dni || null);
+
+    // ETAPA 1: INICIO O ESPERANDO DNI
+    if (currentStage === 'inicio' || currentStage === 'esperando_dni') {
+        if (!candidateDni) {
+            // El paciente escribió un saludo o consulta sin DNI:
+            // Solicitamos DNI y Nombre en UN SOLO mensaje consolidado para ahorrar costos
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nPara poder gestionar tu consulta de forma ágil y verificar tu cobertura médica, por favor indícanos en un solo mensaje tu número de *DNI* (sin puntos) y tu *Nombre Completo*.`;
+            nextStage = 'esperando_dni';
+        } else {
+            // DNI detectado: verificar si ya es paciente del sanatorio en hospital_pacientes
+            const { data: paciente } = await supabase
+                .from('hospital_pacientes')
+                .select('dni, nombre, apellido, obra_social, telefono')
+                .eq('dni', candidateDni)
+                .limit(1)
+                .maybeSingle();
+
+            if (paciente) {
+                // CASO A: PACIENTE EXISTENTE EN EL SANATORIO
+                const fullName = (paciente.nombre || paciente.apellido || senderName || 'Paciente').trim();
+                const os = paciente.obra_social || 'A confirmar';
+
+                updates = {
+                    ...updates,
+                    dni: candidateDni,
+                    nombre_completo: fullName,
+                    obra_social: os,
+                    es_paciente_existente: true,
+                    bot_stage: 'menu_opciones'
+                };
+                nextStage = 'menu_opciones';
+
+                // MENSAJE ÚNICO CONSOLIDADO: Confirmación + Menú de 3 opciones
+                replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos como paciente registrado con cobertura *${os}*.\n\n¿En qué podemos ayudarte hoy?\n1️⃣ *Solicitar o reprogramar un turno*\n2️⃣ *Autorizaciones y cobertura*\n3️⃣ *Información institucional, sedes o estudios*\n\nResponde con el número *1*, *2* o *3*, o escríbenos qué médico o especialidad buscas.`;
+            } else {
+                // CASO B: PACIENTE NUEVO (No está registrado)
+                // Se piden las 6 variables indispensables en UN SOLO MENSAJE para no inflar la cantidad de mensajes
+                updates = {
+                    ...updates,
+                    dni: candidateDni,
+                    es_paciente_existente: false,
+                    bot_stage: 'esperando_datos_nuevo'
+                };
+                nextStage = 'esperando_datos_nuevo';
+
+                replyText = `¡Hola! 👋 Tu DNI *${candidateDni}* no figura en nuestro padrón activo, por lo que crearemos tu ficha de atención.\n\nPara completar tu solicitud en un solo paso, por favor responde este mensaje con:\n• *Nombre y apellido completo*\n• *Obra Social o Prepaga*\n• *Fecha de nacimiento* (DD/MM/AAAA)\n• *Email*\n• *Teléfono alternativo*\n• *Departamento donde vives* (San Juan)\n\n¡Puedes enviarnos todo junto en un solo mensaje!`;
+            }
+        }
+    } else if (currentStage === 'esperando_datos_nuevo') {
+        // El paciente nuevo respondió con sus datos:
+        // Extraer las variables clínicas estructuradas y guardarlas en la ficha
+        const extracted = await extractPatientVariables(cleanText, candidateDni);
+        updates = {
+            ...updates,
+            ...extracted,
+            bot_stage: 'menu_opciones'
+        };
+        nextStage = 'menu_opciones';
+
+        replyText = `¡Muchas gracias *${extracted.nombre_completo || 'por tu respuesta'}*! ✅ Ya registramos tus datos correctamente.\n\n¿En qué podemos ayudarte hoy?\n1️⃣ *Solicitar o reprogramar un turno*\n2️⃣ *Autorizaciones y cobertura*\n3️⃣ *Información institucional, sedes o estudios*\n\nPor favor responde *1*, *2* o *3*.`;
+
+    } else if (currentStage === 'menu_opciones') {
+        // Evaluar selección del menú o consulta abierta
+        const isOpt1 = cleanText === '1' || /turno|reprogram|medico|doctor|agenda|cita/i.test(cleanText);
+        const isOpt2 = cleanText === '2' || /autoriz|orden|coseguro|auditor/i.test(cleanText);
+        const isOpt3 = cleanText === '3' || /info|web|sede|estudio|laboratorio|direccion|telefono/i.test(cleanText);
+
+        if (isOpt1) {
+            // Opción 1: Turnos y reprogramación
+            let doctorNoteMsg = '';
+            // Buscar si mencionó el nombre de algún médico o especialidad
+            const tokens = cleanText.split(/\s+/).filter(w => w.length > 3 && !['quiero', 'turno', 'para', 'hola', 'favor'].includes(w.toLowerCase()));
+            if (tokens.length > 0) {
+                const searchKeyword = tokens[tokens.length - 1];
+                const { data: doctors } = await supabase
+                    .from('contact_center_doctor_parameters')
+                    .select('profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
+                    .ilike('profesional_nombre', `%${searchKeyword}%`)
+                    .limit(1);
+
+                if (doctors && doctors.length > 0) {
+                    const doc = doctors[0];
+                    doctorNoteMsg = `\n\n📌 *Información de ${doc.profesional_nombre}* (${doc.especialidad}):\n`;
+                    if (doc.consultorio_actual) doctorNoteMsg += `• Consultorio habitual: ${doc.consultorio_actual}\n`;
+                    if (doc.condiciones_consulta) {
+                        const shortNote = doc.condiciones_consulta.replace(/[\r\n]+/g, ' ').substring(0, 160);
+                        doctorNoteMsg += `• Parámetros de atención: ${shortNote}...\n`;
+                    }
+                }
+            }
+
+            replyText = `¡Perfecto! Hemos registrado tu solicitud de turno.${doctorNoteMsg}\nEn unos momentos, una agente de nuestro equipo (Daniela, Sofia, Virginia o Erica) tomará la conversación para coordinar fecha y horario disponible. 👩‍⚕️`;
+            updates.motivo_consulta = 'Solicitud de Turno / Reprogramación';
+            updates.status = 'sin_asignar';
+            // Silenciamos el bot inmediatamente para la intervención del agente
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+
+        } else if (isOpt2) {
+            // Opción 2: Autorizaciones
+            replyText = `Para gestionar la autorización de tus estudios o prácticas médicas:\n\n📷 Por favor envíanos por aquí una *foto nítida de tu pedido médico* y de tu *credencial de obra social*.\n\nUna de nuestras asesoras revisará la documentación y te responderá a la brevedad.`;
+            updates.motivo_consulta = 'Autorizaciones de Estudios / Cobertura';
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+
+        } else if (isOpt3) {
+            // Opción 3: Otras consultas (Sitio Web Obligatorio)
+            replyText = `Para consultar información institucional, cartilla de profesionales, sedes y servicios de Sanatorio Argentino, puedes ingresar a nuestro sitio web oficial:\n\n🌐 *www.sanatorioargentino.com.ar*\n\nSi necesitas asistencia personalizada, aguarda en línea y una de nuestras asesoras te responderá. ¡Muchas gracias!`;
+            updates.motivo_consulta = 'Información General / Web';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+
+        } else {
+            // Consulta abierta no tipificada
+            replyText = `Hemos recibido tu mensaje. Una agente de nuestro equipo de atención se pondrá en contacto contigo a la brevedad para asistirte. ¡Aguardá un momento por favor!`;
+            updates.motivo_consulta = cleanText.substring(0, 100);
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+        }
+    }
+
+    // Persistir o actualizar en contact_center_conversations
+    updates.bot_stage = nextStage;
+    await supabase
+        .from('contact_center_conversations')
+        .upsert({
+            phone,
+            ...updates
+        }, { onConflict: 'phone' });
+
+    // Enviar el mensaje saliente al paciente vía WhatsApp
+    if (replyText) {
+        await sendBotWhatsAppReply(supabase, phone, replyText, lineId);
+    }
+}
+
+/**
+ * Extrae variables estructuradas del paciente nuevo
+ */
+async function extractPatientVariables(text: string, fallbackDni: string | null) {
+    const vars: Record<string, any> = {};
+
+    // 1. Extracción heurística rápida por patrones
+    const dniMatch = text.match(/\b\d{7,8}\b/);
+    if (dniMatch) vars.dni = dniMatch[0];
+    else if (fallbackDni) vars.dni = fallbackDni;
+
+    const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    if (emailMatch) vars.email = emailMatch[0];
+
+    const fnMatch = text.match(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/);
+    if (fnMatch) vars.fecha_nacimiento = fnMatch[0];
+
+    // Localidades de San Juan
+    const dptos = [
+        'Capital', 'Rawson', 'Rivadavia', 'Chimbas', 'Santa Lucía', 'Pocito',
+        'Caucete', 'Albardón', 'Sarmiento', '25 de Mayo', 'San Martín',
+        'Calingasta', 'Jáchal', 'Iglesia', 'Valle Fértil', 'Angaco', 'Ullum', 'Zonda', '9 de Julio'
+    ];
+    for (const d of dptos) {
+        if (new RegExp(`\\b${d}\\b`, 'i').test(text)) {
+            vars.departamento = d;
+            break;
+        }
+    }
+
+    // Teléfono alternativo
+    const phoneMatch = text.match(/(?:tel|cel|telefono|contacto|whatsapp)?[:\s]*(\+?54\s?9?\s?\d{2,4}[\s-]?\d{6,8}|\b264\d{7}\b)/i);
+    if (phoneMatch) {
+        vars.telefono_contacto = phoneMatch[1].replace(/\D/g, '');
+    }
+
+    // 2. Extracción enriquecida con OpenAI si está disponible
+    const openAiKey = Deno.env.get('OPENAI_API_KEY');
+    if (openAiKey) {
+        try {
+            const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${openAiKey}`
+                },
+                body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    response_format: { type: 'json_object' },
+                    messages: [
+                        {
+                            role: 'system',
+                            content: `Eres el extractor de datos del Contact Center de Sanatorio Argentino. Extrae del mensaje del paciente un JSON con:
+                            - nombre_completo (string o null)
+                            - obra_social (string o null, ej: OSDE, OSP, Swiss Medical, Particular)
+                            - fecha_nacimiento (string o null, DD/MM/AAAA)
+                            - email (string o null)
+                            - telefono_contacto (string o null)
+                            - departamento (string o null, ej: Rivadavia, Capital, Rawson)
+                            Si un dato no fue provisto, indícalo como null.`
+                        },
+                        {
+                            role: 'user',
+                            content: text
+                        }
+                    ],
+                    temperature: 0.1
+                })
+            });
+
+            if (aiRes.ok) {
+                const aiData = await aiRes.json();
+                const parsed = JSON.parse(aiData.choices?.[0]?.message?.content || '{}');
+                if (parsed.nombre_completo && !vars.nombre_completo) vars.nombre_completo = parsed.nombre_completo;
+                if (parsed.obra_social) vars.obra_social = parsed.obra_social;
+                if (parsed.fecha_nacimiento && !vars.fecha_nacimiento) vars.fecha_nacimiento = parsed.fecha_nacimiento;
+                if (parsed.email && !vars.email) vars.email = parsed.email;
+                if (parsed.telefono_contacto && !vars.telefono_contacto) vars.telefono_contacto = parsed.telefono_contacto;
+                if (parsed.departamento && !vars.departamento) vars.departamento = parsed.departamento;
+            }
+        } catch (aiErr) {
+            console.warn('[triage-bot] Fallback IA:', aiErr);
+        }
+    }
+
+    // Fallback de nombre si no se obtuvo
+    if (!vars.nombre_completo) {
+        const lines = text.split(/[\r\n,]+/).map(l => l.trim()).filter(Boolean);
+        if (lines.length > 0 && lines[0].length < 40 && !/\d/.test(lines[0])) {
+            vars.nombre_completo = lines[0];
+        }
+    }
+
+    return vars;
+}
+
+/**
+ * Despacha la respuesta del bot hacia WhatsApp y la guarda en el historial
+ */
+async function sendBotWhatsAppReply(supabase: any, phone: string, text: string, lineId: string | null) {
+    try {
+        // 1. Guardar mensaje saliente en whatsapp_messages
+        await supabase
+            .from('whatsapp_messages')
+            .insert({
+                phone,
+                direction: 'outgoing',
+                content: text,
+                media_type: 'text',
+                sender_name: 'Bot Sanatorio',
+                is_read: true,
+                line_id: lineId,
+                raw_payload: {
+                    source: 'bot_triage',
+                    bot: true
+                }
+            });
+
+        // 2. Invocar Edge Function send-whatsapp para despachar a BuilderBot
+        const sendUrl = `${SUPABASE_URL}/functions/v1/send-whatsapp`;
+        const res = await fetch(sendUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+            },
+            body: JSON.stringify({
+                number: phone,
+                content: text,
+                ...(lineId && { lineId })
+            })
+        });
+
+        console.log(`[triage-bot] ✅ Mensaje despachado a ${phone} | status: ${res.status}`);
+    } catch (err: any) {
+        console.error('[triage-bot] Error enviando respuesta WhatsApp:', err?.message || err);
+    }
+}
+

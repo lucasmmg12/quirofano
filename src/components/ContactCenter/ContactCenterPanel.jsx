@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { 
     MessageSquare, CalendarCheck, PlusCircle, ShieldCheck, 
     Headphones, RefreshCw, Layers, CheckCircle2, Lock, Sparkles,
-    User, ChevronDown, AlertTriangle
+    User, ChevronDown, AlertTriangle, BarChart3
 } from 'lucide-react';
 import ContactCenterMiSemana from './ContactCenterMiSemana';
 import ContactCenterChatConsole from './ContactCenterChatConsole';
 import ContactCenterNuevaConversacion from './ContactCenterNuevaConversacion';
 import ContactCenterPermisosTab from './ContactCenterPermisosTab';
 import ContactCenterTurnosOnlineTab from './ContactCenterTurnosOnlineTab';
+import ContactCenterMetricsTab from './ContactCenterMetricsTab';
 import { 
     INITIAL_CHATS, fetchAllowedUsers, updateAllowedUsers, 
     canUserAccessContactCenter, MASTER_ADMINS,
@@ -382,6 +383,22 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                             </span>
                         </button>
 
+                        {/* Nueva Pestaña: Métricas y Control de Costos */}
+                        <button
+                            onClick={() => setActiveSubTab('metricas')}
+                            style={{
+                                padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                background: activeSubTab === 'metricas' ? '#0F2942' : 'transparent',
+                                color: activeSubTab === 'metricas' ? '#FFFFFF' : '#0284C7',
+                                transition: 'all 0.15s'
+                            }}
+                        >
+                            <BarChart3 size={16} />
+                            Métricas y Costos
+                        </button>
+
                         {/* Pestaña de Permisos (Visible EXCLUSIVAMENTE para lmarinero) */}
                         {isLMarinero && (
                             <button
@@ -412,6 +429,12 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     addToast={addToast}
                     onOpenChatWithPhone={handleOpenChatWithPhone}
                     onBackToConsole={() => setActiveSubTab('conversaciones')}
+                />
+            )}
+
+            {activeSubTab === 'metricas' && (
+                <ContactCenterMetricsTab 
+                    addToast={addToast}
                 />
             )}
 

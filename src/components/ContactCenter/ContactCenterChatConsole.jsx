@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
     Search, Paperclip, Send, Lock, Tag, User, 
     Calendar, CheckCircle2, ChevronDown, Check, Star, 
     Phone, Mail, MapPin, Building, Bot, Shield, ExternalLink,
     Filter, Archive, UserCheck, MoreVertical, Eye, AlertTriangle,
-    Unlock, ArrowRightLeft, Clock, MessageSquare, AlertCircle
+    Unlock, ArrowRightLeft, Clock, MessageSquare, AlertCircle,
+    Power, Sparkles, Stethoscope, DollarSign, CreditCard
 } from 'lucide-react';
 import { 
     CONTACT_CENTER_AGENTS, getAgentById, isChatLockedForUser, 
-    MASTER_ADMINS 
+    MASTER_ADMINS, toggleBotActive, fetchDoctorParameters 
 } from '../../services/contactCenterService';
 
 export default function ContactCenterChatConsole({ 
@@ -28,9 +29,48 @@ export default function ContactCenterChatConsole({
     const [isPrivateNote, setIsPrivateNote] = useState(false);
     const [activeDetailTab, setActiveDetailTab] = useState('info');
     const [transferMenuOpen, setTransferMenuOpen] = useState(false);
+    const [botActive, setBotActive] = useState(true);
+    const [doctorQuery, setDoctorQuery] = useState('');
+    const [doctorResults, setDoctorResults] = useState([]);
+    const [isSearchingDoctor, setIsSearchingDoctor] = useState(false);
 
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
     const selectedChat = chats.find(c => c.id === activeChatId) || chats[0] || {};
+
+    // Sincronizar estado del bot al cambiar de chat
+    useEffect(() => {
+        if (selectedChat) {
+            setBotActive(selectedChat.botActive !== false && !selectedChat.assignedTo);
+        }
+    }, [selectedChat?.id, selectedChat?.botActive, selectedChat?.assignedTo]);
+
+    // Búsqueda de médicos en SALUS
+    useEffect(() => {
+        if (!doctorQuery || doctorQuery.trim().length < 2) {
+            setDoctorResults([]);
+            return;
+        }
+        const timer = setTimeout(async () => {
+            setIsSearchingDoctor(true);
+            try {
+                const results = await fetchDoctorParameters(doctorQuery.trim());
+                setDoctorResults(results);
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setIsSearchingDoctor(false);
+            }
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [doctorQuery]);
+
+    const handleToggleBot = async () => {
+        const newState = !botActive;
+        setBotActive(newState);
+        if (selectedChat?.phone) {
+            await toggleBotActive(selectedChat.phone, newState);
+        }
+    };
 
     // Determinar bloqueo para el chat seleccionado
     const isLocked = isChatLockedForUser(selectedChat, activeAgent.id, currentUser);
@@ -645,7 +685,7 @@ export default function ContactCenterChatConsole({
             </div>
 
             {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* COLUMNA 3: FICHA DEL PACIENTE Y CAMPOS PERSONALIZADOS           */}
+            {/* COLUMNA 3: FICHA DEL PACIENTE Y PARÁMETROS SALUS                */}
             {/* ═════════════════════════════════════════════════════════════════ */}
             <div style={{ display: 'flex', flexDirection: 'column', borderLeft: '1px solid #E2E8F0', background: '#FFFFFF', overflowY: 'auto' }}>
                 <div style={{ display: 'flex', borderBottom: '1px solid #F1F5F9', background: '#FAFAFA' }}>
@@ -653,102 +693,245 @@ export default function ContactCenterChatConsole({
                         onClick={() => setActiveDetailTab('info')}
                         style={{
                             flex: 1, padding: '12px 0', border: 'none', background: 'transparent',
-                            fontWeight: 700, fontSize: '0.8rem',
+                            fontWeight: 700, fontSize: '0.78rem',
                             color: activeDetailTab === 'info' ? '#0284C7' : '#64748B',
                             borderBottom: activeDetailTab === 'info' ? '2px solid #0284C7' : '2px solid transparent',
                             cursor: 'pointer'
                         }}
                     >
-                        Información
+                        Ficha Paciente
                     </button>
                     <button 
-                        onClick={() => setActiveDetailTab('campos')}
+                        onClick={() => setActiveDetailTab('prestadores')}
                         style={{
                             flex: 1, padding: '12px 0', border: 'none', background: 'transparent',
-                            fontWeight: 700, fontSize: '0.8rem',
-                            color: activeDetailTab === 'campos' ? '#0284C7' : '#64748B',
-                            borderBottom: activeDetailTab === 'campos' ? '2px solid #0284C7' : '2px solid transparent',
-                            cursor: 'pointer'
+                            fontWeight: 700, fontSize: '0.78rem',
+                            color: activeDetailTab === 'prestadores' ? '#0284C7' : '#64748B',
+                            borderBottom: activeDetailTab === 'prestadores' ? '2px solid #0284C7' : '2px solid transparent',
+                            cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
                         }}
                     >
-                        Campos Clínicos
+                        <Stethoscope size={13} />
+                        Prestadores SALUS
                     </button>
                 </div>
 
-                <div style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {/* Canales y Asignación */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: '#F8FAFC', padding: '14px', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>CANAL</span>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#059669' }}>WHATSAPP</span>
-                        </div>
-                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#0F172A' }}>
-                            {selectedChat.channelNumber || '5492645825637'}
-                        </div>
+                <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {activeDetailTab === 'info' ? (
+                        <>
+                            {/* WIDGET: ESTADO DEL CHATBOT Y CONTROL DE SILENCIADO */}
+                            <div style={{
+                                padding: '12px 14px', borderRadius: '10px',
+                                background: botActive ? '#F0FDF4' : '#FFFBEB',
+                                border: '1px solid', borderColor: botActive ? '#BBF7D0' : '#FDE68A',
+                                display: 'flex', flexDirection: 'column', gap: '8px'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 800, color: botActive ? '#15803D' : '#B45309' }}>
+                                        <Bot size={15} />
+                                        {botActive ? 'CHATBOT ACTIVO (TRIAGE)' : 'CHATBOT SILENCIADO'}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleToggleBot}
+                                        style={{
+                                            padding: '4px 8px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700,
+                                            border: 'none', cursor: 'pointer',
+                                            background: botActive ? '#DC2626' : '#16A34A',
+                                            color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '4px'
+                                        }}
+                                    >
+                                        <Power size={11} />
+                                        {botActive ? 'Silenciar Bot' : 'Reanudar Bot'}
+                                    </button>
+                                </div>
+                                <div style={{ fontSize: '0.69rem', color: botActive ? '#166534' : '#92400E', lineHeight: 1.35 }}>
+                                    {botActive 
+                                        ? 'El bot responde preguntas de triage ahorrando mensajes. Se silencia al asignar una agente.'
+                                        : 'El bot no responderá a este paciente para permitir atención humana exclusiva.'}
+                                </div>
+                            </div>
 
-                        <div style={{ height: '1px', background: '#E2E8F0', margin: '2px 0' }} />
+                            {/* CANALES Y ASIGNACIÓN */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#F8FAFC', padding: '12px', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B' }}>AGENTE ASIGNADA</span>
+                                    {assignedAgentObj ? (
+                                        <span style={{
+                                            fontSize: '0.72rem', fontWeight: 800, color: assignedAgentObj.color,
+                                            background: '#FFFFFF', padding: '2px 8px', borderRadius: '6px', border: '1px solid #E2E8F0'
+                                        }}>
+                                            {assignedAgentObj.fullName}
+                                        </span>
+                                    ) : (
+                                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#D97706' }}>
+                                            En espera de agente
+                                        </span>
+                                    )}
+                                </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>ASIGNADO A</span>
-                            {assignedAgentObj ? (
-                                <span style={{
-                                    fontSize: '0.74rem', fontWeight: 800, color: assignedAgentObj.color,
-                                    background: '#FFFFFF', padding: '2px 8px', borderRadius: '6px', border: '1px solid #E2E8F0'
-                                }}>
-                                    {assignedAgentObj.fullName}
-                                </span>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B' }}>CONDICIÓN PADRÓN</span>
+                                    <span style={{
+                                        fontSize: '0.7rem', fontWeight: 800,
+                                        padding: '1px 6px', borderRadius: '4px',
+                                        background: selectedChat.customFields?.esPacienteExistente ? '#ECFDF5' : '#EFF6FF',
+                                        color: selectedChat.customFields?.esPacienteExistente ? '#047857' : '#1D4ED8',
+                                        border: '1px solid', borderColor: selectedChat.customFields?.esPacienteExistente ? '#A7F3D0' : '#BFDBFE'
+                                    }}>
+                                        {selectedChat.customFields?.esPacienteExistente ? '✓ Paciente Registrado' : '+ Nuevo Paciente'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* FICHA COMPLETA DE VARIABLES DEL PACIENTE */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                        Variables del Paciente (IA)
+                                    </span>
+                                    <span style={{ fontSize: '0.68rem', color: '#0284C7', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                        <Sparkles size={11} /> Auto-detectadas
+                                    </span>
+                                </div>
+
+                                {/* DNI */}
+                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                    <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>DNI / IDENTIFICACIÓN</div>
+                                    <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
+                                        {selectedChat.customFields?.dni || 'A verificar'}
+                                    </div>
+                                </div>
+
+                                {/* NOMBRE COMPLETO */}
+                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                    <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>NOMBRE COMPLETO</div>
+                                    <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#0F172A' }}>
+                                        {selectedChat.customFields?.pacienteNombre || selectedChat.contactName || 'Paciente'}
+                                    </div>
+                                </div>
+
+                                {/* OBRA SOCIAL */}
+                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                    <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>OBRA SOCIAL / PREPAGA</div>
+                                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0284C7' }}>
+                                        {selectedChat.customFields?.obraSocial || 'A consultar'}
+                                    </div>
+                                </div>
+
+                                {/* FECHA DE NACIMIENTO */}
+                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                    <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>FECHA DE NACIMIENTO</div>
+                                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
+                                        {selectedChat.customFields?.fechaNacimiento || 'No informada'}
+                                    </div>
+                                </div>
+
+                                {/* EMAIL */}
+                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                    <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>EMAIL</div>
+                                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', wordBreak: 'break-all' }}>
+                                        {selectedChat.customFields?.email || 'No informado'}
+                                    </div>
+                                </div>
+
+                                {/* TELÉFONO DE CONTACTO */}
+                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                    <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>TELÉFONO DE CONTACTO</div>
+                                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0F172A' }}>
+                                        {selectedChat.customFields?.pacienteContacto || selectedChat.phone}
+                                    </div>
+                                </div>
+
+                                {/* DEPARTAMENTO */}
+                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                    <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>DEPARTAMENTO / RESIDENCIA</div>
+                                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <MapPin size={12} color="#0284C7" />
+                                        {selectedChat.customFields?.departamento || 'San Juan'}
+                                    </div>
+                                </div>
+
+                                {/* MOTIVO DE CONSULTA / MÉDICO */}
+                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                    <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>SOLICITUD / MOTIVO</div>
+                                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#0F172A' }}>
+                                        {selectedChat.customFields?.motivoConsulta || selectedChat.customFields?.turnosDiaHora || 'Consulta general'}
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        /* TAB 2: PARÁMETROS Y HONORARIOS DE MÉDICOS SALUS */
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase' }}>
+                                Consultar Parámetros de Prestador
+                            </div>
+
+                            <div style={{ position: 'relative' }}>
+                                <input
+                                    type="text"
+                                    placeholder="Buscar por médico o especialidad..."
+                                    value={doctorQuery}
+                                    onChange={(e) => setDoctorQuery(e.target.value)}
+                                    style={{
+                                        width: '100%', padding: '8px 12px 8px 30px',
+                                        borderRadius: '8px', border: '1px solid #CBD5E1',
+                                        fontSize: '0.8rem', outline: 'none'
+                                    }}
+                                />
+                                <Search size={14} color="#94A3B8" style={{ position: 'absolute', left: '10px', top: '10px' }} />
+                            </div>
+
+                            {isSearchingDoctor && (
+                                <div style={{ fontSize: '0.72rem', color: '#64748B', textAlign: 'center', padding: '10px' }}>
+                                    Buscando en SALUS...
+                                </div>
+                            )}
+
+                            {doctorResults.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '420px', overflowY: 'auto' }}>
+                                    {doctorResults.map((doc) => (
+                                        <div key={doc.id} style={{
+                                            background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '10px'
+                                        }}>
+                                            <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0F172A' }}>
+                                                {doc.profesional_nombre}
+                                            </div>
+                                            <div style={{ fontSize: '0.72rem', color: '#0284C7', fontWeight: 600 }}>
+                                                {doc.especialidad || 'Consulta Médica'}
+                                            </div>
+
+                                            {doc.consultorio_actual && (
+                                                <div style={{ marginTop: '4px', fontSize: '0.72rem', fontWeight: 700, color: '#059669' }}>
+                                                    📍 {doc.consultorio_actual}
+                                                </div>
+                                            )}
+
+                                            {doc.condiciones_consulta && (
+                                                <div style={{
+                                                    marginTop: '6px', fontSize: '0.7rem', color: '#475569',
+                                                    background: '#FFFFFF', padding: '6px 8px', borderRadius: '6px',
+                                                    border: '1px solid #E2E8F0', whiteSpace: 'pre-line'
+                                                }}>
+                                                    {doc.condiciones_consulta}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : doctorQuery.length >= 2 && !isSearchingDoctor ? (
+                                <div style={{ fontSize: '0.72rem', color: '#94A3B8', textAlign: 'center', padding: '14px' }}>
+                                    No se encontraron prestadores con ese criterio.
+                                </div>
                             ) : (
-                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#D97706' }}>
-                                    Sin asignar
-                                </span>
+                                <div style={{ fontSize: '0.72rem', color: '#64748B', background: '#F8FAFC', padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                    💡 Escribe el apellido del médico (ej: <em>Marquez</em>, <em>Gomez</em>, <em>Borrego</em>) para ver sus honorarios particulares, plus de coseguro, alias de Mercado Pago y consultorio activo.
+                                </div>
                             )}
                         </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>ESTADO DE LOCK</span>
-                            <span style={{
-                                fontSize: '0.7rem', fontWeight: 800,
-                                color: isLocked ? '#DC2626' : (isAssignedToMe ? '#16A34A' : '#D97706')
-                            }}>
-                                {isLocked ? '🔒 Bloqueado' : (isAssignedToMe ? '🔓 En tu atención' : '⚪ Disponible')}
-                            </span>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>ÚLTIMO RESPONDIÓ</span>
-                            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: selectedChat.lastResponderRole === 'agent' ? '#1E40AF' : '#E11D48' }}>
-                                {selectedChat.lastResponder || 'Paciente'}
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* Ficha Clínica y Campos Personalizados */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                            Datos del Paciente
-                        </div>
-
-                        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '10px' }}>
-                            <div style={{ fontSize: '0.68rem', color: '#64748B' }}>DNI / Identificación</div>
-                            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0F172A' }}>
-                                {selectedChat.customFields?.dni || '—'}
-                            </div>
-                        </div>
-
-                        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '10px' }}>
-                            <div style={{ fontSize: '0.68rem', color: '#64748B' }}>Obra Social / Prepaga</div>
-                            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0284C7' }}>
-                                {selectedChat.customFields?.obraSocial || 'A verificar'}
-                            </div>
-                        </div>
-
-                        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '10px' }}>
-                            <div style={{ fontSize: '0.68rem', color: '#64748B' }}>Turno / Solicitud</div>
-                            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
-                                {selectedChat.customFields?.turnosDiaHora || 'Consulta general'}
-                            </div>
-                        </div>
-                    </div>
+                    )}
                 </div>
             </div>
         </div>

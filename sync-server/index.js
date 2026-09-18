@@ -26,6 +26,7 @@ import { syncDiagnosticos } from './sync_diagnosticos.mjs';
 import { syncKinesiologiaUci } from './sync_kinesiologia_uci.mjs';
 import { syncPacientes, syncSinglePaciente } from './sync_pacientes.mjs';
 import { getTurnosOnlineDuplicados, setGestionTurnoOnline, syncTurnosOnlineToSupabase } from './sync_turnos_online.mjs';
+import { syncDoctorParameters } from './sync_doctor_parameters.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -3037,6 +3038,18 @@ app.get('/api/salus/paciente/:dni', async (req, res) => {
         return res.json({ success: true, paciente: null });
     } catch (err) {
         console.error('Error buscando paciente en SALUS:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// Sincronización de notas diarias, honorarios y consultorios de prestadores para Contact Center
+app.get('/api/contact-center/sync-doctor-parameters', async (req, res) => {
+    try {
+        console.log('🔄 Disparando sincronización de parámetros de médicos (Contact Center)...');
+        const result = await syncDoctorParameters();
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error('Error sincronizando parámetros de médicos:', err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 });
