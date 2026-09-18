@@ -2908,6 +2908,69 @@ app.get('/api/salus/health', async (req, res) => {
     }
 });
 
+// ── Búsqueda de Paciente en Tiempo Real (Kiosco / Tótem) ──
+app.get('/api/salus/paciente/:dni', async (req, res) => {
+    try {
+        const rawDni = String(req.params.dni || '').trim();
+        const cleanDni = rawDni.replace(/\D/g, '');
+        if (!cleanDni || cleanDni.length < 5) {
+            return res.status(400).json({ success: false, error: 'DNI inválido' });
+        }
+
+        const db = await getPool();
+        const result = await db.request()
+            .input('dni', sql.VarChar(50), cleanDni)
+            .query(`
+                SELECT TOP 1
+                    id,
+                    nombre,
+                    nombre1,
+                    nombre2,
+                    NIF,
+                    NHC,
+                    mutua,
+                    telefono1
+                FROM PR_FICHA_PACIENTE_QRY
+                WHERE NIF = @dni OR NIF LIKE '%' + @dni
+            `);
+
+        if (result.recordset && result.recordset.length > 0) {
+            const p = result.recordset[0];
+            const paciente = {
+                id: p.id,
+                nombre: p.nombre,
+                nombre1: p.nombre1,
+                nombre2: p.nombre2,
+                dni: p.NIF,
+                nhc: p.NHC,
+                mutua: p.mutua,
+                telefono: p.telefono1
+            };
+
+            // Cachear en Supabase hospital_pacientes en segundo plano
+            try {
+                await supabase.from('hospital_pacientes').upsert({
+                    id_paciente: p.id,
+                    nombre: p.nombre,
+                    dni: cleanDni,
+                    nhc: p.NHC,
+                    telefono: p.telefono1,
+                    coseguro: p.mutua
+                }, { onConflict: 'dni' });
+            } catch (cacheErr) {
+                console.warn('Error cacheando en hospital_pacientes:', cacheErr.message);
+            }
+
+            return res.json({ success: true, paciente });
+        }
+
+        return res.json({ success: true, paciente: null });
+    } catch (err) {
+        console.error('Error buscando paciente en SALUS:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // Limpieza de duplicados de asociaciones por fecha inconsistente
 app.get('/api/salus/cleanup/asociaciones-dups', async (req, res) => {
     try {
