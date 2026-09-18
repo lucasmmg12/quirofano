@@ -419,7 +419,7 @@ export default function TurnoKiosco() {
                                     <button 
                                         type="button" 
                                         onClick={() => setDni('')}
-                                        style={{ ...styles.keypadBtn, background: '#FEE2E2', color: '#DC2626', borderColor: '#FECACA', fontSize: '2.4rem' }}
+                                        style={{ ...styles.keypadBtn, background: '#FEE2E2', color: '#DC2626', borderColor: '#FECACA', fontSize: '2.6rem' }}
                                     >
                                         C
                                     </button>
@@ -433,7 +433,7 @@ export default function TurnoKiosco() {
                                     <button 
                                         type="button" 
                                         onClick={() => setDni(d => d.slice(0, -1))}
-                                        style={{ ...styles.keypadBtn, background: '#E2E8F0', color: '#334155', borderColor: '#CBD5E1', fontSize: '2.4rem' }}
+                                        style={{ ...styles.keypadBtn, background: '#E2E8F0', color: '#334155', borderColor: '#CBD5E1', fontSize: '2.6rem' }}
                                     >
                                         ⌫
                                     </button>
@@ -451,21 +451,21 @@ export default function TurnoKiosco() {
                                     disabled={loading || !dni || dni.length < 6}
                                     style={{
                                         width: '100%',
-                                        height: '62px',
-                                        minHeight: '62px',
-                                        borderRadius: '16px',
+                                        height: '68px',
+                                        minHeight: '68px',
+                                        borderRadius: '18px',
                                         background: (loading || !dni || dni.length < 6) ? '#94A3B8' : 'linear-gradient(135deg, #1565C0 0%, #0D3B66 100%)',
                                         color: '#fff',
-                                        fontSize: '1.45rem',
+                                        fontSize: '1.55rem',
                                         fontWeight: 900,
                                         border: 'none',
                                         cursor: (loading || !dni || dni.length < 6) ? 'not-allowed' : 'pointer',
                                         transition: 'all 0.2s',
-                                        boxShadow: (loading || !dni || dni.length < 6) ? 'none' : '0 6px 20px rgba(21, 101, 192, 0.35)',
+                                        boxShadow: (loading || !dni || dni.length < 6) ? 'none' : '0 6px 22px rgba(21, 101, 192, 0.35)',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
-                                        gap: '10px',
+                                        gap: '12px',
                                         marginTop: '4px',
                                         flexShrink: 0,
                                     }}
@@ -686,7 +686,7 @@ const styles = {
     // ── Select step ──
     selectContainer: {
         width: '100%',
-        maxWidth: '560px',
+        maxWidth: '600px',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -695,7 +695,7 @@ const styles = {
     },
     dniForm: {
         width: '100%',
-        maxWidth: '560px',
+        maxWidth: '600px',
         margin: '0 auto',
         display: 'flex',
         flexDirection: 'column',
@@ -704,31 +704,31 @@ const styles = {
     },
     dniSection: {
         background: '#FFFFFF',
-        borderRadius: '24px',
-        padding: '16px 20px 18px',
+        borderRadius: '26px',
+        padding: '18px 22px 20px',
         border: '2px solid #CBD5E1',
         boxShadow: '0 8px 32px rgba(15, 23, 42, 0.08)',
         display: 'flex',
         flexDirection: 'column',
-        gap: '8px',
+        gap: '10px',
         width: '100%',
         boxSizing: 'border-box',
     },
     dniLabel: {
-        display: 'block', fontSize: '1.3rem', fontWeight: 900, color: '#0D3B66',
+        display: 'block', fontSize: '1.4rem', fontWeight: 900, color: '#0D3B66',
         marginBottom: '2px', textAlign: 'center', letterSpacing: '-0.2px',
     },
-    dniOptional: { fontSize: '0.82rem', fontWeight: 600, color: '#94A3B8' },
+    dniOptional: { fontSize: '0.85rem', fontWeight: 600, color: '#94A3B8' },
     dniInput: {
         width: '100%', padding: '6px 14px',
         borderRadius: '16px',
         border: '2.5px solid #CBD5E1',
-        fontSize: '2.9rem', fontWeight: 900,
-        color: '#0F172A', letterSpacing: '3px',
+        fontSize: '3.2rem', fontWeight: 900,
+        color: '#0F172A', letterSpacing: '4px',
         outline: 'none', transition: 'all 0.2s',
         background: '#F8FAFC',
         boxSizing: 'border-box',
-        height: '64px',
+        height: '70px',
         textAlign: 'center',
     },
     keypad: {
@@ -741,9 +741,9 @@ const styles = {
     keypadBtn: {
         background: '#F8FAFC',
         border: '2px solid #CBD5E1',
-        borderRadius: '16px',
+        borderRadius: '18px',
         padding: '0',
-        fontSize: '3rem',
+        fontSize: '3.4rem',
         fontWeight: 900,
         color: '#0F172A',
         cursor: 'pointer',
@@ -753,8 +753,8 @@ const styles = {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        height: '74px',
-        minHeight: '74px',
+        height: '84px',
+        minHeight: '84px',
     },
     selectTitle: {
         fontSize: '3.5rem', fontWeight: 800, color: '#0D3B66',
@@ -972,11 +972,11 @@ const styles = {
     betoReceptionCard: {
         display: 'flex',
         alignItems: 'center',
-        gap: '12px',
+        gap: '14px',
         background: '#FFFFFF',
         border: '2px solid #BFDBFE',
-        borderRadius: '18px',
-        padding: '10px 14px',
+        borderRadius: '20px',
+        padding: '10px 16px',
         boxShadow: '0 4px 16px rgba(21, 101, 192, 0.08)',
         position: 'relative',
         animation: 'fadeInUp 0.3s ease-out',
@@ -986,8 +986,8 @@ const styles = {
     },
     betoAvatarWrapper: {
         position: 'relative',
-        width: '60px',
-        height: '60px',
+        width: '66px',
+        height: '66px',
         flexShrink: 0,
     },
     betoAvatarImg: {
