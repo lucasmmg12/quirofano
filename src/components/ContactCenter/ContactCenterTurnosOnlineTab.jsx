@@ -3,7 +3,7 @@ import {
     AlertTriangle, Calendar, Clock, User, Phone, Mail, 
     Send, CheckCircle2, XCircle, Search, RefreshCw, ChevronDown, 
     ChevronUp, MessageSquare, ShieldAlert, FileText, Check,
-    ExternalLink, Sparkles, Filter, Info, ArrowLeft
+    ExternalLink, Sparkles, Filter, Info, ArrowLeft, HelpCircle, BookOpen
 } from 'lucide-react';
 import { 
     fetchTurnosOnlineDuplicados, 
@@ -18,6 +18,8 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
     const [fechaCustom, setFechaCustom] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [filtroEstado, setFiltroEstado] = useState('todos'); // 'todos', 'pendiente', 'contactado', 'resuelto'
+    const [showGuiaModal, setShowGuiaModal] = useState(false);
+    const [showQuickTips, setShowQuickTips] = useState(true);
     
     const [stats, setStats] = useState({
         totalTurnosAnalizados: 0,
@@ -239,6 +241,30 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                         </button>
                     )}
 
+                    <button
+                        type="button"
+                        onClick={() => setShowGuiaModal(true)}
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 14px',
+                            borderRadius: '10px',
+                            border: '1.5px solid #BFDBFE',
+                            background: '#EFF6FF',
+                            color: '#1E40AF',
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                            boxShadow: '0 1px 3px rgba(37,99,235,0.08)'
+                        }}
+                        title="Ver guía operativa paso a paso para operadoras"
+                    >
+                        <HelpCircle size={15} />
+                        Guía de Operación
+                    </button>
+
                     <div style={{
                         display: 'flex',
                         background: '#F1F5F9',
@@ -397,6 +423,67 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                     </div>
                 </div>
             </div>
+
+            {/* ═══ BANNER CLÍNICO DE PROTOCOLO RÁPIDO ═══ */}
+            {showQuickTips && (
+                <div style={{
+                    background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)',
+                    border: '1.5px solid #BAE6FD',
+                    borderRadius: '14px',
+                    padding: '12px 18px',
+                    marginBottom: '20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '12px',
+                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.06)'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '280px' }}>
+                        <div style={{
+                            width: '34px', height: '34px', borderRadius: '10px',
+                            background: '#0284C7', color: '#FFFFFF',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                        }}>
+                            <BookOpen size={17} />
+                        </div>
+                        <div style={{ fontSize: '0.84rem', color: '#0369A1', lineHeight: 1.45 }}>
+                            <strong style={{ color: '#0C4A6E' }}>Protocolo Rápido para Operadoras:</strong> 
+                            <span style={{ marginLeft: '6px' }}>
+                                1️⃣ Prioriza filas con <strong style={{ color: '#DC2626' }}>banda roja</strong> (Mismo día).
+                                2️⃣ Toca <strong>"Contactar"</strong> para enviar el aviso por WhatsApp.
+                                3️⃣ Al anular el turno en SALUS, presiona <strong>"Resuelto en SALUS"</strong>.
+                            </span>
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button
+                            onClick={() => setShowGuiaModal(true)}
+                            style={{
+                                background: '#FFFFFF', border: '1px solid #7DD3FC',
+                                color: '#0369A1', borderRadius: '8px', padding: '5px 12px',
+                                fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer',
+                                transition: 'all 0.15s'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
+                            onMouseLeave={e => e.currentTarget.style.background = '#FFFFFF'}
+                        >
+                            Ver Instructivo Completo
+                        </button>
+                        <button
+                            onClick={() => setShowQuickTips(false)}
+                            style={{
+                                background: 'transparent', border: 'none',
+                                color: '#0284C7', cursor: 'pointer', padding: '4px',
+                                display: 'flex', alignItems: 'center'
+                            }}
+                            title="Ocultar recordatorio rápido"
+                        >
+                            <XCircle size={18} />
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* ═══ BARRA DE BÚSQUEDA Y FILTRO DE ESTADO ═══ */}
             <div style={{
@@ -1044,6 +1131,271 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                         Enviar WhatsApp al Paciente
                                     </>
                                 )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ═══ MODAL GUÍA DE OPERACIÓN PARA OPERADORAS ═══ */}
+            {showGuiaModal && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(15, 23, 42, 0.65)',
+                    backdropFilter: 'blur(4px)',
+                    zIndex: 9999,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '20px'
+                }}>
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '20px',
+                        width: '740px',
+                        maxWidth: '100%',
+                        maxHeight: '90vh',
+                        overflowY: 'auto',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                        border: '1.5px solid #CBD5E1'
+                    }}>
+                        {/* Header del Modal */}
+                        <div style={{
+                            padding: '20px 24px',
+                            borderBottom: '1.5px solid #F1F5F9',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            background: 'linear-gradient(135deg, #0F2942 0%, #1E4E79 100%)',
+                            color: '#FFFFFF',
+                            borderTopLeftRadius: '18px',
+                            borderTopRightRadius: '18px'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{
+                                    width: '38px', height: '38px', borderRadius: '10px',
+                                    background: 'rgba(255, 255, 255, 0.15)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                    <BookOpen size={20} color="#FFFFFF" />
+                                </div>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>
+                                        Guía de Operación: Auditoría de Turnos Duplicados
+                                    </h3>
+                                    <div style={{ fontSize: '0.78rem', color: '#93C5FD', marginTop: '2px' }}>
+                                        Instructivo operativo para Daniela Aguilera, Sofia Olivieri, Virginia Jacques y Erica Leal
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowGuiaModal(false)}
+                                style={{
+                                    background: 'rgba(255, 255, 255, 0.1)',
+                                    border: 'none',
+                                    color: '#FFFFFF',
+                                    borderRadius: '8px',
+                                    padding: '6px',
+                                    cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center'
+                                }}
+                            >
+                                <XCircle size={20} />
+                            </button>
+                        </div>
+
+                        {/* Cuerpo de la Guía */}
+                        <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                            {/* 1. Objetivo */}
+                            <div style={{
+                                background: '#F8FAFC', borderRadius: '14px',
+                                padding: '14px 18px', border: '1px solid #E2E8F0'
+                            }}>
+                                <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F2942', marginBottom: '4px' }}>
+                                    🎯 ¿Por qué es vital esta tarea?
+                                </div>
+                                <p style={{ margin: 0, fontSize: '0.82rem', color: '#475569', lineHeight: 1.5 }}>
+                                    Muchos pacientes reservan <strong>2 o más turnos para el mismo médico</strong> a través de la web "por si acaso", bloqueando horarios a otros pacientes y generando ausentismo. El objetivo de este módulo es <strong>contactar al paciente, definir con qué turno se queda, y anular en SALUS el turno sobrante</strong> para liberar la agenda médica.
+                                </p>
+                            </div>
+
+                            {/* 2. Código de Colores de Triage */}
+                            <div>
+                                <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F2942', marginBottom: '10px' }}>
+                                    🚦 Identificación Visual de Prioridades (Triage)
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' }}>
+                                    <div style={{
+                                        border: '1px solid #FECACA', borderLeft: '4px solid #EF4444',
+                                        borderRadius: '10px', padding: '10px 12px', background: '#FEF2F2'
+                                    }}>
+                                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#991B1B' }}>
+                                            🔴 Mismo Día (Urgente)
+                                        </div>
+                                        <div style={{ fontSize: '0.74rem', color: '#7F1D1D', marginTop: '2px' }}>
+                                            2 horarios reservados en la misma fecha. Prioridad 1 de contacto.
+                                        </div>
+                                    </div>
+
+                                    <div style={{
+                                        border: '1px solid #FDE68A', borderLeft: '4px solid #F59E0B',
+                                        borderRadius: '10px', padding: '10px 12px', background: '#FFFBEB'
+                                    }}>
+                                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#92400E' }}>
+                                            🟡 Pendiente
+                                        </div>
+                                        <div style={{ fontSize: '0.74rem', color: '#78350F', marginTop: '2px' }}>
+                                            Turnos duplicados en fechas separadas sin auditar aún.
+                                        </div>
+                                    </div>
+
+                                    <div style={{
+                                        border: '1px solid #BFDBFE', borderLeft: '4px solid #3B82F6',
+                                        borderRadius: '10px', padding: '10px 12px', background: '#EFF6FF'
+                                    }}>
+                                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#1E40AF' }}>
+                                            🔵 Contactado
+                                        </div>
+                                        <div style={{ fontSize: '0.74rem', color: '#1E3A8A', marginTop: '2px' }}>
+                                            Se le envió WhatsApp al paciente y estamos esperando su respuesta.
+                                        </div>
+                                    </div>
+
+                                    <div style={{
+                                        border: '1px solid #A7F3D0', borderLeft: '4px solid #10B981',
+                                        borderRadius: '10px', padding: '10px 12px', background: '#ECFDF5'
+                                    }}>
+                                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#065F46' }}>
+                                            🟢 Auditado / Resuelto
+                                        </div>
+                                        <div style={{ fontSize: '0.74rem', color: '#047857', marginTop: '2px' }}>
+                                            Turno excedente anulado en SALUS. Caso cerrado.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 3. Paso a Paso del Flujo de Trabajo */}
+                            <div>
+                                <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F2942', marginBottom: '12px' }}>
+                                    📋 Protocolo Paso a Paso para la Operadora
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                                        <div style={{
+                                            width: '26px', height: '26px', borderRadius: '50%',
+                                            background: '#0F2942', color: '#FFFFFF',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            fontWeight: 800, fontSize: '0.78rem', flexShrink: 0
+                                        }}>
+                                            1
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A' }}>
+                                                Identificar y desplegar el caso
+                                            </div>
+                                            <div style={{ fontSize: '0.8rem', color: '#475569' }}>
+                                                Haz clic sobre la tarjeta del paciente. Se abrirá el comparador con los datos de contacto y cada uno de los turnos con su <strong>ID de Visita en SALUS</strong>, fecha y hora.
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                                        <div style={{
+                                            width: '26px', height: '26px', borderRadius: '50%',
+                                            background: '#10B981', color: '#FFFFFF',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            fontWeight: 800, fontSize: '0.78rem', flexShrink: 0
+                                        }}>
+                                            2
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A' }}>
+                                                Hacer clic en "Contactar"
+                                            </div>
+                                            <div style={{ fontSize: '0.8rem', color: '#475569' }}>
+                                                Se abrirá la ventana con el mensaje de WhatsApp redactado automáticamente con el nombre del paciente y las opciones de sus turnos. Puedes revisarlo, personalizarlo y presionar <strong>"Enviar WhatsApp al Paciente"</strong>.
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                                        <div style={{
+                                            width: '26px', height: '26px', borderRadius: '50%',
+                                            background: '#2563EB', color: '#FFFFFF',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            fontWeight: 800, fontSize: '0.78rem', flexShrink: 0
+                                        }}>
+                                            3
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A' }}>
+                                                Ingresar a SALUS y anular el turno duplicado
+                                            </div>
+                                            <div style={{ fontSize: '0.8rem', color: '#475569' }}>
+                                                Una vez acordado con el paciente cuál turno conserva, entra en SALUS con el número de ID de Visita y <strong>anula el turno que no utilizará</strong>, dejando la agenda libre para otro paciente.
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                                        <div style={{
+                                            width: '26px', height: '26px', borderRadius: '50%',
+                                            background: '#059669', color: '#FFFFFF',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            fontWeight: 800, fontSize: '0.78rem', flexShrink: 0
+                                        }}>
+                                            4
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A' }}>
+                                                Marcar como "Resuelto en SALUS"
+                                            </div>
+                                            <div style={{ fontSize: '0.8rem', color: '#475569' }}>
+                                                En el detalle de la tarjeta, presiona el botón verde <strong>"Resuelto en SALUS"</strong>. La tarjeta cambiará a verde y quedará registrada tu firma como operadora responsable.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 4. Tips Adicionales */}
+                            <div style={{
+                                background: '#EFF6FF', borderRadius: '14px',
+                                padding: '12px 16px', border: '1px solid #BFDBFE'
+                            }}>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#1E40AF', marginBottom: '4px' }}>
+                                    💡 Atajos útiles para el equipo:
+                                </div>
+                                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.78rem', color: '#1E3A8A', lineHeight: 1.5 }}>
+                                    <li>Puedes filtrar arriba por <strong>"Pendientes"</strong> para enfocarte solo en los que requieren acción inmediata.</li>
+                                    <li>Si el paciente te responde por WhatsApp, puedes presionar <strong>"Abrir en Chat"</strong> para chatear en tiempo real desde la consola de Contact Center.</li>
+                                    <li>Usa el buscador para localizar a un paciente por su <strong>DNI, apellido o médico</strong> en segundos.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        {/* Footer del Modal */}
+                        <div style={{
+                            padding: '16px 24px',
+                            borderTop: '1px solid #F1F5F9',
+                            display: 'flex',
+                            justifyContent: 'flex-end',
+                            background: '#F8FAFC',
+                            borderBottomLeftRadius: '18px',
+                            borderBottomRightRadius: '18px'
+                        }}>
+                            <button
+                                onClick={() => setShowGuiaModal(false)}
+                                style={{
+                                    padding: '8px 20px', borderRadius: '10px',
+                                    background: '#0F2942', color: '#FFFFFF',
+                                    border: 'none', cursor: 'pointer',
+                                    fontSize: '0.84rem', fontWeight: 800
+                                }}
+                            >
+                                Entendido, volver a la auditoría
                             </button>
                         </div>
                     </div>
