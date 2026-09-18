@@ -100,7 +100,10 @@ export default function ContactCenterChatConsole({
         return (chat.contactName || '').toLowerCase().includes(q) 
             || (chat.phone || '').includes(q)
             || (chat.id || '').toLowerCase().includes(q) 
-            || (chat.lastMessage || '').toLowerCase().includes(q);
+            || (chat.lastMessage || '').toLowerCase().includes(q)
+            || (chat.customFields?.dni || '').toLowerCase().includes(q)
+            || (chat.customFields?.pacienteNombre || '').toLowerCase().includes(q)
+            || (chat.customFields?.obraSocial || '').toLowerCase().includes(q);
     });
 
     const handleSend = (e) => {

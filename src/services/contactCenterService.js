@@ -637,8 +637,26 @@ export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
             realChatsMap[normPhone].push(msg);
         });
 
-        // Clonar chats existentes
-        let mergedChats = [...existingChats];
+        function formatRelativeTime(dateStr) {
+            if (!dateStr) return 'Reciente';
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return 'Reciente';
+            const diffMin = Math.round((Date.now() - d.getTime()) / 60000);
+            if (diffMin < 1) return 'hace instantes';
+            if (diffMin < 60) return `hace ${diffMin} min`;
+            const diffHours = Math.round(diffMin / 60);
+            if (diffHours < 24) return `hace ${diffHours} h`;
+            return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+        }
+
+        // Clonar chats existentes asignando fecha base antigua para que los reales queden arriba
+        let mergedChats = existingChats.map(c => ({
+            ...c,
+            lastMessageTimestamp: c.lastMessageTimestamp || (Date.now() - 86400000 * 3)
+        }));
+
+        // Construir chats reales
+        const realChats = [];
 
         // Para cada teléfono real detectado
         Object.entries(realChatsMap).forEach(([phone, messages]) => {
@@ -646,6 +664,8 @@ export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
             const chronological = [...messages].reverse();
             const lastMsg = messages[0]; // el más reciente
             const conv = convByPhone[phone];
+            const lastDateRaw = conv?.last_message_at || lastMsg.created_at;
+            const lastDateMs = new Date(lastDateRaw).getTime();
 
             const existingIdx = mergedChats.findIndex(c => normalizeArgentinePhone(c.phone) === phone);
 
@@ -689,17 +709,21 @@ export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
                 pedidoMedicoFoto: lastMsg.media_type !== 'text' ? 'Adjunto en chat' : 'No adjuntado'
             };
 
+            const computedContactName = conv?.nombre_completo || lastMsg.sender_name || `Paciente (${phone.slice(-4)})`;
+
             if (existingIdx >= 0) {
                 // Actualizar chat existente con mensajes reales y datos de conversación
                 mergedChats[existingIdx] = {
                     ...mergedChats[existingIdx],
+                    contactName: computedContactName,
                     status: conv?.status || mergedChats[existingIdx].status,
                     assignedTo: conv?.assigned_agent_id || mergedChats[existingIdx].assignedTo,
                     assignedToName: conv?.assigned_agent_name || mergedChats[existingIdx].assignedToName,
                     assignedAt: conv?.assigned_at || mergedChats[existingIdx].assignedAt,
                     botActive: conv?.bot_active ?? mergedChats[existingIdx].botActive,
                     lastMessage: lastMsg.content || `[${lastMsg.media_type}]`,
-                    timeAgo: 'hace instantes',
+                    lastMessageTimestamp: lastDateMs,
+                    timeAgo: formatRelativeTime(lastDateRaw),
                     lastResponder: lastRespName,
                     lastResponderRole: lastRespRole,
                     customFields: {
@@ -712,14 +736,15 @@ export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
                 // Crear nueva conversación en vivo
                 const newRealChat = {
                     id: 'REAL_' + phone.slice(-6),
-                    contactName: conv?.nombre_completo || lastMsg.sender_name || `Paciente (${phone.slice(-4)})`,
+                    contactName: computedContactName,
                     phone: phone,
                     channel: 'WHATSAPP',
                     channelNumber: '5492645825637',
                     status: conv?.status || 'sin_asignar',
                     unread: true,
                     lastMessage: lastMsg.content || `[${lastMsg.media_type}]`,
-                    timeAgo: 'hace un momento',
+                    lastMessageTimestamp: lastDateMs,
+                    timeAgo: formatRelativeTime(lastDateRaw),
                     department: 'Atención al cliente',
                     assignedTo: conv?.assigned_agent_id || null,
                     assignedToName: conv?.assigned_agent_name || null,
@@ -727,18 +752,24 @@ export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
                     botActive: conv?.bot_active ?? true,
                     lastResponder: lastRespName,
                     lastResponderRole: lastRespRole,
-                    lastResponseAt: 'hace un momento',
+                    lastResponseAt: formatRelativeTime(lastDateRaw),
                     chatbot: '#triage-sanatorio',
                     avatarColor: '#059669',
                     tags: ['En Vivo', 'WhatsApp Real'],
                     customFields: patientFields,
                     messages: formattedMessages
                 };
-                mergedChats = [newRealChat, ...mergedChats];
+                realChats.push(newRealChat);
             }
         });
 
-        return mergedChats;
+        // Unir chats reales y existentes
+        let allChats = [...realChats, ...mergedChats];
+
+        // ORDENAMIENTO CRÍTICO: Los chats con interacción más reciente SIEMPRE van al principio
+        allChats.sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
+
+        return allChats;
     } catch (err) {
         console.warn('Error al mezclar mensajes reales:', err);
         return existingChats;

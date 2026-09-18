@@ -46,10 +46,16 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             const loaded = await fetchLiveAndDemoChats(INITIAL_CHATS);
             setChats(loaded);
             
-            // Priorizar siempre las conversaciones reales de WhatsApp sobre los demos
+            // Priorizar siempre el chat de Lucas Marinero o el chat real más reciente sobre los demos
+            const lucasChat = loaded.find(c => (c.phone || '').includes('5438114') || (c.contactName || '').toLowerCase().includes('marinero'));
             const firstRealChat = loaded.find(c => c.id.startsWith('REAL_'));
-            if (firstRealChat && (activeChatId === '3CMI20' || !loaded.some(c => c.id === activeChatId))) {
-                setActiveChatId(firstRealChat.id);
+
+            if (!activeChatId || activeChatId === '3CMI20' || !loaded.some(c => c.id === activeChatId)) {
+                if (lucasChat) {
+                    setActiveChatId(lucasChat.id);
+                } else if (firstRealChat) {
+                    setActiveChatId(firstRealChat.id);
+                }
             }
         } catch (err) {
             console.warn('Error cargando chats:', err);
