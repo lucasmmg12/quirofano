@@ -487,6 +487,7 @@ Movimientos de Cama: ${traslados.length}`;
                 width: '1100px',
                 maxWidth: '96%',
                 maxHeight: '92vh',
+                height: '92vh',
                 display: 'flex',
                 flexDirection: 'column',
                 boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
@@ -815,6 +816,7 @@ Movimientos de Cama: ${traslados.length}`;
                 {/* ─── CUERPO Y CONTENIDO DE LAS PESTAÑAS ─── */}
                 <div style={{
                     flex: 1,
+                    minHeight: 0,
                     overflowY: 'auto',
                     padding: '20px 24px',
                     background: '#FFFFFF'

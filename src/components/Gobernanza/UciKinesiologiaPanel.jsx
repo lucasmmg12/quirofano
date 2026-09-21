@@ -198,13 +198,37 @@ export default function UciKinesiologiaPanel({ nhc = null, patient = null, recor
 
             // ── C. Weaning y Extubación (Protocolos 581 y 582) ──
             if (r.protocolo_id === 581 || r.protocolo_id === 582 || param.includes('wean') || param.includes('extub') || param.includes('pre')) {
+                const paramNorm = (r.parametro || '').toLowerCase().trim();
+                let valorFormateado = r.valor_combo || r.valor_texto || '';
+
+                if (!valorFormateado) {
+                    if (paramNorm === 'si/no' || paramNorm.includes('si/no')) {
+                        valorFormateado = r.valor_numerico === 1 ? 'Sí (Apto)' : 'No (No cumple)';
+                    } else if (paramNorm === 'fecha') {
+                        valorFormateado = displayLabel;
+                    } else if (paramNorm.includes('hora')) {
+                        valorFormateado = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} hs`;
+                    } else if (r.valor_numerico !== null && r.valor_numerico !== undefined) {
+                        valorFormateado = String(r.valor_numerico);
+                        if (paramNorm === 'fc') valorFormateado += ' lpm';
+                        else if (paramNorm === 'fr') valorFormateado += ' rpm';
+                        else if (paramNorm === 'tas') valorFormateado += ' mmHg';
+                        else if (paramNorm.includes('spo2')) valorFormateado += '%';
+                        else if (r.unidades) valorFormateado += ` ${r.unidades}`;
+                    }
+                }
+
                 weaningRecords.push({
+                    id: r.id_registro_salus || r.id,
                     fecha: d,
                     fechaLabel: displayLabel,
-                    protocolo: r.protocolo_nombre,
-                    parametro: r.parametro,
-                    valor: r.valor_combo || r.valor_texto || (r.valor_numerico !== null ? String(r.valor_numerico) : ''),
-                    profesional: r.profesional
+                    protocolo: r.protocolo_nombre || 'Desvinculación ARM',
+                    grupo: r.grupo_nombre || 'Protocolo de Desvinculación',
+                    parametro: r.parametro || 'Evaluación',
+                    valor: valorFormateado || (r.valor_numerico !== null ? String(r.valor_numerico) : '-'),
+                    esSiNo: paramNorm === 'si/no' || paramNorm.includes('si/no'),
+                    esPositivo: r.valor_numerico === 1 || String(r.valor_texto || '').toLowerCase() === 'si',
+                    profesional: r.profesional || 'Kinesiología UCI'
                 });
             }
 
@@ -751,27 +775,130 @@ export default function UciKinesiologiaPanel({ nhc = null, patient = null, recor
             {/* ───────────────────────────────────────────────────────── */}
             {activeSubView === 'weaning' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {/* 1. REGISTROS ESPECÍFICOS DEL PACIENTE (PRIORIDAD CLÍNICA) */}
+                    {timelineWeaning.length > 0 ? (
+                        <div style={{
+                            background: '#FFFFFF',
+                            borderRadius: '12px',
+                            border: '1px solid #E2E8F0',
+                            padding: '18px',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <Activity size={18} style={{ color: '#2563EB' }} />
+                                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#1E293B' }}>
+                                        Registros de Desvinculación de ARM (Weaning) y Extubación
+                                    </h4>
+                                </div>
+                                <span style={{
+                                    background: '#EFF6FF',
+                                    color: '#1D4ED8',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 800,
+                                    padding: '3px 10px',
+                                    borderRadius: '12px',
+                                    border: '1px solid #BFDBFE'
+                                }}>
+                                    {timelineWeaning.length} registro{timelineWeaning.length > 1 ? 's' : ''} cargados en SALUS
+                                </span>
+                            </div>
+
+                            <div style={{ border: '1px solid #E2E8F0', borderRadius: '8px', overflow: 'hidden' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                                    <thead>
+                                        <tr style={{ background: '#F8FAFC', color: '#475569', textAlign: 'left', borderBottom: '1px solid #E2E8F0' }}>
+                                            <th style={{ padding: '9px 12px', width: '140px' }}>Fecha y Hora</th>
+                                            <th style={{ padding: '9px 12px' }}>Fase / Criterio Evaluado</th>
+                                            <th style={{ padding: '9px 12px', width: '150px' }}>Parámetro</th>
+                                            <th style={{ padding: '9px 12px', width: '160px' }}>Valor / Dictamen</th>
+                                            <th style={{ padding: '9px 12px', width: '180px' }}>Profesional</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {timelineWeaning.map((w, idx) => (
+                                            <tr key={idx} style={{ borderTop: idx > 0 ? '1px solid #F1F5F9' : 'none', background: idx % 2 === 0 ? '#FFFFFF' : '#FAFAFA' }}>
+                                                <td style={{ padding: '8px 12px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
+                                                    {w.fechaLabel}
+                                                </td>
+                                                <td style={{ padding: '8px 12px' }}>
+                                                    <div style={{ fontWeight: 700, color: '#1E293B' }}>{w.grupo}</div>
+                                                    <div style={{ fontSize: '0.68rem', color: '#2563EB', marginTop: '2px' }}>{w.protocolo}</div>
+                                                </td>
+                                                <td style={{ padding: '8px 12px', color: '#475569', fontWeight: 600 }}>
+                                                    {w.parametro}
+                                                </td>
+                                                <td style={{ padding: '8px 12px' }}>
+                                                    <span style={{
+                                                        display: 'inline-block',
+                                                        padding: '3px 8px',
+                                                        borderRadius: '6px',
+                                                        fontWeight: 700,
+                                                        fontSize: '0.74rem',
+                                                        background: w.esSiNo 
+                                                            ? (w.esPositivo ? '#DCFCE7' : '#FEE2E2')
+                                                            : '#F1F5F9',
+                                                        color: w.esSiNo
+                                                            ? (w.esPositivo ? '#15803D' : '#DC2626')
+                                                            : '#0F172A',
+                                                        border: w.esSiNo
+                                                            ? (w.esPositivo ? '1px solid #86EFAC' : '1px solid #FECACA')
+                                                            : '1px solid #E2E8F0'
+                                                    }}>
+                                                        {w.valor}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '8px 12px', color: '#64748B', fontSize: '0.72rem' }}>
+                                                    {w.profesional}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    ) : (
+                        <div style={{
+                            padding: '24px 20px',
+                            background: '#F8FAFC',
+                            border: '1.5px dashed #CBD5E1',
+                            borderRadius: '12px',
+                            color: '#64748B',
+                            fontSize: '0.82rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px'
+                        }}>
+                            <AlertTriangle size={20} style={{ color: '#94A3B8', flexShrink: 0 }} />
+                            <div>
+                                <strong style={{ color: '#334155', display: 'block', marginBottom: '2px' }}>Sin registros de desvinculación cargados</strong>
+                                <span>No se encontraron cargas específicas de los protocolos de weaning (581) ni extubación (582) en SALUS para este paciente.</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 2. GUÍA INSTITUCIONAL Y PROTOCOLO DE REFERENCIA */}
                     <div style={{
                         background: '#FFFFFF',
                         borderRadius: '12px',
                         border: '1px solid #E2E8F0',
-                        padding: '18px',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
+                        padding: '16px 20px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
                     }}>
-                        <h4 style={{ margin: '0 0 14px 0', fontSize: '0.92rem', fontWeight: 800, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <h4 style={{ margin: '0 0 12px 0', fontSize: '0.86rem', fontWeight: 800, color: '#334155', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <CheckCircle2 size={16} style={{ color: '#059669' }} />
-                            Protocolo de 3 Pasos para Desvinculación de ARM (Weaning)
+                            Protocolo Institucional de 3 Pasos para Desvinculación de ARM (Weaning)
                         </h4>
 
                         {/* Fases */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
                             {/* Paso 1: Criterios Clínicos */}
-                            <div style={{ background: '#F8FAFC', borderRadius: '10px', padding: '14px', border: '1px solid #E2E8F0' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                            <div style={{ background: '#F8FAFC', borderRadius: '10px', padding: '12px 14px', border: '1px solid #E2E8F0' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                                     <span style={{ background: '#2563EB', color: '#FFFFFF', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 800 }}>1</span>
                                     <strong style={{ fontSize: '0.8rem', color: '#1E293B' }}>Criterios de Aptitud (PRE)</strong>
                                 </div>
-                                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.74rem', color: '#475569', lineHeight: 1.6 }}>
+                                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.73rem', color: '#475569', lineHeight: 1.5 }}>
                                     <li>Causa de falla respiratoria resuelta o en mejoría.</li>
                                     <li>PaFiO2 &gt; 150 con PEEP ≤ 8 cmH2O.</li>
                                     <li>Estado neurológico: RASS entre -2 y +1 (Vigil).</li>
@@ -780,12 +907,12 @@ export default function UciKinesiologiaPanel({ nhc = null, patient = null, recor
                             </div>
 
                             {/* Paso 2: Prueba Espontánea */}
-                            <div style={{ background: '#F8FAFC', borderRadius: '10px', padding: '14px', border: '1px solid #E2E8F0' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                            <div style={{ background: '#F8FAFC', borderRadius: '10px', padding: '12px 14px', border: '1px solid #E2E8F0' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                                     <span style={{ background: '#D97706', color: '#FFFFFF', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 800 }}>2</span>
                                     <strong style={{ fontSize: '0.8rem', color: '#1E293B' }}>Prueba Espontánea (30-120 min)</strong>
                                 </div>
-                                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.74rem', color: '#475569', lineHeight: 1.6 }}>
+                                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.73rem', color: '#475569', lineHeight: 1.5 }}>
                                     <li>Tubo en T o Presión Soporte ≤ 7 cmH2O.</li>
                                     <li>Índice de Tobin (FR / Vt) &lt; 105.</li>
                                     <li>Monitoreo de FC, TA y SatO2 sin signos de fatiga.</li>
@@ -794,12 +921,12 @@ export default function UciKinesiologiaPanel({ nhc = null, patient = null, recor
                             </div>
 
                             {/* Paso 3: Criterios de Extubación */}
-                            <div style={{ background: '#F8FAFC', borderRadius: '10px', padding: '14px', border: '1px solid #E2E8F0' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                            <div style={{ background: '#F8FAFC', borderRadius: '10px', padding: '12px 14px', border: '1px solid #E2E8F0' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                                     <span style={{ background: '#059669', color: '#FFFFFF', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 800 }}>3</span>
                                     <strong style={{ fontSize: '0.8rem', color: '#1E293B' }}>Extubación y Vía Aérea</strong>
                                 </div>
-                                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.74rem', color: '#475569', lineHeight: 1.6 }}>
+                                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.73rem', color: '#475569', lineHeight: 1.5 }}>
                                     <li>Fuerza de tos efectiva: <strong>PeMax &gt; 40 cmH2O</strong>.</li>
                                     <li>Cantidad y manejo de secreciones bronquiales.</li>
                                     <li>Uso protocolizado de VNI / CNAF preventivo post-extubación.</li>
@@ -807,55 +934,6 @@ export default function UciKinesiologiaPanel({ nhc = null, patient = null, recor
                                 </ul>
                             </div>
                         </div>
-
-                        {/* Registros de Weaning del Paciente */}
-                        {timelineWeaning.length > 0 ? (
-                            <div style={{ marginTop: '18px' }}>
-                                <h5 style={{ margin: '0 0 10px 0', fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
-                                    REGISTROS DE PROTOCOLOS DE DESVINCULACIÓN CARGADOS
-                                </h5>
-                                <div style={{ border: '1px solid #E2E8F0', borderRadius: '8px', overflow: 'hidden' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem' }}>
-                                        <thead>
-                                            <tr style={{ background: '#F1F5F9', color: '#475569', textAlign: 'left' }}>
-                                                <th style={{ padding: '8px 12px' }}>Fecha/Hora</th>
-                                                <th style={{ padding: '8px 12px' }}>Protocolo</th>
-                                                <th style={{ padding: '8px 12px' }}>Criterio / Parámetro</th>
-                                                <th style={{ padding: '8px 12px' }}>Valor Registrado</th>
-                                                <th style={{ padding: '8px 12px' }}>Profesional</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {timelineWeaning.map((w, idx) => (
-                                                <tr key={idx} style={{ borderTop: '1px solid #F1F5F9' }}>
-                                                    <td style={{ padding: '8px 12px', fontWeight: 600 }}>{w.fechaLabel}</td>
-                                                    <td style={{ padding: '8px 12px', color: '#2563EB' }}>{w.protocolo}</td>
-                                                    <td style={{ padding: '8px 12px' }}>{w.parametro}</td>
-                                                    <td style={{ padding: '8px 12px', fontWeight: 700, color: '#1E293B' }}>{w.valor}</td>
-                                                    <td style={{ padding: '8px 12px', color: '#64748B' }}>{w.profesional || '-'}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        ) : (
-                            <div style={{
-                                marginTop: '16px',
-                                padding: '14px 16px',
-                                background: '#F8FAFC',
-                                border: '1px dashed #CBD5E1',
-                                borderRadius: '8px',
-                                color: '#64748B',
-                                fontSize: '0.78rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '10px'
-                            }}>
-                                <AlertTriangle size={16} style={{ color: '#94A3B8', flexShrink: 0 }} />
-                                <span>Sin registros específicos de protocolos de weaning (581) ni extubación (582) cargados para este paciente.</span>
-                            </div>
-                        )}
                     </div>
                 </div>
             )}

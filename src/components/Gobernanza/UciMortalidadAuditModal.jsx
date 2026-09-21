@@ -1414,6 +1414,7 @@ export default function UciMortalidadAuditModal({
                 width: '100%',
                 maxWidth: '1240px',
                 maxHeight: '94vh',
+                height: '92vh',
                 display: 'flex',
                 flexDirection: 'column',
                 boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
@@ -1428,7 +1429,8 @@ export default function UciMortalidadAuditModal({
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    background: '#F8FAFC'
+                    background: '#F8FAFC',
+                    flexShrink: 0
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <div style={{
@@ -1533,7 +1535,7 @@ export default function UciMortalidadAuditModal({
                     /* ═══════════════════════════════════════════════════════════ */
                     /* MODO PACIENTE INDIVIDUAL: DOSSIER CLÍNICO PROFUNDO (SIN KPIS) */
                     /* ═══════════════════════════════════════════════════════════ */
-                    <div style={{ flex: 1, overflowY: 'auto', padding: '18px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '18px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                         {/* 1. Tarjeta Principal del Paciente */}
                         <div style={{
                             background: '#FFFFFF',
@@ -2154,7 +2156,7 @@ export default function UciMortalidadAuditModal({
                         </div>
 
                         {/* ─── TABLA DE PACIENTES FALLECIDOS ─── */}
-                        <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 20px 24px' }}>
+                        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 24px 20px 24px' }}>
                             {loadingClinical && (
                                 <div style={{ padding: '8px 12px', background: '#F0FDF4', color: '#166534', fontSize: '0.75rem', borderRadius: '6px', margin: '12px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <Activity size={14} className="animate-spin" />
@@ -2456,7 +2458,8 @@ export default function UciMortalidadAuditModal({
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     fontSize: '0.75rem',
-                    color: '#64748B'
+                    color: '#64748B',
+                    flexShrink: 0
                 }}>
                     <div>
                         <strong>Criterio de Auditoría Médica:</strong> La mortalidad &lt; 48 hs es un indicador centinela de severidad al ingreso (proxy APACHE II). No imputable a fallo terapéutico intra-UCI cuando se trata de shock irreversible o cuadros agónicos.
