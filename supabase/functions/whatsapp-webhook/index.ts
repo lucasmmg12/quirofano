@@ -865,7 +865,7 @@ async function handleChatbotTriage(
         };
         nextStage = 'esperando_agente';
 
-        replyText = `¡Muchas gracias *${extracted.nombre_completo || fullName}*! ✅ Registramos tus datos correctamente.\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) se pondrá en contacto en breve para coordinar tu atención. ¡Aguardá unos instantes! 👩‍⚕️`;
+        replyText = `¡Muchas gracias *${extracted.nombre_completo || fullName}*! ✅ Registramos tus datos correctamente.\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contestando en breve para coordinar tu atención. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
     } 
     // =============================================
     // FLUJO 2: INTENCIÓN DETECTADA DIRECTAMENTE: TURNO / REPROGRAMACIÓN
@@ -882,13 +882,13 @@ async function handleChatbotTriage(
 
         if (isExistingPatient) {
             // AHORRO MÁXIMO DE MENSAJES: Paciente reconocido + Turno directo sin menú ambiguo
-            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos con cobertura *${os}*.\n\nCon gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\nPara agilizar tu solicitud en un solo paso, por favor indícanos:\n• ¿Tienes preferencia de días u horarios (mañana o tarde)?\n• ¿Es una primera consulta o control?\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te asignará el turno disponible en agenda. 👩‍⚕️`;
+            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos con cobertura *${os}*.\n\nCon gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\nPara agilizar tu solicitud en un solo paso, por favor indícanos:\n• ¿Tienes preferencia de días u horarios (mañana o tarde)?\n• ¿Es una primera consulta o control?\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contestando en breve para asignarte el turno disponible en agenda. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
         } else {
             // Paciente nuevo con intención de turno: pedir datos en un único mensaje
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nCon gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\nComo no registramos atenciones previas con este número, para abrir tu ficha y coordinar tu turno en un solo mensaje, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n• *Preferencia de día y horario* (mañana o tarde)\n\nUna de nuestras asesoras te asignará el turno a la brevedad. 👩‍⚕️`;
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nCon gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\nComo no registramos atenciones previas con este número, para abrir tu ficha y coordinar tu turno en un solo mensaje, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n• *Preferencia de día y horario* (mañana o tarde)\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contestando en breve para asignarte el turno. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
             updates.bot_stage = 'esperando_datos_nuevo';
             updates.bot_active = true;
             nextStage = 'esperando_datos_nuevo';
@@ -901,12 +901,12 @@ async function handleChatbotTriage(
         updates.motivo_consulta = 'Autorizaciones de Estudios / Cobertura';
 
         if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥\n\nCon gusto te ayudamos con la *autorización* de tu estudio o práctica.\n\nPara gestionarlo en un solo paso y ahorrar tiempo, por favor envíanos:\n📸 *Una foto clara de la Orden Médica*\n🔢 *Confirmación de tu DNI*\n\n*(Recuerda que los pedidos médicos tienen vigencia de 30 días).* Nuestras asesoras lo auditarán y te responderán a la brevedad. 👇`;
+            replyText = `¡Hola *${fullName}*! 🏥\n\nCon gusto te ayudamos con la *autorización* de tu estudio o práctica.\n\nPara gestionarlo en un solo paso y ahorrar tiempo, por favor envíanos:\n📸 *Una foto clara de la Orden Médica*\n🔢 *Confirmación de tu DNI*\n\n*(Recuerda que los pedidos médicos tienen vigencia de 30 días).* Nuestras asesoras lo auditarán y te responderán a la brevedad. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👇`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
         } else {
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nCon gusto te ayudamos con tu trámite de *autorización*.\n\nPor favor envíanos en tus próximos mensajes:\n📸 *Foto clara de la Orden Médica*\n🔢 *Tu DNI, Nombre Completo y Obra Social*\n\nNuestro equipo tomará tu solicitud a la brevedad. 👇`;
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nCon gusto te ayudamos con tu trámite de *autorización*.\n\nPor favor envíanos en tus próximos mensajes:\n📸 *Foto clara de la Orden Médica*\n🔢 *Tu DNI, Nombre Completo y Obra Social*\n\nNuestro equipo tomará tu solicitud a la brevedad. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👇`;
             updates.bot_stage = 'esperando_datos_nuevo';
             updates.bot_active = true;
             nextStage = 'esperando_datos_nuevo';
@@ -916,7 +916,7 @@ async function handleChatbotTriage(
     // FLUJO 4: INFORMACIÓN GENERAL / SEDES / WEB
     // =============================================
     else if (analysis.intent === 'info') {
-        replyText = `Para consultar información institucional, cartilla de profesionales, sedes y servicios de Sanatorio Argentino, puedes ingresar a nuestro sitio web oficial:\n\n🌐 *www.sanatorioargentino.com.ar*\n\nSi necesitas asistencia personalizada, aguarda un momento y una de nuestras asesoras te responderá. ¡Muchas gracias!`;
+        replyText = `Para consultar información institucional, cartilla de profesionales, sedes y servicios de Sanatorio Argentino, puedes ingresar a nuestro sitio web oficial:\n\n🌐 *www.sanatorioargentino.com.ar*\n\nSi necesitas asistencia personalizada, aguarda un momento y una de nuestras asesoras te responderá. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. ¡Muchas gracias!`;
         updates.motivo_consulta = 'Información General / Web';
         updates.status = 'sin_asignar';
         updates.bot_active = false;
