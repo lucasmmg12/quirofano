@@ -691,9 +691,9 @@ function isContactCenterOpen(now: Date = new Date()): boolean {
 function getAgentHandoffNotice(): string {
     const open = isContactCenterOpen();
     if (open) {
-        return `👩‍⚕️ Una de nuestras asesoras te responderá a la brevedad dentro del horario habitual (Lun a Vie 7:30 a 21:00 hs / Sáb 8:00 a 12:00 hs). El bot quedará en pausa.\n\n🌐 https://www.sanatorioargentino.com.ar/`;
+        return `👩‍⚕️ Un asesor te responderá a la brevedad. El bot quedará en pausa.`;
     } else {
-        return `🕒 Estamos fuera del horario de atención (Lun a Vie 7:30 a 21:00 hs / Sáb 8:00 a 12:00 hs). El bot queda en pausa y te responderemos al inicio del próximo día hábil.\n🚨 *Guardias 24 hs:* Sede 01 (San Luis 432 O) activa.\n\n🌐 https://www.sanatorioargentino.com.ar/`;
+        return `🕒 Nuestro horario de atención es de lunes a viernes de 7:30 a 21:00 hs y sábados de 8:00 a 12:00 hs. El bot queda en pausa y un asesor te responderá al inicio del próximo día hábil.\n🚨 *Guardias 24 hs:* Sede 01 (San Luis 432 O) activa.`;
     }
 }
 
@@ -1082,7 +1082,15 @@ async function handleChatbotTriage(
 
     // Datos del paciente identificado
     const isExistingPatient = !!(paciente || conv?.dni);
-    const fullName = (paciente?.nombre || conv?.nombre_completo || senderName || 'Paciente').trim();
+    const rawFullName = (paciente?.nombre || conv?.nombre_completo || senderName || 'Paciente').trim();
+    let displayName = rawFullName;
+    if (rawFullName.includes(',')) {
+        const parts = rawFullName.split(',').map(p => p.trim()).filter(Boolean);
+        if (parts.length === 2) {
+            displayName = `${parts[1]} ${parts[0]}`;
+        }
+    }
+    const fullName = displayName;
     const os = (paciente?.coseguro || conv?.obra_social || 'Particular / A confirmar').trim();
 
     if (isExistingPatient) {
@@ -1170,7 +1178,7 @@ async function handleChatbotTriage(
             };
             nextStage = 'esperando_agente';
 
-            replyText = `¡Muchas gracias *${paciente.nombre}*! ✅ Te encontramos en nuestro sistema con DNI *${paciente.dni}* y cobertura *${paciente.coseguro || 'Particular'}*.\n\n${getAgentHandoffNotice()}`;
+            replyText = `¡Muchas gracias *${paciente.nombre}*! ✅\n\n${getAgentHandoffNotice()}`;
         } 
         else if (candidateDni || cleanText.length > 5) {
             const extracted = await extractPatientVariables(cleanText, candidateDni);
@@ -1187,10 +1195,10 @@ async function handleChatbotTriage(
             };
             nextStage = 'esperando_agente';
 
-            replyText = `¡Muchas gracias *${resolvedName}*! ✅ Registramos tus datos${candidateDni ? ` con DNI *${candidateDni}*` : ''}.\n\n${getAgentHandoffNotice()}`;
+            replyText = `¡Muchas gracias *${resolvedName}*! ✅\n\n${getAgentHandoffNotice()}`;
         } 
         else {
-            replyText = `Para poder encontrar tu historia clínica o darte de alta en nuestro sistema, necesitamos tu número de *DNI* (sin puntos ni letras) y tu *Nombre Completo*. Por favor indícanoslo para que una de nuestras asesoras pueda atenderte.\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/`;
+            replyText = `Para poder encontrar tu historia clínica o darte de alta, necesitamos tu número de *DNI* (sin puntos ni letras) y tu *Nombre Completo*.`;
             nextStage = 'esperando_dni';
         }
     } 
@@ -1228,7 +1236,7 @@ async function handleChatbotTriage(
             updates.bot_active = false;
             nextStage = 'esperando_agente';
         } else {
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n${infoChequeo}\n\nPara que nuestras asesoras puedan abrir tu ficha y coordinar la fecha del circuito, por favor indícanos en un solo mensaje:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n• *Sede de preferencia* (Sede Santa Fe o Sede San Luis)\n\nEl bot quedará en pausa una vez recibidos tus datos.\n\n🌐 Más info: https://www.sanatorioargentino.com.ar/`;
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n${infoChequeo}\n\nPara abrir tu ficha y coordinar la fecha del circuito, por favor indícanos en un solo mensaje:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n• *Sede de preferencia* (Sede Santa Fe o Sede San Luis)\n\nEl bot quedará en pausa una vez recibidos tus datos.`;
             updates.bot_stage = 'esperando_datos_nuevo';
             updates.bot_active = true;
             nextStage = 'esperando_datos_nuevo';
@@ -1243,21 +1251,18 @@ async function handleChatbotTriage(
 
         const infoPrevenir = `El *Programa Prevenir* de Sanatorio Argentino, a través del convenio con *Obra Social Provincia (OSP)*, tiene como finalidad la *detección precoz del cáncer de mama y cáncer de cuello uterino*.\n\n` +
             `🩺 *¿Qué incluye el programa?*\n` +
-            `• Coordinación integrada de tu cita en un solo paso (se otorga conjuntamente consulta ginecológica y mamografía)\n` +
-            `• Controles periódicos de salud preventiva\n` +
-            `• Unificación en la entrega de estudios y recomendaciones médicas personalizadas\n` +
-            `• Atención en *Sede Santa Fe* (Santa Fe 263 Este)\n\n` +
-            `🌐 *Podés ver toda la información detallada del programa aquí:*\n` +
-            `👉 https://www.sanatorioargentino.com.ar/especialidades-medicas/programa-prevenir.html\n\n` +
-            `Para este programa no es necesario elegir un médico en particular, ya que nuestro equipo del Contact Center coordina las citas y especialistas del circuito por vos.`;
+            `• Coordinación integrada de consulta ginecológica y mamografía\n` +
+            `• Controles periódicos en *Sede Santa Fe* (Santa Fe 263 Este)\n\n` +
+            `👉 Más info: https://www.sanatorioargentino.com.ar/especialidades-medicas/programa-prevenir.html\n\n` +
+            `Nuestro equipo coordina los turnos del programa por vos.`;
 
         if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos con cobertura *${os}*.\n\n${infoPrevenir}\n\n${getAgentHandoffNotice()}`;
+            replyText = `¡Hola *${fullName}*! 🏥\n\n${infoPrevenir}\n\n${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
         } else {
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n${infoPrevenir}\n\nPara abrir tu ficha y coordinar tu turno en un solo mensaje, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Confirmación de Obra Social Provincia (OSP)* u otra cobertura\n\nEl bot quedará en pausa una vez recibidos tus datos.\n\n🌐 Más info: https://www.sanatorioargentino.com.ar/`;
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n${infoPrevenir}\n\nPara abrir tu ficha y coordinar tu turno en un solo mensaje, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Confirmación de Obra Social Provincia (OSP)* u otra cobertura\n\nEl bot quedará en pausa una vez recibidos tus datos.`;
             updates.bot_stage = 'esperando_datos_nuevo';
             updates.bot_active = true;
             nextStage = 'esperando_datos_nuevo';
@@ -1517,11 +1522,11 @@ async function handleChatbotTriage(
 
         if (turnoOnlineProximo) {
             replyText = `¡Hola *${fullName}*! 🏥\n\n` +
-                `📅 *Vemos en el sistema tu turno agendado online:*\n` +
+                `📅 *Tenés un turno online agendado:*\n` +
                 `• *Profesional:* ${turnoOnlineProximo.profesional}\n` +
                 `• *Fecha y Hora:* ${turnoOnlineProximo.fecha} a las ${turnoOnlineProximo.hora} hs\n` +
                 `• *Agenda:* ${turnoOnlineProximo.agenda}\n\n` +
-                `¿Deseás confirmar, reprogramar o consultar sobre este turno?\n\n${getAgentHandoffNotice()}`;
+                `¿Deseás confirmar, reprogramar o cancelar tu turno?\n\n${getAgentHandoffNotice()}`;
             updates.motivo_consulta = `Turno Online: ${turnoOnlineProximo.profesional} (${turnoOnlineProximo.fecha} ${turnoOnlineProximo.hora} hs)`;
             updates.medico_o_especialidad = turnoOnlineProximo.profesional;
             updates.status = 'sin_asignar';
@@ -1546,7 +1551,7 @@ async function handleChatbotTriage(
         updates.motivo_consulta = 'Autorizaciones de Estudios / Cobertura';
 
         if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥\n\nCon gusto te ayudamos con la *autorización* de tu estudio o práctica.\n\nPara gestionarlo en un solo paso y ahorrar tiempo, por favor envíanos:\n📸 *Una foto clara de la Orden Médica*\n🔢 *Confirmación de tu DNI*\n\n*(Recordá que los pedidos médicos tienen vigencia de 30 días).* ${getAgentHandoffNotice()}`;
+            replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos con la *autorización* de tu orden médica.\n\nPor favor envíanos:\n📸 *Foto clara de la orden médica*\n🔢 *Confirmación de tu DNI*\n\n*(Vigencia de órdenes: 30 días).* ${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
@@ -1561,14 +1566,14 @@ async function handleChatbotTriage(
     // FLUJO: DERIVACIÓN DIRECTA A AGENTE HUMANO
     // =============================================
     else if (analysis.intent === 'derivacion_agente') {
-        updates.motivo_consulta = 'Solicitud de Atención con Asesora Humana';
+        updates.motivo_consulta = 'Solicitud de Atención con Asesor Humano';
         if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥 Te comunicamos con nuestro equipo de atención.\n\n${getAgentHandoffNotice()}`;
+            replyText = `¡Hola *${fullName}*! 🏥\n\n${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
         } else {
-            replyText = `¡Hola! 👋 Te transferimos con una de nuestras asesoras.\n\nPara que puedan tomar tu caso en un solo mensaje, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n\n${getAgentHandoffNotice()}`;
+            replyText = `¡Hola! 👋 Te comunicamos con el equipo de atención.\n\nPara que podamos ayudarte en un solo mensaje, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n\n${getAgentHandoffNotice()}`;
             updates.bot_stage = 'esperando_datos_nuevo';
             updates.bot_active = true;
             nextStage = 'esperando_datos_nuevo';
@@ -1587,7 +1592,7 @@ async function handleChatbotTriage(
     // =============================================
     else {
         if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos como paciente registrado con cobertura *${os}*.\n\n¿En qué podemos ayudarte hoy?\n1️⃣ *Solicitar o reprogramar un turno*\n2️⃣ *Autorizaciones y cobertura*\n3️⃣ *Guardias médicas las 24 horas*\n4️⃣ *Informes, estudios, horarios y sedes*\n\nPodés responder con el número *1*, *2*, *3* o *4*, o escribir directamente tu consulta en un solo mensaje.\n\n🌐 Web oficial: https://www.sanatorioargentino.com.ar/`;
+            replyText = `¡Hola *${fullName}*! 🏥 ¿En qué podemos ayudarte hoy?\n\n1️⃣ *Solicitar o reprogramar un turno*\n2️⃣ *Autorizaciones y cobertura*\n3️⃣ *Guardias médicas las 24 horas*\n4️⃣ *Informes, estudios, horarios y sedes*\n\nPodés responder con el número *1*, *2*, *3* o *4*, o escribir directamente tu consulta.`;
             updates.bot_stage = 'menu_opciones';
             updates.bot_active = true;
             nextStage = 'menu_opciones';
