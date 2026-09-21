@@ -1235,6 +1235,7 @@ async function handleChatbotTriage(
             contact_name: fullName,
             obra_social: os,
             nhc: paciente?.nhc || conv?.nhc || null,
+            fecha_nacimiento: paciente?.fecha_nacimiento || updates.fecha_nacimiento || conv?.fecha_nacimiento || null,
             email: paciente?.email || updates.email || conv?.email || null,
             telefono_contacto: paciente?.telefono || updates.telefono_contacto || phone,
             departamento: paciente?.centro || updates.departamento || conv?.departamento || 'San Juan',
@@ -1258,6 +1259,9 @@ async function handleChatbotTriage(
 
             if (turnosOn && turnosOn.length > 0) {
                 const tRow = turnosOn[0];
+                if (tRow.email && !updates.email) {
+                    updates.email = tRow.email;
+                }
                 const primerTurno = Array.isArray(tRow.turnos) && tRow.turnos.length > 0 ? tRow.turnos[0] : null;
                 turnoOnlineProximo = {
                     profesional: tRow.prestador_nombre || primerTurno?.profesional || 'Profesional Asignado',

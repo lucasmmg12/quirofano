@@ -105,6 +105,7 @@ export async function syncPacientes(options = {}) {
                 nombre2,
                 NIF,
                 NHC,
+                fechaNacimiento,
                 edad,
                 sexo,
                 email,
@@ -150,12 +151,29 @@ export async function syncPacientes(options = {}) {
                 continue;
             }
 
+            // Formatear fecha de nacimiento a DD/MM/AAAA
+            let fechaNac = null;
+            if (r.fechaNacimiento) {
+                if (r.fechaNacimiento instanceof Date && !isNaN(r.fechaNacimiento.getTime())) {
+                    const d = String(r.fechaNacimiento.getUTCDate()).padStart(2, '0');
+                    const m = String(r.fechaNacimiento.getUTCMonth() + 1).padStart(2, '0');
+                    const y = r.fechaNacimiento.getUTCFullYear();
+                    fechaNac = `${d}/${m}/${y}`;
+                } else {
+                    const parts = String(r.fechaNacimiento).split('T')[0].split('-');
+                    if (parts.length === 3) {
+                        fechaNac = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                    }
+                }
+            }
+
             if (!dedupMap.has(id)) {
                 dedupMap.set(id, {
                     id_paciente: id,
                     nombre: cleanName || rawName.trim(),
                     dni: r.NIF ? String(r.NIF).trim() : null,
                     nhc: r.NHC ? String(r.NHC).trim() : null,
+                    fecha_nacimiento: fechaNac,
                     edad: r.edad != null ? String(r.edad) : null,
                     sexo: r.sexo ? String(r.sexo).trim().toUpperCase() : null,
                     email: r.email ? String(r.email).trim() : null,

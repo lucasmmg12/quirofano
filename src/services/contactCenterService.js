@@ -462,12 +462,20 @@ export async function fetchLiveAndDemoChats() {
                 timestamp: new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
             }));
 
+            const formatBirthDate = (val) => {
+                if (!val || val === 'No informada') return 'No informada';
+                if (String(val).includes('/')) return String(val).trim();
+                const parts = String(val).split('T')[0].split('-');
+                if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                return String(val).trim();
+            };
+
             const patientFields = {
                 dni: conv?.dni || 'A verificar',
                 nhc: conv?.nhc || null,
                 pacienteNombre: conv?.nombre_completo || lastMsg.sender_name || 'Paciente',
                 obraSocial: conv?.obra_social || 'A consultar',
-                fechaNacimiento: conv?.fecha_nacimiento || 'No informada',
+                fechaNacimiento: formatBirthDate(conv?.fecha_nacimiento),
                 email: conv?.email || 'No informado',
                 pacienteContacto: conv?.telefono_contacto || phone,
                 departamento: conv?.departamento || 'San Juan',
@@ -837,32 +845,53 @@ export async function saveCrmPatientCard({ phone, dni, nombreCompleto, obraSocia
  */
 export async function lookupPatientByPhone(phone) {
     if (!phone || String(phone).replace(/\D/g, '').length < 6) return null;
+    let patient = null;
     try {
         const { data, error } = await supabase.rpc('buscar_paciente_por_telefono', { p_telefono: String(phone) });
         if (!error && data && data.length > 0) {
-            return data[0];
+            patient = data[0];
         }
     } catch (err) {
         console.warn('Advertencia ejecutando RPC buscar_paciente_por_telefono:', err);
     }
 
     // Fallback de búsqueda con ILIKE por los últimos 7 dígitos
-    try {
-        const clean = String(phone).replace(/\D/g, '');
-        const last7 = clean.slice(-7);
-        if (last7.length >= 6) {
-            const { data } = await supabase
-                .from('hospital_pacientes')
-                .select('*')
-                .ilike('telefono', `%${last7}%`)
+    if (!patient) {
+        try {
+            const clean = String(phone).replace(/\D/g, '');
+            const last7 = clean.slice(-7);
+            if (last7.length >= 6) {
+                const { data } = await supabase
+                    .from('hospital_pacientes')
+                    .select('*')
+                    .ilike('telefono', `%${last7}%`)
+                    .limit(1)
+                    .maybeSingle();
+                if (data) patient = data;
+            }
+        } catch (e) {
+            console.warn('Error en fallback de búsqueda por teléfono:', e);
+        }
+    }
+
+    // Si encontramos paciente pero no tiene email, buscar en contact_center_turnos_online
+    if (patient && !patient.email) {
+        try {
+            const cleanPhone = String(phone).replace(/\D/g, '').slice(-7);
+            const { data: toRow } = await supabase
+                .from('contact_center_turnos_online')
+                .select('email')
+                .or(`dni.eq.${patient.dni || '0'},telefono.ilike.%${cleanPhone}%`)
+                .not('email', 'is', null)
                 .limit(1)
                 .maybeSingle();
-            return data || null;
-        }
-    } catch (e) {
-        console.warn('Error en fallback de búsqueda por teléfono:', e);
+            if (toRow && toRow.email) {
+                patient.email = toRow.email;
+            }
+        } catch (_) {}
     }
-    return null;
+
+    return patient;
 }
 
 /**
@@ -890,7 +919,24 @@ export async function lookupPatientFromSalus(query) {
             .maybeSingle();
 
         if (error) throw error;
-        if (data) return data;
+        if (data) {
+            // Si no tiene email, buscar en contact_center_turnos_online
+            if (!data.email && data.dni) {
+                try {
+                    const { data: toRow } = await supabase
+                        .from('contact_center_turnos_online')
+                        .select('email')
+                        .eq('dni', data.dni)
+                        .not('email', 'is', null)
+                        .limit(1)
+                        .maybeSingle();
+                    if (toRow && toRow.email) {
+                        data.email = toRow.email;
+                    }
+                } catch (_) {}
+            }
+            return data;
+        }
 
         // Si no encontró por DNI/NHC pero tiene entre 6 y 11 dígitos, probar búsqueda por teléfono
         if (clean.length >= 6) {

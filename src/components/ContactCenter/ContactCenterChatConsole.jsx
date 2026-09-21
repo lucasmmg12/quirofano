@@ -168,23 +168,33 @@ export default function ContactCenterChatConsole({
             setIsEditingCrm(false);
             setAiSummaryData(selectedChat.aiSummary || null);
 
-            // Si no tiene DNI mapeado pero tiene teléfono, intentar resolver en background con SALUS
-            if (!initialDni && selectedChat.phone) {
-                lookupPatientFromSalus(selectedChat.phone).then(found => {
+            // Si no tiene DNI mapeado o faltan datos esenciales (fecha de nacimiento, email), resolver en background con SALUS
+            const currentFechaNac = selectedChat.customFields?.fechaNacimiento;
+            const currentEmail = selectedChat.customFields?.email;
+            const needsLookup = !initialDni || !currentFechaNac || currentFechaNac === 'No informada' || !currentEmail || currentEmail === 'No informado';
+
+            if (needsLookup && (initialDni || selectedChat.phone)) {
+                lookupPatientFromSalus(initialDni || selectedChat.phone).then(found => {
                     if (found) {
+                        const birth = found.fecha_nacimiento || '';
+                        const formattedBirth = birth.includes('/') ? birth : (birth.includes('-') ? `${birth.split('-')[2]}/${birth.split('-')[1]}/${birth.split('-')[0]}` : birth);
+
                         setCrmForm(prev => ({
                             ...prev,
                             dni: prev.dni || found.dni || '',
                             pacienteNombre: prev.pacienteNombre && prev.pacienteNombre !== 'Paciente' ? prev.pacienteNombre : found.nombre,
                             obraSocial: prev.obraSocial && prev.obraSocial !== 'A consultar' ? prev.obraSocial : (found.coseguro || ''),
+                            fechaNacimiento: prev.fechaNacimiento && prev.fechaNacimiento !== 'No informada' ? prev.fechaNacimiento : formattedBirth,
                             email: prev.email && prev.email !== 'No informado' ? prev.email : (found.email || ''),
                             departamento: prev.departamento || found.centro || 'San Juan'
                         }));
                         if (selectedChat.customFields) {
-                            selectedChat.customFields.dni = found.dni;
-                            selectedChat.customFields.nhc = found.nhc;
-                            selectedChat.customFields.pacienteNombre = found.nombre;
-                            selectedChat.customFields.obraSocial = found.coseguro;
+                            if (found.dni) selectedChat.customFields.dni = found.dni;
+                            if (found.nhc) selectedChat.customFields.nhc = found.nhc;
+                            if (found.nombre) selectedChat.customFields.pacienteNombre = found.nombre;
+                            if (found.coseguro) selectedChat.customFields.obraSocial = found.coseguro;
+                            if (formattedBirth) selectedChat.customFields.fechaNacimiento = formattedBirth;
+                            if (found.email) selectedChat.customFields.email = found.email;
                             selectedChat.customFields.esPacienteExistente = true;
                         }
                     }
