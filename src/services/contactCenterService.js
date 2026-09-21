@@ -420,6 +420,73 @@ export async function fetchLiveAndDemoChats() {
             return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
         }
 
+        function isHumanAgentMessage(m) {
+            if (!m) return false;
+            if (m.direction === 'incoming' || m.sender === 'patient') return false;
+            if (m.direction === 'note' || m.isNote) return false;
+            const sender = String(m.sender_name || m.senderName || '').toLowerCase().trim();
+            if (sender === 'bot sanatorio' || sender === 'bot' || sender.startsWith('bot ')) return false;
+            if (m.raw_payload?.bot === true || m.rawPayload?.bot === true || m.raw_payload?.is_bot === true) return false;
+            if (m.sender === 'system' || m.sender === 'bot') return false;
+            return m.direction === 'outgoing' || m.sender === 'agent';
+        }
+
+        function calculateWaitingTime(messages, conv, lastDateMs) {
+            if (isClosedOrArchived(conv?.status)) {
+                return { isWaitingResponse: false, waitingMinutes: 0, waitingTimeText: 'Finalizado', badgeTimeText: 'Finalizado' };
+            }
+            if (!messages || messages.length === 0) {
+                return { isWaitingResponse: false, waitingMinutes: 0, waitingTimeText: 'Sin mensajes', badgeTimeText: 'Sin mensajes' };
+            }
+
+            // messages[0] es el más reciente (orden DESC de created_at)
+            const latestMsg = messages[0];
+            if (isHumanAgentMessage(latestMsg)) {
+                return {
+                    isWaitingResponse: false,
+                    waitingMinutes: 0,
+                    waitingTimeText: 'Respondido',
+                    badgeTimeText: 'Respondido',
+                    lastHumanResponseAt: latestMsg.created_at
+                };
+            }
+
+            // Encontrar el último mensaje respondido por un agente humano
+            const lastHumanIdx = messages.findIndex(m => isHumanAgentMessage(m));
+            const unansweredMessages = lastHumanIdx === -1 ? messages : messages.slice(0, lastHumanIdx);
+
+            // Determinar cuándo comenzó la espera (primer mensaje del paciente en este bloque)
+            const patientMsg = [...unansweredMessages].reverse().find(m => m.direction === 'incoming') || unansweredMessages[unansweredMessages.length - 1];
+            const waitingSinceMs = patientMsg?.created_at ? new Date(patientMsg.created_at).getTime() : lastDateMs;
+
+            const diffMs = Math.max(0, Date.now() - waitingSinceMs);
+            const diffMinutes = Math.floor(diffMs / 60000);
+
+            let waitingTimeText = '';
+            if (diffMinutes < 1) {
+                waitingTimeText = 'hace instantes';
+            } else if (diffMinutes < 60) {
+                waitingTimeText = `hace ${diffMinutes} min`;
+            } else if (diffMinutes < 1440) {
+                const hours = Math.floor(diffMinutes / 60);
+                const mins = diffMinutes % 60;
+                waitingTimeText = hours < 3 && mins > 0 
+                    ? `hace ${hours} h ${mins} min` 
+                    : `hace ${hours} h`;
+            } else {
+                const days = Math.floor(diffMinutes / 1440);
+                waitingTimeText = `hace ${days} d`;
+            }
+
+            return {
+                isWaitingResponse: true,
+                waitingSinceMs,
+                waitingMinutes: diffMinutes,
+                waitingTimeText: `Sin responder ${waitingTimeText}`,
+                badgeTimeText: waitingTimeText
+            };
+        }
+
         // Construir chats reales exclusivamente (CERO mocks / demos)
         const realChats = [];
         const allPhones = Array.from(new Set([
@@ -434,16 +501,22 @@ export async function fetchLiveAndDemoChats() {
 
             const chronological = [...messages].reverse();
             const lastMsg = messages[0] || {};
-            const lastDateRaw = conv?.last_message_at || lastMsg.created_at || new Date().toISOString();
-            const lastDateMs = new Date(lastDateRaw).getTime();
+            
+            // Garantizar timestamp absoluto más reciente entre conversación y mensaje
+            const convDateMs = conv?.last_message_at ? new Date(conv.last_message_at).getTime() : 0;
+            const msgDateMs = lastMsg?.created_at ? new Date(lastMsg.created_at).getTime() : 0;
+            const lastDateMs = Math.max(convDateMs, msgDateMs) || Date.now();
+            const lastDateRaw = new Date(lastDateMs).toISOString();
 
             let lastRespName = 'Paciente';
             let lastRespRole = 'patient';
             if (lastMsg.direction === 'outgoing') {
                 const raw = lastMsg.raw_payload;
                 lastRespName = lastMsg.sender_name || (raw?.agent ? getAgentById(raw.agent).name : 'Sanatorio');
-                lastRespRole = 'agent';
+                lastRespRole = isHumanAgentMessage(lastMsg) ? 'agent' : 'bot';
             }
+
+            const waitingInfo = calculateWaitingTime(messages, conv, lastDateMs);
 
             const formattedMessages = chronological.map(m => ({
                 id: 'real_' + m.id,
@@ -557,6 +630,11 @@ export async function fetchLiveAndDemoChats() {
                 lastResponder: lastRespName,
                 lastResponderRole: lastRespRole,
                 lastResponseAt: formatRelativeTime(lastDateRaw),
+                isWaitingResponse: waitingInfo.isWaitingResponse,
+                waitingSinceMs: waitingInfo.waitingSinceMs || null,
+                waitingMinutes: waitingInfo.waitingMinutes ?? 0,
+                waitingTimeText: waitingInfo.waitingTimeText,
+                badgeTimeText: waitingInfo.badgeTimeText,
                 chatbot: '#triage-sanatorio',
                 avatarColor: '#0284C7',
                 tags: ['Contact Center', 'WhatsApp'],
@@ -669,10 +747,15 @@ export async function sendContactCenterMessage({ chat, text, isNote, activeAgent
         ...chat,
         botActive: false,
         lastMessage: isNote ? `[Nota interna] ${text}` : text,
+        lastMessageTimestamp: now.getTime(),
         timeAgo: 'hace unos segundos',
         lastResponder: activeAgent.name,
         lastResponderRole: 'agent',
         lastResponseAt: timeStr,
+        isWaitingResponse: isNote ? chat.isWaitingResponse : false,
+        waitingMinutes: isNote ? chat.waitingMinutes : 0,
+        waitingTimeText: isNote ? chat.waitingTimeText : 'Respondido',
+        badgeTimeText: isNote ? chat.badgeTimeText : 'Respondido',
         messages: [...(chat.messages || []), newMsg]
     };
 

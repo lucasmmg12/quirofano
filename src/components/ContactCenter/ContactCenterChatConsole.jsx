@@ -8,7 +8,7 @@ import {
     Power, Sparkles, Stethoscope, DollarSign, CreditCard,
     Edit3, Save, X, History, Activity, FileCheck, RefreshCw,
     Zap, CalendarCheck, PlusCircle, ShieldCheck, BarChart3, Volume2, VolumeX,
-    GripVertical, Download, ZoomIn, ZoomOut, RotateCw, Copy
+    GripVertical, Download, ZoomIn, ZoomOut, RotateCw, Copy, ArrowUpDown
 } from 'lucide-react';
 import { 
     CONTACT_CENTER_AGENTS, getAgentById, isChatLockedForUser, 
@@ -98,7 +98,9 @@ export default function ContactCenterChatConsole({
     const [isSearchingDoctor, setIsSearchingDoctor] = useState(false);
     const [analyzingMsgId, setAnalyzingMsgId] = useState(null);
     const [, setForceUpdate] = useState(0);
+    const [messageSortOrder, setMessageSortOrder] = useState('newest_first'); // 'newest_first' o 'chronological'
     const messagesEndRef = useRef(null);
+    const messagesContainerRef = useRef(null);
     const inputRef = useRef(null);
 
     // Estado del Visor Profesional de Documentos y Órdenes Médicas
@@ -430,6 +432,15 @@ export default function ContactCenterChatConsole({
         }
     }, [lastMsgId, lastMsgSender, selectedChat?.phone]);
 
+    // Control de desplazamiento según orden de mensajes (más recientes arriba o cronológico)
+    useEffect(() => {
+        if (messageSortOrder === 'chronological') {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        } else if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = 0;
+        }
+    }, [selectedChat?.id, selectedChat?.messages?.length, messageSortOrder]);
+
     // Si el chat activo no tiene análisis IA generado pero tiene mensajes del paciente, analizar automáticamente
     useEffect(() => {
         if (selectedChat?.phone && !aiSummaryData && selectedChat.messages && selectedChat.messages.length > 0) {
@@ -661,7 +672,7 @@ export default function ContactCenterChatConsole({
             || (chat.customFields?.dni || '').toLowerCase().includes(q)
             || (chat.customFields?.pacienteNombre || '').toLowerCase().includes(q)
             || (chat.customFields?.obraSocial || '').toLowerCase().includes(q);
-    });
+    }).sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
 
     const sendDirectMessage = (text, isNote = false) => {
         if (!text || !text.trim()) return;
@@ -1094,6 +1105,37 @@ export default function ContactCenterChatConsole({
                                             {chat.lastResponderRole === 'agent' ? 'Resp: ' + chat.lastResponder : '🔴 Escribió Paciente'}
                                         </span>
                                     )}
+
+                                    {/* Tag: Tiempo de Espera sin Respuesta */}
+                                    {!isClosedOrArchived(chat.status) && (
+                                        chat.isWaitingResponse ? (
+                                            <span 
+                                                title={`Lleva ${chat.waitingTimeText || 'un tiempo'} esperando respuesta`}
+                                                style={{
+                                                    fontSize: '0.64rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
+                                                    background: chat.waitingMinutes >= 30 ? '#FEF2F2' : (chat.waitingMinutes >= 10 ? '#FFFBEB' : '#F0FDF4'),
+                                                    color: chat.waitingMinutes >= 30 ? '#DC2626' : (chat.waitingMinutes >= 10 ? '#D97706' : '#15803D'),
+                                                    border: `1px solid ${chat.waitingMinutes >= 30 ? '#FECACA' : (chat.waitingMinutes >= 10 ? '#FDE68A' : '#BBF7D0')}`,
+                                                    display: 'flex', alignItems: 'center', gap: '3px'
+                                                }}
+                                            >
+                                                <Clock size={9} />
+                                                {chat.waitingMinutes >= 30 ? '🚨 ' : (chat.waitingMinutes >= 10 ? '⚠️ ' : '⏳ ')}
+                                                {chat.waitingTimeText || 'Sin responder'}
+                                            </span>
+                                        ) : (
+                                            <span 
+                                                title="Esta conversación ya fue respondida por un operador"
+                                                style={{
+                                                    fontSize: '0.64rem', fontWeight: 700, padding: '1px 6px', borderRadius: '6px',
+                                                    background: '#F8FAFC', color: '#15803D', border: '1px solid #DCFCE7',
+                                                    display: 'flex', alignItems: 'center', gap: '2px'
+                                                }}
+                                            >
+                                                <Check size={9} color="#16A34A" /> Respondido
+                                            </span>
+                                        )
+                                    )}
                                 </div>
 
                                 <div style={{ fontSize: '0.76rem', color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -1143,7 +1185,7 @@ export default function ContactCenterChatConsole({
                                     </span>
                                 </div>
                             </div>
-                            <div style={{ fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px' }}>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '3px' }}>
                                 <span>Tel: {selectedChat.phone}</span>
                                 <span>•</span>
                                 <span>
@@ -1151,6 +1193,32 @@ export default function ContactCenterChatConsole({
                                         {selectedChat.lastResponder || 'Paciente'}
                                     </strong>
                                 </span>
+                                {!isClosedOrArchived(selectedChat.status) && (
+                                    <>
+                                        <span>•</span>
+                                        {selectedChat.isWaitingResponse ? (
+                                            <span style={{
+                                                fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: '6px',
+                                                background: selectedChat.waitingMinutes >= 30 ? '#FEF2F2' : (selectedChat.waitingMinutes >= 10 ? '#FFFBEB' : '#F0FDF4'),
+                                                color: selectedChat.waitingMinutes >= 30 ? '#DC2626' : (selectedChat.waitingMinutes >= 10 ? '#D97706' : '#15803D'),
+                                                border: `1px solid ${selectedChat.waitingMinutes >= 30 ? '#FECACA' : (selectedChat.waitingMinutes >= 10 ? '#FDE68A' : '#BBF7D0')}`,
+                                                display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                            }}>
+                                                <Clock size={11} />
+                                                {selectedChat.waitingMinutes >= 30 ? '🚨 ' : (selectedChat.waitingMinutes >= 10 ? '⚠️ ' : '⏳ ')}
+                                                {selectedChat.waitingTimeText || 'Esperando respuesta'}
+                                            </span>
+                                        ) : (
+                                            <span style={{
+                                                fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '6px',
+                                                background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0',
+                                                display: 'inline-flex', alignItems: 'center', gap: '3px'
+                                            }}>
+                                                <Check size={11} /> Respondido por agente
+                                            </span>
+                                        )}
+                                    </>
+                                )}
                             </div>
                         </div>
 
@@ -1375,18 +1443,63 @@ export default function ContactCenterChatConsole({
                 </div>
 
                 {/* Área de Mensajes con Estilo AsisteClick + Tags de Autoría */}
-                <div style={{
-                    flex: 1,
-                    minHeight: 0,
-                    overflowY: 'auto',
-                    padding: '16px 20px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px',
-                    backgroundImage: 'radial-gradient(#E2E8F0 1px, transparent 1px)',
-                    backgroundSize: '20px 20px'
-                }}>
-                    {selectedChat.messages?.map(msg => {
+                <div 
+                    ref={messagesContainerRef}
+                    style={{
+                        flex: 1,
+                        minHeight: 0,
+                        overflowY: 'auto',
+                        padding: '16px 20px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px',
+                        backgroundImage: 'radial-gradient(#E2E8F0 1px, transparent 1px)',
+                        backgroundSize: '20px 20px'
+                    }}
+                >
+                    {/* Barra de Orden de Mensajes (Últimos a primeros) */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '6px 12px',
+                        background: '#FFFFFF',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '8px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                        flexShrink: 0
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#475569' }}>
+                            <Clock size={12} color="#0284C7" />
+                            <span>Orden:</span>
+                            <strong style={{ color: '#0284C7' }}>
+                                {messageSortOrder === 'newest_first' ? 'Más recientes arriba ⬆' : 'Cronológico clásico ⬇'}
+                            </strong>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setMessageSortOrder(prev => prev === 'newest_first' ? 'chronological' : 'newest_first')}
+                            title="Alternar entre ver mensajes más recientes arriba o cronológico clásico"
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                padding: '3px 9px', borderRadius: '6px',
+                                border: '1px solid #CBD5E1', background: '#F8FAFC',
+                                color: '#1E293B', fontSize: '0.69rem', fontWeight: 700,
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <ArrowUpDown size={11} />
+                            {messageSortOrder === 'newest_first' ? 'Ver cronológico clásico ⬇' : 'Ver más recientes arriba ⬆'}
+                        </button>
+                    </div>
+
+                    {(() => {
+                        const rawMsgs = selectedChat.messages || [];
+                        const renderedMessages = messageSortOrder === 'newest_first'
+                            ? [...rawMsgs].reverse()
+                            : rawMsgs;
+
+                        return renderedMessages.map(msg => {
                         if (msg.sender === 'system') {
                             return (
                                 <div key={msg.id} style={{ display: 'flex', justifyContent: 'center', margin: '4px 0' }}>
@@ -1611,7 +1724,8 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 </div>
                             </div>
                         );
-                    })}
+                    });
+                })()}
                     <div ref={messagesEndRef} />
                 </div>
 

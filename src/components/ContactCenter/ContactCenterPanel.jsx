@@ -202,11 +202,17 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                             lastMessage: newMsg.content || `[${newMsg.media_type}]`,
                             lastMessageTimestamp: now.getTime(),
                             timeAgo: 'hace instantes',
-                            unread: isIncoming ? true : existingChat.unread
+                            unread: isIncoming ? true : existingChat.unread,
+                            lastResponder: isIncoming ? (newMsg.sender_name || 'Paciente') : (newMsg.sender_name || 'Sanatorio Argentino'),
+                            lastResponderRole: isIncoming ? 'patient' : 'agent',
+                            isWaitingResponse: isIncoming ? true : false,
+                            waitingMinutes: 0,
+                            waitingTimeText: isIncoming ? 'Sin responder hace instantes' : 'Respondido',
+                            badgeTimeText: isIncoming ? 'hace instantes' : 'Respondido'
                         };
 
                         const otherChats = prevChats.filter((_, idx) => idx !== chatIdx);
-                        return [updatedChat, ...otherChats];
+                        return [updatedChat, ...otherChats].sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
                     } else {
                         // Nuevo chat en vivo no registrado previamente
                         const newRealChat = {
@@ -224,9 +230,13 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                             assignedTo: null,
                             assignedToName: null,
                             assignedAt: null,
-                            lastResponder: isIncoming ? 'Paciente' : 'Sanatorio',
+                            lastResponder: isIncoming ? (newMsg.sender_name || 'Paciente') : 'Sanatorio',
                             lastResponderRole: isIncoming ? 'patient' : 'agent',
                             lastResponseAt: 'hace instantes',
+                            isWaitingResponse: isIncoming,
+                            waitingMinutes: 0,
+                            waitingTimeText: isIncoming ? 'Sin responder hace instantes' : 'Respondido',
+                            badgeTimeText: isIncoming ? 'hace instantes' : 'Respondido',
                             chatbot: '#betina-triage',
                             avatarColor: '#0284C7',
                             tags: ['Mensaje Nuevo'],
@@ -241,7 +251,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                             },
                             messages: [formattedMsg]
                         };
-                        return [newRealChat, ...prevChats];
+                        return [newRealChat, ...prevChats].sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
                     }
                 });
 
