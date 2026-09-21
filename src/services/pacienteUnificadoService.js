@@ -216,7 +216,7 @@ export async function fetchPacienteDetalle(paciente) {
                 // Fallback silencioso a base Supabase si sync-server no responde
             }
 
-            // Si no obtuvimos consultas de SALUS, recurrir a Supabase consultas_guardia
+            // Si no obtuvimos consultas de SALUS, recurrir a Supabase consultas_guardia y cruzar con calidad_pacientes_diagnosticos
             if (consultasData.length === 0) {
                 if (nhc) {
                     const { data: byNhc } = await supabase
@@ -244,6 +244,45 @@ export async function fetchPacienteDetalle(paciente) {
                         .order('fecha_visita', { ascending: false })
                         .limit(30);
                     consultasData = byNom || [];
+                }
+
+                // Cruzar con diagnósticos, síntomas y formularios médicos de calidad_pacientes_diagnosticos
+                try {
+                    let diagData = [];
+                    const idVisitas = consultasData.map(c => c.id_visita).filter(Boolean);
+                    if (idVisitas.length > 0) {
+                        const { data: dVis } = await supabase
+                            .from('calidad_pacientes_diagnosticos')
+                            .select('id_visita, diagnostico, motivo, formulario, centro, nhc, dni')
+                            .in('id_visita', idVisitas);
+                        diagData = dVis || [];
+                    }
+
+                    if (diagData.length === 0 && (nhc || dni)) {
+                        let qD = supabase.from('calidad_pacientes_diagnosticos').select('id_visita, diagnostico, motivo, formulario, centro, nhc, dni, fecha_visita');
+                        if (nhc) qD = qD.eq('nhc', String(nhc));
+                        else if (dni) qD = qD.eq('dni', String(dni));
+                        const { data: dFallback } = await qD.limit(30);
+                        diagData = dFallback || [];
+                    }
+
+                    const diagMap = new Map();
+                    diagData.forEach(d => {
+                        if (d.id_visita) diagMap.set(d.id_visita, d);
+                    });
+
+                    consultasData = consultasData.map(c => {
+                        const d = diagMap.get(c.id_visita);
+                        return {
+                            ...c,
+                            diagnostico: d?.diagnostico || null,
+                            motivo: d?.motivo || null,
+                            formulario: d?.formulario || null,
+                            centro: d?.centro || c.centro || null
+                        };
+                    });
+                } catch (eDiag) {
+                    console.warn('[pacienteUnificado] error cruzando calidad_pacientes_diagnosticos:', eDiag);
                 }
             }
 

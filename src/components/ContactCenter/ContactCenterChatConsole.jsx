@@ -1341,7 +1341,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                         }}
                     >
                         <History size={13} />
-                        Historial 360°
+                        Historial
                     </button>
                     <button 
                         onClick={() => setActiveDetailTab('prestadores')}
@@ -1632,6 +1632,60 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     </span>
                                 </div>
                             </div>
+
+                            {/* ACCESO RÁPIDO: ESTADO DE TURNOS PRÓXIMOS */}
+                            {patientHistory?.turnosProximos && patientHistory.turnosProximos.length > 0 ? (
+                                <div style={{
+                                    background: '#ECFDF5',
+                                    border: '1.5px solid #6EE7B7',
+                                    borderRadius: '10px',
+                                    padding: '10px 12px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '6px'
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#065F46', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                            <Calendar size={13} color="#059669" />
+                                            TIENE TURNOS PRÓXIMOS ({patientHistory.turnosProximos.length})
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveDetailTab('historial')}
+                                            style={{ background: 'none', border: 'none', color: '#047857', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer', textDecoration: 'underline' }}
+                                        >
+                                            Ver en Historial ↗
+                                        </button>
+                                    </div>
+                                    {patientHistory.turnosProximos.slice(0, 2).map((tp, idx) => (
+                                        <div key={idx} style={{ fontSize: '0.74rem', color: '#0F172A', fontWeight: 700, background: '#FFFFFF', padding: '5px 8px', borderRadius: '6px', border: '1px solid #A7F3D0' }}>
+                                            📅 {tp.fecha_visita} {tp.hora_visita ? `(${tp.hora_visita} hs)` : ''} • {tp.medico || 'Profesional Asignado'} {tp.origen === 'online' ? '🌐 ONLINE' : '🏥 PRESENCIAL'}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div style={{
+                                    background: '#F8FAFC',
+                                    border: '1px solid #E2E8F0',
+                                    borderRadius: '8px',
+                                    padding: '8px 10px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
+                                        <Calendar size={12} color="#94A3B8" />
+                                        Turnos próximos: <strong>Sin turnos pendientes</strong>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveDetailTab('historial')}
+                                        style={{ background: 'none', border: 'none', color: '#0284C7', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}
+                                    >
+                                        Ver Historial ↗
+                                    </button>
+                                </div>
+                            )}
 
                             {/* CABECERA DE LA FICHA CRM: BOTÓN EDITAR */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1954,7 +2008,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase' }}>
-                                    Historial Sanatorio 360°
+                                    Historial
                                 </div>
                                 {selectedChat.customFields?.nhc && (
                                     <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#0284C7', background: '#F0F9FF', padding: '2px 6px', borderRadius: '4px', border: '1px solid #BAE6FD' }}>
@@ -1998,7 +2052,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     </div>
 
                                     {/* SECCIÓN 1: TURNOS PRÓXIMOS & CITAS ONLINE (ACCESO RÁPIDO) */}
-                                    {patientHistory.turnosProximos && patientHistory.turnosProximos.length > 0 && (
+                                    {patientHistory.turnosProximos && patientHistory.turnosProximos.length > 0 ? (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                             <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#065F46', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                 <span>📅 TURNOS PRÓXIMOS & CITAS ONLINE ({patientHistory.turnosProximos.length})</span>
@@ -2041,6 +2095,21 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                     )}
                                                 </div>
                                             ))}
+                                        </div>
+                                    ) : (
+                                        <div style={{
+                                            background: '#F8FAFC',
+                                            border: '1px solid #E2E8F0',
+                                            borderRadius: '8px',
+                                            padding: '8px 10px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px'
+                                        }}>
+                                            <Calendar size={13} color="#64748B" />
+                                            <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
+                                                📅 Turnos Próximos: <strong>Sin turnos pendientes agendados</strong>
+                                            </span>
                                         </div>
                                     )}
 

@@ -194,40 +194,47 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
         `);
     }
 
-    // Query C: Turnos Online Próximos (Visitas con Internet = 1 y Data >= Hoy)
-    let onlinePromise = Promise.resolve({ recordset: [] });
-    if (resolvedDni || cleanTel) {
-        let onlineConds = [];
-        if (resolvedDni && resolvedDni.length >= 6) {
-            onlineConds.push(`vn.Comentarios LIKE '%${resolvedDni}%'`);
-        }
-        if (cleanTel && cleanTel.length >= 6) {
-            onlineConds.push(`vn.Comentarios LIKE '%${cleanTel}%'`);
-        }
+    // Query C: Turnos Online (Consultar Supabase contact_center_turnos_online donde ya están indexados por DNI)
+    let onlineTurnosList = [];
+    if (resolvedDni) {
+        try {
+            const { data: turnosOnlineSb } = await supabase
+                .from('contact_center_turnos_online')
+                .select('*')
+                .eq('dni', resolvedDni);
 
-        if (onlineConds.length > 0) {
-            onlinePromise = pool.request().query(`
-                SELECT 
-                    v.id AS IdVisita,
-                    v.Data AS fecha,
-                    v.HoraInici,
-                    v.HoraFi,
-                    p.Nombre AS profesional,
-                    a.Nombre AS agenda,
-                    vn.Comentarios
-                FROM Visitas v
-                INNER JOIN Visitas_ntext vn ON v.id = vn.IdVisita
-                LEFT JOIN Personal p ON v.idPersonal = p.id
-                LEFT JOIN Agendas a ON v.idAgenda = a.id
-                WHERE v.Internet = 1
-                  AND v.Data >= CAST(GETDATE() AS DATE)
-                  AND (${onlineConds.join(' OR ')})
-                ORDER BY v.Data ASC, v.HoraInici ASC
-            `);
+            if (turnosOnlineSb && turnosOnlineSb.length > 0) {
+                for (const row of turnosOnlineSb) {
+                    if (Array.isArray(row.turnos)) {
+                        for (const t of row.turnos) {
+                            onlineTurnosList.push({
+                                id_visita: t.idVisita,
+                                fecha_visita: t.fechaTurno,
+                                fecha_iso: t.fechaTurno,
+                                hora_visita: t.horaInicio,
+                                agenda: t.agenda || row.agenda_nombre,
+                                medico: row.prestador_nombre || 'Profesional Asignado',
+                                tipo_visita: 'Turno Web Online',
+                                asistencia: 'Reservado Online',
+                                cliente: 'Particular / Prepaga',
+                                paciente: row.paciente_nombre,
+                                dni: row.dni,
+                                telefono: row.telefono,
+                                email: row.email,
+                                motivo: t.motivo || 'Turno Web',
+                                origen: 'online',
+                                tipo: 'online'
+                            });
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('⚠️ Error consultando turnos online en Supabase:', e.message);
         }
     }
 
-    const [visitasRes, diagRes, onlineRes] = await Promise.all([visitasPromise, diagPromise, onlinePromise]);
+    const [visitasRes, diagRes] = await Promise.all([visitasPromise, diagPromise]);
 
     const diagMap = new Map();
     if (diagRes.recordset) {
@@ -287,36 +294,8 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
     }
 
     // Procesar turnos online próximos
-    if (onlineRes.recordset) {
-        for (const o of onlineRes.recordset) {
-            const parsed = parseOnlineComment(o.Comentarios);
-            const horaInicioStr = o.HoraInici 
-                ? new Date(o.HoraInici).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) 
-                : '';
-
-            const fIso = o.fecha ? new Date(o.fecha).toISOString().slice(0, 10) : '';
-            const fParts = fIso.split('-');
-            const fFormatted = fParts.length === 3 ? `${fParts[2]}/${fParts[1]}/${fParts[0]}` : fIso;
-
-            turnosProximos.push({
-                id_visita: o.IdVisita,
-                fecha_visita: fFormatted,
-                fecha_iso: fIso,
-                hora_visita: horaInicioStr,
-                agenda: o.agenda,
-                medico: o.profesional,
-                tipo_visita: 'Turno Web Online',
-                asistencia: 'Reservado Online',
-                cliente: parsed.mutua || 'Particular / Prepaga',
-                paciente: parsed.nombre,
-                dni: parsed.dni,
-                telefono: parsed.telefono,
-                email: parsed.email,
-                motivo: parsed.motivo,
-                origen: 'online',
-                tipo: 'online'
-            });
-        }
+    if (onlineTurnosList.length > 0) {
+        turnosProximos.push(...onlineTurnosList);
     }
 
     // Ordenar turnos próximos por fecha ascendente
