@@ -7,7 +7,8 @@ import {
     Unlock, ArrowRightLeft, Clock, MessageSquare, AlertCircle,
     Power, Sparkles, Stethoscope, DollarSign, CreditCard,
     Edit3, Save, X, History, Activity, FileCheck, RefreshCw,
-    Zap
+    Zap, CalendarCheck, PlusCircle, ShieldCheck, BarChart3, Volume2, VolumeX,
+    GripVertical
 } from 'lucide-react';
 import { 
     CONTACT_CENTER_AGENTS, getAgentById, isChatLockedForUser, 
@@ -34,8 +35,57 @@ export default function ContactCenterChatConsole({
     onAssignChat,
     onUnassignChat,
     onTransferChat,
-    onCloseChat 
+    onCloseChat,
+    activeSubTab = 'conversaciones',
+    onNavigateTab,
+    onSwitchAgent,
+    soundEnabled = true,
+    onToggleSound,
+    onReloadChats,
+    loadingLive = false,
+    isLMarinero = false
 }) {
+    // Panel de Información Resizable (con límites min 260px, max 550px)
+    const consoleContainerRef = useRef(null);
+    const [rightPanelWidth, setRightPanelWidth] = useState(() => {
+        const saved = localStorage.getItem('cc_right_panel_width');
+        const parsed = saved ? parseInt(saved, 10) : 340;
+        return isNaN(parsed) ? 340 : Math.min(Math.max(parsed, 260), 550);
+    });
+    const [isDraggingRight, setIsDraggingRight] = useState(false);
+
+    const handleMouseDownRight = (e) => {
+        e.preventDefault();
+        setIsDraggingRight(true);
+    };
+
+    useEffect(() => {
+        if (!isDraggingRight) return;
+
+        const handleMouseMove = (e) => {
+            if (consoleContainerRef.current) {
+                const rect = consoleContainerRef.current.getBoundingClientRect();
+                const calculatedWidth = rect.right - e.clientX;
+                const boundedWidth = Math.min(Math.max(calculatedWidth, 260), 550);
+                setRightPanelWidth(boundedWidth);
+            }
+        };
+
+        const handleMouseUp = () => {
+            setIsDraggingRight(false);
+            setRightPanelWidth(current => {
+                localStorage.setItem('cc_right_panel_width', current.toString());
+                return current;
+            });
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isDraggingRight]);
     const [filterTab, setFilterTab] = useState('sin_asignar');
     const [searchTerm, setSearchTerm] = useState('');
     const [messageInput, setMessageInput] = useState('');
@@ -483,22 +533,260 @@ export default function ContactCenterChatConsole({
     };
 
     return (
-        <div style={{
-            display: 'grid',
-            gridTemplateColumns: '320px 1fr 340px',
-            height: 'calc(100vh - 225px)',
-            maxHeight: 'calc(100vh - 225px)',
-            minHeight: '480px',
-            background: '#FFFFFF',
-            borderRadius: '16px',
-            border: '1px solid #E2E8F0',
-            overflow: 'hidden',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.04)'
-        }}>
+        <div 
+            ref={consoleContainerRef}
+            style={{
+                display: 'grid',
+                gridTemplateColumns: `330px 1fr 6px ${rightPanelWidth}px`,
+                height: 'calc(100vh - 78px)',
+                maxHeight: 'calc(100vh - 78px)',
+                minHeight: '480px',
+                background: '#FFFFFF',
+                borderRadius: '14px',
+                border: '1px solid #E2E8F0',
+                overflow: 'hidden',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                userSelect: isDraggingRight ? 'none' : 'auto'
+            }}
+        >
             {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* COLUMNA 1: BANDEJA DE CONVERSACIONES Y FILTROS                  */}
+            {/* COLUMNA 1: SIDEBAR DE CONTACT CENTER (MÓDULOS + AGENTES + FILTROS) */}
             {/* ═════════════════════════════════════════════════════════════════ */}
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, borderRight: '1px solid #E2E8F0', background: '#FFFFFF' }}>
+
+                {/* 1. NAVEGACIÓN DEL MÓDULO (IMAGEN 2) Y SELECTOR DE AGENTES */}
+                <div style={{
+                    padding: '8px 8px 6px',
+                    borderBottom: '1px solid #F1F5F9',
+                    background: '#F8FAFC',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px'
+                }}>
+                    {/* Fila 1: Pestañas de Navegación del Módulo */}
+                    <div style={{
+                        display: 'flex',
+                        gap: '2px',
+                        background: '#FFFFFF',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '8px',
+                        padding: '2px',
+                        overflowX: 'auto'
+                    }}>
+                        <button
+                            type="button"
+                            onClick={() => onNavigateTab?.('conversaciones')}
+                            title="Conversaciones"
+                            style={{
+                                flex: 1, padding: '5px 4px', borderRadius: '6px', border: 'none',
+                                fontSize: '0.71rem', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
+                                background: (!activeSubTab || activeSubTab === 'conversaciones') ? '#0F2942' : 'transparent',
+                                color: (!activeSubTab || activeSubTab === 'conversaciones') ? '#FFFFFF' : '#64748B'
+                            }}
+                        >
+                            <MessageSquare size={12} />
+                            <span>Chats</span>
+                            <span style={{
+                                background: (!activeSubTab || activeSubTab === 'conversaciones') ? '#0284C7' : '#EFF6FF',
+                                color: (!activeSubTab || activeSubTab === 'conversaciones') ? '#FFFFFF' : '#1E40AF',
+                                fontSize: '0.62rem', padding: '0 4px', borderRadius: '8px', fontWeight: 800
+                            }}>
+                                {chats.filter(c => !c.assignedTo).length}
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => onNavigateTab?.('mi_semana')}
+                            title="Mi Semana"
+                            style={{
+                                flex: 1, padding: '5px 4px', borderRadius: '6px', border: 'none',
+                                fontSize: '0.71rem', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
+                                background: activeSubTab === 'mi_semana' ? '#0F2942' : 'transparent',
+                                color: activeSubTab === 'mi_semana' ? '#FFFFFF' : '#64748B'
+                            }}
+                        >
+                            <CalendarCheck size={12} />
+                            <span>Semana</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => onNavigateTab?.('nueva_conversacion')}
+                            title="Crear Conversación"
+                            style={{
+                                padding: '5px 6px', borderRadius: '6px', border: 'none',
+                                fontSize: '0.71rem', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
+                                background: activeSubTab === 'nueva_conversacion' ? '#0F2942' : 'transparent',
+                                color: activeSubTab === 'nueva_conversacion' ? '#FFFFFF' : '#64748B'
+                            }}
+                        >
+                            <PlusCircle size={12} />
+                            <span>+</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => onNavigateTab?.('turnos_online')}
+                            title="Turnos Online"
+                            style={{
+                                flex: 1, padding: '5px 4px', borderRadius: '6px', border: 'none',
+                                fontSize: '0.71rem', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
+                                background: activeSubTab === 'turnos_online' ? '#0F2942' : 'transparent',
+                                color: activeSubTab === 'turnos_online' ? '#FFFFFF' : '#DC2626'
+                            }}
+                        >
+                            <AlertTriangle size={12} />
+                            <span>Turnos</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => onNavigateTab?.('metricas')}
+                            title="Métricas y Control de Costos"
+                            style={{
+                                flex: 1, padding: '5px 4px', borderRadius: '6px', border: 'none',
+                                fontSize: '0.71rem', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
+                                background: activeSubTab === 'metricas' ? '#0F2942' : 'transparent',
+                                color: activeSubTab === 'metricas' ? '#FFFFFF' : '#0284C7'
+                            }}
+                        >
+                            <BarChart3 size={12} />
+                            <span>Métricas</span>
+                        </button>
+
+                        {isLMarinero && (
+                            <button
+                                type="button"
+                                onClick={() => onNavigateTab?.('permisos')}
+                                title="Permisos"
+                                style={{
+                                    padding: '5px 6px', borderRadius: '6px', border: 'none',
+                                    fontSize: '0.71rem', fontWeight: 700, cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    background: activeSubTab === 'permisos' ? '#1E40AF' : 'transparent',
+                                    color: activeSubTab === 'permisos' ? '#FFFFFF' : '#1E40AF'
+                                }}
+                            >
+                                <ShieldCheck size={12} />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Fila 2: Selector de Agentes ("Atendiendo como:") + Sonido + Sync */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '4px'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflowX: 'auto' }}>
+                            <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748B', whiteSpace: 'nowrap' }}>
+                                Atendiendo:
+                            </span>
+                            <div style={{ display: 'flex', gap: '3px' }}>
+                                {CONTACT_CENTER_AGENTS.map(agent => {
+                                    const isCurrent = activeAgent.id === agent.id || activeAgent.username === agent.username;
+                                    const assignedCount = chats.filter(c => {
+                                        if (c.status === 'archivado') return false;
+                                        const assigned = (c.assignedTo || '').toLowerCase();
+                                        if (!assigned) return false;
+                                        return (
+                                            assigned === agent.id.toLowerCase() ||
+                                            (agent.username && assigned === agent.username.toLowerCase()) ||
+                                            (agent.legacyId && assigned === agent.legacyId.toLowerCase()) ||
+                                            (c.assignedToName || '').toLowerCase().includes(agent.name.toLowerCase())
+                                        );
+                                    }).length;
+                                    const canSwitch = isLMarinero;
+
+                                    return (
+                                        <button
+                                            key={agent.id}
+                                            type="button"
+                                            onClick={() => {
+                                                if (canSwitch) {
+                                                    onSwitchAgent?.(agent);
+                                                }
+                                            }}
+                                            title={`${agent.fullName} (${assignedCount} asignados)`}
+                                            style={{
+                                                padding: '2px 5px',
+                                                borderRadius: '5px',
+                                                border: 'none',
+                                                cursor: canSwitch ? 'pointer' : 'default',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '3px',
+                                                background: isCurrent ? agent.color : '#F1F5F9',
+                                                color: isCurrent ? '#FFFFFF' : '#475569',
+                                                fontSize: '0.67rem',
+                                                fontWeight: 700,
+                                                boxShadow: isCurrent ? `0 1px 4px ${agent.color}40` : 'none',
+                                                whiteSpace: 'nowrap'
+                                            }}
+                                        >
+                                            <span style={{
+                                                width: '14px', height: '14px', borderRadius: '50%',
+                                                background: isCurrent ? '#FFFFFF' : agent.color,
+                                                color: isCurrent ? agent.color : '#FFFFFF',
+                                                fontSize: '0.56rem', fontWeight: 900,
+                                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
+                                            }}>
+                                                {agent.avatar}
+                                            </span>
+                                            <span>{agent.name.split(' ')[0]}</span>
+                                            {assignedCount > 0 && (
+                                                <span style={{
+                                                    background: isCurrent ? 'rgba(255,255,255,0.3)' : '#E2E8F0',
+                                                    color: isCurrent ? '#FFFFFF' : '#0F172A',
+                                                    padding: '0 4px', borderRadius: '8px', fontSize: '0.6rem', fontWeight: 800
+                                                }}>
+                                                    {assignedCount}
+                                                </span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Sonido y Sync */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+                            <button
+                                type="button"
+                                onClick={onToggleSound}
+                                title={soundEnabled ? 'Silenciar avisos sonoros' : 'Activar sonido de nuevos mensajes'}
+                                style={{
+                                    padding: '3px 5px', borderRadius: '5px', border: '1px solid #CBD5E1',
+                                    background: soundEnabled ? '#F0FDF4' : '#FFFFFF',
+                                    color: soundEnabled ? '#16A34A' : '#94A3B8',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center'
+                                }}
+                            >
+                                {soundEnabled ? <Volume2 size={11} /> : <VolumeX size={11} />}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={onReloadChats}
+                                disabled={loadingLive}
+                                title="Forzar sincronización inmediata"
+                                style={{
+                                    padding: '3px 5px', borderRadius: '5px', border: '1px solid #CBD5E1',
+                                    background: '#FFFFFF', color: '#0284C7',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center'
+                                }}
+                            >
+                                <RefreshCw size={11} className={loadingLive ? 'spin' : ''} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
                 {/* Pestañas de Filtros Superiores AsisteClick */}
                 <div style={{ display: 'flex', gap: '4px', padding: '10px 8px', borderBottom: '1px solid #F1F5F9', overflowX: 'auto', background: '#FAFAFA' }}>
                     <button 
@@ -1431,12 +1719,52 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
             </div>
 
             {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* COLUMNA 3: FICHA DEL PACIENTE Y PARÁMETROS SALUS                */}
+            {/* SEPARADOR RESIZABLE ENTRE CHAT Y PANEL DE INFORMACIÓN             */}
             {/* ═════════════════════════════════════════════════════════════════ */}
+            <div
+                onMouseDown={handleMouseDownRight}
+                onDoubleClick={() => {
+                    setRightPanelWidth(340);
+                    localStorage.setItem('cc_right_panel_width', '340');
+                }}
+                style={{
+                    width: '6px',
+                    height: '100%',
+                    cursor: 'col-resize',
+                    background: isDraggingRight ? '#0284C7' : '#F8FAFC',
+                    borderLeft: '1px solid #E2E8F0',
+                    borderRight: '1px solid #E2E8F0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    userSelect: 'none',
+                    transition: 'background 0.15s ease',
+                    zIndex: 10
+                }}
+                title="Arrastrar para ajustar el ancho de la información del paciente (260px - 550px) • Doble clic para restablecer"
+            >
+                <div style={{
+                    width: '2px',
+                    height: '32px',
+                    borderRadius: '2px',
+                    background: isDraggingRight ? '#FFFFFF' : '#CBD5E1'
+                }} />
+            </div>
+
             {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* COLUMNA 3: FICHA CRM, HISTORIAL 360° Y PARÁMETROS SALUS         */}
+            {/* COLUMNA 3: FICHA CRM, HISTORIAL 360° Y PARÁMETROS SALUS (AJUSTABLE) */}
             {/* ═════════════════════════════════════════════════════════════════ */}
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, borderLeft: '1px solid #E2E8F0', background: '#FFFFFF', overflowY: 'auto' }}>
+            <div style={{
+                width: `${rightPanelWidth}px`,
+                minWidth: '260px',
+                maxWidth: '550px',
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                minHeight: 0,
+                background: '#FFFFFF',
+                overflowY: 'auto'
+            }}>
                 <div style={{ display: 'flex', flexShrink: 0, borderBottom: '1px solid #F1F5F9', background: '#FAFAFA' }}>
                     <button 
                         onClick={() => setActiveDetailTab('info')}

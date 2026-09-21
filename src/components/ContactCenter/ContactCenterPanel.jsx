@@ -436,209 +436,48 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
     };
 
     return (
-        <div className="content no-print" style={{ padding: '20px 24px', background: '#F8FAFC', minHeight: 'calc(100vh - 70px)' }}>
-            {/* Header del Módulo Contact Center (Oculto cuando se ve Turnos Online) */}
-            {activeSubTab !== 'turnos_online' && (
+        <div className="content no-print" style={{ padding: activeSubTab === 'conversaciones' ? '6px 10px 0 10px' : '16px 20px', background: '#F8FAFC', minHeight: 'calc(100vh - 70px)' }}>
+            {/* Si NO estamos en conversaciones (ej: mi_semana, turnos_online, metricas), mostramos una barra compacta con las pestañas de navegación del módulo (sin el banner superior de Image 3) */}
+            {activeSubTab !== 'conversaciones' && (
                 <div style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     flexWrap: 'wrap',
-                    gap: '16px',
-                    marginBottom: '18px',
-                    paddingBottom: '14px',
-                    borderBottom: '1px solid #E2E8F0'
+                    gap: '10px',
+                    marginBottom: '12px',
+                    padding: '8px 12px',
+                    background: '#FFFFFF',
+                    borderRadius: '12px',
+                    border: '1px solid #E2E8F0',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
                 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <div style={{
-                        width: '44px', height: '44px', borderRadius: '12px',
-                        background: 'linear-gradient(135deg, #0F2942 0%, #0284C7 100%)',
-                        color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: '0 4px 10px rgba(2, 132, 199, 0.25)'
-                    }}>
-                        <Headphones size={24} />
-                    </div>
-                    <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <h1 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#0F172A' }}>
-                                Contact Center
-                            </h1>
-                            {/* ON LIVE STATUS BEACON */}
-                            <div style={{
-                                display: 'flex', alignItems: 'center', gap: '6px',
-                                background: '#ECFDF5', border: '1px solid #A7F3D0',
-                                padding: '3px 9px', borderRadius: '12px',
-                                boxShadow: '0 1px 2px rgba(16, 185, 129, 0.15)'
-                            }} title="Canal WebSocket Realtime conectado a Supabase">
-                                <span style={{
-                                    width: '8px', height: '8px', borderRadius: '50%',
-                                    background: '#10B981',
-                                    boxShadow: '0 0 0 3px rgba(16, 185, 129, 0.25)',
-                                    display: 'inline-block'
-                                }} />
-                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#047857', letterSpacing: '0.5px' }}>
-                                    ON LIVE
-                                </span>
-                            </div>
-
-                            {/* TOGGLE DE SONIDO CHIME */}
-                            <button
-                                onClick={toggleSound}
-                                title={soundEnabled ? 'Silenciar avisos sonoros' : 'Activar sonido de nuevos mensajes'}
-                                style={{
-                                    padding: '4px 8px', borderRadius: '8px', border: '1px solid #CBD5E1',
-                                    background: soundEnabled ? '#F0FDF4' : '#FFFFFF',
-                                    color: soundEnabled ? '#16A34A' : '#94A3B8',
-                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                                    fontSize: '0.72rem', fontWeight: 700, transition: 'all 0.15s'
-                                }}
-                            >
-                                {soundEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />}
-                                <span>{soundEnabled ? 'Sonido' : 'Mute'}</span>
-                            </button>
-
-                            {/* RECARGA MANUAL */}
-                            <button
-                                onClick={reloadChats}
-                                disabled={loadingLive}
-                                title="Forzar sincronización inmediata con SALUS y WhatsApp"
-                                style={{
-                                    padding: '4px 8px', borderRadius: '8px', border: '1px solid #CBD5E1',
-                                    background: '#FFFFFF', color: '#0284C7', cursor: 'pointer',
-                                    display: 'flex', alignItems: 'center', gap: '4px',
-                                    fontSize: '0.72rem', fontWeight: 700
-                                }}
-                            >
-                                <RefreshCw size={12} className={loadingLive ? 'spin' : ''} />
-                                <span>{loadingLive ? 'Sync...' : 'Sync'}</span>
-                            </button>
-                        </div>
-                        <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: '#64748B' }}>
-                            Consola Multicanal de Sanatorio Argentino • 4 Agentes con Asignación Exclusiva
-                        </p>
-                    </div>
-                </div>
-
-                {/* SELECTOR DE AGENTE ACTIVA CON CONTEO DE MENSAJES ASIGNADOS */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    <div style={{
-                        display: 'flex', alignItems: 'center', gap: '8px',
-                        background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '10px',
-                        padding: '4px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
-                    }}>
-                        <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B' }}>
-                            Atendiendo como:
-                        </span>
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                            {CONTACT_CENTER_AGENTS.map(agent => {
-                                const isCurrent = activeAgent.id === agent.id || activeAgent.username === agent.username;
-                                
-                                // Cantidad de chats activos asignados a este agente
-                                const assignedCount = chats.filter(c => {
-                                    if (c.status === 'archivado') return false;
-                                    const assigned = (c.assignedTo || '').toLowerCase();
-                                    if (!assigned) return false;
-                                    return (
-                                        assigned === agent.id.toLowerCase() ||
-                                        (agent.username && assigned === agent.username.toLowerCase()) ||
-                                        (agent.legacyId && assigned === agent.legacyId.toLowerCase()) ||
-                                        (c.assignedToName || '').toLowerCase().includes(agent.name.toLowerCase())
-                                    );
-                                }).length;
-
-                                const canSwitch = isLMarinero;
-
-                                return (
-                                    <button
-                                        key={agent.id}
-                                        onClick={() => {
-                                            if (canSwitch) {
-                                                setActiveAgent(agent);
-                                            } else if (!isCurrent) {
-                                                addToast?.(`Estás autenticada como ${activeAgent.name}. Solo supervisores pueden conmutar de agente.`, 'info');
-                                            }
-                                        }}
-                                        title={canSwitch ? `Cambiar a ${agent.fullName} (${assignedCount} asignados)` : `${agent.fullName}: ${assignedCount} chats asignados`}
-                                        style={{
-                                            padding: '4px 8px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
-                                            border: 'none', cursor: canSwitch || isCurrent ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: '5px',
-                                            background: isCurrent ? agent.color : '#F1F5F9',
-                                            color: isCurrent ? '#FFFFFF' : '#475569',
-                                            boxShadow: isCurrent ? `0 2px 5px ${agent.color}40` : 'none',
-                                            transition: 'all 0.15s',
-                                            opacity: (!isCurrent && !canSwitch) ? 0.85 : 1
-                                        }}
-                                    >
-                                        <div style={{
-                                            width: '16px', height: '16px', borderRadius: '50%',
-                                            background: isCurrent ? '#FFFFFF' : agent.color,
-                                            color: isCurrent ? agent.color : '#FFFFFF',
-                                            fontSize: '0.62rem', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                        }}>
-                                            {agent.avatar}
-                                        </div>
-                                        <span>{agent.name}</span>
-                                        <span style={{
-                                            background: isCurrent ? 'rgba(255, 255, 255, 0.3)' : (assignedCount > 0 ? '#E2E8F0' : '#E2E8F0'),
-                                            color: isCurrent ? '#FFFFFF' : (assignedCount > 0 ? '#0F172A' : '#64748B'),
-                                            padding: '1px 6px',
-                                            borderRadius: '10px',
-                                            fontSize: '0.66rem',
-                                            fontWeight: 800,
-                                            marginLeft: '1px'
-                                        }} title={`${assignedCount} chats asignados`}>
-                                            {assignedCount}
-                                        </span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    {/* Badge de Sin Asignar */}
-                    {(() => {
-                        const unassignedCount = chats.filter(c => (!c.assignedTo || c.status === 'sin_asignar') && c.status !== 'archivado').length;
-                        if (unassignedCount === 0) return null;
-                        return (
-                            <div style={{
-                                fontSize: '0.72rem', fontWeight: 800,
-                                background: '#FEF3C7', color: '#B45309', border: '1px solid #FCD34D',
-                                padding: '4px 10px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '5px'
-                            }} title="Conversaciones sin asignar en la cola general de Contact Center">
-                                <span>⚠️ Sin asignar:</span>
-                                <span style={{ background: '#B45309', color: '#FFF', borderRadius: '10px', padding: '1px 6px', fontSize: '0.66rem', fontWeight: 800 }}>
-                                    {unassignedCount}
-                                </span>
-                            </div>
-                        );
-                    })()}
-
                     {/* Pestañas de Navegación del Módulo */}
                     <div style={{
                         display: 'flex',
-                        background: '#FFFFFF',
-                        borderRadius: '10px',
-                        padding: '4px',
-                        border: '1px solid #E2E8F0',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                        background: '#F1F5F9',
+                        borderRadius: '8px',
+                        padding: '3px',
+                        gap: '2px',
+                        overflowX: 'auto'
                     }}>
                         <button
                             onClick={() => setActiveSubTab('conversaciones')}
                             style={{
-                                padding: '8px 16px', borderRadius: '8px', border: 'none',
-                                fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', gap: '6px',
+                                padding: '6px 12px', borderRadius: '6px', border: 'none',
+                                fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '5px',
                                 background: activeSubTab === 'conversaciones' ? '#0F2942' : 'transparent',
                                 color: activeSubTab === 'conversaciones' ? '#FFFFFF' : '#64748B',
                                 transition: 'all 0.15s'
                             }}
                         >
-                            <MessageSquare size={16} />
+                            <MessageSquare size={14} />
                             Conversaciones
                             <span style={{
                                 background: activeSubTab === 'conversaciones' ? '#0284C7' : '#EFF6FF',
                                 color: activeSubTab === 'conversaciones' ? '#FFFFFF' : '#1E40AF',
-                                fontSize: '0.68rem', padding: '1px 6px', borderRadius: '10px', fontWeight: 800
+                                fontSize: '0.65rem', padding: '1px 5px', borderRadius: '8px', fontWeight: 800
                             }}>
                                 {chats.filter(c => !c.assignedTo).length}
                             </span>
@@ -647,92 +486,192 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         <button
                             onClick={() => setActiveSubTab('mi_semana')}
                             style={{
-                                padding: '8px 16px', borderRadius: '8px', border: 'none',
-                                fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', gap: '6px',
+                                padding: '6px 12px', borderRadius: '6px', border: 'none',
+                                fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '5px',
                                 background: activeSubTab === 'mi_semana' ? '#0F2942' : 'transparent',
                                 color: activeSubTab === 'mi_semana' ? '#FFFFFF' : '#64748B',
                                 transition: 'all 0.15s'
                             }}
                         >
-                            <CalendarCheck size={16} />
+                            <CalendarCheck size={14} />
                             Mi Semana
                         </button>
 
                         <button
                             onClick={() => setActiveSubTab('nueva_conversacion')}
                             style={{
-                                padding: '8px 16px', borderRadius: '8px', border: 'none',
-                                fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', gap: '6px',
+                                padding: '6px 12px', borderRadius: '6px', border: 'none',
+                                fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '5px',
                                 background: activeSubTab === 'nueva_conversacion' ? '#0F2942' : 'transparent',
                                 color: activeSubTab === 'nueva_conversacion' ? '#FFFFFF' : '#64748B',
                                 transition: 'all 0.15s'
                             }}
                         >
-                            <PlusCircle size={16} />
+                            <PlusCircle size={14} />
                             Crear Conversación
                         </button>
 
-                        {/* Nueva Pestaña: Turnos Online Duplicados */}
                         <button
                             onClick={() => setActiveSubTab('turnos_online')}
                             style={{
-                                padding: '8px 16px', borderRadius: '8px', border: 'none',
-                                fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', gap: '6px',
+                                padding: '6px 12px', borderRadius: '6px', border: 'none',
+                                fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '5px',
                                 background: activeSubTab === 'turnos_online' ? '#0F2942' : 'transparent',
                                 color: activeSubTab === 'turnos_online' ? '#FFFFFF' : '#DC2626',
                                 transition: 'all 0.15s'
                             }}
                         >
-                            <AlertTriangle size={16} />
+                            <AlertTriangle size={14} />
                             Turnos Online
                             <span style={{
                                 background: activeSubTab === 'turnos_online' ? '#DC2626' : '#FEE2E2',
                                 color: activeSubTab === 'turnos_online' ? '#FFFFFF' : '#DC2626',
-                                fontSize: '0.68rem', padding: '1px 6px', borderRadius: '10px', fontWeight: 800
+                                fontSize: '0.65rem', padding: '1px 5px', borderRadius: '8px', fontWeight: 800
                             }}>
                                 Alertas
                             </span>
                         </button>
 
-                        {/* Nueva Pestaña: Métricas y Control de Costos */}
                         <button
                             onClick={() => setActiveSubTab('metricas')}
                             style={{
-                                padding: '8px 16px', borderRadius: '8px', border: 'none',
-                                fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', gap: '6px',
+                                padding: '6px 12px', borderRadius: '6px', border: 'none',
+                                fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '5px',
                                 background: activeSubTab === 'metricas' ? '#0F2942' : 'transparent',
                                 color: activeSubTab === 'metricas' ? '#FFFFFF' : '#0284C7',
                                 transition: 'all 0.15s'
                             }}
                         >
-                            <BarChart3 size={16} />
+                            <BarChart3 size={14} />
                             Métricas y Costos
                         </button>
 
-                        {/* Pestaña de Permisos (Visible EXCLUSIVAMENTE para lmarinero) */}
                         {isLMarinero && (
                             <button
                                 onClick={() => setActiveSubTab('permisos')}
                                 style={{
-                                    padding: '8px 16px', borderRadius: '8px', border: 'none',
-                                    fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
-                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                    padding: '6px 12px', borderRadius: '6px', border: 'none',
+                                    fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: '5px',
                                     background: activeSubTab === 'permisos' ? '#1E40AF' : 'transparent',
                                     color: activeSubTab === 'permisos' ? '#FFFFFF' : '#1E40AF',
                                     transition: 'all 0.15s'
                                 }}
                             >
-                                <ShieldCheck size={16} />
+                                <ShieldCheck size={14} />
                                 Permisos
                             </button>
                         )}
                     </div>
+
+                    {/* SELECTOR DE AGENTE ACTIVA CON CONTEO DE MENSAJES ASIGNADOS */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px',
+                            padding: '3px 6px'
+                        }}>
+                            <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B' }}>
+                                Atendiendo como:
+                            </span>
+                            <div style={{ display: 'flex', gap: '3px' }}>
+                                {CONTACT_CENTER_AGENTS.map(agent => {
+                                    const isCurrent = activeAgent.id === agent.id || activeAgent.username === agent.username;
+                                    const assignedCount = chats.filter(c => {
+                                        if (c.status === 'archivado') return false;
+                                        const assigned = (c.assignedTo || '').toLowerCase();
+                                        if (!assigned) return false;
+                                        return (
+                                            assigned === agent.id.toLowerCase() ||
+                                            (agent.username && assigned === agent.username.toLowerCase()) ||
+                                            (agent.legacyId && assigned === agent.legacyId.toLowerCase()) ||
+                                            (c.assignedToName || '').toLowerCase().includes(agent.name.toLowerCase())
+                                        );
+                                    }).length;
+                                    const canSwitch = isLMarinero;
+
+                                    return (
+                                        <button
+                                            key={agent.id}
+                                            onClick={() => {
+                                                if (canSwitch) {
+                                                    setActiveAgent(agent);
+                                                } else if (!isCurrent) {
+                                                    addToast?.(`Estás autenticada como ${activeAgent.name}. Solo supervisores pueden conmutar de agente.`, 'info');
+                                                }
+                                            }}
+                                            title={canSwitch ? `Cambiar a ${agent.fullName} (${assignedCount} asignados)` : `${agent.fullName}: ${assignedCount} chats asignados`}
+                                            style={{
+                                                padding: '3px 6px', borderRadius: '5px', fontSize: '0.7rem', fontWeight: 700,
+                                                border: 'none', cursor: canSwitch || isCurrent ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: '4px',
+                                                background: isCurrent ? agent.color : '#FFFFFF',
+                                                color: isCurrent ? '#FFFFFF' : '#475569',
+                                                boxShadow: isCurrent ? `0 1px 4px ${agent.color}40` : 'none',
+                                                transition: 'all 0.15s'
+                                            }}
+                                        >
+                                            <div style={{
+                                                width: '14px', height: '14px', borderRadius: '50%',
+                                                background: isCurrent ? '#FFFFFF' : agent.color,
+                                                color: isCurrent ? agent.color : '#FFFFFF',
+                                                fontSize: '0.58rem', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                            }}>
+                                                {agent.avatar}
+                                            </div>
+                                            <span>{agent.name.split(' ')[0]}</span>
+                                            {assignedCount > 0 && (
+                                                <span style={{
+                                                    background: isCurrent ? 'rgba(255, 255, 255, 0.3)' : '#E2E8F0',
+                                                    color: isCurrent ? '#FFFFFF' : '#0F172A',
+                                                    padding: '0 4px',
+                                                    borderRadius: '8px',
+                                                    fontSize: '0.6rem',
+                                                    fontWeight: 800
+                                                }}>
+                                                    {assignedCount}
+                                                </span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Sonido y Sync */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <button
+                                onClick={toggleSound}
+                                title={soundEnabled ? 'Silenciar avisos sonoros' : 'Activar sonido de nuevos mensajes'}
+                                style={{
+                                    padding: '3px 6px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                    background: soundEnabled ? '#F0FDF4' : '#FFFFFF',
+                                    color: soundEnabled ? '#16A34A' : '#94A3B8',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                    fontSize: '0.68rem', fontWeight: 700
+                                }}
+                            >
+                                {soundEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
+                            </button>
+                            <button
+                                onClick={reloadChats}
+                                disabled={loadingLive}
+                                title="Forzar sincronización inmediata"
+                                style={{
+                                    padding: '3px 6px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                    background: '#FFFFFF', color: '#0284C7', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center',
+                                    fontSize: '0.68rem', fontWeight: 700
+                                }}
+                            >
+                                <RefreshCw size={11} className={loadingLive ? 'spin' : ''} />
+                            </button>
+                        </div>
+                    </div>
                 </div>
-            </div>
             )}
 
             {/* Vistas del Módulo */}
@@ -764,6 +703,14 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     onUnassignChat={handleUnassignChat}
                     onTransferChat={handleTransferChat}
                     onCloseChat={handleCloseChat}
+                    activeSubTab={activeSubTab}
+                    onNavigateTab={setActiveSubTab}
+                    onSwitchAgent={setActiveAgent}
+                    soundEnabled={soundEnabled}
+                    onToggleSound={toggleSound}
+                    onReloadChats={reloadChats}
+                    loadingLive={loadingLive}
+                    isLMarinero={isLMarinero}
                 />
             )}
 
