@@ -523,8 +523,8 @@ export default function ContactCenterNuevaConversacion({ activeAgent, onCreateCh
                                     style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#0F172A', fontSize: '0.85rem', outline: 'none' }}
                                 >
                                     <option value="Daniela Aguilera">Daniela Aguilera (Atención al Paciente)</option>
-                                    <option value="Sofia Morales">Sofia Morales (Atención al Paciente)</option>
-                                    <option value="Virginia Quiroga">Virginia Quiroga (Atención al Paciente)</option>
+                                    <option value="Sofia Olivieri">Sofia Olivieri (Atención al Paciente)</option>
+                                    <option value="Virginia Jacques">Virginia Jacques (Atención al Paciente)</option>
                                     <option value="Erica Leal">Erica Leal (Atención al Paciente)</option>
                                     <option value="Lucas Marinero">Lucas Marinero (Supervisor)</option>
                                     <option value="Sin asignar">Sin asignar (A cola general)</option>

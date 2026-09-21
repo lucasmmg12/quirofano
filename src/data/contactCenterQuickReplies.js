@@ -29,50 +29,90 @@ export const DEFAULT_QUICK_REPLIES = Object.freeze([
         agentId: 'daguilera'
     },
     {
-        id: 'vic',
-        shortcut: 'vic',
-        title: 'Saludo Victoria Jacques',
-        content: '¡Hola! Mi nombre es Victoria Jacques de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
+        id: 'daniela',
+        shortcut: 'daniela',
+        title: 'Saludo Daniela Aguilera (nombre completo)',
+        content: '¡Hola! Mi nombre es Daniela Aguilera de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
+        category: 'saludo',
+        agentId: 'daguilera'
+    },
+    {
+        id: 'vir',
+        shortcut: 'vir',
+        title: 'Saludo Virginia Jacques',
+        content: '¡Hola! Mi nombre es Virginia Jacques de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
         category: 'saludo',
         agentId: 'vjacques'
     },
     {
-        id: 'vicky',
-        shortcut: 'vicky',
-        title: 'Saludo Victoria Jacques (alt)',
-        content: '¡Hola! Mi nombre es Victoria Jacques de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
+        id: 'virginia',
+        shortcut: 'virginia',
+        title: 'Saludo Virginia Jacques (alt)',
+        content: '¡Hola! Mi nombre es Virginia Jacques de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
         category: 'saludo',
         agentId: 'vjacques'
+    },
+    {
+        id: 'vic',
+        shortcut: 'vic',
+        title: 'Saludo Virginia Jacques (alias vic)',
+        content: '¡Hola! Mi nombre es Virginia Jacques de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
+        category: 'saludo',
+        agentId: 'vjacques'
+    },
+    {
+        id: 'sof',
+        shortcut: 'sof',
+        title: 'Saludo Sofia Olivieri',
+        content: '¡Hola! Mi nombre es Sofia Olivieri de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
+        category: 'saludo',
+        agentId: 'solivier'
+    },
+    {
+        id: 'sofi',
+        shortcut: 'sofi',
+        title: 'Saludo Sofia Olivieri (sofi)',
+        content: '¡Hola! Mi nombre es Sofia Olivieri de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
+        category: 'saludo',
+        agentId: 'solivier'
+    },
+    {
+        id: 'sofia',
+        shortcut: 'sofia',
+        title: 'Saludo Sofia Olivieri (sofia)',
+        content: '¡Hola! Mi nombre es Sofia Olivieri de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
+        category: 'saludo',
+        agentId: 'solivier'
     },
     {
         id: 'sil',
         shortcut: 'sil',
-        title: 'Saludo Silvina Olivier',
-        content: '¡Hola! Mi nombre es Silvina Olivier de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
+        title: 'Saludo Sofia Olivieri (alias sil)',
+        content: '¡Hola! Mi nombre es Sofia Olivieri de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
         category: 'saludo',
         agentId: 'solivier'
     },
     {
-        id: 'silvina',
-        shortcut: 'silvina',
-        title: 'Saludo Silvina Olivier (alt)',
-        content: '¡Hola! Mi nombre es Silvina Olivier de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
-        category: 'saludo',
-        agentId: 'solivier'
-    },
-    {
-        id: 'emi',
-        shortcut: 'emi',
-        title: 'Saludo Emilce Leal',
-        content: '¡Hola! Mi nombre es Emilce Leal de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
+        id: 'eri',
+        shortcut: 'eri',
+        title: 'Saludo Erica Leal',
+        content: '¡Hola! Mi nombre es Erica Leal de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
         category: 'saludo',
         agentId: 'eleal'
     },
     {
-        id: 'emilce',
-        shortcut: 'emilce',
-        title: 'Saludo Emilce Leal (alt)',
-        content: '¡Hola! Mi nombre es Emilce Leal de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
+        id: 'erica',
+        shortcut: 'erica',
+        title: 'Saludo Erica Leal (alt)',
+        content: '¡Hola! Mi nombre es Erica Leal de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
+        category: 'saludo',
+        agentId: 'eleal'
+    },
+    {
+        id: 'emi',
+        shortcut: 'emi',
+        title: 'Saludo Erica Leal (alias emi)',
+        content: '¡Hola! Mi nombre es Erica Leal de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
         category: 'saludo',
         agentId: 'eleal'
     },
