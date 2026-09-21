@@ -193,12 +193,21 @@ Deno.serve(async (req) => {
             mediaType = inferMediaType(mediaUrl, data.attachment?.[0]);
         }
 
-        // Limpiar contenido: si es un _event_media__ y tenemos mediaUrl, usar caption o tipo
+        // Extraer nombre original de documento si existe (Word, Excel, PDF, etc.)
+        const docFileName = data.message?.documentMessage?.fileName || 
+            data.message?.documentWithCaptionMessage?.message?.documentMessage?.fileName || 
+            data.fileName || data.filename || null;
+
+        // Limpiar contenido: si es un _event_media__ y tenemos mediaUrl, usar caption o nombre de archivo
         let content = rawContent;
         if (content && content.startsWith('_event_media__')) {
             // El body es solo el ID del media, no texto real
             content = data.caption || data.message?.imageMessage?.caption ||
-                data.message?.videoMessage?.caption || '';
+                data.message?.videoMessage?.caption ||
+                docFileName || '';
+        }
+        if (!content && docFileName) {
+            content = docFileName;
         }
 
         // =============================================
@@ -209,7 +218,7 @@ Deno.serve(async (req) => {
         const originalMediaUrl = mediaUrl; // Guardar URL temporal original
         if (mediaUrl) {
             try {
-                const persistedUrl = await persistMediaToStorage(supabase, mediaUrl, mediaType, phone);
+                const persistedUrl = await persistMediaToStorage(supabase, mediaUrl, mediaType, phone, docFileName);
                 if (persistedUrl) {
                     mediaUrl = persistedUrl; // Reemplazar con URL permanente
                     console.log(`[webhook] Media persistida: ${originalMediaUrl} → ${persistedUrl}`);
@@ -365,9 +374,15 @@ Deno.serve(async (req) => {
  * Descarga un archivo desde una URL temporal y lo sube al bucket de Supabase Storage.
  * Retorna la URL pública permanente, o null si falla.
  */
-async function persistMediaToStorage(supabase: any, tempUrl: string, mediaType: string, phone: string): Promise<string | null> {
+async function persistMediaToStorage(
+    supabase: any, 
+    tempUrl: string, 
+    mediaType: string, 
+    phone: string, 
+    originalFilename?: string | null
+): Promise<string | null> {
     // Descargar el archivo desde la URL temporal
-    console.log(`[storage] Descargando media desde: ${tempUrl}`);
+    console.log(`[storage] Descargando media desde: ${tempUrl}${originalFilename ? ` (nombre: ${originalFilename})` : ''}`);
     const response = await fetch(tempUrl);
 
     if (!response.ok) {
@@ -393,12 +408,27 @@ async function persistMediaToStorage(supabase: any, tempUrl: string, mediaType: 
         return null;
     }
 
-    // Determinar content-type: priorizar el tipo conocido de WhatsApp sobre el header del response
-    // (los servidores temporales a veces devuelven content-types genéricos como application/octet-stream)
-    const contentType = getMimeForMediaType(mediaType) !== 'application/octet-stream'
+    // Deducir mime type específico si se conoce el nombre de archivo del documento
+    let detectedMime: string | null = null;
+    if (originalFilename) {
+        const lowerName = originalFilename.toLowerCase();
+        if (lowerName.endsWith('.pdf')) detectedMime = 'application/pdf';
+        else if (lowerName.endsWith('.docx')) detectedMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        else if (lowerName.endsWith('.doc')) detectedMime = 'application/msword';
+        else if (lowerName.endsWith('.xlsx')) detectedMime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        else if (lowerName.endsWith('.xls')) detectedMime = 'application/vnd.ms-excel';
+        else if (lowerName.endsWith('.csv')) detectedMime = 'text/csv';
+    }
+
+    // Determinar content-type: priorizar tipo detectado o tipo conocido de WhatsApp
+    const contentType = detectedMime || (getMimeForMediaType(mediaType) !== 'application/octet-stream'
         ? getMimeForMediaType(mediaType)
-        : (responseContentType || getMimeForMediaType(mediaType));
-    const extension = getExtensionFromMime(contentType, tempUrl, mediaType);
+        : (responseContentType || getMimeForMediaType(mediaType)));
+
+    let extension = originalFilename ? getExtensionFromMime(contentType, originalFilename, mediaType) : '';
+    if (!extension || extension === 'bin') {
+        extension = getExtensionFromMime(contentType, tempUrl, mediaType);
+    }
 
     // Generar nombre único: phone/timestamp_random.ext
     const timestamp = Date.now();

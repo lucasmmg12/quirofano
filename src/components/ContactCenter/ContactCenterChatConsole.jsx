@@ -8,8 +8,88 @@ import {
     Power, Sparkles, Stethoscope, DollarSign, CreditCard,
     Edit3, Save, X, History, Activity, FileCheck, RefreshCw,
     Zap, CalendarCheck, PlusCircle, ShieldCheck, BarChart3, Volume2, VolumeX,
-    GripVertical, Download, ZoomIn, ZoomOut, RotateCw, Copy, ArrowUpDown
+    GripVertical, Download, ZoomIn, ZoomOut, RotateCw, Copy, ArrowUpDown,
+    FileText, FileSpreadsheet, File, Maximize2
 } from 'lucide-react';
+
+/**
+ * Detecta metadata y tipo de archivo para documentos y medios (PDF, Word, Excel, Imágenes)
+ */
+function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
+    if (!url && !explicitType) return null;
+    const cleanUrl = String(url || '').toLowerCase();
+    const cleanCaption = String(caption || '').trim();
+    const cleanText = String(text || '').trim();
+    
+    const isImage = explicitType === 'image' || /\.(jpe?g|png|webp|gif|bmp|svg)($|\?)/i.test(cleanUrl);
+    const isPdf = cleanUrl.includes('.pdf') || explicitType === 'pdf' || cleanCaption.toLowerCase().endsWith('.pdf') || cleanText.toLowerCase().endsWith('.pdf');
+    const isWord = cleanUrl.includes('.docx') || cleanUrl.includes('.doc') || explicitType === 'word' || cleanCaption.toLowerCase().includes('.doc') || cleanText.toLowerCase().includes('.doc');
+    const isExcel = cleanUrl.includes('.xlsx') || cleanUrl.includes('.xls') || cleanUrl.includes('.csv') || explicitType === 'excel' || cleanCaption.toLowerCase().includes('.xls') || cleanText.toLowerCase().includes('.xls') || cleanCaption.toLowerCase().includes('.csv');
+    
+    let fileType = 'document';
+    let label = 'Documento Adjunto';
+    let color = '#2563EB';
+    let bgColor = '#EFF6FF';
+    let borderColor = '#BFDBFE';
+    let ext = 'DOC';
+    
+    if (isImage) {
+        fileType = 'image';
+        label = 'Imagen Médica / Orden';
+        color = '#0284C7';
+        bgColor = '#F0F9FF';
+        borderColor = '#BAE6FD';
+        ext = 'IMG';
+    } else if (isPdf) {
+        fileType = 'pdf';
+        label = 'Documento PDF';
+        color = '#DC2626';
+        bgColor = '#FEF2F2';
+        borderColor = '#FECACA';
+        ext = 'PDF';
+    } else if (isWord) {
+        fileType = 'word';
+        label = 'Documento Word';
+        color = '#2563EB';
+        bgColor = '#EFF6FF';
+        borderColor = '#BFDBFE';
+        ext = 'DOCX';
+    } else if (isExcel) {
+        fileType = 'excel';
+        label = 'Planilla Excel';
+        color = '#16A34A';
+        bgColor = '#F0FDF4';
+        borderColor = '#BBF7D0';
+        ext = 'XLSX';
+    }
+    
+    let filename = cleanCaption || (cleanText && !cleanText.startsWith('[') && cleanText.length < 80 ? cleanText : '');
+    if (!filename && url) {
+        try {
+            const pathname = new URL(url).pathname;
+            const parts = pathname.split('/');
+            const lastPart = parts[parts.length - 1];
+            if (lastPart) {
+                filename = decodeURIComponent(lastPart);
+            }
+        } catch {
+            filename = '';
+        }
+    }
+    if (!filename) {
+        filename = `${label}.${ext.toLowerCase()}`;
+    }
+    
+    return {
+        fileType,
+        label,
+        color,
+        bgColor,
+        borderColor,
+        ext,
+        filename
+    };
+}
 import { 
     CONTACT_CENTER_AGENTS, getAgentById, isChatLockedForUser, 
     MASTER_ADMINS, toggleBotActive, fetchDoctorParameters,
@@ -136,11 +216,12 @@ export default function ContactCenterChatConsole({
             const res = await fetch(viewerImage.url);
             const blob = await res.blob();
             const blobUrl = window.URL.createObjectURL(blob);
-            const safeName = (viewerImage.senderName || 'orden_medica')
+            const safeName = (viewerImage.senderName || 'documento')
                 .toLowerCase()
                 .replace(/[^a-z0-9]/g, '_')
                 .replace(/_+/g, '_');
-            const filename = `${safeName}_${Date.now().toString().slice(-6)}.jpg`;
+            const ext = viewerImage.ext ? viewerImage.ext.toLowerCase() : 'pdf';
+            const filename = viewerImage.filename || `${safeName}_${Date.now().toString().slice(-6)}.${ext}`;
             const a = document.createElement('a');
             a.href = blobUrl;
             a.download = filename;
@@ -149,11 +230,11 @@ export default function ContactCenterChatConsole({
             document.body.removeChild(a);
             window.URL.revokeObjectURL(blobUrl);
         } catch (err) {
-            console.error('Error descargando imagen vía blob:', err);
+            console.error('Error descargando archivo vía blob:', err);
             const a = document.createElement('a');
             a.href = viewerImage.url;
-            a.download = 'orden_medica.jpg';
-            a.target = '_self';
+            a.download = viewerImage.filename || 'documento';
+            a.target = '_blank';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -1641,141 +1722,288 @@ export default function ContactCenterChatConsole({
                                             </div>
                                         )}
 
-                                        {msg.type === 'image' && (
-                                            <div style={{ marginBottom: '8px', maxWidth: '340px' }}>
-                                                <div 
-                                                    style={{ 
-                                                        borderRadius: '8px', 
-                                                        overflow: 'hidden', 
-                                                        border: '1px solid #CBD5E1', 
-                                                        cursor: 'pointer',
-                                                        position: 'relative',
-                                                        boxShadow: '0 2px 6px rgba(0,0,0,0.06)'
-                                                    }}
-                                                    onClick={() => {
-                                                        if (!msg.mediaUrl) return;
-                                                        setViewerZoom(1);
-                                                        setViewerRotation(0);
-                                                        setCopiedViewerData(false);
-                                                        setViewerImage({
-                                                            url: msg.mediaUrl,
-                                                            caption: msg.caption,
-                                                            orderAnalysis: msg.orderAnalysis,
-                                                            senderName: selectedChat?.contactName || msg.senderName || 'Paciente',
-                                                            dni: selectedChat?.dni,
-                                                            timestamp: msg.timestamp
-                                                        });
-                                                    }}
-                                                    title="Click para abrir en el visor profesional integrado"
-                                                >
-                                                    <img src={msg.mediaUrl} alt={msg.caption || 'Foto de Orden'} style={{ width: '100%', maxHeight: '220px', objectFit: 'contain', background: '#0F172A', display: 'block' }} />
-                                                    <div style={{
-                                                        position: 'absolute', bottom: msg.caption ? '36px' : '8px', right: '8px',
-                                                        background: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(4px)',
-                                                        color: '#FFFFFF', padding: '3px 8px', borderRadius: '4px',
-                                                        fontSize: '0.68rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px',
-                                                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                                                    }}>
-                                                        <Eye size={12} /> Abrir Visor
-                                                    </div>
-                                                    {msg.caption && (
-                                                        <div style={{ padding: '6px 10px', background: '#F8FAFC', fontSize: '0.75rem', color: '#64748B' }}>
-                                                            📄 {msg.caption}
+                                        {(() => {
+                                            const docMeta = getDocumentMeta(msg.mediaUrl, msg.type, msg.caption, msg.text);
+                                            return (
+                                                <>
+                                                    {/* TARJETA DE DOCUMENTO ADJUNTO (PDF, WORD, EXCEL, ETC.) */}
+                                                    {docMeta && docMeta.fileType !== 'image' && msg.mediaUrl && (
+                                                        <div style={{
+                                                            marginBottom: '10px',
+                                                            maxWidth: '380px',
+                                                            borderRadius: '10px',
+                                                            border: `1.5px solid ${docMeta.borderColor}`,
+                                                            backgroundColor: docMeta.bgColor,
+                                                            padding: '12px 14px',
+                                                            boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
+                                                            textAlign: 'left'
+                                                        }}>
+                                                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                                                                <div style={{
+                                                                    width: '40px',
+                                                                    height: '40px',
+                                                                    borderRadius: '8px',
+                                                                    backgroundColor: '#FFFFFF',
+                                                                    border: `1px solid ${docMeta.borderColor}`,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    color: docMeta.color,
+                                                                    flexShrink: 0,
+                                                                    boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
+                                                                }}>
+                                                                    {docMeta.fileType === 'pdf' && <FileText size={22} />}
+                                                                    {docMeta.fileType === 'word' && <FileText size={22} />}
+                                                                    {docMeta.fileType === 'excel' && <FileSpreadsheet size={22} />}
+                                                                    {docMeta.fileType === 'document' && <File size={22} />}
+                                                                </div>
+                                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                                    <div style={{
+                                                                        fontSize: '0.82rem',
+                                                                        fontWeight: 700,
+                                                                        color: '#0F172A',
+                                                                        whiteSpace: 'nowrap',
+                                                                        overflow: 'hidden',
+                                                                        textOverflow: 'ellipsis'
+                                                                    }} title={docMeta.filename}>
+                                                                        {docMeta.filename}
+                                                                    </div>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
+                                                                        <span style={{
+                                                                            fontSize: '0.68rem',
+                                                                            fontWeight: 700,
+                                                                            backgroundColor: docMeta.color,
+                                                                            color: '#FFFFFF',
+                                                                            padding: '1px 6px',
+                                                                            borderRadius: '4px',
+                                                                            letterSpacing: '0.5px'
+                                                                        }}>
+                                                                            {docMeta.ext}
+                                                                        </span>
+                                                                        <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                                                            {docMeta.label}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* BOTONES DE ACCIÓN */}
+                                                            <div style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '8px',
+                                                                marginTop: '10px',
+                                                                paddingTop: '8px',
+                                                                borderTop: `1px solid ${docMeta.borderColor}`
+                                                            }}>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setViewerZoom(1);
+                                                                        setViewerRotation(0);
+                                                                        setCopiedViewerData(false);
+                                                                        setViewerImage({
+                                                                            url: msg.mediaUrl,
+                                                                            caption: msg.caption || docMeta.filename,
+                                                                            filename: docMeta.filename,
+                                                                            fileType: docMeta.fileType,
+                                                                            ext: docMeta.ext,
+                                                                            orderAnalysis: msg.orderAnalysis,
+                                                                            senderName: selectedChat?.contactName || msg.senderName || 'Paciente',
+                                                                            dni: selectedChat?.dni,
+                                                                            timestamp: msg.timestamp
+                                                                        });
+                                                                    }}
+                                                                    style={{
+                                                                        flex: 1,
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        gap: '6px',
+                                                                        padding: '6px 12px',
+                                                                        borderRadius: '6px',
+                                                                        backgroundColor: docMeta.color,
+                                                                        color: '#FFFFFF',
+                                                                        border: 'none',
+                                                                        fontSize: '0.74rem',
+                                                                        fontWeight: 700,
+                                                                        cursor: 'pointer',
+                                                                        boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                                                                    }}
+                                                                >
+                                                                    <Eye size={14} /> Abrir en Visor Profesional
+                                                                </button>
+                                                                <a
+                                                                    href={msg.mediaUrl}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    download={docMeta.filename}
+                                                                    style={{
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        padding: '6px 10px',
+                                                                        borderRadius: '6px',
+                                                                        backgroundColor: '#FFFFFF',
+                                                                        color: '#475569',
+                                                                        border: `1px solid ${docMeta.borderColor}`,
+                                                                        fontSize: '0.74rem',
+                                                                        fontWeight: 600,
+                                                                        textDecoration: 'none',
+                                                                        cursor: 'pointer'
+                                                                    }}
+                                                                    title="Descargar o abrir en pestaña nueva"
+                                                                >
+                                                                    <Download size={14} />
+                                                                </a>
+                                                            </div>
                                                         </div>
                                                     )}
-                                                </div>
 
-                                                {/* Tarjeta de Análisis Clínico IA de la Orden Médica (Exclusivo para el Operador) */}
-                                                {msg.orderAnalysis ? (
-                                                    <div style={{
-                                                        marginTop: '6px',
-                                                        padding: '10px 12px',
-                                                        background: '#F0FDF4',
-                                                        border: '1.5px solid #86EFAC',
-                                                        borderRadius: '8px',
-                                                        fontSize: '0.78rem',
-                                                        color: '#0F172A',
-                                                        lineHeight: 1.5,
-                                                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                                                        textAlign: 'left'
-                                                    }}>
-                                                        <div style={{
-                                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                            marginBottom: '6px', paddingBottom: '4px', borderBottom: '1px solid #BBF7D0'
-                                                        }}>
-                                                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#166534', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                                🩺 DATOS DE LA ORDEN (IA)
-                                                            </span>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    const textToCopy = msg.orderAnalysis.raw_summary || 
+                                                    {/* TARJETA DE IMAGEN MÉDICA / ORDEN */}
+                                                    {(msg.type === 'image' || (docMeta && docMeta.fileType === 'image' && msg.mediaUrl)) && (
+                                                        <div style={{ marginBottom: '8px', maxWidth: '340px' }}>
+                                                            <div 
+                                                                style={{ 
+                                                                    borderRadius: '8px', 
+                                                                    overflow: 'hidden', 
+                                                                    border: '1px solid #CBD5E1', 
+                                                                    cursor: 'pointer',
+                                                                    position: 'relative',
+                                                                    boxShadow: '0 2px 6px rgba(0,0,0,0.06)'
+                                                                }}
+                                                                onClick={() => {
+                                                                    if (!msg.mediaUrl) return;
+                                                                    setViewerZoom(1);
+                                                                    setViewerRotation(0);
+                                                                    setCopiedViewerData(false);
+                                                                    setViewerImage({
+                                                                        url: msg.mediaUrl,
+                                                                        caption: msg.caption,
+                                                                        filename: docMeta?.filename || 'orden_medica.jpg',
+                                                                        fileType: 'image',
+                                                                        ext: 'IMG',
+                                                                        orderAnalysis: msg.orderAnalysis,
+                                                                        senderName: selectedChat?.contactName || msg.senderName || 'Paciente',
+                                                                        dni: selectedChat?.dni,
+                                                                        timestamp: msg.timestamp
+                                                                    });
+                                                                }}
+                                                                title="Click para abrir en el visor profesional integrado"
+                                                            >
+                                                                <img src={msg.mediaUrl} alt={msg.caption || 'Foto de Orden'} style={{ width: '100%', maxHeight: '220px', objectFit: 'contain', background: '#0F172A', display: 'block' }} />
+                                                                <div style={{
+                                                                    position: 'absolute', bottom: msg.caption ? '36px' : '8px', right: '8px',
+                                                                    background: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(4px)',
+                                                                    color: '#FFFFFF', padding: '3px 8px', borderRadius: '4px',
+                                                                    fontSize: '0.68rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px',
+                                                                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                                                                }}>
+                                                                    <Eye size={12} /> Abrir Visor
+                                                                </div>
+                                                                {msg.caption && (
+                                                                    <div style={{ padding: '6px 10px', background: '#F8FAFC', fontSize: '0.75rem', color: '#64748B' }}>
+                                                                        📄 {msg.caption}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Tarjeta de Análisis Clínico IA de la Orden Médica (Exclusivo para el Operador) */}
+                                                            {msg.orderAnalysis ? (
+                                                                <div style={{
+                                                                    marginTop: '6px',
+                                                                    padding: '10px 12px',
+                                                                    background: '#F0FDF4',
+                                                                    border: '1.5px solid #86EFAC',
+                                                                    borderRadius: '8px',
+                                                                    fontSize: '0.78rem',
+                                                                    color: '#0F172A',
+                                                                    lineHeight: 1.5,
+                                                                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                                                                    textAlign: 'left'
+                                                                }}>
+                                                                    <div style={{
+                                                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                                        marginBottom: '6px', paddingBottom: '4px', borderBottom: '1px solid #BBF7D0'
+                                                                    }}>
+                                                                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#166534', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                                            🩺 DATOS DE LA ORDEN (IA)
+                                                                        </span>
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                const textToCopy = msg.orderAnalysis.raw_summary || 
 `Estudio a autorizar: ${msg.orderAnalysis.estudio || 'No especificado'}
 Solicitante: ${msg.orderAnalysis.solicitante || 'No especificado'}
 Matricula: ${msg.orderAnalysis.matricula || 'No especificada'}
 Diagnostico: ${msg.orderAnalysis.diagnostico || 'No especificado'}
 Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
-                                                                    navigator.clipboard.writeText(textToCopy);
-                                                                    alert('Ficha copiada al portapapeles');
-                                                                }}
-                                                                style={{
-                                                                    background: 'none', border: 'none', cursor: 'pointer',
-                                                                    fontSize: '0.68rem', color: '#15803D', fontWeight: 700, padding: 0
-                                                                }}
-                                                                title="Copiar datos de la orden"
-                                                            >
-                                                                📋 Copiar
-                                                            </button>
-                                                        </div>
-                                                        <div style={{ display: 'grid', gap: '3px' }}>
-                                                            <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Estudio a autorizar:</span> {msg.orderAnalysis.estudio || 'No especificado'}</div>
-                                                            <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Solicitante:</span> {msg.orderAnalysis.solicitante || 'No especificado'}</div>
-                                                            <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Matricula:</span> {msg.orderAnalysis.matricula || 'No especificada'}</div>
-                                                            <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Diagnostico:</span> {msg.orderAnalysis.diagnostico || 'No especificado'}</div>
-                                                            <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Fecha de solicitud:</span> {msg.orderAnalysis.fecha_solicitud || 'No especificada'}</div>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <div style={{ marginTop: '6px', textAlign: 'left' }}>
-                                                        <button
-                                                            onClick={async (e) => {
-                                                                e.stopPropagation();
-                                                                try {
-                                                                    setAnalyzingMsgId(msg.id);
-                                                                    const analysis = await analyzeMedicalOrderImage(msg.mediaUrl, msg.realId, selectedChat?.phone);
-                                                                    if (analysis) {
-                                                                        msg.orderAnalysis = analysis;
-                                                                        setForceUpdate(k => k + 1);
-                                                                    }
-                                                                } catch (err) {
-                                                                    alert('No se pudo analizar la imagen: ' + (err.message || 'Error'));
-                                                                } finally {
-                                                                    setAnalyzingMsgId(null);
-                                                                }
-                                                            }}
-                                                            disabled={analyzingMsgId === msg.id}
-                                                            style={{
-                                                                display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                                                padding: '4px 10px', borderRadius: '6px',
-                                                                background: '#F1F5F9', border: '1px solid #CBD5E1',
-                                                                fontSize: '0.72rem', fontWeight: 700, color: '#334155',
-                                                                cursor: analyzingMsgId === msg.id ? 'wait' : 'pointer'
-                                                            }}
-                                                        >
-                                                            {analyzingMsgId === msg.id ? (
-                                                                <>⏳ Analizando orden con IA...</>
+                                                                                navigator.clipboard.writeText(textToCopy);
+                                                                                alert('Ficha copiada al portapapeles');
+                                                                            }}
+                                                                            style={{
+                                                                                background: 'none', border: 'none', cursor: 'pointer',
+                                                                                fontSize: '0.68rem', color: '#15803D', fontWeight: 700, padding: 0
+                                                                            }}
+                                                                            title="Copiar datos de la orden"
+                                                                        >
+                                                                            📋 Copiar
+                                                                        </button>
+                                                                    </div>
+                                                                    <div style={{ display: 'grid', gap: '3px' }}>
+                                                                        <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Estudio a autorizar:</span> {msg.orderAnalysis.estudio || 'No especificado'}</div>
+                                                                        <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Solicitante:</span> {msg.orderAnalysis.solicitante || 'No especificado'}</div>
+                                                                        <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Matricula:</span> {msg.orderAnalysis.matricula || 'No especificada'}</div>
+                                                                        <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Diagnostico:</span> {msg.orderAnalysis.diagnostico || 'No especificado'}</div>
+                                                                        <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Fecha de solicitud:</span> {msg.orderAnalysis.fecha_solicitud || 'No especificada'}</div>
+                                                                    </div>
+                                                                </div>
                                                             ) : (
-                                                                <>🔍 Analizar orden médica con IA</>
+                                                                <div style={{ marginTop: '6px', textAlign: 'left' }}>
+                                                                    <button
+                                                                        onClick={async (e) => {
+                                                                            e.stopPropagation();
+                                                                            try {
+                                                                                setAnalyzingMsgId(msg.id);
+                                                                                const analysis = await analyzeMedicalOrderImage(msg.mediaUrl, msg.realId, selectedChat?.phone);
+                                                                                if (analysis) {
+                                                                                    msg.orderAnalysis = analysis;
+                                                                                    setForceUpdate(k => k + 1);
+                                                                                }
+                                                                            } catch (err) {
+                                                                                alert('No se pudo analizar la imagen: ' + (err.message || 'Error'));
+                                                                            } finally {
+                                                                                setAnalyzingMsgId(null);
+                                                                            }
+                                                                        }}
+                                                                        disabled={analyzingMsgId === msg.id}
+                                                                        style={{
+                                                                            display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                                            padding: '4px 10px', borderRadius: '6px',
+                                                                            background: '#F1F5F9', border: '1px solid #CBD5E1',
+                                                                            fontSize: '0.72rem', fontWeight: 700, color: '#334155',
+                                                                            cursor: analyzingMsgId === msg.id ? 'wait' : 'pointer'
+                                                                        }}
+                                                                    >
+                                                                        {analyzingMsgId === msg.id ? (
+                                                                            <>⏳ Analizando orden con IA...</>
+                                                                        ) : (
+                                                                            <>🔍 Analizar orden médica con IA</>
+                                                                        )}
+                                                                    </button>
+                                                                </div>
                                                             )}
-                                                        </button>
-                                                    </div>
-                                                )}
+                                                        </div>
+                                                    )}
+                                                </>
+                                            );
+                                        })()}
+
+                                        {msg.text && !msg.text.startsWith('[') && (
+                                            <div style={{ whiteSpace: 'pre-line' }}>
+                                                {msg.text}
                                             </div>
                                         )}
-
-                                        <div style={{ whiteSpace: 'pre-line' }}>
-                                            {msg.text}
-                                        </div>
 
                                         <div style={{
                                             fontSize: '0.68rem', color: '#94A3B8', marginTop: '6px',
@@ -3377,16 +3605,43 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <div style={{
                                 width: '38px', height: '38px', borderRadius: '8px',
-                                backgroundColor: 'rgba(2, 132, 199, 0.25)',
-                                border: '1px solid rgba(56, 189, 248, 0.4)',
+                                backgroundColor: viewerImage.fileType === 'pdf' ? 'rgba(239, 68, 68, 0.25)' :
+                                    viewerImage.fileType === 'word' ? 'rgba(37, 99, 235, 0.25)' :
+                                    viewerImage.fileType === 'excel' ? 'rgba(22, 163, 74, 0.25)' :
+                                    'rgba(2, 132, 199, 0.25)',
+                                border: `1px solid ${
+                                    viewerImage.fileType === 'pdf' ? 'rgba(248, 113, 113, 0.4)' :
+                                    viewerImage.fileType === 'word' ? 'rgba(96, 165, 250, 0.4)' :
+                                    viewerImage.fileType === 'excel' ? 'rgba(74, 222, 128, 0.4)' :
+                                    'rgba(56, 189, 248, 0.4)'
+                                }`,
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                color: '#38BDF8'
+                                color: viewerImage.fileType === 'pdf' ? '#F87171' :
+                                    viewerImage.fileType === 'word' ? '#60A5FA' :
+                                    viewerImage.fileType === 'excel' ? '#4ADE80' :
+                                    '#38BDF8'
                             }}>
-                                <FileCheck size={22} />
+                                {viewerImage.fileType === 'pdf' ? <FileText size={22} /> :
+                                 viewerImage.fileType === 'word' ? <FileText size={22} /> :
+                                 viewerImage.fileType === 'excel' ? <FileSpreadsheet size={22} /> :
+                                 <FileCheck size={22} />}
                             </div>
                             <div>
                                 <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span>{viewerImage.senderName || 'Orden Médica'}</span>
+                                    <span>{viewerImage.filename || viewerImage.senderName || 'Documento'}</span>
+                                    <span style={{
+                                        fontSize: '0.68rem',
+                                        fontWeight: 700,
+                                        backgroundColor: viewerImage.fileType === 'pdf' ? '#DC2626' :
+                                            viewerImage.fileType === 'word' ? '#2563EB' :
+                                            viewerImage.fileType === 'excel' ? '#16A34A' : '#0284C7',
+                                        color: '#FFFFFF',
+                                        padding: '2px 8px',
+                                        borderRadius: '4px',
+                                        letterSpacing: '0.5px'
+                                    }}>
+                                        {viewerImage.ext || 'DOC'}
+                                    </span>
                                     {viewerImage.dni && (
                                         <span style={{ fontSize: '0.72rem', backgroundColor: 'rgba(255,255,255,0.14)', padding: '2px 8px', borderRadius: '4px', color: '#93C5FD' }}>
                                             DNI: {viewerImage.dni}
@@ -3394,64 +3649,86 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     )}
                                 </div>
                                 <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
-                                    {viewerImage.caption ? `Nota: ${viewerImage.caption}` : 'Visor Profesional de Documentos — Sanatorio Argentino'}
+                                    {viewerImage.senderName ? `Paciente: ${viewerImage.senderName}` : ''} {viewerImage.caption && viewerImage.caption !== viewerImage.filename ? `• Nota: ${viewerImage.caption}` : '• Visor Profesional Integrado — Sanatorio Argentino'}
                                 </div>
                             </div>
                         </div>
 
-                        {/* Controles de Zoom, Rotación y Restablecer */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(30, 41, 59, 0.75)', padding: '4px 12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)' }}>
-                            <button
-                                type="button"
-                                onClick={() => setViewerZoom(z => Math.max(0.5, +(z - 0.25).toFixed(2)))}
-                                title="Alejar imagen (-)"
-                                style={{
-                                    background: 'transparent', border: 'none', color: '#E2E8F0', cursor: 'pointer',
-                                    padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center'
-                                }}
-                            >
-                                <ZoomOut size={18} />
-                            </button>
-                            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#38BDF8', minWidth: '48px', textAlign: 'center' }}>
-                                {Math.round(viewerZoom * 100)}%
-                            </span>
-                            <button
-                                type="button"
-                                onClick={() => setViewerZoom(z => Math.min(4, +(z + 0.25).toFixed(2)))}
-                                title="Acercar imagen (+)"
-                                style={{
-                                    background: 'transparent', border: 'none', color: '#E2E8F0', cursor: 'pointer',
-                                    padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center'
-                                }}
-                            >
-                                <ZoomIn size={18} />
-                            </button>
-                            <div style={{ width: '1px', height: '18px', backgroundColor: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
-                            <button
-                                type="button"
-                                onClick={() => setViewerRotation(r => (r + 90) % 360)}
-                                title="Rotar 90° (R)"
-                                style={{
-                                    background: 'transparent', border: 'none', color: '#E2E8F0', cursor: 'pointer',
-                                    padding: '6px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '5px',
-                                    fontSize: '0.74rem'
-                                }}
-                            >
-                                <RotateCw size={16} />
-                                <span style={{ fontSize: '0.74rem', color: '#CBD5E1', fontWeight: 600 }}>Rotar</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => { setViewerZoom(1); setViewerRotation(0); }}
-                                title="Restablecer vista original"
-                                style={{
-                                    background: 'transparent', border: 'none', color: '#94A3B8', cursor: 'pointer',
-                                    padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center'
-                                }}
-                            >
-                                <RefreshCw size={15} />
-                            </button>
-                        </div>
+                        {/* Controles de Vista: Zoom para imágenes o Enlaces directos para documentos */}
+                        {viewerImage.fileType === 'image' ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(30, 41, 59, 0.75)', padding: '4px 12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setViewerZoom(z => Math.max(0.5, +(z - 0.25).toFixed(2)))}
+                                    title="Alejar imagen (-)"
+                                    style={{
+                                        background: 'transparent', border: 'none', color: '#E2E8F0', cursor: 'pointer',
+                                        padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center'
+                                    }}
+                                >
+                                    <ZoomOut size={18} />
+                                </button>
+                                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#38BDF8', minWidth: '48px', textAlign: 'center' }}>
+                                    {Math.round(viewerZoom * 100)}%
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setViewerZoom(z => Math.min(4, +(z + 0.25).toFixed(2)))}
+                                    title="Acercar imagen (+)"
+                                    style={{
+                                        background: 'transparent', border: 'none', color: '#E2E8F0', cursor: 'pointer',
+                                        padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center'
+                                    }}
+                                >
+                                    <ZoomIn size={18} />
+                                </button>
+                                <div style={{ width: '1px', height: '18px', backgroundColor: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
+                                <button
+                                    type="button"
+                                    onClick={() => setViewerRotation(r => (r + 90) % 360)}
+                                    title="Rotar 90° (R)"
+                                    style={{
+                                        background: 'transparent', border: 'none', color: '#E2E8F0', cursor: 'pointer',
+                                        padding: '6px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '5px',
+                                        fontSize: '0.74rem'
+                                    }}
+                                >
+                                    <RotateCw size={16} />
+                                    <span style={{ fontSize: '0.74rem', color: '#CBD5E1', fontWeight: 600 }}>Rotar</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setViewerZoom(1); setViewerRotation(0); }}
+                                    title="Restablecer vista original"
+                                    style={{
+                                        background: 'transparent', border: 'none', color: '#94A3B8', cursor: 'pointer',
+                                        padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center'
+                                    }}
+                                >
+                                    <RefreshCw size={15} />
+                                </button>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <a
+                                    href={viewerImage.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        backgroundColor: 'rgba(30, 41, 59, 0.85)',
+                                        color: '#38BDF8',
+                                        border: '1px solid rgba(56, 189, 248, 0.3)',
+                                        padding: '6px 14px', borderRadius: '8px',
+                                        fontSize: '0.76rem', fontWeight: 700, textDecoration: 'none',
+                                        boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
+                                    }}
+                                    title="Abrir archivo en pestaña nueva del navegador"
+                                >
+                                    <ExternalLink size={14} /> Abrir en pestaña nueva
+                                </a>
+                            </div>
+                        )}
 
                         {/* Acciones: Descargar y Cerrar */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -3472,10 +3749,10 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     transition: 'all 0.15s',
                                     boxShadow: '0 4px 14px rgba(5, 150, 105, 0.4)'
                                 }}
-                                title="Descargar orden médica directamente a tu equipo"
+                                title="Descargar archivo directamente a tu equipo"
                             >
                                 <Download size={17} />
-                                <span>{isDownloadingImage ? 'Descargando...' : 'Descargar Orden'}</span>
+                                <span>{isDownloadingImage ? 'Descargando...' : 'Descargar Archivo'}</span>
                             </button>
 
                             <button
@@ -3496,47 +3773,101 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                         </div>
                     </div>
 
-                    {/* ÁREA CENTRAL: LIENZO DE LA IMAGEN + PANEL LATERAL IA */}
+                    {/* ÁREA CENTRAL: DOCUMENTO O IMAGEN + PANEL LATERAL IA */}
                     <div style={{
                         flex: 1,
                         display: 'flex',
                         overflow: 'hidden',
                         position: 'relative'
                     }}>
-                        {/* LIENZO DE LA IMAGEN */}
-                        <div 
-                            style={{
+                        {/* LIENZO DEL DOCUMENTO / IMAGEN */}
+                        {viewerImage.fileType === 'pdf' ? (
+                            <div style={{
                                 flex: 1,
+                                width: '100%',
+                                height: '100%',
+                                padding: '16px 24px',
                                 display: 'flex',
+                                flexDirection: 'column',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                overflow: 'auto',
-                                padding: '32px',
-                                cursor: viewerZoom > 1 ? 'grab' : 'default'
-                            }}
-                            onWheel={(e) => {
-                                e.preventDefault();
-                                setViewerZoom(z => Math.max(0.5, Math.min(4, +(z - e.deltaY * 0.0015).toFixed(2))));
-                            }}
-                            onClick={(e) => {
-                                if (e.target === e.currentTarget) setViewerImage(null);
-                            }}
-                        >
-                            <img
-                                src={viewerImage.url}
-                                alt={viewerImage.caption || 'Orden médica'}
+                                boxSizing: 'border-box'
+                            }}>
+                                <iframe
+                                    src={`${viewerImage.url}#toolbar=1&navpanes=1`}
+                                    title={viewerImage.filename || 'Visor PDF'}
+                                    style={{
+                                        width: '100%',
+                                        height: '100%',
+                                        maxWidth: '1280px',
+                                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                                        borderRadius: '8px',
+                                        backgroundColor: '#FFFFFF',
+                                        boxShadow: '0 25px 60px -15px rgba(0,0,0,0.85)'
+                                    }}
+                                />
+                            </div>
+                        ) : (viewerImage.fileType === 'word' || viewerImage.fileType === 'excel') ? (
+                            <div style={{
+                                flex: 1,
+                                width: '100%',
+                                height: '100%',
+                                padding: '16px 24px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxSizing: 'border-box'
+                            }}>
+                                <iframe
+                                    src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(viewerImage.url)}`}
+                                    title={viewerImage.filename || 'Visor Office Online'}
+                                    style={{
+                                        width: '100%',
+                                        height: '100%',
+                                        maxWidth: '1280px',
+                                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                                        borderRadius: '8px',
+                                        backgroundColor: '#FFFFFF',
+                                        boxShadow: '0 25px 60px -15px rgba(0,0,0,0.85)'
+                                    }}
+                                />
+                            </div>
+                        ) : (
+                            <div 
                                 style={{
-                                    maxWidth: '88%',
-                                    maxHeight: '88%',
-                                    objectFit: 'contain',
-                                    borderRadius: '6px',
-                                    boxShadow: '0 25px 60px -15px rgba(0,0,0,0.7)',
-                                    transform: `scale(${viewerZoom}) rotate(${viewerRotation}deg)`,
-                                    transformOrigin: 'center center',
-                                    transition: 'transform 0.15s ease-out'
+                                    flex: 1,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    overflow: 'auto',
+                                    padding: '32px',
+                                    cursor: viewerZoom > 1 ? 'grab' : 'default'
                                 }}
-                            />
-                        </div>
+                                onWheel={(e) => {
+                                    e.preventDefault();
+                                    setViewerZoom(z => Math.max(0.5, Math.min(4, +(z - e.deltaY * 0.0015).toFixed(2))));
+                                }}
+                                onClick={(e) => {
+                                    if (e.target === e.currentTarget) setViewerImage(null);
+                                }}
+                            >
+                                <img
+                                    src={viewerImage.url}
+                                    alt={viewerImage.caption || 'Orden médica'}
+                                    style={{
+                                        maxWidth: '88%',
+                                        maxHeight: '88%',
+                                        objectFit: 'contain',
+                                        borderRadius: '6px',
+                                        boxShadow: '0 25px 60px -15px rgba(0,0,0,0.7)',
+                                        transform: `scale(${viewerZoom}) rotate(${viewerRotation}deg)`,
+                                        transformOrigin: 'center center',
+                                        transition: 'transform 0.15s ease-out'
+                                    }}
+                                />
+                            </div>
+                        )}
 
                         {/* PANEL LATERAL: DATOS DE LA ORDEN IA (SI EXISTE ANÁLISIS) */}
                         {viewerImage.orderAnalysis && (
