@@ -76,8 +76,9 @@ export default function ContactCenterChatConsole({
     // Sincronizar formulario CRM y Resumen IA cuando cambia el chat activo
     useEffect(() => {
         if (selectedChat) {
+            const initialDni = selectedChat.customFields?.dni && selectedChat.customFields?.dni !== 'A verificar' ? selectedChat.customFields?.dni : '';
             setCrmForm({
-                dni: selectedChat.customFields?.dni && selectedChat.customFields?.dni !== 'A verificar' ? selectedChat.customFields?.dni : '',
+                dni: initialDni,
                 pacienteNombre: selectedChat.customFields?.pacienteNombre || selectedChat.contactName || '',
                 obraSocial: selectedChat.customFields?.obraSocial && selectedChat.customFields?.obraSocial !== 'A consultar' ? selectedChat.customFields?.obraSocial : '',
                 fechaNacimiento: selectedChat.customFields?.fechaNacimiento && selectedChat.customFields?.fechaNacimiento !== 'No informada' ? selectedChat.customFields?.fechaNacimiento : '',
@@ -88,6 +89,29 @@ export default function ContactCenterChatConsole({
             });
             setIsEditingCrm(false);
             setAiSummaryData(selectedChat.aiSummary || null);
+
+            // Si no tiene DNI mapeado pero tiene teléfono, intentar resolver en background con SALUS
+            if (!initialDni && selectedChat.phone) {
+                lookupPatientFromSalus(selectedChat.phone).then(found => {
+                    if (found) {
+                        setCrmForm(prev => ({
+                            ...prev,
+                            dni: prev.dni || found.dni || '',
+                            pacienteNombre: prev.pacienteNombre && prev.pacienteNombre !== 'Paciente' ? prev.pacienteNombre : found.nombre,
+                            obraSocial: prev.obraSocial && prev.obraSocial !== 'A consultar' ? prev.obraSocial : (found.coseguro || ''),
+                            email: prev.email && prev.email !== 'No informado' ? prev.email : (found.email || ''),
+                            departamento: prev.departamento || found.centro || 'San Juan'
+                        }));
+                        if (selectedChat.customFields) {
+                            selectedChat.customFields.dni = found.dni;
+                            selectedChat.customFields.nhc = found.nhc;
+                            selectedChat.customFields.pacienteNombre = found.nombre;
+                            selectedChat.customFields.obraSocial = found.coseguro;
+                            selectedChat.customFields.esPacienteExistente = true;
+                        }
+                    }
+                }).catch(() => {});
+            }
         }
     }, [selectedChat?.id, selectedChat?.phone, selectedChat?.aiSummary]);
 
@@ -120,11 +144,19 @@ export default function ContactCenterChatConsole({
 
     // Cargar Historial 360° del paciente si se abre la pestaña Historial
     useEffect(() => {
-        if (activeDetailTab === 'historial' && (crmForm.dni || selectedChat?.customFields?.dni)) {
+        if (activeDetailTab === 'historial') {
             const dniToSearch = (crmForm.dni || selectedChat?.customFields?.dni || '').replace(/\D/g, '');
-            if (dniToSearch.length >= 6) {
+            const phoneToSearch = selectedChat?.phone || '';
+            const nhcToSearch = selectedChat?.customFields?.nhc || '';
+
+            if (dniToSearch.length >= 6 || phoneToSearch.length >= 6 || nhcToSearch) {
                 setLoadingHistory(true);
-                fetchPacienteDetalle({ dni: dniToSearch, nombre: crmForm.pacienteNombre })
+                fetchPacienteDetalle({ 
+                    dni: dniToSearch || null, 
+                    nhc: nhcToSearch || null, 
+                    telefono: phoneToSearch || null, 
+                    nombre: crmForm.pacienteNombre || selectedChat?.contactName 
+                })
                     .then(det => setPatientHistory(det))
                     .catch(err => console.warn('Error al cargar historial 360:', err))
                     .finally(() => setLoadingHistory(false));
@@ -132,27 +164,38 @@ export default function ContactCenterChatConsole({
                 setPatientHistory(null);
             }
         }
-    }, [activeDetailTab, crmForm.dni, selectedChat?.id]);
+    }, [activeDetailTab, crmForm.dni, selectedChat?.id, selectedChat?.phone]);
 
-    // Búsqueda en Padrón SALUS
+    // Búsqueda en Padrón SALUS (admite DNI, NHC o Teléfono)
     const handleLookupSalus = async () => {
-        if (!crmForm.dni || crmForm.dni.trim().length < 5) {
-            alert('Ingresa al menos 5 dígitos del DNI para buscar en SALUS');
+        const queryToSearch = (crmForm.dni || selectedChat?.phone || '').trim();
+        if (!queryToSearch || queryToSearch.length < 4) {
+            alert('Ingresa al menos 5 dígitos del DNI o selecciona una conversación con teléfono para buscar en SALUS');
             return;
         }
         setIsSearchingSalus(true);
         try {
-            const found = await lookupPatientFromSalus(crmForm.dni.trim());
+            const found = await lookupPatientFromSalus(queryToSearch);
             if (found) {
                 setCrmForm(prev => ({
                     ...prev,
+                    dni: found.dni || prev.dni,
                     pacienteNombre: found.nombre || prev.pacienteNombre,
+                    obraSocial: found.coseguro || prev.obraSocial,
                     email: found.email || prev.email,
                     departamento: found.centro || prev.departamento,
-                    notas: (prev.notas ? prev.notas + '\n' : '') + `[Padrón SALUS] NHC: ${found.nhc || 'N/A'}`
+                    notas: (prev.notas ? prev.notas + '\n' : '') + `[Padrón SALUS] NHC: ${found.nhc || 'N/A'} - Centro: ${found.centro || 'Sanatorio Argentino'}`
                 }));
+
+                if (selectedChat?.customFields) {
+                    selectedChat.customFields.dni = found.dni || selectedChat.customFields.dni;
+                    selectedChat.customFields.nhc = found.nhc || selectedChat.customFields.nhc;
+                    selectedChat.customFields.pacienteNombre = found.nombre || selectedChat.customFields.pacienteNombre;
+                    selectedChat.customFields.obraSocial = found.coseguro || selectedChat.customFields.obraSocial;
+                    selectedChat.customFields.esPacienteExistente = true;
+                }
             } else {
-                alert('No se encontró paciente con ese DNI en el Padrón de SALUS.');
+                alert('No se encontró paciente en el Padrón de SALUS con los datos provistos (' + queryToSearch + ').');
             }
         } catch (e) {
             console.error(e);
@@ -1536,12 +1579,22 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             ) : (
                                 /* VISTA INSTITUCIONAL LIMPIA Y CLÍNICA DE LA FICHA CRM */
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    {/* DNI */}
-                                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>DNI / IDENTIFICACIÓN</div>
-                                        <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
-                                            {crmForm.dni || selectedChat.customFields?.dni || 'A verificar'}
+                                    {/* DNI & NHC SALUS */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: selectedChat.customFields?.nhc ? '1fr 1fr' : '1fr', gap: '6px' }}>
+                                        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>DNI / IDENTIFICACIÓN</div>
+                                            <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
+                                                {crmForm.dni || selectedChat.customFields?.dni || 'A verificar'}
+                                            </div>
                                         </div>
+                                        {selectedChat.customFields?.nhc && (
+                                            <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: '8px', padding: '8px 10px' }}>
+                                                <div style={{ fontSize: '0.65rem', color: '#0369A1', fontWeight: 700 }}>NHC (SALUS)</div>
+                                                <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0284C7' }}>
+                                                    #{selectedChat.customFields.nhc}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* NOMBRE COMPLETO */}
@@ -1584,9 +1637,9 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         </div>
                                     </div>
 
-                                    {/* DEPARTAMENTO */}
+                                    {/* DEPARTAMENTO / SEDE */}
                                     <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>DEPARTAMENTO / RESIDENCIA</div>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>DEPARTAMENTO / SEDE HABITUAL</div>
                                         <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                             <MapPin size={12} color="#0284C7" />
                                             {crmForm.departamento || selectedChat.customFields?.departamento || 'San Juan'}
@@ -1618,8 +1671,15 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                     {/* TAB 2: HISTORIAL CLÍNICO 360° */}
                     {activeDetailTab === 'historial' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase' }}>
-                                Historial Sanatorio 360°
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase' }}>
+                                    Historial Sanatorio 360°
+                                </div>
+                                {selectedChat.customFields?.nhc && (
+                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#0284C7', background: '#F0F9FF', padding: '2px 6px', borderRadius: '4px', border: '1px solid #BAE6FD' }}>
+                                        NHC: {selectedChat.customFields.nhc}
+                                    </span>
+                                )}
                             </div>
 
                             {loadingHistory ? (
@@ -1631,35 +1691,73 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     {/* Resumen KPI del Paciente */}
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                                         <div style={{ background: '#F8FAFC', padding: '8px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>CIRUGÍAS</div>
+                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>CONSULTAS / GUARDIA</div>
                                             <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0284C7' }}>
+                                                {patientHistory.consultas?.length || 0}
+                                            </div>
+                                        </div>
+                                        <div style={{ background: '#F8FAFC', padding: '8px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>CIRUGÍAS</div>
+                                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#059669' }}>
                                                 {patientHistory.cirugias?.length || 0}
                                             </div>
                                         </div>
                                         <div style={{ background: '#F8FAFC', padding: '8px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>ADMISIONES</div>
-                                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#059669' }}>
-                                                {patientHistory.admisiones?.length || 0}
-                                            </div>
-                                        </div>
-                                        <div style={{ background: '#F8FAFC', padding: '8px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>PRESUPUESTOS</div>
+                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>INTERNACIONES</div>
                                             <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#7C3AED' }}>
-                                                {patientHistory.presupuestos?.length || 0}
+                                                {patientHistory.altas?.length || 0}
                                             </div>
                                         </div>
                                         <div style={{ background: '#F8FAFC', padding: '8px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>DEUDA PENDIENTE</div>
-                                            <div style={{ fontSize: '0.95rem', fontWeight: 800, color: (patientHistory.deudaTotal || 0) > 0 ? '#DC2626' : '#16A34A' }}>
-                                                ${(patientHistory.deudaTotal || 0).toLocaleString('es-AR')}
+                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>LABORATORIOS</div>
+                                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#D97706' }}>
+                                                {patientHistory.laboratorios?.length || 0}
                                             </div>
                                         </div>
                                     </div>
 
+                                    {/* Listado de Consultas Médicas & Guardia Registradas */}
+                                    {patientHistory.consultas && patientHistory.consultas.length > 0 && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <span>🩺 CONSULTAS MÉDICAS & GUARDIA ({patientHistory.consultas.length})</span>
+                                            </div>
+                                            {patientHistory.consultas.slice(0, 5).map((con, idx) => (
+                                                <div key={idx} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0F172A' }}>
+                                                            {con.visita_especialidad || 'Consulta Médica'}
+                                                        </div>
+                                                        <span style={{
+                                                            fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px',
+                                                            background: con.asistencia === 'Presente' ? '#ECFDF5' : '#F1F5F9',
+                                                            color: con.asistencia === 'Presente' ? '#047857' : '#64748B'
+                                                        }}>
+                                                            {con.asistencia || 'Atendido'}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ fontSize: '0.7rem', color: '#0284C7', fontWeight: 600, marginTop: '2px' }}>
+                                                        {con.agenda || 'Guardia Sanatorio'} • {con.tipo_visita || 'Visita'}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '3px' }}>
+                                                        📅 Fecha: <strong>{con.fecha_visita || 'S/F'}</strong> {con.hora_visita ? `(${con.hora_visita.slice(0, 5)} hs)` : ''}
+                                                    </div>
+                                                    {con.cliente && (
+                                                        <div style={{ fontSize: '0.66rem', color: '#475569', marginTop: '2px', background: '#F8FAFC', padding: '2px 6px', borderRadius: '4px' }}>
+                                                            🏥 Cobertura: <strong>{con.cliente}</strong>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
                                     {/* Listado de Cirugías Recientes */}
                                     {patientHistory.cirugias && patientHistory.cirugias.length > 0 && (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569' }}>CIRUGÍAS REGISTRADAS</div>
+                                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0F172A' }}>
+                                                🔪 CIRUGÍAS REGISTRADAS ({patientHistory.cirugias.length})
+                                            </div>
                                             {patientHistory.cirugias.slice(0, 3).map((cir, idx) => (
                                                 <div key={idx} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
                                                     <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A' }}>
@@ -1677,17 +1775,19 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     )}
 
                                     {/* Listado de Admisiones */}
-                                    {patientHistory.admisiones && patientHistory.admisiones.length > 0 && (
+                                    {patientHistory.altas && patientHistory.altas.length > 0 && (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569' }}>ESTANCIAS / INTERNACIONES</div>
-                                            {patientHistory.admisiones.slice(0, 3).map((adm, idx) => (
+                                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0F172A' }}>
+                                                🛏️ ESTANCIAS / INTERNACIONES ({patientHistory.altas.length})
+                                            </div>
+                                            {patientHistory.altas.slice(0, 3).map((adm, idx) => (
                                                 <div key={idx} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
                                                     <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A' }}>
-                                                        Hab: {adm.habitacion || 'Piso'} • {adm.servicio || 'Clínica'}
+                                                        {adm.especialidad || adm.servicio || 'Internación'}
                                                     </div>
                                                     <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: '2px' }}>
                                                         Ingreso: {adm.fecha_ingreso ? new Date(adm.fecha_ingreso).toLocaleDateString('es-AR') : 'S/D'} 
-                                                        {adm.fecha_alta ? ` • Alta: ${new Date(adm.fecha_alta).toLocaleDateString('es-AR')}` : ' (Internado activo)'}
+                                                        {adm.fecha_alta ? ` • Alta: ${new Date(adm.fecha_alta).toLocaleDateString('es-AR')}` : ' (Activo)'}
                                                     </div>
                                                 </div>
                                             ))}
@@ -1696,7 +1796,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 </div>
                             ) : (
                                 <div style={{ fontSize: '0.74rem', color: '#64748B', background: '#F8FAFC', padding: '14px', borderRadius: '8px', border: '1px solid #E2E8F0', lineHeight: 1.4 }}>
-                                    💡 No se encontraron antecedentes con el DNI actual. Asegúrate de verificar y guardar el DNI del paciente en la pestaña <strong>Ficha CRM</strong> para consultar su historial de cirugías, internaciones y deudas en el Sanatorio.
+                                    💡 No se encontraron antecedentes para esta persona. Asegúrate de verificar y guardar el DNI del paciente en la pestaña <strong>Ficha CRM</strong> para consultar su historial completo en el Sanatorio.
                                 </div>
                             )}
                         </div>

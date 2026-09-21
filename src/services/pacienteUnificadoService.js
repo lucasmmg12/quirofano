@@ -73,7 +73,23 @@ export async function fetchPacientes({ page = 0, pageSize = 50, search = '' } = 
 
 // ─── Detalle 360° de un paciente ───
 export async function fetchPacienteDetalle(paciente) {
-    const { id_paciente, dni, nombre, nhc, telefono } = paciente;
+    let { id_paciente, dni, nombre, nhc, telefono } = paciente;
+
+    // Si no tenemos DNI o NHC pero tenemos teléfono, resolver primero con el padrón maestro
+    if ((!dni || !nhc) && telefono) {
+        try {
+            const { data: rpcPac } = await supabase.rpc('buscar_paciente_por_telefono', { p_telefono: String(telefono) });
+            if (rpcPac && rpcPac.length > 0) {
+                const found = rpcPac[0];
+                dni = dni || found.dni;
+                nhc = nhc || found.nhc;
+                nombre = nombre || found.nombre;
+                id_paciente = id_paciente || found.id_paciente;
+            }
+        } catch (e) {
+            console.warn('[pacienteUnificado] error buscando paciente por teléfono:', e);
+        }
+    }
 
     // Queries paralelas a todas las tablas relacionadas
     const queries = [];
@@ -167,14 +183,14 @@ export async function fetchPacienteDetalle(paciente) {
         })()
     );
 
-    // 4. Consultas guardia — por NHC o NIF (DNI)
+    // 4. Consultas guardia y ambulatorias — por NHC, DNI o Nombre
     queries.push(
         (async () => {
             let data = [];
             if (nhc) {
                 const { data: byNhc } = await supabase
                     .from('consultas_guardia')
-                    .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, nhc, nif')
+                    .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif')
                     .eq('nhc', parseInt(nhc, 10))
                     .order('fecha_visita', { ascending: false })
                     .limit(30);
@@ -183,11 +199,20 @@ export async function fetchPacienteDetalle(paciente) {
             if (data.length === 0 && dni) {
                 const { data: byDni } = await supabase
                     .from('consultas_guardia')
-                    .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, nhc, nif')
+                    .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif')
                     .eq('nif', dni)
                     .order('fecha_visita', { ascending: false })
                     .limit(30);
                 data = byDni || [];
+            }
+            if (data.length === 0 && nombre) {
+                const { data: byNom } = await supabase
+                    .from('consultas_guardia')
+                    .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif')
+                    .ilike('paciente', `%${nombre.split(' ').slice(0, 2).join('%')}%`)
+                    .order('fecha_visita', { ascending: false })
+                    .limit(30);
+                data = byNom || [];
             }
             return { key: 'consultas', data };
         })()

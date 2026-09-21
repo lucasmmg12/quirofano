@@ -661,12 +661,26 @@ async function handleChatbotTriage(
     const dniMatch = cleanText.match(/\b\d{7,8}\b/) || normalizedText.match(/\b\d{7,8}\b/);
     const candidateDni = dniMatch ? dniMatch[0] : (conv?.dni || null);
 
-    // Búsqueda en el padrón real de hospital_pacientes (columnas reales: id_paciente, nombre, dni, coseguro, telefono, email)
-    let paciente = null;
-    if (candidateDni) {
+    // Búsqueda en el padrón maestro de SALUS (hospital_pacientes)
+    // 1. Prioridad: Mapeo automático por TELÉFONO (+549..., 549..., 264..., 15..., 54..., etc.)
+    let paciente: any = null;
+    if (phone) {
+        try {
+            const { data: rpcRes, error: rpcErr } = await supabase.rpc('buscar_paciente_por_telefono', { p_telefono: phone });
+            if (!rpcErr && rpcRes && rpcRes.length > 0) {
+                paciente = rpcRes[0];
+                console.log(`[triage-bot] Paciente mapeado automáticamente por Teléfono ${phone}: ${paciente.nombre} (DNI: ${paciente.dni}, NHC: ${paciente.nhc}, OS: ${paciente.coseguro})`);
+            }
+        } catch (e) {
+            console.warn('[triage-bot] Error llamando buscar_paciente_por_telefono:', e);
+        }
+    }
+
+    // 2. Si no se encontró por teléfono pero hay DNI extraído o previo, consultar por DNI
+    if (!paciente && candidateDni) {
         const { data: pByDni, error: pacError } = await supabase
             .from('hospital_pacientes')
-            .select('id_paciente, dni, nombre, coseguro, telefono, email')
+            .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro')
             .eq('dni', candidateDni)
             .limit(1)
             .maybeSingle();
@@ -679,19 +693,20 @@ async function handleChatbotTriage(
         }
     }
 
-    // Fallback de búsqueda por teléfono si no se detectó DNI o no se encontró
+    // 3. Fallback de búsqueda textual en teléfono si falló la RPC
     if (!paciente && phone) {
-        const rawPhoneDigits = phone.replace(/\D/g, '').replace(/^549?/, '');
-        if (rawPhoneDigits.length >= 8) {
+        const rawPhoneDigits = phone.replace(/\D/g, '');
+        const last7 = rawPhoneDigits.slice(-7);
+        if (last7.length >= 6) {
             const { data: pByPhone } = await supabase
                 .from('hospital_pacientes')
-                .select('id_paciente, dni, nombre, coseguro, telefono, email')
-                .ilike('telefono', `%${rawPhoneDigits}%`)
+                .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro')
+                .ilike('telefono', `%${last7}%`)
                 .limit(1)
                 .maybeSingle();
             if (pByPhone) {
                 paciente = pByPhone;
-                console.log(`[triage-bot] Paciente encontrado por Teléfono ${rawPhoneDigits}: ${paciente.nombre}`);
+                console.log(`[triage-bot] Paciente encontrado por fallback Teléfono ${last7}: ${paciente.nombre}`);
             }
         }
     }
@@ -707,8 +722,10 @@ async function handleChatbotTriage(
             dni: paciente?.dni || candidateDni || conv?.dni,
             nombre_completo: fullName,
             obra_social: os,
+            nhc: paciente?.nhc || conv?.nhc || null,
             email: paciente?.email || updates.email || conv?.email || null,
             telefono_contacto: paciente?.telefono || updates.telefono_contacto || phone,
+            departamento: paciente?.centro || updates.departamento || conv?.departamento || 'San Juan',
             es_paciente_existente: true,
             bot_stage: 'menu_opciones',
             bot_active: true

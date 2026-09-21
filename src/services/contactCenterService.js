@@ -446,6 +446,7 @@ export async function fetchLiveAndDemoChats() {
 
             const patientFields = {
                 dni: conv?.dni || 'A verificar',
+                nhc: conv?.nhc || null,
                 pacienteNombre: conv?.nombre_completo || lastMsg.sender_name || 'Paciente',
                 obraSocial: conv?.obra_social || 'A consultar',
                 fechaNacimiento: conv?.fecha_nacimiento || 'No informada',
@@ -747,12 +748,55 @@ export async function saveCrmPatientCard({ phone, dni, nombreCompleto, obraSocia
 }
 
 /**
- * Busca datos del paciente en el padrón maestro de SALUS (hospital_pacientes)
+ * Busca datos del paciente por teléfono en el padrón maestro de SALUS (hospital_pacientes)
+ * Admite todos los formatos: +549..., 549..., 264..., 15..., 54..., o últimos dígitos locales.
  */
-export async function lookupPatientFromSalus(dniOrNhc) {
-    if (!dniOrNhc || String(dniOrNhc).trim().length < 4) return null;
-    const clean = String(dniOrNhc).trim().replace(/\D/g, '');
+export async function lookupPatientByPhone(phone) {
+    if (!phone || String(phone).replace(/\D/g, '').length < 6) return null;
+    try {
+        const { data, error } = await supabase.rpc('buscar_paciente_por_telefono', { p_telefono: String(phone) });
+        if (!error && data && data.length > 0) {
+            return data[0];
+        }
+    } catch (err) {
+        console.warn('Advertencia ejecutando RPC buscar_paciente_por_telefono:', err);
+    }
 
+    // Fallback de búsqueda con ILIKE por los últimos 7 dígitos
+    try {
+        const clean = String(phone).replace(/\D/g, '');
+        const last7 = clean.slice(-7);
+        if (last7.length >= 6) {
+            const { data } = await supabase
+                .from('hospital_pacientes')
+                .select('*')
+                .ilike('telefono', `%${last7}%`)
+                .limit(1)
+                .maybeSingle();
+            return data || null;
+        }
+    } catch (e) {
+        console.warn('Error en fallback de búsqueda por teléfono:', e);
+    }
+    return null;
+}
+
+/**
+ * Busca datos del paciente en el padrón maestro de SALUS (hospital_pacientes)
+ * Soporta búsqueda por DNI, NHC o TELÉFONO (+549..., 264..., 15..., etc.)
+ */
+export async function lookupPatientFromSalus(query) {
+    if (!query || String(query).trim().length < 4) return null;
+    const rawStr = String(query).trim();
+    const clean = rawStr.replace(/\D/g, '');
+
+    // Si parece un teléfono (más de 8 dígitos, o contiene prefijos de telefonía / símbolos)
+    if (clean.length >= 9 || rawStr.startsWith('+') || rawStr.includes('-') || rawStr.startsWith('15')) {
+        const byPhone = await lookupPatientByPhone(rawStr);
+        if (byPhone) return byPhone;
+    }
+
+    // Búsqueda por DNI o NHC
     try {
         const { data, error } = await supabase
             .from('hospital_pacientes')
@@ -762,7 +806,13 @@ export async function lookupPatientFromSalus(dniOrNhc) {
             .maybeSingle();
 
         if (error) throw error;
-        return data;
+        if (data) return data;
+
+        // Si no encontró por DNI/NHC pero tiene entre 6 y 11 dígitos, probar búsqueda por teléfono
+        if (clean.length >= 6) {
+            return await lookupPatientByPhone(rawStr);
+        }
+        return null;
     } catch (err) {
         console.error('Error buscando paciente en hospital_pacientes:', err);
         return null;
