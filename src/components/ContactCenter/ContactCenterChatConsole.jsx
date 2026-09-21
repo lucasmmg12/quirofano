@@ -805,8 +805,8 @@ export default function ContactCenterChatConsole({
                             </button>
                         ) : null}
 
-                        {/* CASO 2: ASIGNADA A MÍ -> PUEDO LIBERAR O TRANSFERIR */}
-                        {isAssignedToMe && (
+                        {/* CASO 2: ASIGNADA A MÍ -> PUEDO LIBERAR O TRANSFERIR (Solo si NO está cerrado) */}
+                        {!isClosedOrArchived(selectedChat.status) && isAssignedToMe && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <span style={{
                                     fontSize: '0.72rem', fontWeight: 800, padding: '5px 10px', borderRadius: '8px',
@@ -856,8 +856,8 @@ export default function ContactCenterChatConsole({
                             </div>
                         )}
 
-                        {/* CASO 3: ASIGNADA A OTRA AGENTE -> BLOQUEO ESTRICTO (NADIE SE LA PUEDE ASOCIAR) */}
-                        {!isUnassigned && !isAssignedToMe && (
+                        {/* CASO 3: ASIGNADA A OTRA AGENTE -> BLOQUEO ESTRICTO (Solo si NO está cerrado) */}
+                        {!isClosedOrArchived(selectedChat.status) && !isUnassigned && !isAssignedToMe && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <div style={{
                                     display: 'flex', alignItems: 'center', gap: '6px',

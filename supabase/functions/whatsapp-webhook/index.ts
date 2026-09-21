@@ -944,9 +944,54 @@ async function handleChatbotTriage(
         .eq('phone', phone)
         .maybeSingle();
 
-    // Si ya está asignada a un agente humano (Daniela, Sofia, Virginia, Erica)
+    // Comprobar si la conversación previa estaba cerrada, finalizada o archivada
+    const wasClosed = Boolean(
+        conv?.closed_at || 
+        conv?.resolution_reason || 
+        ['archivado', 'finalizado', 'cerrado'].includes(conv?.status) ||
+        conv?.closed_by_agent_id
+    );
+
+    // Si el chat estaba cerrado y el paciente vuelve a escribir:
+    // REACTIVAR TODO A CERO para que el paciente hable con el bot desde 'inicio'
+    if (wasClosed) {
+        console.log(`[triage-bot] Chat ${phone} estaba cerrado (${conv?.resolution_reason || conv?.status}). REACTIVANDO TODO A CERO para nueva atención.`);
+        await supabase
+            .from('contact_center_conversations')
+            .update({
+                closed_at: null,
+                resolution_reason: null,
+                closed_by_agent_id: null,
+                closed_by_agent_name: null,
+                assigned_agent_id: null,
+                assigned_agent_name: null,
+                assigned_at: null,
+                status: 'sin_asignar',
+                bot_active: true,
+                bot_stage: 'inicio',
+                motivo_consulta: null,
+                medico_o_especialidad: null,
+                updated_at: new Date().toISOString()
+            })
+            .eq('phone', phone);
+
+        if (conv) {
+            conv.assigned_agent_id = null;
+            conv.assigned_agent_name = null;
+            conv.assigned_at = null;
+            conv.closed_at = null;
+            conv.resolution_reason = null;
+            conv.closed_by_agent_id = null;
+            conv.closed_by_agent_name = null;
+            conv.status = 'sin_asignar';
+            conv.bot_active = true;
+            conv.bot_stage = 'inicio';
+        }
+    }
+
+    // Si la conversación NO estaba cerrada y ya está asignada a un agente humano en vivo
     // O si el bot fue silenciado/pausado manualmente, NO responder
-    if (conv) {
+    if (conv && !wasClosed) {
         if (conv.assigned_agent_id || conv.bot_active === false) {
             console.log(`[triage-bot] Chat ${phone} asignado a ${conv.assigned_agent_name || conv.assigned_agent_id} o bot_active=false. Bot en silencio.`);
             await supabase.from('contact_center_conversations').update({
@@ -958,7 +1003,7 @@ async function handleChatbotTriage(
         }
     }
 
-    let currentStage = conv?.bot_stage || 'inicio';
+    let currentStage = (wasClosed ? 'inicio' : (conv?.bot_stage || 'inicio'));
     let replyText = '';
     let nextStage = currentStage;
     let updates: Record<string, any> = {
@@ -966,6 +1011,21 @@ async function handleChatbotTriage(
         last_message_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
     };
+
+    if (wasClosed) {
+        updates.closed_at = null;
+        updates.resolution_reason = null;
+        updates.closed_by_agent_id = null;
+        updates.closed_by_agent_name = null;
+        updates.assigned_agent_id = null;
+        updates.assigned_agent_name = null;
+        updates.assigned_at = null;
+        updates.status = 'sin_asignar';
+        updates.bot_active = true;
+        updates.bot_stage = 'inicio';
+        updates.motivo_consulta = null;
+        updates.medico_o_especialidad = null;
+    }
 
     // Helper de extracción de DNI rápido por expresión regular (7 u 8 dígitos)
     const normalizedText = cleanText.replace(/\./g, '');
@@ -1507,12 +1567,19 @@ async function handleChatbotTriage(
 
     // Persistir o actualizar en contact_center_conversations
     updates.bot_stage = nextStage;
-    await supabase
-        .from('contact_center_conversations')
-        .upsert({
-            phone,
-            ...updates
-        }, { onConflict: 'phone' });
+    if (conv) {
+        await supabase
+            .from('contact_center_conversations')
+            .update(updates)
+            .eq('phone', phone);
+    } else {
+        await supabase
+            .from('contact_center_conversations')
+            .insert({
+                phone,
+                ...updates
+            });
+    }
 
     // Enviar el mensaje saliente al paciente vía WhatsApp
     if (replyText) {

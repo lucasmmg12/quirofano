@@ -214,6 +214,10 @@ export function assignChatExclusively(chat, targetAgent, currentUser) {
             assigned_agent_name: targetAgent.name,
             assigned_at: now.toISOString(),
             bot_active: false, // BOT MUTEADO INMEDIATAMENTE
+            closed_at: null, // LIMPIAR CIERRE PREVIO SI EXISTÍA
+            resolution_reason: null,
+            closed_by_agent_id: null,
+            closed_by_agent_name: null,
             updated_at: now.toISOString()
         }, { onConflict: 'phone' }).then(({ error }) => {
             if (error) console.warn('[contact-center] Error guardando asignación:', error.message);
@@ -227,6 +231,10 @@ export function assignChatExclusively(chat, targetAgent, currentUser) {
         assignedToName: targetAgent.name,
         assignedAt: now.toISOString(),
         botActive: false,
+        closedAt: null,
+        resolutionReason: null,
+        closedByAgentId: null,
+        closedByAgentName: null,
         messages: [
             ...(chat.messages || []),
             {
@@ -641,7 +649,7 @@ export async function toggleBotActive(phone, botActive) {
 }
 
 /**
- * Reinicia el flujo del chatbot para una conversación
+ * Reinicia el flujo del chatbot para una conversación completamente a cero
  */
 export async function resetBotWorkflow(phone) {
     if (!phone) return false;
@@ -651,10 +659,16 @@ export async function resetBotWorkflow(phone) {
             .from('contact_center_conversations')
             .update({
                 bot_active: true,
-                bot_stage: 'menu_opciones',
+                bot_stage: 'inicio',
                 assigned_agent_id: null,
                 assigned_agent_name: null,
                 assigned_at: null,
+                closed_at: null,
+                resolution_reason: null,
+                closed_by_agent_id: null,
+                closed_by_agent_name: null,
+                motivo_consulta: null,
+                medico_o_especialidad: null,
                 status: 'sin_asignar',
                 updated_at: new Date().toISOString()
             })
@@ -664,6 +678,62 @@ export async function resetBotWorkflow(phone) {
         console.error('Error in resetBotWorkflow:', err);
         return false;
     }
+}
+
+/**
+ * Reabre manualmente una conversación cerrada/finalizada
+ */
+export async function reopenClosedChat({ chat, activeAgent }) {
+    if (!chat || !chat.phone) throw new Error('Chat o teléfono inválido');
+    const norm = normalizeArgentinePhone(chat.phone);
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+
+    const updateFields = {
+        closed_at: null,
+        resolution_reason: null,
+        closed_by_agent_id: null,
+        closed_by_agent_name: null,
+        status: activeAgent ? 'abierto' : 'sin_asignar',
+        assigned_agent_id: activeAgent?.id || null,
+        assigned_agent_name: activeAgent?.name || null,
+        assigned_at: activeAgent ? now.toISOString() : null,
+        bot_active: activeAgent ? false : true,
+        bot_stage: 'inicio',
+        updated_at: now.toISOString()
+    };
+
+    const { error } = await supabase
+        .from('contact_center_conversations')
+        .update(updateFields)
+        .eq('phone', norm);
+
+    if (error) {
+        console.error('[contact-center] Error reabriendo chat:', error);
+        throw error;
+    }
+
+    return {
+        ...chat,
+        status: activeAgent ? 'abierto' : 'sin_asignar',
+        closedAt: null,
+        resolutionReason: null,
+        closedByAgentId: null,
+        closedByAgentName: null,
+        assignedTo: activeAgent?.id || null,
+        assignedToName: activeAgent?.name || null,
+        assignedAt: activeAgent ? now.toISOString() : null,
+        botActive: activeAgent ? false : true,
+        messages: [
+            ...(chat.messages || []),
+            {
+                id: 'sys_' + Date.now(),
+                sender: 'system',
+                text: `${activeAgent?.name || 'Operador'} reabrió la conversación.`,
+                timestamp: timeStr
+            }
+        ]
+    };
 }
 
 /**
