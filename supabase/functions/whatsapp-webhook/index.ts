@@ -323,14 +323,23 @@ Deno.serve(async (req) => {
             }
 
             // Actualizar automáticamente el Resumen IA de la Consulta para la pantalla del operador
-            fetch(`${SUPABASE_URL}/functions/v1/contact-center-chat-summary`, {
+            const summaryPromise = fetch(`${SUPABASE_URL}/functions/v1/contact-center-chat-summary`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
                 },
                 body: JSON.stringify({ phone })
+            }).then(async r => {
+                const text = await r.text();
+                console.log(`[webhook] ✅ Resumen IA generado automáticamente para ${phone}:`, text.slice(0, 120));
             }).catch(aiErr => console.warn('[webhook] Background chat summary error:', aiErr?.message || aiErr));
+
+            if (typeof (globalThis as any).EdgeRuntime !== 'undefined' && (globalThis as any).EdgeRuntime?.waitUntil) {
+                (globalThis as any).EdgeRuntime.waitUntil(summaryPromise);
+            } else {
+                await summaryPromise;
+            }
         }
 
         return new Response(

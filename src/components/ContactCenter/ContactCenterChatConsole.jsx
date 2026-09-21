@@ -320,8 +320,8 @@ export default function ContactCenterChatConsole({
         }).catch(() => {});
     }, []);
 
-    const handleRunAiSummary = async () => {
-        if (!selectedChat?.phone) return;
+    const handleRunAiSummary = async (isAuto = false) => {
+        if (!selectedChat?.phone || isGeneratingSummary) return;
         try {
             setIsGeneratingSummary(true);
             const summary = await generateChatAiSummary(selectedChat.phone);
@@ -341,11 +341,48 @@ export default function ContactCenterChatConsole({
                 }
             }
         } catch (err) {
-            alert('Error al generar resumen IA: ' + (err.message || 'Error'));
+            if (!isAuto) {
+                alert('Error al generar resumen IA: ' + (err.message || 'Error'));
+            } else {
+                console.warn('[auto-ai-summary] Actualización automática de IA en progreso...');
+            }
         } finally {
             setIsGeneratingSummary(false);
         }
     };
+
+    // Auto-generar Resumen IA automáticamente tras cada mensaje entrante del paciente
+    const lastMsgInChat = selectedChat?.messages && selectedChat.messages.length > 0 
+        ? selectedChat.messages[selectedChat.messages.length - 1] 
+        : null;
+    const lastMsgId = lastMsgInChat?.id || lastMsgInChat?.realId;
+    const lastMsgSender = lastMsgInChat?.sender || (lastMsgInChat?.direction === 'incoming' ? 'patient' : 'agent');
+
+    useEffect(() => {
+        if (!selectedChat?.phone || !lastMsgInChat) return;
+
+        // Si el último mensaje es del paciente, actualizar el análisis IA automáticamente (debounce 1.2s)
+        if (lastMsgSender === 'patient') {
+            const timer = setTimeout(() => {
+                console.log('[auto-ai-summary] ⚡ Mensaje entrante del paciente detectado. Ejecutando análisis IA automático...');
+                handleRunAiSummary(true);
+            }, 1200);
+            return () => clearTimeout(timer);
+        }
+    }, [lastMsgId, lastMsgSender, selectedChat?.phone]);
+
+    // Si el chat activo no tiene análisis IA generado pero tiene mensajes del paciente, analizar automáticamente
+    useEffect(() => {
+        if (selectedChat?.phone && !aiSummaryData && selectedChat.messages && selectedChat.messages.length > 0) {
+            const hasPatientMsg = selectedChat.messages.some(m => m.sender === 'patient' || m.direction === 'incoming');
+            if (hasPatientMsg && !isGeneratingSummary) {
+                const initTimer = setTimeout(() => {
+                    handleRunAiSummary(true);
+                }, 800);
+                return () => clearTimeout(initTimer);
+            }
+        }
+    }, [selectedChat?.id, selectedChat?.phone, selectedChat?.messages?.length]);
 
     // Cargar Historial 360° y Turnos Próximos del paciente
     useEffect(() => {
