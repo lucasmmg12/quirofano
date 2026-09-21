@@ -81,6 +81,18 @@ export default function ContactCenterChatConsole({
     const [resolutionReason, setResolutionReason] = useState('Turno Coordinado');
     const [isClosingChat, setIsClosingChat] = useState(false);
 
+    // Modal Institucional de Reinicio de Bot y Notificaciones Toast
+    const [resetBotModalOpen, setResetBotModalOpen] = useState(false);
+    const [isResettingBot, setIsResettingBot] = useState(false);
+    const [systemToast, setSystemToast] = useState(null);
+
+    const showToast = (message, type = 'success') => {
+        setSystemToast({ message, type });
+        setTimeout(() => {
+            setSystemToast(null);
+        }, 4500);
+    };
+
     // Estados Resumen IA del Paciente y Prestador
     const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
     const [aiSummaryData, setAiSummaryData] = useState(null);
@@ -325,13 +337,25 @@ export default function ContactCenterChatConsole({
         }
     };
 
-    const handleResetBot = async () => {
+    const handleOpenResetBotModal = () => {
         if (!selectedChat?.phone) return;
-        if (window.confirm(`¿Reiniciar el flujo del chatbot para ${selectedChat.contactName}? El bot volverá a responder desde el inicio cuando el paciente escriba.`)) {
+        setResetBotModalOpen(true);
+    };
+
+    const handleConfirmResetBot = async () => {
+        if (!selectedChat?.phone) return;
+        try {
+            setIsResettingBot(true);
             setBotActive(true);
             await resetBotWorkflow(selectedChat.phone);
             if (onUnassignChat) onUnassignChat(selectedChat.id);
-            alert(`Flujo del chatbot reiniciado para ${selectedChat.contactName}. Cuando envíe un mensaje, el bot responderá inmediatamente.`);
+            setResetBotModalOpen(false);
+            showToast(`Flujo del bot reiniciado para ${selectedChat.contactName}. El bot volverá a responder desde el inicio cuando el paciente escriba.`, 'success');
+        } catch (err) {
+            console.error('Error al reiniciar bot:', err);
+            showToast('Error al reiniciar el flujo: ' + (err.message || 'Error'), 'error');
+        } finally {
+            setIsResettingBot(false);
         }
     };
 
@@ -1557,7 +1581,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         </button>
                                         <button
                                             type="button"
-                                            onClick={handleResetBot}
+                                            onClick={handleOpenResetBotModal}
                                             title="Reiniciar flujo del bot para que vuelva al saludo inicial de triage"
                                             style={{
                                                 padding: '4px 8px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700,
@@ -2390,6 +2414,230 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             ))}
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* MODAL INSTITUCIONAL: REINICIAR FLUJO DEL CHATBOT (SISTEMA SANATORIO ARGENTINO) */}
+            {resetBotModalOpen && selectedChat && (
+                <div 
+                    onClick={() => !isResettingBot && setResetBotModalOpen(false)}
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        backgroundColor: 'rgba(15, 23, 42, 0.55)',
+                        backdropFilter: 'blur(4px)',
+                        zIndex: 9999,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '16px'
+                    }}
+                >
+                    <div 
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            background: '#FFFFFF',
+                            borderRadius: '14px',
+                            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.05)',
+                            border: '1px solid #E2E8F0',
+                            width: '100%',
+                            maxWidth: '460px',
+                            overflow: 'hidden',
+                            display: 'flex',
+                            flexDirection: 'column'
+                        }}
+                    >
+                        {/* Header */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '16px 20px',
+                            borderBottom: '1px solid #F1F5F9',
+                            background: '#F8FAFC'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{
+                                    width: '36px',
+                                    height: '36px',
+                                    borderRadius: '10px',
+                                    background: '#EFF6FF',
+                                    border: '1px solid #BFDBFE',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: '#0284C7'
+                                }}>
+                                    <RefreshCw size={18} />
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0F172A' }}>
+                                        Reiniciar Flujo del Chatbot
+                                    </div>
+                                    <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                        Sanatorio Argentino • Contact Center
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                disabled={isResettingBot}
+                                onClick={() => setResetBotModalOpen(false)}
+                                style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    color: '#94A3B8',
+                                    cursor: isResettingBot ? 'not-allowed' : 'pointer',
+                                    padding: '4px',
+                                    borderRadius: '6px'
+                                }}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            {/* Tarjeta de Paciente */}
+                            <div style={{
+                                background: '#F8FAFC',
+                                border: '1px solid #E2E8F0',
+                                borderRadius: '8px',
+                                padding: '10px 14px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '2px'
+                            }}>
+                                <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                    Paciente Seleccionado
+                                </span>
+                                <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0F172A' }}>
+                                    {selectedChat.contactName}
+                                </span>
+                                <span style={{ fontSize: '0.74rem', color: '#0284C7', fontWeight: 600 }}>
+                                    📞 {selectedChat.phone}
+                                </span>
+                            </div>
+
+                            <p style={{ margin: 0, fontSize: '0.84rem', color: '#334155', lineHeight: 1.5 }}>
+                                ¿Confirmas reiniciar el flujo automatizado? El bot volverá a responder desde el saludo inicial cuando el paciente escriba un nuevo mensaje.
+                            </p>
+
+                            {/* Callout informativo */}
+                            <div style={{
+                                background: '#F0F9FF',
+                                border: '1px solid #BAE6FD',
+                                borderRadius: '8px',
+                                padding: '10px 12px',
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                                gap: '8px'
+                            }}>
+                                <Bot size={16} color="#0284C7" style={{ marginTop: '2px', flexShrink: 0 }} />
+                                <div style={{ fontSize: '0.74rem', color: '#0369A1', lineHeight: 1.4 }}>
+                                    La conversación pasará a atención automática por IA y se liberará de la bandeja del operador para atender intenciones desde cero.
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'flex-end',
+                            gap: '10px',
+                            padding: '14px 20px',
+                            borderTop: '1px solid #F1F5F9',
+                            background: '#F8FAFC'
+                        }}>
+                            <button
+                                type="button"
+                                disabled={isResettingBot}
+                                onClick={() => setResetBotModalOpen(false)}
+                                style={{
+                                    padding: '8px 16px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #CBD5E1',
+                                    background: '#FFFFFF',
+                                    color: '#475569',
+                                    fontSize: '0.82rem',
+                                    fontWeight: 600,
+                                    cursor: isResettingBot ? 'not-allowed' : 'pointer'
+                                }}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                disabled={isResettingBot}
+                                onClick={handleConfirmResetBot}
+                                style={{
+                                    padding: '8px 18px',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    background: '#0284C7',
+                                    color: '#FFFFFF',
+                                    fontSize: '0.82rem',
+                                    fontWeight: 700,
+                                    cursor: isResettingBot ? 'not-allowed' : 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)'
+                                }}
+                            >
+                                {isResettingBot ? (
+                                    <>
+                                        <RefreshCw size={14} className="animate-spin" />
+                                        Reiniciando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <RefreshCw size={14} />
+                                        Reiniciar Bot
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* NOTIFICACIÓN TOAST DEL SISTEMA */}
+            {systemToast && (
+                <div style={{
+                    position: 'fixed',
+                    bottom: '24px',
+                    right: '24px',
+                    zIndex: 10000,
+                    background: '#FFFFFF',
+                    border: systemToast.type === 'error' ? '1.5px solid #FCA5A5' : '1.5px solid #6EE7B7',
+                    borderRadius: '10px',
+                    padding: '12px 16px',
+                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    maxWidth: '420px'
+                }}>
+                    {systemToast.type === 'error' ? (
+                        <AlertCircle size={20} color="#DC2626" style={{ flexShrink: 0 }} />
+                    ) : (
+                        <CheckCircle2 size={20} color="#059669" style={{ flexShrink: 0 }} />
+                    )}
+                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#0F172A', lineHeight: 1.4 }}>
+                        {systemToast.message}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setSystemToast(null)}
+                        style={{
+                            border: 'none', background: 'transparent', color: '#94A3B8', cursor: 'pointer',
+                            padding: '2px', marginLeft: 'auto'
+                        }}
+                    >
+                        <X size={14} />
+                    </button>
                 </div>
             )}
         </div>
