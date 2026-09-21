@@ -110,11 +110,16 @@ REGLAS CRÍTICAS DE EXTRACCIÓN:
    - "doctor_detectado.nombre_aproximado": null (el chequeo preventivo es un circuito multidisciplinario coordinado por el Contact Center, no un médico particular)
    - "doctor_detectado.estudio_solicitado": "Chequeo Preventivo de Salud"
    - "resumen_solicitud": "El paciente solicita coordinar turno para el Circuito de Chequeo Preventivo de Salud."
+3. Si el paciente menciona "prevenir", "programa prevenir", "turno para prevenir", "para el prevenir" o similar:
+   - "tipo_tramite": "Programa Prevenir (OSP)"
+   - "doctor_detectado.nombre_aproximado": null (el Programa Prevenir es un circuito integrado de ginecología y mamografía para afiliadas de OSP, no un médico particular)
+   - "doctor_detectado.estudio_solicitado": "Programa Prevenir (Ginecología + Mamografía OSP)"
+   - "resumen_solicitud": "El paciente solicita coordinar turno para el Programa Prevenir de Obra Social Provincia (OSP)."
 
 Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura exacta:
 {
   "resumen_solicitud": "Resumen conciso y directo en 1 o 2 oraciones de qué necesita el paciente y qué trámite está solicitando",
-  "tipo_tramite": "Chequeo Preventivo de Salud | Turno nuevo | Reprogramación de turno | Autorización de estudio | Consulta por guardia | Información general | Otro",
+  "tipo_tramite": "Programa Prevenir (OSP) | Chequeo Preventivo de Salud | Turno nuevo | Reprogramación de turno | Autorización de estudio | Consulta por guardia | Información general | Otro",
   "datos_paciente": {
     "nombre_completo": "Nombre y apellido del paciente detectado o null",
     "dni": "DNI del paciente (solo números) o null",
@@ -127,7 +132,7 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
   "doctor_detectado": {
     "nombre_aproximado": "Nombre o apellido del médico mencionado por el paciente (ej: 'Correa', 'Correa Gustavo', 'Mariana Godoy', 'Orlando Gomez') o null si no se menciona ningún doctor",
     "especialidad_mencionada": "Especialidad médica mencionada (ej: Medicina Familiar, Cardiología, Ecografía, Pediatría) o null",
-    "estudio_solicitado": "Nombre de la práctica o estudio solicitada (ej: Chequeo Preventivo de Salud, Consulta médica, Ecodoppler, etc.) o null"
+    "estudio_solicitado": "Nombre de la práctica o estudio solicitada (ej: Programa Prevenir, Chequeo Preventivo de Salud, Consulta médica, Ecodoppler, etc.) o null"
   }
 } `;
 
@@ -159,11 +164,11 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
         // 4. Búsqueda automática de parámetros del prestador si se detectó médico
         let matchedDoctor = null;
         let detectedDoctorName = parsed.doctor_detectado?.nombre_aproximado;
-        if (!detectedDoctorName && conv?.medico_o_especialidad && !conv.medico_o_especialidad.includes('Circuito')) {
+        if (!detectedDoctorName && conv?.medico_o_especialidad && !conv.medico_o_especialidad.includes('Circuito') && !conv.medico_o_especialidad.includes('Programa')) {
             detectedDoctorName = conv.medico_o_especialidad;
         }
 
-        const BLOCKED_NAMES = ['hacerme', 'hacer', 'sacar', 'sacarme', 'pedir', 'pedirme', 'ver', 'verme', 'chequeo', 'preventivo'];
+        const BLOCKED_NAMES = ['hacerme', 'hacer', 'sacar', 'sacarme', 'pedir', 'pedirme', 'ver', 'verme', 'chequeo', 'preventivo', 'prevenir'];
         if (detectedDoctorName && BLOCKED_NAMES.some(b => detectedDoctorName.toLowerCase().includes(b))) {
             detectedDoctorName = null;
             if (parsed.doctor_detectado) parsed.doctor_detectado.nombre_aproximado = null;

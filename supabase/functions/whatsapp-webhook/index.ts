@@ -619,7 +619,7 @@ function findMediaUrl(obj, depth = 0) {
 // =============================================
 
 interface IntentDetectionResult {
-    intent: 'turno' | 'autorizacion' | 'info' | 'chequeo' | 'general';
+    intent: 'turno' | 'autorizacion' | 'info' | 'chequeo' | 'prevenir' | 'general';
     doctorCandidate: string | null;
     doctorRecord: any | null;
     isExplicitNumberOption: '1' | '2' | '3' | null;
@@ -634,7 +634,8 @@ const STOPWORDS_MEDICOS = new Set([
     'alguno', 'favor', 'hola', 'buenas', 'buenos', 'ustedes', 'sanatorio', 'argentino',
     'salud', 'clinica', 'clínica', 'medico', 'médico', 'medica', 'médica', 'doctor', 'doctora',
     'profesional', 'especialista', 'analisis', 'análisis', 'laboratorio', 'ecografia', 'ecografía',
-    'radiografia', 'radiografía', 'orden', 'receta', 'como', 'para', 'buen', 'dia', 'días', 'bienvenido'
+    'radiografia', 'radiografía', 'orden', 'receta', 'como', 'para', 'buen', 'dia', 'días', 'bienvenido',
+    'prevenir', 'prevencion', 'prevención'
 ]);
 
 async function detectIntentAndEntities(supabase: any, text: string): Promise<IntentDetectionResult> {
@@ -645,6 +646,17 @@ async function detectIntentAndEntities(supabase: any, text: string): Promise<Int
     if (isChequeo) {
         return {
             intent: 'chequeo',
+            doctorCandidate: null,
+            doctorRecord: null,
+            isExplicitNumberOption: null
+        };
+    }
+
+    // 0.1 DETECCIÓN PRIORITARIA: PROGRAMA PREVENIR (OSP)
+    const isPrevenir = /\b(programa\s+prevenir|prevenir|el\s+prevenir|turno\s+(?:para\s+)?prevenir|hacerme\s+(?:el\s+)?prevenir|sacar\s+(?:el\s+)?prevenir|estudios?\s+(?:de\s+|del\s+)?prevenir)\b/i.test(clean);
+    if (isPrevenir) {
+        return {
+            intent: 'prevenir',
             doctorCandidate: null,
             doctorRecord: null,
             isExplicitNumberOption: null
@@ -945,6 +957,35 @@ async function handleChatbotTriage(
             nextStage = 'esperando_agente';
         } else {
             replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n${infoChequeo}\n\nPara que nuestras asesoras puedan abrir tu ficha y coordinar la fecha del circuito, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n• *Sede de preferencia* (Sede Santa Fe o Sede San Luis)\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contactando a la brevedad. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
+            updates.bot_stage = 'esperando_datos_nuevo';
+            updates.bot_active = true;
+            nextStage = 'esperando_datos_nuevo';
+        }
+    }
+    // =============================================
+    // FLUJO ESPECIAL: PROGRAMA PREVENIR (OSP)
+    // =============================================
+    else if (analysis.intent === 'prevenir') {
+        updates.motivo_consulta = 'Programa Prevenir (OSP)';
+        updates.medico_o_especialidad = 'Programa Prevenir';
+
+        const infoPrevenir = `El *Programa Prevenir* de Sanatorio Argentino, a través del convenio con *Obra Social Provincia (OSP)*, tiene como finalidad la *detección precoz del cáncer de mama y cáncer de cuello uterino*.\n\n` +
+            `🩺 *¿Qué incluye el programa?*\n` +
+            `• Coordinación integrada de tu cita en un solo paso (se otorga conjuntamente consulta ginecológica y mamografía)\n` +
+            `• Controles periódicos de salud preventiva\n` +
+            `• Unificación en la entrega de estudios y recomendaciones médicas personalizadas\n` +
+            `• Atención en *Sede Santa Fe* (Santa Fe 263 Este)\n\n` +
+            `🌐 *Podés ver toda la información detallada del programa aquí:*\n` +
+            `👉 https://www.sanatorioargentino.com.ar/especialidades-medicas/programa-prevenir.html\n\n` +
+            `Para este programa no es necesario elegir un médico en particular, ya que nuestro equipo del Contact Center coordina las citas y especialistas del circuito por vos.`;
+
+        if (isExistingPatient) {
+            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos con cobertura *${os}*.\n\n${infoPrevenir}\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contestando en breve para coordinar tu cita integrada en Sede Santa Fe. Por favor estate atenta/o, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+        } else {
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n${infoPrevenir}\n\nPara abrir tu ficha y coordinar tu turno en un solo mensaje, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Confirmación de Obra Social Provincia (OSP)* u otra cobertura\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contactando a la brevedad. Por favor estate atenta/o, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
             updates.bot_stage = 'esperando_datos_nuevo';
             updates.bot_active = true;
             nextStage = 'esperando_datos_nuevo';
