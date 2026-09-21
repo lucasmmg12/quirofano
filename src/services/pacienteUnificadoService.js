@@ -183,38 +183,110 @@ export async function fetchPacienteDetalle(paciente) {
         })()
     );
 
-    // 4. Consultas guardia y ambulatorias — por NHC, DNI o Nombre
+    // 4. Consultas guardia, ambulatorias, síntomas/anamnesis y turnos próximos
     queries.push(
         (async () => {
-            let data = [];
-            if (nhc) {
-                const { data: byNhc } = await supabase
-                    .from('consultas_guardia')
-                    .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif')
-                    .eq('nhc', parseInt(nhc, 10))
-                    .order('fecha_visita', { ascending: false })
-                    .limit(30);
-                data = byNhc || [];
+            let consultasData = [];
+            let turnosProximosData = [];
+
+            // Intentar primero endpoint en tiempo real de SALUS (sync-server)
+            try {
+                const params = new URLSearchParams();
+                if (dni) params.append('dni', dni);
+                if (nhc) params.append('nhc', nhc);
+                if (telefono) params.append('telefono', telefono);
+                if (nombre) params.append('nombre', nombre);
+
+                const ctrl = new AbortController();
+                const timeoutId = setTimeout(() => ctrl.abort(), 2800);
+
+                const res = await fetch(`http://localhost:3456/api/salus/paciente-historial-clinico?${params.toString()}`, {
+                    signal: ctrl.signal
+                });
+                clearTimeout(timeoutId);
+
+                if (res.ok) {
+                    const json = await res.json();
+                    if (json.success) {
+                        consultasData = json.consultas || [];
+                        turnosProximosData = json.turnosProximos || [];
+                    }
+                }
+            } catch (err) {
+                // Fallback silencioso a base Supabase si sync-server no responde
             }
-            if (data.length === 0 && dni) {
-                const { data: byDni } = await supabase
-                    .from('consultas_guardia')
-                    .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif')
-                    .eq('nif', dni)
-                    .order('fecha_visita', { ascending: false })
-                    .limit(30);
-                data = byDni || [];
+
+            // Si no obtuvimos consultas de SALUS, recurrir a Supabase consultas_guardia
+            if (consultasData.length === 0) {
+                if (nhc) {
+                    const { data: byNhc } = await supabase
+                        .from('consultas_guardia')
+                        .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif')
+                        .eq('nhc', parseInt(nhc, 10))
+                        .order('fecha_visita', { ascending: false })
+                        .limit(30);
+                    consultasData = byNhc || [];
+                }
+                if (consultasData.length === 0 && dni) {
+                    const { data: byDni } = await supabase
+                        .from('consultas_guardia')
+                        .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif')
+                        .eq('nif', dni)
+                        .order('fecha_visita', { ascending: false })
+                        .limit(30);
+                    consultasData = byDni || [];
+                }
+                if (consultasData.length === 0 && nombre) {
+                    const { data: byNom } = await supabase
+                        .from('consultas_guardia')
+                        .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif')
+                        .ilike('paciente', `%${nombre.split(' ').slice(0, 2).join('%')}%`)
+                        .order('fecha_visita', { ascending: false })
+                        .limit(30);
+                    consultasData = byNom || [];
+                }
             }
-            if (data.length === 0 && nombre) {
-                const { data: byNom } = await supabase
-                    .from('consultas_guardia')
-                    .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif')
-                    .ilike('paciente', `%${nombre.split(' ').slice(0, 2).join('%')}%`)
-                    .order('fecha_visita', { ascending: false })
-                    .limit(30);
-                data = byNom || [];
+
+            // Si no obtuvimos turnos próximos de SALUS, consultar contact_center_turnos_online en Supabase
+            if (turnosProximosData.length === 0 && dni) {
+                try {
+                    const { data: turnosOnlineSb } = await supabase
+                        .from('contact_center_turnos_online')
+                        .select('*')
+                        .eq('dni', dni);
+
+                    if (turnosOnlineSb && turnosOnlineSb.length > 0) {
+                        for (const row of turnosOnlineSb) {
+                            if (Array.isArray(row.turnos)) {
+                                for (const t of row.turnos) {
+                                    turnosProximosData.push({
+                                        id_visita: t.idVisita,
+                                        fecha_visita: t.fechaTurno || t.fecha,
+                                        hora_visita: t.horaInicioStr || t.horaInicio || '',
+                                        agenda: t.agenda || row.agenda_nombre,
+                                        medico: t.profesional || row.prestador_nombre,
+                                        tipo_visita: 'Turno Web Online',
+                                        asistencia: 'Reservado Online',
+                                        cliente: 'Online Web',
+                                        paciente: row.paciente_nombre,
+                                        dni: row.dni,
+                                        telefono: row.telefono,
+                                        origen: 'online',
+                                        tipo: 'online'
+                                    });
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[pacienteUnificado] error fallback turnos online:', e);
+                }
             }
-            return { key: 'consultas', data };
+
+            return [
+                { key: 'consultas', data: consultasData },
+                { key: 'turnosProximos', data: turnosProximosData }
+            ];
         })()
     );
 
@@ -300,7 +372,13 @@ export async function fetchPacienteDetalle(paciente) {
     const detalle = {};
     for (const result of results) {
         if (result.status === 'fulfilled') {
-            detalle[result.value.key] = result.value.data;
+            if (Array.isArray(result.value)) {
+                for (const item of result.value) {
+                    if (item && item.key) detalle[item.key] = item.data;
+                }
+            } else if (result.value && result.value.key) {
+                detalle[result.value.key] = result.value.data;
+            }
         } else {
             console.warn('[pacienteUnificado] query failed:', result.reason);
         }

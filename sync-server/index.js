@@ -25,7 +25,7 @@ import { syncCensoCamas } from './sync_censo_camas.mjs';
 import { syncDiagnosticos } from './sync_diagnosticos.mjs';
 import { syncKinesiologiaUci } from './sync_kinesiologia_uci.mjs';
 import { syncPacientes, syncSinglePaciente } from './sync_pacientes.mjs';
-import { getTurnosOnlineDuplicados, setGestionTurnoOnline, syncTurnosOnlineToSupabase } from './sync_turnos_online.mjs';
+import { getTurnosOnlineDuplicados, setGestionTurnoOnline, syncTurnosOnlineToSupabase, parseOnlineComment } from './sync_turnos_online.mjs';
 import { syncDoctorParameters } from './sync_doctor_parameters.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -122,7 +122,239 @@ app.post('/api/salus/turnos-online/gestion', async (req, res) => {
     }
 });
 
-// â”€â”€ Helpers â”€â”€
+// ─── Historial Clínico Completo + Turnos Próximos & Online de un Paciente ───
+async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre }) {
+    const startTime = Date.now();
+    let resolvedNhc = nhc ? String(nhc).trim() : null;
+    let resolvedDni = dni ? String(dni).replace(/\D/g, '') : null;
+    const cleanTel = telefono ? String(telefono).replace(/\D/g, '').slice(-8) : null;
+
+    // 1. Si no tenemos NHC, resolver en PR_FICHA_PACIENTE_QRY de SALUS
+    if (!resolvedNhc && (resolvedDni || cleanTel)) {
+        try {
+            let pWhere = [];
+            if (resolvedDni && resolvedDni.length >= 6) pWhere.push(`NIF = '${resolvedDni}'`);
+            if (cleanTel && cleanTel.length >= 6) pWhere.push(`telefono1 LIKE '%${cleanTel}%'`, `telefono2 LIKE '%${cleanTel}%'`);
+
+            if (pWhere.length > 0) {
+                const pacRes = await pool.request().query(`
+                    SELECT TOP 1 NHC, NIF, nombre, telefono1, telefono2 
+                    FROM PR_FICHA_PACIENTE_QRY 
+                    WHERE ${pWhere.join(' OR ')}
+                `);
+                if (pacRes.recordset && pacRes.recordset.length > 0) {
+                    resolvedNhc = pacRes.recordset[0].NHC;
+                    resolvedDni = resolvedDni || pacRes.recordset[0].NIF;
+                }
+            }
+        } catch (err) {
+            console.warn('⚠️ [Historial Clinico] Error resolviendo NHC en PR_FICHA_PACIENTE_QRY:', err.message);
+        }
+    }
+
+    // Query A: TABLEAU_Visitas (consultas médicas, guardia y turnos)
+    let visitasPromise = Promise.resolve({ recordset: [] });
+    if (resolvedNhc) {
+        visitasPromise = pool.request().query(`
+            SELECT 
+                v.IdVisita,
+                v.Fecha,
+                v.HoraProgramada,
+                v.Agenda,
+                v.Responsable,
+                v.[Tipo de visita] AS tipo_visita,
+                v.Asistencia,
+                v.Cliente,
+                v.CentroVisita,
+                v.Paciente,
+                v.NHC
+            FROM [SALUS].[dbo].[TABLEAU_Visitas] v
+            WHERE v.NHC = '${resolvedNhc}'
+            ORDER BY v.IdVisita DESC
+        `);
+    }
+
+    // Query B: TABLEAU_Diagnosticos y motivo consulta (anamnesis, síntomas del formulario y diagnósticos)
+    let diagPromise = Promise.resolve({ recordset: [] });
+    if (resolvedNhc) {
+        diagPromise = pool.request().query(`
+            SELECT 
+                d.IdVisita,
+                d.NHC,
+                d.DNI,
+                d.paciente,
+                d.[Fecha visita] AS fecha_visita,
+                d.diagnostico,
+                d.Formulario,
+                d.Motivo,
+                d.Centro
+            FROM [SALUS].[dbo].[TABLEAU_Diagnosticos y motivo consulta] d
+            WHERE d.NHC = '${resolvedNhc}'
+            ORDER BY d.IdVisita DESC
+        `);
+    }
+
+    // Query C: Turnos Online Próximos (Visitas con Internet = 1 y Data >= Hoy)
+    let onlinePromise = Promise.resolve({ recordset: [] });
+    if (resolvedDni || cleanTel) {
+        let onlineConds = [];
+        if (resolvedDni && resolvedDni.length >= 6) {
+            onlineConds.push(`vn.Comentarios LIKE '%${resolvedDni}%'`);
+        }
+        if (cleanTel && cleanTel.length >= 6) {
+            onlineConds.push(`vn.Comentarios LIKE '%${cleanTel}%'`);
+        }
+
+        if (onlineConds.length > 0) {
+            onlinePromise = pool.request().query(`
+                SELECT 
+                    v.id AS IdVisita,
+                    v.Data AS fecha,
+                    v.HoraInici,
+                    v.HoraFi,
+                    p.Nombre AS profesional,
+                    a.Nombre AS agenda,
+                    vn.Comentarios
+                FROM Visitas v
+                INNER JOIN Visitas_ntext vn ON v.id = vn.IdVisita
+                LEFT JOIN Personal p ON v.idPersonal = p.id
+                LEFT JOIN Agendas a ON v.idAgenda = a.id
+                WHERE v.Internet = 1
+                  AND v.Data >= CAST(GETDATE() AS DATE)
+                  AND (${onlineConds.join(' OR ')})
+                ORDER BY v.Data ASC, v.HoraInici ASC
+            `);
+        }
+    }
+
+    const [visitasRes, diagRes, onlineRes] = await Promise.all([visitasPromise, diagPromise, onlinePromise]);
+
+    const diagMap = new Map();
+    if (diagRes.recordset) {
+        for (const d of diagRes.recordset) {
+            diagMap.set(d.IdVisita, d);
+        }
+    }
+
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+
+    const consultas = [];
+    const turnosProximos = [];
+
+    // Procesar visitas de SALUS
+    if (visitasRes.recordset) {
+        for (const v of visitasRes.recordset) {
+            const diag = diagMap.get(v.IdVisita);
+            
+            let fechaObj = null;
+            if (v.Fecha) {
+                const parts = String(v.Fecha).split('/');
+                if (parts.length === 3) {
+                    fechaObj = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                }
+            }
+
+            const isFutura = fechaObj && fechaObj >= todayDate;
+            const esTurnoPendiente = isFutura && (v.Asistencia === 'Programada' || !v.Asistencia || v.Asistencia === 'Pendiente');
+
+            const record = {
+                id_visita: v.IdVisita,
+                fecha_visita: v.Fecha,
+                hora_visita: v.HoraProgramada ? String(v.HoraProgramada).slice(0, 5) : '',
+                agenda: v.Agenda,
+                medico: v.Responsable,
+                tipo_visita: v.tipo_visita,
+                asistencia: v.Asistencia,
+                cliente: v.Cliente,
+                centro: v.CentroVisita,
+                paciente: v.Paciente,
+                nhc: v.NHC,
+                diagnostico: diag?.diagnostico || null,
+                motivo: diag?.Motivo ? String(diag.Motivo).trim() : null,
+                formulario: diag?.Formulario || null,
+                origen: 'salus_presencial'
+            };
+
+            if (esTurnoPendiente) {
+                turnosProximos.push({
+                    ...record,
+                    tipo: 'presencial'
+                });
+            }
+            consultas.push(record);
+        }
+    }
+
+    // Procesar turnos online próximos
+    if (onlineRes.recordset) {
+        for (const o of onlineRes.recordset) {
+            const parsed = parseOnlineComment(o.Comentarios);
+            const horaInicioStr = o.HoraInici 
+                ? new Date(o.HoraInici).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) 
+                : '';
+
+            const fIso = o.fecha ? new Date(o.fecha).toISOString().slice(0, 10) : '';
+            const fParts = fIso.split('-');
+            const fFormatted = fParts.length === 3 ? `${fParts[2]}/${fParts[1]}/${fParts[0]}` : fIso;
+
+            turnosProximos.push({
+                id_visita: o.IdVisita,
+                fecha_visita: fFormatted,
+                fecha_iso: fIso,
+                hora_visita: horaInicioStr,
+                agenda: o.agenda,
+                medico: o.profesional,
+                tipo_visita: 'Turno Web Online',
+                asistencia: 'Reservado Online',
+                cliente: parsed.mutua || 'Particular / Prepaga',
+                paciente: parsed.nombre,
+                dni: parsed.dni,
+                telefono: parsed.telefono,
+                email: parsed.email,
+                motivo: parsed.motivo,
+                origen: 'online',
+                tipo: 'online'
+            });
+        }
+    }
+
+    // Ordenar turnos próximos por fecha ascendente
+    turnosProximos.sort((a, b) => {
+        const da = a.fecha_iso || a.fecha_visita;
+        const db = b.fecha_iso || b.fecha_visita;
+        return da > db ? 1 : -1;
+    });
+
+    return {
+        elapsedMs: Date.now() - startTime,
+        nhc: resolvedNhc,
+        dni: resolvedDni,
+        totalConsultas: consultas.length,
+        totalTurnosProximos: turnosProximos.length,
+        turnosProximos,
+        consultas
+    };
+}
+
+app.get('/api/salus/paciente-historial-clinico', async (req, res) => {
+    try {
+        const pool = await getPool();
+        const { dni, nhc, telefono, nombre } = req.query;
+        if (!dni && !nhc && !telefono && !nombre) {
+            return res.status(400).json({ success: false, error: 'Se requiere dni, nhc, telefono o nombre' });
+        }
+        console.log(`🩺 [Historial Clínico] Consultando paciente (DNI: ${dni || 'N/A'}, NHC: ${nhc || 'N/A'}, Tel: ${telefono || 'N/A'})...`);
+        const data = await getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre });
+        res.json({ success: true, ...data });
+    } catch (err) {
+        console.error('❌ Error consultando historial clínico del paciente:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ── Helpers ──
+
 function formatDate(val) {
     if (!val) return null;
     if (val instanceof Date) {

@@ -164,29 +164,33 @@ export default function ContactCenterChatConsole({
         }
     };
 
-    // Cargar Historial 360° del paciente si se abre la pestaña Historial
+    // Cargar Historial 360° y Turnos Próximos del paciente
     useEffect(() => {
-        if (activeDetailTab === 'historial') {
-            const dniToSearch = (crmForm.dni || selectedChat?.customFields?.dni || '').replace(/\D/g, '');
-            const phoneToSearch = selectedChat?.phone || '';
-            const nhcToSearch = selectedChat?.customFields?.nhc || '';
+        const dniToSearch = (crmForm.dni || selectedChat?.customFields?.dni || '').replace(/\D/g, '');
+        const phoneToSearch = selectedChat?.phone || '';
+        const nhcToSearch = selectedChat?.customFields?.nhc || '';
 
-            if (dniToSearch.length >= 6 || phoneToSearch.length >= 6 || nhcToSearch) {
-                setLoadingHistory(true);
-                fetchPacienteDetalle({ 
-                    dni: dniToSearch || null, 
-                    nhc: nhcToSearch || null, 
-                    telefono: phoneToSearch || null, 
-                    nombre: crmForm.pacienteNombre || selectedChat?.contactName 
+        if (dniToSearch.length >= 6 || phoneToSearch.length >= 6 || nhcToSearch) {
+            setLoadingHistory(true);
+            fetchPacienteDetalle({ 
+                dni: dniToSearch || null, 
+                nhc: nhcToSearch || null, 
+                telefono: phoneToSearch || null, 
+                nombre: crmForm.pacienteNombre || selectedChat?.contactName 
+            })
+                .then(det => {
+                    setPatientHistory(det);
+                    // Si encontramos NHC o DNI en el historial y no estaban en crmForm, enriquecer ficha
+                    if (det?.nhc && !crmForm.dni && det.dni) {
+                        setCrmForm(prev => ({ ...prev, dni: det.dni }));
+                    }
                 })
-                    .then(det => setPatientHistory(det))
-                    .catch(err => console.warn('Error al cargar historial 360:', err))
-                    .finally(() => setLoadingHistory(false));
-            } else {
-                setPatientHistory(null);
-            }
+                .catch(err => console.warn('Error al cargar historial 360:', err))
+                .finally(() => setLoadingHistory(false));
+        } else {
+            setPatientHistory(null);
         }
-    }, [activeDetailTab, crmForm.dni, selectedChat?.id, selectedChat?.phone]);
+    }, [crmForm.dni, selectedChat?.id, selectedChat?.phone, selectedChat?.customFields?.nhc]);
 
     // Búsqueda en Padrón SALUS (admite DNI, NHC o Teléfono)
     const handleLookupSalus = async () => {
@@ -1781,6 +1785,57 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             ) : (
                                 /* VISTA INSTITUCIONAL LIMPIA Y CLÍNICA DE LA FICHA CRM */
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {/* ALERTA ACCESO RÁPIDO: TURNOS PRÓXIMOS & ONLINE DEL PACIENTE */}
+                                    {patientHistory?.turnosProximos && patientHistory.turnosProximos.length > 0 && (
+                                        <div style={{
+                                            background: 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%)',
+                                            border: '1.5px solid #6EE7B7',
+                                            borderRadius: '8px',
+                                            padding: '8px 10px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '5px',
+                                            boxShadow: '0 2px 5px rgba(5, 150, 105, 0.08)'
+                                        }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#065F46', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <span>📅 TIENE TURNOS PRÓXIMOS ({patientHistory.turnosProximos.length})</span>
+                                                </div>
+                                                <button 
+                                                    onClick={() => setActiveDetailTab('historial')}
+                                                    style={{
+                                                        fontSize: '0.65rem', fontWeight: 700, color: '#047857', background: '#D1FAE5',
+                                                        border: 'none', borderRadius: '4px', padding: '2px 6px', cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    Ver en Historial →
+                                                </button>
+                                            </div>
+                                            {patientHistory.turnosProximos.slice(0, 2).map((tp, i) => (
+                                                <div key={i} style={{ background: '#FFFFFF', border: '1px solid #A7F3D0', borderRadius: '6px', padding: '6px 8px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#047857' }}>
+                                                            📅 {tp.fecha_visita} {tp.hora_visita ? `(${tp.hora_visita} hs)` : ''}
+                                                        </span>
+                                                        <span style={{
+                                                            fontSize: '0.62rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px',
+                                                            background: tp.origen === 'online' ? '#EFF6FF' : '#F1F5F9',
+                                                            color: tp.origen === 'online' ? '#1D4ED8' : '#475569'
+                                                        }}>
+                                                            {tp.origen === 'online' ? '🌐 ONLINE WEB' : '🏥 PRESENCIAL'}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ fontSize: '0.72rem', color: '#0F172A', fontWeight: 700, marginTop: '2px' }}>
+                                                        👨‍⚕️ {tp.medico || 'Profesional Asignado'}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.67rem', color: '#64748B' }}>
+                                                        {tp.agenda || tp.tipo_visita} {tp.cliente ? `• ${tp.cliente}` : ''}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
                                     {/* DNI & NHC SALUS */}
                                     <div style={{ display: 'grid', gridTemplateColumns: selectedChat.customFields?.nhc ? '1fr 1fr' : '1fr', gap: '6px' }}>
                                         <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
@@ -1918,17 +1973,64 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         </div>
                                     </div>
 
-                                    {/* Listado de Consultas Médicas & Guardia Registradas */}
+                                    {/* SECCIÓN 1: TURNOS PRÓXIMOS & CITAS ONLINE (ACCESO RÁPIDO) */}
+                                    {patientHistory.turnosProximos && patientHistory.turnosProximos.length > 0 && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#065F46', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <span>📅 TURNOS PRÓXIMOS & CITAS ONLINE ({patientHistory.turnosProximos.length})</span>
+                                            </div>
+                                            {patientHistory.turnosProximos.map((tp, idx) => (
+                                                <div key={idx} style={{
+                                                    background: '#FFFFFF',
+                                                    border: tp.origen === 'online' ? '1.5px solid #93C5FD' : '1.5px solid #6EE7B7',
+                                                    borderRadius: '8px',
+                                                    padding: '8px 10px',
+                                                    boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                                                }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                        <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0F172A' }}>
+                                                            📅 {tp.fecha_visita} {tp.hora_visita ? `• ${tp.hora_visita} hs` : ''}
+                                                        </div>
+                                                        <span style={{
+                                                            fontSize: '0.64rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px',
+                                                            background: tp.origen === 'online' ? '#EFF6FF' : '#ECFDF5',
+                                                            color: tp.origen === 'online' ? '#1D4ED8' : '#047857'
+                                                        }}>
+                                                            {tp.origen === 'online' ? '🌐 TURNO WEB ONLINE' : '🏥 PRESENCIAL'}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0284C7', marginTop: '3px' }}>
+                                                        👨‍⚕️ {tp.medico || 'Profesional Asignado'}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.7rem', color: '#475569', marginTop: '1px' }}>
+                                                        Agenda: <strong>{tp.agenda || tp.tipo_visita}</strong>
+                                                    </div>
+                                                    {tp.cliente && (
+                                                        <div style={{ fontSize: '0.66rem', color: '#64748B', marginTop: '3px', background: '#F8FAFC', padding: '2px 6px', borderRadius: '4px' }}>
+                                                            Cobertura: <strong>{tp.cliente}</strong>
+                                                        </div>
+                                                    )}
+                                                    {tp.motivo && (
+                                                        <div style={{ fontSize: '0.68rem', color: '#78350F', background: '#FEF3C7', padding: '3px 6px', borderRadius: '4px', marginTop: '4px' }}>
+                                                            💬 Motivo: {tp.motivo}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* SECCIÓN 2: CONSULTAS MÉDICAS, GUARDIA & EVOLUCIÓN CLÍNICA */}
                                     {patientHistory.consultas && patientHistory.consultas.length > 0 && (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                             <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                 <span>🩺 CONSULTAS MÉDICAS & GUARDIA ({patientHistory.consultas.length})</span>
                                             </div>
-                                            {patientHistory.consultas.slice(0, 5).map((con, idx) => (
+                                            {patientHistory.consultas.slice(0, 10).map((con, idx) => (
                                                 <div key={idx} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                                         <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0F172A' }}>
-                                                            {con.visita_especialidad || 'Consulta Médica'}
+                                                            {con.visita_especialidad || con.agenda || 'Consulta Médica'}
                                                         </div>
                                                         <span style={{
                                                             fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px',
@@ -1938,14 +2040,41 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                             {con.asistencia || 'Atendido'}
                                                         </span>
                                                     </div>
-                                                    <div style={{ fontSize: '0.7rem', color: '#0284C7', fontWeight: 600, marginTop: '2px' }}>
-                                                        {con.agenda || 'Guardia Sanatorio'} • {con.tipo_visita || 'Visita'}
+                                                    {con.medico && (
+                                                        <div style={{ fontSize: '0.74rem', color: '#0369A1', fontWeight: 700, marginTop: '2px' }}>
+                                                            👨‍⚕️ {con.medico}
+                                                        </div>
+                                                    )}
+                                                    <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600, marginTop: '1px' }}>
+                                                        {con.agenda ? `${con.agenda} • ` : ''}{con.tipo_visita || 'Visita'} {con.centro ? `• ${con.centro}` : ''}
                                                     </div>
                                                     <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '3px' }}>
                                                         📅 Fecha: <strong>{con.fecha_visita || 'S/F'}</strong> {con.hora_visita ? `(${con.hora_visita.slice(0, 5)} hs)` : ''}
                                                     </div>
+                                                    {con.diagnostico && (
+                                                        <div style={{
+                                                            fontSize: '0.68rem', fontWeight: 700, color: '#1E40AF', background: '#EFF6FF',
+                                                            border: '1px solid #BFDBFE', padding: '3px 6px', borderRadius: '4px', marginTop: '4px'
+                                                        }}>
+                                                            🏷️ Diagnóstico: {con.diagnostico}
+                                                        </div>
+                                                    )}
+                                                    {con.motivo && (
+                                                        <div style={{
+                                                            marginTop: '6px', background: '#F8FAFC', border: '1px solid #CBD5E1',
+                                                            borderRadius: '6px', padding: '6px 8px'
+                                                        }}>
+                                                            <div style={{ fontSize: '0.64rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                <span>📋 Síntomas / Formulario Médico</span>
+                                                                {con.formulario && <span style={{ color: '#0284C7', fontWeight: 600 }}>({con.formulario})</span>}
+                                                            </div>
+                                                            <div style={{ fontSize: '0.72rem', color: '#1E293B', whiteSpace: 'pre-line', marginTop: '3px', lineHeight: 1.35 }}>
+                                                                {con.motivo}
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                     {con.cliente && (
-                                                        <div style={{ fontSize: '0.66rem', color: '#475569', marginTop: '2px', background: '#F8FAFC', padding: '2px 6px', borderRadius: '4px' }}>
+                                                        <div style={{ fontSize: '0.66rem', color: '#475569', marginTop: '4px', background: '#F8FAFC', padding: '2px 6px', borderRadius: '4px' }}>
                                                             🏥 Cobertura: <strong>{con.cliente}</strong>
                                                         </div>
                                                     )}
