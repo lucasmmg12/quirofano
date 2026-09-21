@@ -732,28 +732,29 @@ export default function ContactCenterChatConsole({
                     flexWrap: 'wrap',
                     gap: '10px'
                 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                        {/* Nombre del paciente y datos */}
                         <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ fontSize: '0.96rem', fontWeight: 800, color: '#0F172A' }}>
-                                    #{selectedChat.id} / <span style={{ color: '#0284C7' }}>{selectedChat.contactName}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0284C7' }}>
+                                    {selectedChat.contactName}
                                 </span>
-                                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#16A34A', background: '#DCFCE7', padding: '2px 8px', borderRadius: '10px' }}>
-                                    WhatsApp
-                                </span>
-                                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#0369A1', background: '#E0F2FE', padding: '2px 8px', borderRadius: '10px', border: '1px solid #BAE6FD' }}>
-                                    Línea Contact Center (5492645825637)
-                                </span>
-                                <span style={{
-                                    fontSize: '0.68rem', fontWeight: 800, color: '#047857', background: '#ECFDF5',
-                                    border: '1px solid #A7F3D0', padding: '2px 8px', borderRadius: '10px',
-                                    display: 'flex', alignItems: 'center', gap: '4px'
-                                }} title="Canal Realtime activo: los mensajes se actualizan instantáneamente sin recargar">
-                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
-                                    EN VIVO
-                                </span>
+
+                                {/* CONDICIÓN PADRÓN */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B' }}>CONDICIÓN PADRÓN</span>
+                                    <span style={{
+                                        fontSize: '0.68rem', fontWeight: 800,
+                                        padding: '2px 8px', borderRadius: '4px',
+                                        background: selectedChat.customFields?.esPacienteExistente ? '#ECFDF5' : '#EFF6FF',
+                                        color: selectedChat.customFields?.esPacienteExistente ? '#047857' : '#1D4ED8',
+                                        border: '1px solid', borderColor: selectedChat.customFields?.esPacienteExistente ? '#A7F3D0' : '#BFDBFE'
+                                    }}>
+                                        {selectedChat.customFields?.esPacienteExistente ? '✓ Paciente Registrado' : '+ Nuevo Paciente'}
+                                    </span>
+                                </div>
                             </div>
-                            <div style={{ fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px' }}>
                                 <span>Tel: {selectedChat.phone}</span>
                                 <span>•</span>
                                 <span>
@@ -761,6 +762,55 @@ export default function ContactCenterChatConsole({
                                         {selectedChat.lastResponder || 'Paciente'}
                                     </strong>
                                 </span>
+                            </div>
+                        </div>
+
+                        {/* WIDGET: CHATBOT ACTIVO (TRIAGE) */}
+                        <div style={{
+                            padding: '6px 12px', borderRadius: '10px',
+                            background: botActive ? '#F0FDF4' : '#FFFBEB',
+                            border: '1px solid', borderColor: botActive ? '#BBF7D0' : '#FDE68A',
+                            display: 'flex', flexDirection: 'column', gap: '4px'
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', fontWeight: 800, color: botActive ? '#15803D' : '#B45309' }}>
+                                    <Bot size={14} />
+                                    {botActive ? 'CHATBOT ACTIVO (TRIAGE)' : 'CHATBOT SILENCIADO'}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <button
+                                        type="button"
+                                        onClick={handleToggleBot}
+                                        style={{
+                                            padding: '4px 8px', borderRadius: '6px', fontSize: '0.68rem', fontWeight: 700,
+                                            border: 'none', cursor: 'pointer',
+                                            background: botActive ? '#DC2626' : '#16A34A',
+                                            color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '4px',
+                                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                                        }}
+                                    >
+                                        <Power size={11} />
+                                        {botActive ? 'Silenciar Bot' : 'Reanudar Bot'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleOpenResetBotModal}
+                                        title="Reiniciar flujo del bot para que vuelva al saludo inicial de triage"
+                                        style={{
+                                            padding: '4px 8px', borderRadius: '6px', fontSize: '0.68rem', fontWeight: 700,
+                                            border: '1px solid #CBD5E1', cursor: 'pointer',
+                                            background: '#FFFFFF', color: '#0284C7', display: 'flex', alignItems: 'center', gap: '4px'
+                                        }}
+                                    >
+                                        <RefreshCw size={11} />
+                                        Reiniciar
+                                    </button>
+                                </div>
+                            </div>
+                            <div style={{ fontSize: '0.66rem', color: botActive ? '#166534' : '#92400E', lineHeight: 1.25 }}>
+                                {botActive 
+                                    ? 'El bot responde preguntas de triage ahorrando mensajes. Se silencia al asignar una agente.'
+                                    : 'El bot no responderá para permitir atención humana exclusiva.'}
                             </div>
                         </div>
                     </div>
