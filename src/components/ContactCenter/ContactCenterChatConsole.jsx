@@ -6,7 +6,8 @@ import {
     Filter, Archive, UserCheck, MoreVertical, Eye, AlertTriangle,
     Unlock, ArrowRightLeft, Clock, MessageSquare, AlertCircle,
     Power, Sparkles, Stethoscope, DollarSign, CreditCard,
-    Edit3, Save, X, History, Activity, FileCheck, RefreshCw
+    Edit3, Save, X, History, Activity, FileCheck, RefreshCw,
+    Zap
 } from 'lucide-react';
 import { 
     CONTACT_CENTER_AGENTS, getAgentById, isChatLockedForUser, 
@@ -15,6 +16,12 @@ import {
     analyzeMedicalOrderImage, generateChatAiSummary
 } from '../../services/contactCenterService';
 import { fetchPacienteDetalle } from '../../services/pacienteUnificadoService';
+import { 
+    getContactCenterQuickReplies, 
+    findQuickReplyByShortcut, 
+    filterQuickReplies, 
+    syncQuickRepliesFromDb 
+} from '../../data/contactCenterQuickReplies';
 
 export default function ContactCenterChatConsole({ 
     chats = [], 
@@ -41,6 +48,14 @@ export default function ContactCenterChatConsole({
     const [analyzingMsgId, setAnalyzingMsgId] = useState(null);
     const [, setForceUpdate] = useState(0);
     const messagesEndRef = useRef(null);
+    const inputRef = useRef(null);
+
+    // Estados Atajos y Respuestas Rápidas (Exclusivo Contact Center)
+    const [quickRepliesOpen, setQuickRepliesOpen] = useState(false);
+    const [quickRepliesModalOpen, setQuickRepliesModalOpen] = useState(false);
+    const [quickReplyFilter, setQuickReplyFilter] = useState('');
+    const [selectedQuickReplyIndex, setSelectedQuickReplyIndex] = useState(0);
+    const [quickRepliesList, setQuickRepliesList] = useState(() => getContactCenterQuickReplies());
 
     // Estados CRM: Edición de Ficha y Búsqueda en Padrón SALUS
     const [isEditingCrm, setIsEditingCrm] = useState(false);
@@ -114,6 +129,13 @@ export default function ContactCenterChatConsole({
             }
         }
     }, [selectedChat?.id, selectedChat?.phone, selectedChat?.aiSummary]);
+
+    // Sincronizar catálogo institucional de respuestas rápidas de Contact Center
+    useEffect(() => {
+        syncQuickRepliesFromDb().then(list => {
+            if (list && list.length > 0) setQuickRepliesList(list);
+        }).catch(() => {});
+    }, []);
 
     const handleRunAiSummary = async () => {
         if (!selectedChat?.phone) return;
@@ -344,21 +366,89 @@ export default function ContactCenterChatConsole({
             || (chat.customFields?.obraSocial || '').toLowerCase().includes(q);
     });
 
-    const handleSend = (e) => {
-        e.preventDefault();
-        if (!messageInput.trim()) return;
+    const sendDirectMessage = (text, isNote = false) => {
+        if (!text || !text.trim()) return;
         if (isLocked) {
             alert(`Esta conversación está asignada exclusivamente a ${assignedAgentObj?.name || 'otra agente'}.`);
             return;
         }
-        if (isUnassigned && !isSupervisor) {
-            // Auto-asignar al responder si no estaba asignado
-            if (onAssignChat) {
-                onAssignChat(selectedChat.id, activeAgent.id);
+        if (isUnassigned && !isSupervisor && onAssignChat) {
+            onAssignChat(selectedChat.id, activeAgent.id);
+        }
+        onSendMessage(selectedChat.id, text.trim(), isNote);
+        setMessageInput('');
+        setQuickRepliesOpen(false);
+        setQuickRepliesModalOpen(false);
+    };
+
+    const handleSend = (e) => {
+        e?.preventDefault?.();
+        if (!messageInput.trim()) return;
+
+        let textToSend = messageInput.trim();
+        // Si el usuario escribió un atajo (ej: /dan o /bosi), resolverlo de inmediato
+        if (textToSend.startsWith('/')) {
+            const found = findQuickReplyByShortcut(textToSend);
+            if (found) {
+                textToSend = found.content;
             }
         }
-        onSendMessage(selectedChat.id, messageInput, isPrivateNote);
-        setMessageInput('');
+
+        sendDirectMessage(textToSend, isPrivateNote);
+    };
+
+    const handleInputChange = (e) => {
+        const val = e.target.value;
+        setMessageInput(val);
+
+        if (val.startsWith('/')) {
+            const query = val.slice(1);
+            setQuickReplyFilter(query);
+            setQuickRepliesOpen(true);
+            setSelectedQuickReplyIndex(0);
+        } else {
+            setQuickRepliesOpen(false);
+        }
+    };
+
+    const handleInputKeyDown = (e) => {
+        if (!quickRepliesOpen) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                handleSend(e);
+            }
+            return;
+        }
+
+        const currentMatches = filterQuickReplies(quickReplyFilter);
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setSelectedQuickReplyIndex(prev => (prev + 1) % Math.max(1, currentMatches.length));
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setSelectedQuickReplyIndex(prev => (prev - 1 + Math.max(1, currentMatches.length)) % Math.max(1, currentMatches.length));
+        } else if (e.key === 'Escape') {
+            setQuickRepliesOpen(false);
+        } else if (e.key === 'Tab') {
+            // Tab autocompleta el texto en el input para poder editarlo
+            e.preventDefault();
+            const targetItem = currentMatches[selectedQuickReplyIndex] || currentMatches[0];
+            if (targetItem) {
+                setMessageInput(targetItem.content);
+                setQuickRepliesOpen(false);
+            }
+        } else if (e.key === 'Enter' && !e.shiftKey) {
+            // Enter envía inmediatamente el atajo
+            e.preventDefault();
+            const matchedByDirectCmd = findQuickReplyByShortcut(messageInput);
+            const targetItem = matchedByDirectCmd || currentMatches[selectedQuickReplyIndex] || currentMatches[0];
+
+            if (targetItem) {
+                sendDirectMessage(targetItem.content, isPrivateNote);
+            } else {
+                handleSend(e);
+            }
+        }
     };
 
     return (
@@ -1024,56 +1114,168 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                     {/* Formulario de redacción (solo habilitado si NO está bloqueado) */}
                     <form onSubmit={handleSend} style={{ opacity: isLocked ? 0.4 : 1, pointerEvents: isLocked ? 'none' : 'auto' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                            <button
-                                type="button"
-                                onClick={() => setIsPrivateNote(!isPrivateNote)}
-                                style={{
-                                    padding: '4px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                                    border: '1px solid', borderColor: isPrivateNote ? '#EA580C' : '#E2E8F0',
-                                    background: isPrivateNote ? '#FFF7ED' : '#FFFFFF',
-                                    color: isPrivateNote ? '#EA580C' : '#64748B', cursor: 'pointer',
-                                    display: 'flex', alignItems: 'center', gap: '4px'
-                                }}
-                            >
-                                {isPrivateNote ? <Lock size={12} /> : <MessageSquare size={12} />}
-                                {isPrivateNote ? 'Modo: Nota Privada Interna' : 'Modo: Mensaje Público de WhatsApp'}
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsPrivateNote(!isPrivateNote)}
+                                    style={{
+                                        padding: '4px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                                        border: '1px solid', borderColor: isPrivateNote ? '#EA580C' : '#E2E8F0',
+                                        background: isPrivateNote ? '#FFF7ED' : '#FFFFFF',
+                                        color: isPrivateNote ? '#EA580C' : '#64748B', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '4px'
+                                    }}
+                                >
+                                    {isPrivateNote ? <Lock size={12} /> : <MessageSquare size={12} />}
+                                    {isPrivateNote ? 'Nota Interna' : 'WhatsApp Público'}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setQuickReplyFilter('');
+                                        setQuickRepliesModalOpen(true);
+                                    }}
+                                    title="Abrir catálogo completo de respuestas rápidas (o tipea / en el chat)"
+                                    style={{
+                                        padding: '4px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                                        border: '1px solid #BAE6FD', background: '#F0F9FF', color: '#0284C7',
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                                        boxShadow: '0 1px 2px rgba(2, 132, 199, 0.08)'
+                                    }}
+                                >
+                                    <Zap size={12} /> Respuestas rápidas (/)
+                                </button>
+                            </div>
 
                             <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
                                 Respondiendo como: <strong style={{ color: activeAgent.color }}>{activeAgent.name} ({activeAgent.role})</strong>
                             </span>
                         </div>
 
-                        <div style={{
-                            display: 'flex', alignItems: 'center', gap: '10px',
-                            background: isPrivateNote ? '#FFF7ED' : '#F8FAFC',
-                            border: isPrivateNote ? '1.5px solid #F97316' : '1px solid #E2E8F0',
-                            borderRadius: '12px', padding: '8px 12px'
-                        }}>
-                            <input 
-                                type="text"
-                                disabled={isLocked}
-                                placeholder={isPrivateNote 
-                                    ? `Escribe una nota interna que solo verá el equipo (autor: ${activeAgent.name})...` 
-                                    : `Escribe respuesta a ${selectedChat.contactName} vía WhatsApp (autor: ${activeAgent.name})...`}
-                                value={messageInput}
-                                onChange={(e) => setMessageInput(e.target.value)}
-                                style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: '0.88rem', color: '#1E293B' }}
-                            />
+                        <div style={{ position: 'relative' }}>
+                            {/* POPOVER FLOTANTE CONTEXTUAL DE ATAJOS RÁPIDOS CON TECLADO */}
+                            {quickRepliesOpen && (
+                                <div style={{
+                                    position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: '8px',
+                                    background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '12px',
+                                    boxShadow: '0 -6px 20px rgba(0,0,0,0.12)', zIndex: 100, overflow: 'hidden'
+                                }}>
+                                    <div style={{
+                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                        padding: '8px 12px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0',
+                                        fontSize: '0.7rem', fontWeight: 700, color: '#475569'
+                                    }}>
+                                        <span>⚡ ATAJOS RÁPIDOS (Enter: Enviar • Tab: Editar • Esc: Cerrar)</span>
+                                        <span style={{ background: '#E2E8F0', padding: '1px 6px', borderRadius: '4px', fontSize: '0.65rem' }}>
+                                            {filterQuickReplies(quickReplyFilter).length} resultados
+                                        </span>
+                                    </div>
+                                    <div style={{ maxHeight: '240px', overflowY: 'auto' }}>
+                                        {filterQuickReplies(quickReplyFilter).length === 0 ? (
+                                            <div style={{ padding: '14px', fontSize: '0.76rem', color: '#94A3B8', textAlign: 'center' }}>
+                                                No hay atajos que coincidan con "<strong>/{quickReplyFilter}</strong>".
+                                            </div>
+                                        ) : (
+                                            filterQuickReplies(quickReplyFilter).map((qr, idx) => {
+                                                const isSel = idx === selectedQuickReplyIndex;
+                                                return (
+                                                    <div 
+                                                        key={qr.id}
+                                                        onClick={() => sendDirectMessage(qr.content, isPrivateNote)}
+                                                        style={{
+                                                            padding: '8px 12px', cursor: 'pointer',
+                                                            background: isSel ? '#F0F9FF' : '#FFFFFF',
+                                                            borderLeft: isSel ? '3px solid #0284C7' : '3px solid transparent',
+                                                            borderBottom: '1px solid #F1F5F9',
+                                                            display: 'flex', flexDirection: 'column', gap: '2px',
+                                                            transition: 'background 0.1s ease'
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                            <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0284C7' }}>
+                                                                /{qr.shortcut} <span style={{ color: '#0F172A', fontWeight: 700 }}>• {qr.title}</span>
+                                                            </span>
+                                                            <div style={{ display: 'flex', gap: '4px' }}>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setMessageInput(qr.content);
+                                                                        setQuickRepliesOpen(false);
+                                                                        inputRef.current?.focus();
+                                                                    }}
+                                                                    style={{
+                                                                        padding: '2px 8px', fontSize: '0.65rem', fontWeight: 600,
+                                                                        border: '1px solid #CBD5E1', borderRadius: '4px',
+                                                                        background: '#FFFFFF', color: '#475569', cursor: 'pointer'
+                                                                    }}
+                                                                >
+                                                                    Editar
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        sendDirectMessage(qr.content, isPrivateNote);
+                                                                    }}
+                                                                    style={{
+                                                                        padding: '2px 8px', fontSize: '0.65rem', fontWeight: 700,
+                                                                        border: 'none', borderRadius: '4px',
+                                                                        background: '#0284C7', color: '#FFFFFF', cursor: 'pointer'
+                                                                    }}
+                                                                >
+                                                                    Enviar ↵
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        <div style={{
+                                                            fontSize: '0.72rem', color: '#64748B', lineHeight: 1.3,
+                                                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                                                        }}>
+                                                            {qr.content}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
-                            <button 
-                                type="submit"
-                                disabled={isLocked}
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: '6px',
-                                    background: isPrivateNote ? '#EA580C' : '#0284C7',
-                                    color: '#FFFFFF', border: 'none', padding: '8px 16px',
-                                    borderRadius: '8px', fontWeight: 700, fontSize: '0.8rem', cursor: isLocked ? 'not-allowed' : 'pointer'
-                                }}
-                            >
-                                {isPrivateNote ? <Lock size={14} /> : <Send size={14} />}
-                                {isPrivateNote ? 'Guardar Nota' : 'Enviar WhatsApp'}
-                            </button>
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: '10px',
+                                background: isPrivateNote ? '#FFF7ED' : '#F8FAFC',
+                                border: isPrivateNote ? '1.5px solid #F97316' : '1px solid #E2E8F0',
+                                borderRadius: '12px', padding: '8px 12px'
+                            }}>
+                                <input 
+                                    ref={inputRef}
+                                    type="text"
+                                    disabled={isLocked}
+                                    placeholder={isPrivateNote 
+                                        ? `Escribe una nota interna que solo verá el equipo (o / para atajos)...` 
+                                        : `Escribe respuesta a ${selectedChat.contactName} (o / para atajos rápidos)...`}
+                                    value={messageInput}
+                                    onChange={handleInputChange}
+                                    onKeyDown={handleInputKeyDown}
+                                    style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: '0.88rem', color: '#1E293B' }}
+                                />
+
+                                <button 
+                                    type="submit"
+                                    disabled={isLocked}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        background: isPrivateNote ? '#EA580C' : '#0284C7',
+                                        color: '#FFFFFF', border: 'none', padding: '8px 16px',
+                                        borderRadius: '8px', fontWeight: 700, fontSize: '0.8rem', cursor: isLocked ? 'not-allowed' : 'pointer'
+                                    }}
+                                >
+                                    {isPrivateNote ? <Lock size={14} /> : <Send size={14} />}
+                                    {isPrivateNote ? 'Guardar Nota' : 'Enviar WhatsApp'}
+                                </button>
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -1947,6 +2149,116 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             >
                                 <CheckCircle2 size={15} /> {isClosingChat ? 'Finalizando...' : 'Confirmar y Archivar'}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* MODAL RESPUESTAS RÁPIDAS (EXCLUSIVO CONTACT CENTER)               */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {quickRepliesModalOpen && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000,
+                    background: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(3px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+                }} onClick={() => setQuickRepliesModalOpen(false)}>
+                    <div 
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            background: '#FFFFFF', width: '100%', maxWidth: '520px', maxHeight: '82vh',
+                            borderRadius: '16px', boxShadow: '0 20px 45px rgba(0,0,0,0.2)',
+                            display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #E2E8F0'
+                        }}
+                    >
+                        {/* Cabecera idéntica a la imagen */}
+                        <div style={{ padding: '24px 24px 12px 24px', textAlign: 'center', position: 'relative' }}>
+                            <h2 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#334155', margin: 0 }}>
+                                Respuestas rápidas
+                            </h2>
+                            <button
+                                type="button"
+                                onClick={() => setQuickRepliesModalOpen(false)}
+                                style={{
+                                    position: 'absolute', right: '16px', top: '16px', border: 'none',
+                                    background: 'transparent', color: '#94A3B8', cursor: 'pointer', padding: '4px'
+                                }}
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Campo de búsqueda con icono de lupa (verde azulado idéntico a imagen) */}
+                        <div style={{ padding: '0 24px 16px 24px' }}>
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                border: '1.5px solid #0D9488', borderRadius: '6px',
+                                padding: '8px 12px', background: '#FFFFFF'
+                            }}>
+                                <Search size={16} color="#0D9488" />
+                                <input 
+                                    type="text"
+                                    autoFocus
+                                    placeholder="Escribe para filtrar"
+                                    value={quickReplyFilter}
+                                    onChange={(e) => setQuickReplyFilter(e.target.value)}
+                                    style={{
+                                        flex: 1, border: 'none', outline: 'none', fontSize: '0.86rem', color: '#1E293B'
+                                    }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Lista scrolleable de respuestas rápidas */}
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 20px 24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                            {filterQuickReplies(quickReplyFilter).map((qr) => (
+                                <div key={qr.id} style={{
+                                    display: 'flex', flexDirection: 'column', gap: '6px',
+                                    paddingBottom: '14px', borderBottom: '1px solid #F1F5F9'
+                                }}>
+                                    <div>
+                                        <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1E293B' }}>
+                                            {qr.title.includes(':') ? qr.title : `${qr.title}:`}
+                                        </span>
+                                        <span style={{ fontSize: '0.72rem', color: '#0284C7', fontWeight: 700, marginLeft: '6px' }}>
+                                            /{qr.shortcut}
+                                        </span>
+                                    </div>
+                                    <p style={{
+                                        margin: 0, fontSize: '0.82rem', color: '#475569', lineHeight: 1.45, whiteSpace: 'pre-line'
+                                    }}>
+                                        {qr.content}
+                                    </p>
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setMessageInput(qr.content);
+                                                setQuickRepliesModalOpen(false);
+                                                inputRef.current?.focus();
+                                            }}
+                                            style={{
+                                                padding: '6px 14px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                                background: '#FFFFFF', color: '#334155', fontSize: '0.76rem', fontWeight: 600,
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            Editar y enviar
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => sendDirectMessage(qr.content, isPrivateNote)}
+                                            style={{
+                                                padding: '6px 14px', borderRadius: '6px', border: 'none',
+                                                background: '#0284C7', color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 700,
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                                            }}
+                                        >
+                                            <Send size={12} /> Enviar directo
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
