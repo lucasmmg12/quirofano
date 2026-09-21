@@ -230,8 +230,8 @@ Deno.serve(async (req) => {
         // Esto permite al frontend mostrar un placeholder apropiado
         const finalMediaType = mediaType !== 'text' ? mediaType : (mediaUrl ? inferMediaType(mediaUrl, data.attachment?.[0]) : 'text');
 
-        // Insertar en la tabla
-        const { error: insertError } = await supabase
+        // Insertar en la tabla y obtener ID para posibles enriquecimientos de IA
+        const { data: insertedData, error: insertError } = await supabase
             .from('whatsapp_messages')
             .insert({
                 phone,
@@ -246,7 +246,9 @@ Deno.serve(async (req) => {
                 original_media_url: originalMediaUrl || null,
                 // Línea WhatsApp que recibió el mensaje
                 line_id: lineId,
-            });
+            })
+            .select('id')
+            .maybeSingle();
 
         if (insertError) {
             console.error('[webhook] Error insertando mensaje:', insertError);
@@ -254,6 +256,28 @@ Deno.serve(async (req) => {
                 JSON.stringify({ ok: false, error: insertError.message }),
                 { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
+        }
+
+        // =============================================
+        // ANÁLISIS DE ORDEN MÉDICA CON IA (EDGE FUNCTION)
+        // Si el paciente envía una imagen, disparar análisis de visión en background
+        // NO se envía el análisis al paciente: se guarda en raw_payload para el operador
+        // =============================================
+        if (direction === 'incoming' && mediaUrl && finalMediaType === 'image') {
+            const insertedId = insertedData?.id;
+            console.log(`[webhook] 🩺 Disparando analyze-medical-order para msg ${insertedId}...`);
+            fetch(`${SUPABASE_URL}/functions/v1/analyze-medical-order`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                },
+                body: JSON.stringify({
+                    imageUrl: mediaUrl,
+                    messageId: insertedId,
+                    phone: phone,
+                }),
+            }).catch(aiErr => console.error('[webhook] Error triggering analyze-medical-order:', aiErr));
         }
 
         // =============================================
@@ -768,8 +792,8 @@ async function handleChatbotTriage(
             nextStage = 'esperando_agente';
 
         } else if (isOpt2) {
-            // Opción 2: Autorizaciones
-            replyText = `Para gestionar la autorización de tus estudios o prácticas médicas:\n\n📷 Por favor envíanos por aquí una *foto nítida de tu pedido médico* y de tu *credencial de obra social*.\n\nUna de nuestras asesoras revisará la documentación y te responderá a la brevedad.`;
+            // Opción 2: Autorizaciones (Ahorro de mensajes: pedir foto y DNI juntos)
+            replyText = `⚠️ *Gestión de Autorizaciones*\n\nPara gestionar tu solicitud en *un solo paso*, por favor envíanos en tu próximo mensaje:\n📸 *Una foto clara de la Orden Médica*\n🔢 *Tu número de DNI* (sin puntos ni espacios)\n\n*(Recuerda que los pedidos médicos tienen una vigencia de 30 días).* 👇`;
             updates.motivo_consulta = 'Autorizaciones de Estudios / Cobertura';
             updates.status = 'sin_asignar';
             updates.bot_active = false;

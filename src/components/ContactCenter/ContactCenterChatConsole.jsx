@@ -11,7 +11,8 @@ import {
 import { 
     CONTACT_CENTER_AGENTS, getAgentById, isChatLockedForUser, 
     MASTER_ADMINS, toggleBotActive, fetchDoctorParameters,
-    saveCrmPatientCard, lookupPatientFromSalus, resetBotWorkflow
+    saveCrmPatientCard, lookupPatientFromSalus, resetBotWorkflow,
+    analyzeMedicalOrderImage
 } from '../../services/contactCenterService';
 import { fetchPacienteDetalle } from '../../services/pacienteUnificadoService';
 
@@ -37,6 +38,8 @@ export default function ContactCenterChatConsole({
     const [doctorQuery, setDoctorQuery] = useState('');
     const [doctorResults, setDoctorResults] = useState([]);
     const [isSearchingDoctor, setIsSearchingDoctor] = useState(false);
+    const [analyzingMsgId, setAnalyzingMsgId] = useState(null);
+    const [, setForceUpdate] = useState(0);
     const messagesEndRef = useRef(null);
 
     // Estados CRM: Edición de Ficha y Búsqueda en Padrón SALUS
@@ -782,11 +785,103 @@ export default function ContactCenterChatConsole({
                                         )}
 
                                         {msg.type === 'image' && (
-                                            <div style={{ marginBottom: '8px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #E2E8F0', maxWidth: '320px' }}>
-                                                <img src={msg.mediaUrl} alt={msg.caption || 'Foto'} style={{ width: '100%', height: '180px', objectFit: 'cover' }} />
-                                                {msg.caption && (
-                                                    <div style={{ padding: '6px 10px', background: '#F8FAFC', fontSize: '0.75rem', color: '#64748B' }}>
-                                                        📄 {msg.caption}
+                                            <div style={{ marginBottom: '8px', maxWidth: '340px' }}>
+                                                <div 
+                                                    style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid #E2E8F0', cursor: 'pointer' }}
+                                                    onClick={() => msg.mediaUrl && window.open(msg.mediaUrl, '_blank')}
+                                                    title="Click para ver imagen completa"
+                                                >
+                                                    <img src={msg.mediaUrl} alt={msg.caption || 'Foto de Orden'} style={{ width: '100%', maxHeight: '220px', objectFit: 'contain', background: '#0F172A' }} />
+                                                    {msg.caption && (
+                                                        <div style={{ padding: '6px 10px', background: '#F8FAFC', fontSize: '0.75rem', color: '#64748B' }}>
+                                                            📄 {msg.caption}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Tarjeta de Análisis Clínico IA de la Orden Médica (Exclusivo para el Operador) */}
+                                                {msg.orderAnalysis ? (
+                                                    <div style={{
+                                                        marginTop: '6px',
+                                                        padding: '10px 12px',
+                                                        background: '#F0FDF4',
+                                                        border: '1.5px solid #86EFAC',
+                                                        borderRadius: '8px',
+                                                        fontSize: '0.78rem',
+                                                        color: '#0F172A',
+                                                        lineHeight: 1.5,
+                                                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                                                        textAlign: 'left'
+                                                    }}>
+                                                        <div style={{
+                                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                            marginBottom: '6px', paddingBottom: '4px', borderBottom: '1px solid #BBF7D0'
+                                                        }}>
+                                                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#166534', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                                🩺 DATOS DE LA ORDEN (IA)
+                                                            </span>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    const textToCopy = msg.orderAnalysis.raw_summary || 
+`Estudio a autorizar: ${msg.orderAnalysis.estudio || 'No especificado'}
+Solicitante: ${msg.orderAnalysis.solicitante || 'No especificado'}
+Matricula: ${msg.orderAnalysis.matricula || 'No especificada'}
+Diagnostico: ${msg.orderAnalysis.diagnostico || 'No especificado'}
+Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
+                                                                    navigator.clipboard.writeText(textToCopy);
+                                                                    alert('Ficha copiada al portapapeles');
+                                                                }}
+                                                                style={{
+                                                                    background: 'none', border: 'none', cursor: 'pointer',
+                                                                    fontSize: '0.68rem', color: '#15803D', fontWeight: 700, padding: 0
+                                                                }}
+                                                                title="Copiar datos de la orden"
+                                                            >
+                                                                📋 Copiar
+                                                            </button>
+                                                        </div>
+                                                        <div style={{ display: 'grid', gap: '3px' }}>
+                                                            <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Estudio a autorizar:</span> {msg.orderAnalysis.estudio || 'No especificado'}</div>
+                                                            <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Solicitante:</span> {msg.orderAnalysis.solicitante || 'No especificado'}</div>
+                                                            <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Matricula:</span> {msg.orderAnalysis.matricula || 'No especificada'}</div>
+                                                            <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Diagnostico:</span> {msg.orderAnalysis.diagnostico || 'No especificado'}</div>
+                                                            <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Fecha de solicitud:</span> {msg.orderAnalysis.fecha_solicitud || 'No especificada'}</div>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ marginTop: '6px', textAlign: 'left' }}>
+                                                        <button
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                try {
+                                                                    setAnalyzingMsgId(msg.id);
+                                                                    const analysis = await analyzeMedicalOrderImage(msg.mediaUrl, msg.realId, selectedChat?.phone);
+                                                                    if (analysis) {
+                                                                        msg.orderAnalysis = analysis;
+                                                                        setForceUpdate(k => k + 1);
+                                                                    }
+                                                                } catch (err) {
+                                                                    alert('No se pudo analizar la imagen: ' + (err.message || 'Error'));
+                                                                } finally {
+                                                                    setAnalyzingMsgId(null);
+                                                                }
+                                                            }}
+                                                            disabled={analyzingMsgId === msg.id}
+                                                            style={{
+                                                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                                padding: '4px 10px', borderRadius: '6px',
+                                                                background: '#F1F5F9', border: '1px solid #CBD5E1',
+                                                                fontSize: '0.72rem', fontWeight: 700, color: '#334155',
+                                                                cursor: analyzingMsgId === msg.id ? 'wait' : 'pointer'
+                                                            }}
+                                                        >
+                                                            {analyzingMsgId === msg.id ? (
+                                                                <>⏳ Analizando orden con IA...</>
+                                                            ) : (
+                                                                <>🔍 Analizar orden médica con IA</>
+                                                            )}
+                                                        </button>
                                                     </div>
                                                 )}
                                             </div>

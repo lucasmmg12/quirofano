@@ -117,12 +117,37 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
         // 2. Suscripción OnLive en Tiempo Real (Exclusivo Línea Contact Center y Conversaciones)
         const unsubscribe = subscribeToContactCenterRealtime({
-            onNewMessage: (newMsg) => {
-                console.log('[contact-center] ⚡ Evento Realtime entrante (OnLive):', newMsg);
+            onNewMessage: (newMsg, eventType) => {
+                if (!newMsg) return;
+                console.log('[contact-center] ⚡ Evento Realtime entrante (OnLive):', newMsg, eventType);
                 setLastLivePing(new Date());
 
                 const normPhone = normalizeArgentinePhone(newMsg.phone);
                 const isIncoming = newMsg.direction === 'incoming';
+
+                // Si es un UPDATE de mensaje (ej: resultado de análisis IA de orden médica)
+                if (eventType === 'UPDATE') {
+                    setChats(prevChats => {
+                        const chatIdx = prevChats.findIndex(c => normalizeArgentinePhone(c.phone) === normPhone);
+                        if (chatIdx < 0) return prevChats;
+                        const existingChat = prevChats[chatIdx];
+                        const updatedMessages = (existingChat.messages || []).map(m => {
+                            if (m.realId === newMsg.id || m.id === 'real_' + newMsg.id) {
+                                return {
+                                    ...m,
+                                    orderAnalysis: newMsg.raw_payload?.order_analysis || m.orderAnalysis,
+                                    rawPayload: newMsg.raw_payload || m.rawPayload
+                                };
+                            }
+                            return m;
+                        });
+                        const updatedChat = { ...existingChat, messages: updatedMessages };
+                        const updated = [...prevChats];
+                        updated[chatIdx] = updatedChat;
+                        return updated;
+                    });
+                    return;
+                }
 
                 // Reproducir sonido y notificación si es entrante
                 if (isIncoming) {
@@ -144,11 +169,14 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
                     const formattedMsg = {
                         id: 'real_' + (newMsg.id || Date.now()),
+                        realId: newMsg.id,
                         sender: isIncoming ? 'patient' : (newMsg.direction === 'note' ? 'note' : 'agent'),
                         senderName: isIncoming ? (newMsg.sender_name || 'Paciente') : (newMsg.sender_name || 'Sanatorio Argentino'),
                         type: newMsg.media_type || 'text',
                         text: newMsg.content || '',
                         mediaUrl: newMsg.media_url || null,
+                        orderAnalysis: newMsg.raw_payload?.order_analysis || null,
+                        rawPayload: newMsg.raw_payload || null,
                         timestamp: timeStr
                     };
 

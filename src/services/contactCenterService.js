@@ -429,6 +429,7 @@ export async function fetchLiveAndDemoChats() {
 
             const formattedMessages = chronological.map(m => ({
                 id: 'real_' + m.id,
+                realId: m.id,
                 sender: m.direction === 'incoming' ? 'patient' : (m.direction === 'note' ? 'note' : 'agent'),
                 senderName: m.direction === 'incoming' ? (m.sender_name || 'Paciente') : (m.sender_name || 'Sanatorio Argentino'),
                 senderAgentId: m.raw_payload?.agent || (m.sender_name ? m.sender_name.toLowerCase() : null),
@@ -437,6 +438,8 @@ export async function fetchLiveAndDemoChats() {
                 type: m.media_type || 'text',
                 text: m.content || '',
                 mediaUrl: m.media_url || null,
+                orderAnalysis: m.raw_payload?.order_analysis || null,
+                rawPayload: m.raw_payload || null,
                 isNote: m.direction === 'note',
                 timestamp: new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
             }));
@@ -870,7 +873,7 @@ export function subscribeToContactCenterRealtime({ onNewMessage, onConversationC
         .on(
             'postgres_changes',
             {
-                event: 'INSERT',
+                event: '*',
                 schema: 'public',
                 table: 'whatsapp_messages'
             },
@@ -887,7 +890,7 @@ export function subscribeToContactCenterRealtime({ onNewMessage, onConversationC
                 if (msg.phone && (msg.phone.startsWith('5491203') || msg.phone.startsWith('1203'))) {
                     return;
                 }
-                if (onNewMessage) onNewMessage(msg);
+                if (onNewMessage) onNewMessage(msg, payload.eventType);
             }
         )
         .on(
@@ -909,5 +912,25 @@ export function subscribeToContactCenterRealtime({ onNewMessage, onConversationC
     return () => {
         supabase.removeChannel(channel);
     };
+}
+
+/**
+ * Invoca la Edge Function analyze-medical-order para analizar una orden médica enviada por imagen
+ */
+export async function analyzeMedicalOrderImage(imageUrl, messageId = null, phone = null) {
+    if (!imageUrl) return null;
+    try {
+        const { data, error } = await supabase.functions.invoke('analyze-medical-order', {
+            body: { imageUrl, messageId, phone }
+        });
+        if (error) {
+            console.error('[contactCenterService] Error en analyzeMedicalOrderImage:', error);
+            throw error;
+        }
+        return data?.analysis || null;
+    } catch (err) {
+        console.error('[contactCenterService] Error invocando analyze-medical-order:', err);
+        throw err;
+    }
 }
 
