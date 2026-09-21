@@ -49,6 +49,16 @@ export function getAgentById(agentIdOrName) {
 }
 
 /**
+ * Determina si el estado de un chat es cerrado, archivado o finalizado (sinónimos)
+ */
+export function isClosedOrArchived(statusOrChat) {
+    if (!statusOrChat) return false;
+    const s = typeof statusOrChat === 'object' ? (statusOrChat.status || '') : String(statusOrChat);
+    const clean = s.toLowerCase().trim();
+    return clean === 'archivado' || clean === 'cerrado' || clean === 'finalizado' || clean === 'resuelto';
+}
+
+/**
  * Determina si un usuario tiene autorización para acceder al Contact Center.
  */
 export function canUserAccessContactCenter(user, allowedUsersList = null) {
@@ -480,6 +490,10 @@ export async function fetchLiveAndDemoChats() {
                 assignedAt: conv?.assigned_at || null,
                 botActive: conv?.bot_active ?? false,
                 aiSummary: conv?.ai_summary || null,
+                resolutionReason: conv?.resolution_reason || null,
+                closedAt: conv?.closed_at || null,
+                closedByAgentId: conv?.closed_by_agent_id || null,
+                closedByAgentName: conv?.closed_by_agent_name || null,
                 lastResponder: lastRespName,
                 lastResponderRole: lastRespRole,
                 lastResponseAt: formatRelativeTime(lastDateRaw),

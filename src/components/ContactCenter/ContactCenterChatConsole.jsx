@@ -14,7 +14,7 @@ import {
     MASTER_ADMINS, toggleBotActive, fetchDoctorParameters,
     saveCrmPatientCard, lookupPatientFromSalus, resetBotWorkflow,
     analyzeMedicalOrderImage, generateChatAiSummary,
-    FINAL_ATTENTION_MESSAGE
+    FINAL_ATTENTION_MESSAGE, isClosedOrArchived
 } from '../../services/contactCenterService';
 import { fetchPacienteDetalle } from '../../services/pacienteUnificadoService';
 import { 
@@ -377,12 +377,14 @@ export default function ContactCenterChatConsole({
             myAliases.includes(chatAssigned) ||
             (chat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
         );
+        const closed = isClosedOrArchived(chat.status);
 
-        if (filterTab === 'sin_asignar') return (!chat.assignedTo || chat.status === 'sin_asignar') && chat.status !== 'archivado';
-        if (filterTab === 'asignadas_mi') return isMine && chat.status !== 'archivado';
-        if (filterTab === 'asignadas_otros') return chatAssigned && !isMine && chat.status !== 'archivado';
-        if (filterTab === 'archivadas') return chat.status === 'archivado';
-        return chat.status !== 'archivado';
+        if (filterTab === 'sin_asignar') return (!chat.assignedTo || chat.status === 'sin_asignar') && !closed;
+        if (filterTab === 'asignadas_mi') return isMine && !closed;
+        if (filterTab === 'asignadas_otros') return chatAssigned && !isMine && !closed;
+        if (filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') return closed;
+        if (filterTab === 'todos') return true;
+        return !closed;
     }).filter(chat => {
         if (!searchTerm) return true;
         const q = searchTerm.toLowerCase();
@@ -502,7 +504,7 @@ export default function ContactCenterChatConsole({
                     <button 
                         onClick={() => {
                             setFilterTab('sin_asignar');
-                            const first = chats.find(c => (!c.assignedTo || c.status === 'sin_asignar') && c.status !== 'archivado');
+                            const first = chats.find(c => (!c.assignedTo || c.status === 'sin_asignar') && !isClosedOrArchived(c.status));
                             if (first && onSelectChat) onSelectChat(first.id);
                         }}
                         style={{
@@ -513,14 +515,14 @@ export default function ContactCenterChatConsole({
                             boxShadow: filterTab === 'sin_asignar' ? '0 2px 4px rgba(2,132,199,0.25)' : 'none'
                         }}
                     >
-                        Sin asignar ({chats.filter(c => (!c.assignedTo || c.status === 'sin_asignar') && c.status !== 'archivado').length})
+                        Sin asignar ({chats.filter(c => (!c.assignedTo || c.status === 'sin_asignar') && !isClosedOrArchived(c.status)).length})
                     </button>
                     <button 
                         onClick={() => {
                             setFilterTab('asignadas_mi');
                             const first = chats.find(c => {
                                 const a = (c.assignedTo || '').toLowerCase();
-                                return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && c.status !== 'archivado';
+                                return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && !isClosedOrArchived(c.status);
                             });
                             if (first && onSelectChat) onSelectChat(first.id);
                         }}
@@ -533,7 +535,7 @@ export default function ContactCenterChatConsole({
                     >
                         Mis chats ({chats.filter(c => {
                             const a = (c.assignedTo || '').toLowerCase();
-                            return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && c.status !== 'archivado';
+                            return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && !isClosedOrArchived(c.status);
                         }).length})
                     </button>
                     <button 
@@ -541,7 +543,7 @@ export default function ContactCenterChatConsole({
                             setFilterTab('asignadas_otros');
                             const first = chats.find(c => {
                                 const a = (c.assignedTo || '').toLowerCase();
-                                return a && !myAliases.includes(a) && !(c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()) && c.status !== 'archivado';
+                                return a && !myAliases.includes(a) && !(c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()) && !isClosedOrArchived(c.status);
                             });
                             if (first && onSelectChat) onSelectChat(first.id);
                         }}
@@ -554,8 +556,25 @@ export default function ContactCenterChatConsole({
                     >
                         Otras ({chats.filter(c => {
                             const a = (c.assignedTo || '').toLowerCase();
-                            return a && !myAliases.includes(a) && !(c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()) && c.status !== 'archivado';
+                            return a && !myAliases.includes(a) && !(c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()) && !isClosedOrArchived(c.status);
                         }).length})
+                    </button>
+                    <button 
+                        onClick={() => {
+                            setFilterTab('finalizados');
+                            const first = chats.find(c => isClosedOrArchived(c.status));
+                            if (first && onSelectChat) onSelectChat(first.id);
+                        }}
+                        style={{
+                            padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                            border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
+                            background: filterTab === 'finalizados' ? '#059669' : '#FFFFFF',
+                            color: filterTab === 'finalizados' ? '#FFFFFF' : '#475569',
+                            boxShadow: filterTab === 'finalizados' ? '0 2px 4px rgba(5,150,105,0.25)' : 'none',
+                            display: 'flex', alignItems: 'center', gap: '3px'
+                        }}
+                    >
+                        <Archive size={11} /> Finalizados ({chats.filter(c => isClosedOrArchived(c.status)).length})
                     </button>
                     <button 
                         onClick={() => {
@@ -569,7 +588,7 @@ export default function ContactCenterChatConsole({
                             color: filterTab === 'todos' ? '#FFFFFF' : '#475569'
                         }}
                     >
-                        Todos ({chats.filter(c => c.status !== 'archivado').length})
+                        Todos ({chats.length})
                     </button>
                 </div>
 
@@ -635,8 +654,15 @@ export default function ContactCenterChatConsole({
 
                                 {/* TAGS DE TRAZABILIDAD: ASIGNADO Y LOCK */}
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', margin: '6px 0 4px' }}>
-                                    {/* Tag de Asignación */}
-                                    {assignedAgent ? (
+                                    {isClosedOrArchived(chat.status) ? (
+                                        <span style={{
+                                            fontSize: '0.66rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
+                                            background: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0',
+                                            display: 'flex', alignItems: 'center', gap: '3px'
+                                        }}>
+                                            <CheckCircle2 size={10} color="#047857" /> Finalizado {chat.resolutionReason ? `• ${chat.resolutionReason}` : ''}
+                                        </span>
+                                    ) : assignedAgent ? (
                                         <span style={{
                                             fontSize: '0.66rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
                                             background: chatIsMine ? '#DCFCE7' : '#F1F5F9',
@@ -657,7 +683,7 @@ export default function ContactCenterChatConsole({
                                     )}
 
                                     {/* Tag de Bloqueo Exclusivo */}
-                                    {chatIsLocked && (
+                                    {chatIsLocked && !isClosedOrArchived(chat.status) && (
                                         <span style={{
                                             fontSize: '0.64rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
                                             background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5',
@@ -741,8 +767,30 @@ export default function ContactCenterChatConsole({
 
                     {/* BOTONES DE ASIGNACIÓN / BLOQUEO EXCLUSIVO */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
-                        {/* CASO 1: SIN ASIGNAR -> CUALQUIERA PUEDE ASIGNARSE */}
-                        {isUnassigned && (
+                        {isClosedOrArchived(selectedChat.status) ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                    padding: '6px 14px', borderRadius: '8px',
+                                    background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857',
+                                    fontSize: '0.74rem', fontWeight: 800
+                                }}>
+                                    <CheckCircle2 size={13} color="#047857" />
+                                    Conversación Finalizada {selectedChat.resolutionReason ? `(${selectedChat.resolutionReason})` : ''}
+                                </div>
+                                <button
+                                    onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id)}
+                                    title="Reabrir esta conversación para continuar atendiendo al paciente"
+                                    style={{
+                                        padding: '6px 12px', borderRadius: '8px', border: '1px solid #0284C7',
+                                        background: '#F0F9FF', color: '#0284C7', fontWeight: 700, fontSize: '0.72rem',
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                                    }}
+                                >
+                                    <RefreshCw size={12} /> Reabrir Atención
+                                </button>
+                            </div>
+                        ) : isUnassigned ? (
                             <button 
                                 onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id)}
                                 style={{
@@ -755,7 +803,7 @@ export default function ContactCenterChatConsole({
                             >
                                 <UserCheck size={14} /> Asignarme esta conversación
                             </button>
-                        )}
+                        ) : null}
 
                         {/* CASO 2: ASIGNADA A MÍ -> PUEDO LIBERAR O TRANSFERIR */}
                         {isAssignedToMe && (
@@ -1115,6 +1163,28 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     Mientras ella la tenga asignada, nadie más puede responder ni asociársela para evitar colisiones con el paciente.
                                 </div>
                             </div>
+                        </div>
+                    ) : isClosedOrArchived(selectedChat.status) ? (
+                        <div style={{
+                            marginBottom: '10px', padding: '8px 14px', borderRadius: '8px',
+                            background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                                <CheckCircle2 size={15} color="#047857" /> 
+                                Conversación finalizada {selectedChat.resolutionReason ? `• Motivo: ${selectedChat.resolutionReason}` : ''}. Puedes reabrirla para enviar un nuevo mensaje.
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id)}
+                                style={{
+                                    padding: '4px 10px', borderRadius: '6px', border: 'none',
+                                    background: '#059669', color: '#FFFFFF', fontSize: '0.74rem', fontWeight: 700,
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Reabrir chat
+                            </button>
                         </div>
                     ) : isUnassigned ? (
                         /* Alerta si no está asignado: sugerir asignarse */

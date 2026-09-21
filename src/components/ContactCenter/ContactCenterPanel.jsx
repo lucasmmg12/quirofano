@@ -16,7 +16,8 @@ import {
     CONTACT_CENTER_AGENTS, getAgentById, fetchLiveAndDemoChats,
     sendContactCenterMessage, assignChatExclusively, unassignChat,
     transferChatToAgent, closeConversationWithResolution,
-    subscribeToContactCenterRealtime, playContactCenterChime
+    subscribeToContactCenterRealtime, playContactCenterChime,
+    isClosedOrArchived
 } from '../../services/contactCenterService';
 import { normalizeArgentinePhone } from '../../services/builderbotApi';
 import { supabase } from '../../lib/supabase';
@@ -84,21 +85,14 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             const loaded = await fetchLiveAndDemoChats();
             setChats(loaded);
             
-            // Seleccionar chat relevante (por ej. Lucas Marinero o el más reciente)
-            const lucasChat = loaded.find(c => (c.phone || '').includes('5438114') || (c.contactName || '').toLowerCase().includes('marinero'));
-            const firstRealChat = loaded.find(c => c.id?.startsWith('REAL_'));
-
-            if (!activeChatId || !loaded.some(c => c.id === activeChatId)) {
-                if (lucasChat) {
-                    setActiveChatId(lucasChat.id);
-                } else if (firstRealChat) {
-                    setActiveChatId(firstRealChat.id);
-                } else if (loaded.length > 0) {
-                    setActiveChatId(loaded[0].id);
-                } else {
-                    setActiveChatId(null);
+            // Mantener el chat actualmente seleccionado por el operador, o seleccionar el primer chat activo
+            setActiveChatId(currentId => {
+                if (currentId && loaded.some(c => c.id === currentId)) {
+                    return currentId; // Preservar siempre la selección del usuario
                 }
-            }
+                const firstActive = loaded.find(c => !isClosedOrArchived(c.status));
+                return firstActive?.id || loaded[0]?.id || null;
+            });
         } catch (err) {
             console.warn('Error cargando chats:', err);
         } finally {
