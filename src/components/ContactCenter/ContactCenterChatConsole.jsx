@@ -13,7 +13,8 @@ import {
     CONTACT_CENTER_AGENTS, getAgentById, isChatLockedForUser, 
     MASTER_ADMINS, toggleBotActive, fetchDoctorParameters,
     saveCrmPatientCard, lookupPatientFromSalus, resetBotWorkflow,
-    analyzeMedicalOrderImage, generateChatAiSummary
+    analyzeMedicalOrderImage, generateChatAiSummary,
+    FINAL_ATTENTION_MESSAGE
 } from '../../services/contactCenterService';
 import { fetchPacienteDetalle } from '../../services/pacienteUnificadoService';
 import { 
@@ -2323,12 +2324,12 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             </button>
                         </div>
 
-                        <p style={{ fontSize: '0.82rem', color: '#64748B', margin: '0 0 16px 0', lineHeight: 1.45 }}>
+                        <p style={{ fontSize: '0.82rem', color: '#64748B', margin: '0 0 14px 0', lineHeight: 1.45 }}>
                             Estás a punto de finalizar la conversación con <strong>{selectedChat.contactName}</strong>. 
-                            La conversación pasará a <strong>Archivadas</strong>, se liberará el bloqueo de agente y se reactivará el bot automático para futuras consultas.
+                            Se enviará automáticamente el mensaje de despedida y encuesta de 5 estrellas al paciente, la conversación pasará a <strong>Archivadas</strong> y se reactivará el bot automático.
                         </p>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
                             <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>MOTIVO DE RESOLUCIÓN</label>
                             <select
                                 value={resolutionReason}
@@ -2345,6 +2346,19 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 <option value="Paciente No Responde">⏳ Paciente No Responde</option>
                                 <option value="Otro / Aclaración en Nota">📝 Otro / Ver Notas Internas</option>
                             </select>
+                        </div>
+
+                        {/* PREVIEW DEL MENSAJE DE CIERRE OFICIAL */}
+                        <div style={{
+                            background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '10px',
+                            padding: '10px 12px', marginBottom: '18px', textAlign: 'left'
+                        }}>
+                            <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#15803D', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                <span>⭐ Mensaje que recibirá el paciente vía WhatsApp:</span>
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#166534', whiteSpace: 'pre-line', lineHeight: 1.35, fontStyle: 'italic' }}>
+                                {FINAL_ATTENTION_MESSAGE}
+                            </div>
                         </div>
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
@@ -2369,7 +2383,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
                                 }}
                             >
-                                <CheckCircle2 size={15} /> {isClosingChat ? 'Finalizando...' : 'Confirmar y Archivar'}
+                                <CheckCircle2 size={15} /> {isClosingChat ? 'Finalizando y enviando...' : 'Finalizar y Enviar Cierre'}
                             </button>
                         </div>
                     </div>

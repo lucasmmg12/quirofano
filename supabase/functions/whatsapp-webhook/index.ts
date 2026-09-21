@@ -830,6 +830,7 @@ async function handleChatbotTriage(
             ...updates,
             dni: paciente?.dni || candidateDni || conv?.dni,
             nombre_completo: fullName,
+            contact_name: fullName,
             obra_social: os,
             nhc: paciente?.nhc || conv?.nhc || null,
             email: paciente?.email || updates.email || conv?.email || null,
@@ -853,19 +854,52 @@ async function handleChatbotTriage(
     const doctorSpecialty = analysis.doctorRecord?.especialidad ? ` (${analysis.doctorRecord.especialidad})` : '';
 
     // =============================================
-    // FLUJO 1: PACIENTE NUEVO RESPONDIENDO DATOS
+    // FLUJO 1: PACIENTE RESPONDIENDO DNI O DATOS DESDE NÚMERO NUEVO/NO REGISTRADO
     // =============================================
-    if (currentStage === 'esperando_datos_nuevo') {
-        const extracted = await extractPatientVariables(cleanText, candidateDni);
-        updates = {
-            ...updates,
-            ...extracted,
-            status: 'sin_asignar',
-            bot_active: false
-        };
-        nextStage = 'esperando_agente';
+    if (currentStage === 'esperando_dni' || currentStage === 'esperando_datos_nuevo') {
+        // A. Si se reconoció el DNI en SALUS (hospital_pacientes), vincular historia clínica completa
+        if (paciente) {
+            updates = {
+                ...updates,
+                dni: paciente.dni || candidateDni,
+                nombre_completo: paciente.nombre,
+                contact_name: paciente.nombre,
+                obra_social: paciente.coseguro || 'Particular / A confirmar',
+                nhc: paciente.nhc || null,
+                email: paciente.email || updates.email || null,
+                telefono_contacto: paciente.telefono || phone,
+                departamento: paciente.centro || 'San Juan',
+                es_paciente_existente: true,
+                status: 'sin_asignar',
+                bot_active: false
+            };
+            nextStage = 'esperando_agente';
 
-        replyText = `¡Muchas gracias *${extracted.nombre_completo || fullName}*! ✅ Registramos tus datos correctamente.\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contestando en breve para coordinar tu atención. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
+            replyText = `¡Muchas gracias *${paciente.nombre}*! ✅ Te encontramos en nuestro sistema con DNI *${paciente.dni}* y cobertura *${paciente.coseguro || 'Particular'}*.\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contestando en breve para asistirte. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
+        } 
+        // B. Si brindó DNI o datos pero NO está en SALUS (paciente nuevo real)
+        else if (candidateDni || cleanText.length > 5) {
+            const extracted = await extractPatientVariables(cleanText, candidateDni);
+            const resolvedName = extracted.nombre_completo || fullName || 'Paciente';
+            updates = {
+                ...updates,
+                ...extracted,
+                dni: candidateDni || extracted.dni || null,
+                nombre_completo: resolvedName,
+                contact_name: resolvedName,
+                status: 'sin_asignar',
+                bot_active: false,
+                es_paciente_existente: false
+            };
+            nextStage = 'esperando_agente';
+
+            replyText = `¡Muchas gracias *${resolvedName}*! ✅ Registramos tus datos${candidateDni ? ` con DNI *${candidateDni}*` : ''}.\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contestando en breve para asistirte. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
+        } 
+        // C. Si no se detectó DNI ni datos mínimos, reiterar pedido de forma clara
+        else {
+            replyText = `Para poder encontrar tu historia clínica o darte de alta en nuestro sistema, necesitamos tu número de *DNI* (sin puntos ni letras) y tu *Nombre Completo*. Por favor indícanoslo para que una de nuestras asesoras pueda atenderte.`;
+            nextStage = 'esperando_dni';
+        }
     } 
     // =============================================
     // FLUJO 2: INTENCIÓN DETECTADA DIRECTAMENTE: TURNO / REPROGRAMACIÓN

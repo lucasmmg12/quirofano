@@ -820,7 +820,16 @@ export async function lookupPatientFromSalus(query) {
 }
 
 /**
+ * Mensaje oficial obligatorio de finalización de atención y encuesta de satisfacción (5 estrellas)
+ */
+export const FINAL_ATTENTION_MESSAGE = `¡Gracias por comunicarte con el Sanatorio Argentino! 🏥
+Damos por finaliazada esta conversación.
+Si nuestra atención te fue de ayuda hoy, nos sumarías un montón dejándonos 5 estrellas aquí: https://oqdslqa.s.gy/sede1 ⭐
+¡Que tengas un excelente día!`;
+
+/**
  * Cierra o archiva una conversación con motivo de resolución y auditoría de agente
+ * Envía automáticamente el mensaje oficial de despedida y encuesta de satisfacción al paciente vía WhatsApp
  */
 export async function closeConversationWithResolution({ chat, resolutionReason, activeAgent, currentUser }) {
     if (!chat || !chat.phone) throw new Error('Chat o teléfono inválido');
@@ -828,6 +837,46 @@ export async function closeConversationWithResolution({ chat, resolutionReason, 
     const now = new Date();
     const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 
+    // 1. Enviar el mensaje oficial de finalización y encuesta al paciente vía WhatsApp (Línea Contact Center)
+    if (norm) {
+        try {
+            await sendWhatsAppMessage({
+                content: FINAL_ATTENTION_MESSAGE,
+                number: norm,
+                lineId: 'contact_center'
+            });
+            console.log(`[contact-center] ✅ Mensaje final de atención despachado a WhatsApp: ${norm}`);
+        } catch (sendErr) {
+            console.warn('[contact-center] Error despachando mensaje final a WhatsApp:', sendErr);
+        }
+
+        // 2. Persistir el mensaje saliente en whatsapp_messages para auditoría y visualización en el chat
+        try {
+            await supabase
+                .from('whatsapp_messages')
+                .insert({
+                    phone: norm,
+                    direction: 'outgoing',
+                    content: FINAL_ATTENTION_MESSAGE,
+                    media_type: 'text',
+                    sender_name: activeAgent?.name || 'Sanatorio Argentino',
+                    is_read: true,
+                    line_id: 'contact_center',
+                    raw_payload: {
+                        source: 'contact_center',
+                        line: 'contact_center',
+                        agent: activeAgent?.id || null,
+                        agentName: activeAgent?.name || 'Sanatorio Argentino',
+                        isFinalCloseMessage: true,
+                        resolutionReason: resolutionReason || 'Resuelto'
+                    }
+                });
+        } catch (insertErr) {
+            console.warn('[contact-center] Error insertando mensaje de cierre en whatsapp_messages:', insertErr);
+        }
+    }
+
+    // 3. Actualizar conversación en contact_center_conversations
     const updateFields = {
         status: 'archivado',
         resolution_reason: resolutionReason || 'Resuelto',
@@ -837,6 +886,9 @@ export async function closeConversationWithResolution({ chat, resolutionReason, 
         assigned_agent_id: null,
         assigned_agent_name: null,
         bot_active: true, // reactivar bot para futuros contactos
+        bot_stage: 'inicio', // reiniciar flujo del bot
+        last_message_text: FINAL_ATTENTION_MESSAGE,
+        last_message_at: now.toISOString(),
         updated_at: now.toISOString()
     };
 
@@ -852,6 +904,26 @@ export async function closeConversationWithResolution({ chat, resolutionReason, 
         throw error;
     }
 
+    const finalOutMsg = {
+        id: 'msg_final_' + Date.now(),
+        sender: 'agent',
+        senderName: activeAgent?.name || 'Sanatorio Argentino',
+        senderAgentId: activeAgent?.id || null,
+        agentRole: activeAgent?.role || 'Atención al Paciente',
+        tagColor: activeAgent?.color || '#059669',
+        type: 'text',
+        text: FINAL_ATTENTION_MESSAGE,
+        isNote: false,
+        timestamp: timeStr
+    };
+
+    const sysMsg = {
+        id: 'sys_' + Date.now(),
+        sender: 'system',
+        text: `${activeAgent?.name || 'Operador'} finalizó la atención con motivo: "${resolutionReason || 'Resuelto'}". Se envió mensaje de cierre y encuesta al paciente. Bot reactivado.`,
+        timestamp: timeStr
+    };
+
     return {
         ...chat,
         status: 'archivado',
@@ -859,14 +931,12 @@ export async function closeConversationWithResolution({ chat, resolutionReason, 
         assignedToName: null,
         botActive: true,
         resolutionReason: resolutionReason || 'Resuelto',
+        lastMessage: FINAL_ATTENTION_MESSAGE,
+        timeAgo: 'hace unos segundos',
         messages: [
             ...(chat.messages || []),
-            {
-                id: 'sys_' + Date.now(),
-                sender: 'system',
-                text: `${activeAgent?.name || 'Operador'} finalizó la atención con motivo: "${resolutionReason || 'Resuelto'}". Bot reactivado para el paciente.`,
-                timestamp: timeStr
-            }
+            finalOutMsg,
+            sysMsg
         ]
     };
 }

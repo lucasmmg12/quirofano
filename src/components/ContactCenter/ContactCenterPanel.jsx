@@ -255,6 +255,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     if (normalizeArgentinePhone(c.phone) === normPhone) {
                         return {
                             ...c,
+                            contactName: conv.nombre_completo || c.contactName,
                             status: conv.status || c.status,
                             assignedTo: conv.assigned_agent_id || c.assignedTo,
                             assignedToName: conv.assigned_agent_name || c.assignedToName,
@@ -388,7 +389,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             });
             setChats(prev => prev.map(c => c.id === chatId ? updated : c));
             if (addToast) {
-                addToast(`Atención finalizada con éxito (${resolutionReason})`, 'success');
+                addToast(`Atención finalizada y mensaje de despedida/encuesta enviado al paciente (${resolutionReason})`, 'success');
             }
         } catch (err) {
             if (addToast) addToast(err.message || 'Error al finalizar atención', 'error');
