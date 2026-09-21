@@ -794,7 +794,6 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
     if (/^[l|l️⃣]$/i.test(clean) || /^opci[oó]n\s*l$/i.test(clean)) {
         return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'L' };
     }
-    const lastBotContent = (context?.lastBotMessage?.content || '').toLowerCase();
     const isLastBotImageMenu = lastBotContent.includes('recibimos tu imagen') || lastBotContent.includes('presupuesto o aranceles particulares');
 
     if (/^[1|1️⃣]$/.test(clean) || /^opci[oó]n\s*1$/i.test(clean)) {

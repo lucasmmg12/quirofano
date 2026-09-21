@@ -37,7 +37,7 @@ export async function getConfigValue(key) {
         .from('app_config')
         .select('value')
         .eq('key', key)
-        .single();
+        .maybeSingle();
 
     if (error) return null;
     return data?.value || null;

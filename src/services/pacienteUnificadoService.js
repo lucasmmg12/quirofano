@@ -129,7 +129,7 @@ export async function fetchPacienteDetalle(paciente) {
                     .from('deudas_pacientes')
                     .select('id, nhc, nombre, telefono, categoria, deuda_total, cantidad_facturas, notas, ultimo_contacto_at, created_at')
                     .eq('nhc', nhc)
-                    .single();
+                    .maybeSingle();
                 data = byNhc;
             }
             // Si no hay NHC, intentar buscar por nombre
