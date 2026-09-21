@@ -65,6 +65,11 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
 
     useEffect(() => {
         loadData(filtroDias, fechaCustom);
+        // Auto-refresco en segundo plano cada 2 minutos
+        const interval = setInterval(() => {
+            loadData(filtroDias, fechaCustom);
+        }, 120000);
+        return () => clearInterval(interval);
     }, [filtroDias, fechaCustom]);
 
     // 2. Filtrado de casos

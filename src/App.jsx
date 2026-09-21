@@ -214,14 +214,27 @@ function App({ currentUser, onLogout }) {
     // Start activity tracking + fetch module preferences on mount
     useEffect(() => {
         if (currentUser) {
+            const username = (currentUser?.usuario || '').toLowerCase().trim();
+            const isContactCenterOnly = ['daguilera', 'vjacques', 'solivier', 'eleal', 'daniela', 'sofia', 'virginia', 'erica'].includes(username);
+
             const initActivity = async () => {
                 await startSession(currentUser);
                 // Track initial module
-                const initialView = localStorage.getItem('active_view') || 'inicio';
+                const initialView = isContactCenterOnly ? 'contact_center' : (localStorage.getItem('active_view') || 'inicio');
                 trackModuleChange(initialView, VIEW_LABELS[initialView] || initialView);
             };
             initActivity();
             
+            if (isContactCenterOnly) {
+                setSelectedModules(['contact_center', 'turnos_online', 'beto']);
+                setNeedsModuleOnboarding(false);
+                setShowModuleOnboarding(false);
+                if (activeView === 'inicio' || !['contact_center', 'turnos_online', 'beto', 'simon'].includes(activeView)) {
+                    navigate('/contact_center', { replace: true });
+                }
+                return;
+            }
+
             // Fetch module preferences
             supabase.from('user_module_preferences')
                 .select('selected_modules, completed_onboarding')
@@ -263,6 +276,17 @@ function App({ currentUser, onLogout }) {
 
     // Enforce module access control on activeView
     useEffect(() => {
+        const username = (currentUser?.usuario || '').toLowerCase().trim();
+        const isContactCenterOnly = ['daguilera', 'vjacques', 'solivier', 'eleal', 'daniela', 'sofia', 'virginia', 'erica'].includes(username);
+
+        if (isContactCenterOnly) {
+            const ALLOWED_VIEWS = ['contact_center', 'turnos_online', 'beto', 'simon'];
+            if (!ALLOWED_VIEWS.includes(activeView)) {
+                setActiveView('contact_center');
+            }
+            return;
+        }
+
         if (!selectedModules || selectedModules.length === 0) return;
         const ALWAYS_VISIBLE = ['inicio'];
         let isVisible = true;
@@ -1148,6 +1172,7 @@ function App({ currentUser, onLogout }) {
             <CommandPalette
                 isOpen={commandPaletteOpen}
                 onClose={() => setCommandPaletteOpen(false)}
+                currentUser={currentUser}
                 onNavigate={(mod) => { setActiveView(mod); setCommandPaletteOpen(false); }}
                 onBetoQuery={(query) => {
                     // Open Beto and send the query

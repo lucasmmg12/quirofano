@@ -2791,6 +2791,14 @@ app.get('/api/salus/sync-all', async (req, res) => {
             results.diagnosticos = { error: err.message };
         }
 
+        try {
+            console.log('🔄 [Turnos Online] Sincronizando alertas de turnos duplicados con SALUS...');
+            results.turnosOnline = await syncTurnosOnlineToSupabase(db, { days: fastSync ? 2 : 4, supabaseClient: supabase });
+        } catch (err) {
+            console.error('❌ Error en sincronización de turnos online:', err.message);
+            results.turnosOnline = { error: err.message };
+        }
+
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`\n–… ▬▬▬▬▬ SINCRONIZACIÓN COMPLETADA en ${elapsed}s ▬▬▬▬▬ \n`);
 
@@ -3170,7 +3178,33 @@ app.listen(PORT, '0.0.0.0', () => {
     GET /api/salus/health                            â•‘
 â•šâ• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• 
     `);
-    getPool().catch(err => console.warn('âš ï¸  Conexión inicial fallida:', err.message));
+    getPool().then(p => {
+        console.log('✅ Conexión inicial lista. Configurando sincronizador automático de turnos online...');
+        
+        // Ejecución inicial diferida (15 seg tras arranque)
+        setTimeout(async () => {
+            try {
+                console.log('⏰ [Turnos Online Auto] Ejecutando sincronización inicial de inconsistencias...');
+                const poolInst = await getPool();
+                await syncTurnosOnlineToSupabase(poolInst, { days: 2, supabaseClient: supabase });
+                console.log('⏰ [Turnos Online Auto] ✅ Sincronización inicial completada con éxito.');
+            } catch (e) {
+                console.warn('⚠️ [Turnos Online Auto] Error en sincronización inicial:', e.message);
+            }
+        }, 15000);
+
+        // Ejecución periódica cada 10 minutos
+        setInterval(async () => {
+            try {
+                console.log('⏰ [Turnos Online Auto] Ejecutando sincronización periódica (cada 10 min)...');
+                const poolInst = await getPool();
+                await syncTurnosOnlineToSupabase(poolInst, { days: 2, supabaseClient: supabase });
+                console.log('⏰ [Turnos Online Auto] ✅ Sincronización periódica finalizada.');
+            } catch (e) {
+                console.warn('⚠️ [Turnos Online Auto] Error en ciclo periódico:', e.message);
+            }
+        }, 10 * 60 * 1000);
+    }).catch(err => console.warn('⚠️ Conexión inicial fallida:', err.message));
 });
 
 process.on('SIGINT', async () => {

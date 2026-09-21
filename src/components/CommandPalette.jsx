@@ -9,11 +9,13 @@ import {
     Search, ArrowRight, Stethoscope, DollarSign, MessageCircle,
     Home, ClipboardCheck, Ticket, Brain, Settings, BarChart3,
     Sparkles, Command, FileText, PackageCheck, Microscope,
-    Zap, TrendingUp, Clock
+    Zap, TrendingUp, Clock, Headphones
 } from 'lucide-react';
 
 const MODULE_ITEMS = [
     { id: 'inicio', label: 'Inicio', icon: Home, keywords: ['home', 'inicio', 'principal'] },
+    { id: 'contact_center', label: 'Contact Center', icon: Headphones, keywords: ['contact', 'center', 'chat', 'asisteclick', 'paciente'] },
+    { id: 'turnos_online', label: 'Turnos Online Duplicados', icon: Ticket, keywords: ['turno', 'online', 'duplicado'] },
     { id: 'mensajeria', label: 'Mensajería / Chat', icon: MessageCircle, keywords: ['chat', 'whatsapp', 'mensajes'] },
     { id: 'pedidos', label: 'Nuevo Pedido', icon: FileText, keywords: ['pedido', 'practica', 'nomenclador'] },
     { id: 'cirugias', label: 'Control de Cirugías', icon: Stethoscope, keywords: ['cirugia', 'operacion', 'quirofano'] },
@@ -27,7 +29,7 @@ const MODULE_ITEMS = [
     { id: 'documentos', label: 'Documentos', icon: FileText, keywords: ['documento', 'archivo', 'pdf', 'excel', 'categoria'] },
     { id: 'consultas', label: 'Consultas de Guardia', icon: ClipboardCheck, keywords: ['consulta', 'guardia', 'urgencia', 'emergencia'] },
     { id: 'liquidaciones', label: 'Liquidaciones Médicas (Excel ➔ PDF)', icon: FileText, keywords: ['liquidacion', 'excel', 'guardia', 'instrumentador', 'pdf', 'honorarios'] },
-    { id: 'beto', label: 'Beto IA', icon: Brain, keywords: ['beto', 'ia', 'documento', 'ocr'] },
+    { id: 'beto', label: 'Beto IA (Simón)', icon: Brain, keywords: ['beto', 'simon', 'ia', 'documento', 'chat'] },
     { id: 'config', label: 'Configuración', icon: Settings, keywords: ['config', 'ajuste', 'usuario'] },
 ];
 
@@ -38,10 +40,13 @@ const QUICK_ACTIONS = [
     { label: 'Tendencias', prompt: '📈 Dame un análisis de tendencias de cirugías del último mes', icon: TrendingUp },
 ];
 
-export default function CommandPalette({ isOpen, onClose, onNavigate, onBetoQuery }) {
+export default function CommandPalette({ isOpen, onClose, onNavigate, onBetoQuery, currentUser }) {
     const [query, setQuery] = useState('');
     const [selectedIndex, setSelectedIndex] = useState(0);
     const inputRef = useRef(null);
+
+    const username = (currentUser?.usuario || '').toLowerCase().trim();
+    const isContactCenterOnly = ['daguilera', 'vjacques', 'solivier', 'eleal', 'daniela', 'sofia', 'virginia', 'erica'].includes(username);
 
     useEffect(() => {
         if (isOpen) {
@@ -51,12 +56,16 @@ export default function CommandPalette({ isOpen, onClose, onNavigate, onBetoQuer
         }
     }, [isOpen]);
 
-    const filteredModules = MODULE_ITEMS.filter(item =>
+    const allowedModules = isContactCenterOnly
+        ? MODULE_ITEMS.filter(m => ['contact_center', 'turnos_online', 'beto'].includes(m.id))
+        : MODULE_ITEMS;
+
+    const filteredModules = allowedModules.filter(item =>
         !query || item.label.toLowerCase().includes(query.toLowerCase()) ||
         item.keywords.some(k => k.includes(query.toLowerCase()))
     );
 
-    const filteredActions = QUICK_ACTIONS.filter(a =>
+    const filteredActions = (isContactCenterOnly ? [] : QUICK_ACTIONS).filter(a =>
         !query || a.label.toLowerCase().includes(query.toLowerCase())
     );
 

@@ -5,12 +5,15 @@ import {
     Phone, Mail, MapPin, Building, Bot, Shield, ExternalLink,
     Filter, Archive, UserCheck, MoreVertical, Eye, AlertTriangle,
     Unlock, ArrowRightLeft, Clock, MessageSquare, AlertCircle,
-    Power, Sparkles, Stethoscope, DollarSign, CreditCard
+    Power, Sparkles, Stethoscope, DollarSign, CreditCard,
+    Edit3, Save, X, History, Activity, FileCheck, RefreshCw
 } from 'lucide-react';
 import { 
     CONTACT_CENTER_AGENTS, getAgentById, isChatLockedForUser, 
-    MASTER_ADMINS, toggleBotActive, fetchDoctorParameters 
+    MASTER_ADMINS, toggleBotActive, fetchDoctorParameters,
+    saveCrmPatientCard, lookupPatientFromSalus, resetBotWorkflow
 } from '../../services/contactCenterService';
+import { fetchPacienteDetalle } from '../../services/pacienteUnificadoService';
 
 export default function ContactCenterChatConsole({ 
     chats = [], 
@@ -21,13 +24,14 @@ export default function ContactCenterChatConsole({
     onSendMessage, 
     onAssignChat,
     onUnassignChat,
-    onTransferChat 
+    onTransferChat,
+    onCloseChat 
 }) {
     const [filterTab, setFilterTab] = useState('sin_asignar');
     const [searchTerm, setSearchTerm] = useState('');
     const [messageInput, setMessageInput] = useState('');
     const [isPrivateNote, setIsPrivateNote] = useState(false);
-    const [activeDetailTab, setActiveDetailTab] = useState('info');
+    const [activeDetailTab, setActiveDetailTab] = useState('info'); // 'info', 'historial', 'prestadores'
     const [transferMenuOpen, setTransferMenuOpen] = useState(false);
     const [botActive, setBotActive] = useState(true);
     const [doctorQuery, setDoctorQuery] = useState('');
@@ -35,8 +39,144 @@ export default function ContactCenterChatConsole({
     const [isSearchingDoctor, setIsSearchingDoctor] = useState(false);
     const messagesEndRef = useRef(null);
 
+    // Estados CRM: Edición de Ficha y Búsqueda en Padrón SALUS
+    const [isEditingCrm, setIsEditingCrm] = useState(false);
+    const [crmForm, setCrmForm] = useState({
+        dni: '',
+        pacienteNombre: '',
+        obraSocial: '',
+        fechaNacimiento: '',
+        email: '',
+        departamento: '',
+        motivoConsulta: '',
+        notas: ''
+    });
+    const [isSavingCrm, setIsSavingCrm] = useState(false);
+    const [isSearchingSalus, setIsSearchingSalus] = useState(false);
+
+    // Estados Historial Clínico 360°
+    const [patientHistory, setPatientHistory] = useState(null);
+    const [loadingHistory, setLoadingHistory] = useState(false);
+
+    // Modal de Cierre / Finalización de Atención
+    const [closeModalOpen, setCloseModalOpen] = useState(false);
+    const [resolutionReason, setResolutionReason] = useState('Turno Coordinado');
+    const [isClosingChat, setIsClosingChat] = useState(false);
+
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
     const selectedChat = chats.find(c => c.id === activeChatId) || chats[0] || {};
+
+    // Sincronizar formulario CRM cuando cambia el chat activo
+    useEffect(() => {
+        if (selectedChat) {
+            setCrmForm({
+                dni: selectedChat.customFields?.dni && selectedChat.customFields?.dni !== 'A verificar' ? selectedChat.customFields?.dni : '',
+                pacienteNombre: selectedChat.customFields?.pacienteNombre || selectedChat.contactName || '',
+                obraSocial: selectedChat.customFields?.obraSocial && selectedChat.customFields?.obraSocial !== 'A consultar' ? selectedChat.customFields?.obraSocial : '',
+                fechaNacimiento: selectedChat.customFields?.fechaNacimiento && selectedChat.customFields?.fechaNacimiento !== 'No informada' ? selectedChat.customFields?.fechaNacimiento : '',
+                email: selectedChat.customFields?.email && selectedChat.customFields?.email !== 'No informado' ? selectedChat.customFields?.email : '',
+                departamento: selectedChat.customFields?.departamento || 'San Juan',
+                motivoConsulta: selectedChat.customFields?.motivoConsulta || selectedChat.customFields?.turnosDiaHora || '',
+                notas: selectedChat.customFields?.notas || ''
+            });
+            setIsEditingCrm(false);
+        }
+    }, [selectedChat?.id, selectedChat?.phone]);
+
+    // Cargar Historial 360° del paciente si se abre la pestaña Historial
+    useEffect(() => {
+        if (activeDetailTab === 'historial' && (crmForm.dni || selectedChat?.customFields?.dni)) {
+            const dniToSearch = (crmForm.dni || selectedChat?.customFields?.dni || '').replace(/\D/g, '');
+            if (dniToSearch.length >= 6) {
+                setLoadingHistory(true);
+                fetchPacienteDetalle({ dni: dniToSearch, nombre: crmForm.pacienteNombre })
+                    .then(det => setPatientHistory(det))
+                    .catch(err => console.warn('Error al cargar historial 360:', err))
+                    .finally(() => setLoadingHistory(false));
+            } else {
+                setPatientHistory(null);
+            }
+        }
+    }, [activeDetailTab, crmForm.dni, selectedChat?.id]);
+
+    // Búsqueda en Padrón SALUS
+    const handleLookupSalus = async () => {
+        if (!crmForm.dni || crmForm.dni.trim().length < 5) {
+            alert('Ingresa al menos 5 dígitos del DNI para buscar en SALUS');
+            return;
+        }
+        setIsSearchingSalus(true);
+        try {
+            const found = await lookupPatientFromSalus(crmForm.dni.trim());
+            if (found) {
+                setCrmForm(prev => ({
+                    ...prev,
+                    pacienteNombre: found.nombre || prev.pacienteNombre,
+                    email: found.email || prev.email,
+                    departamento: found.centro || prev.departamento,
+                    notas: (prev.notas ? prev.notas + '\n' : '') + `[Padrón SALUS] NHC: ${found.nhc || 'N/A'}`
+                }));
+            } else {
+                alert('No se encontró paciente con ese DNI en el Padrón de SALUS.');
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsSearchingSalus(false);
+        }
+    };
+
+    // Guardar Ficha CRM
+    const handleSaveCrm = async (e) => {
+        e?.preventDefault();
+        if (!selectedChat?.phone) return;
+        setIsSavingCrm(true);
+        try {
+            await saveCrmPatientCard({
+                phone: selectedChat.phone,
+                dni: crmForm.dni,
+                nombreCompleto: crmForm.pacienteNombre,
+                obraSocial: crmForm.obraSocial,
+                fechaNacimiento: crmForm.fechaNacimiento,
+                email: crmForm.email,
+                departamento: crmForm.departamento,
+                motivoConsulta: crmForm.motivoConsulta,
+                notas: crmForm.notas
+            });
+
+            if (selectedChat.customFields) {
+                selectedChat.customFields.dni = crmForm.dni;
+                selectedChat.customFields.pacienteNombre = crmForm.pacienteNombre;
+                selectedChat.customFields.obraSocial = crmForm.obraSocial;
+                selectedChat.customFields.fechaNacimiento = crmForm.fechaNacimiento;
+                selectedChat.customFields.email = crmForm.email;
+                selectedChat.customFields.departamento = crmForm.departamento;
+                selectedChat.customFields.motivoConsulta = crmForm.motivoConsulta;
+                selectedChat.customFields.notas = crmForm.notas;
+                selectedChat.contactName = crmForm.pacienteNombre || selectedChat.contactName;
+            }
+            setIsEditingCrm(false);
+        } catch (err) {
+            console.error('Error guardando CRM:', err);
+            alert('Error al guardar datos CRM: ' + err.message);
+        } finally {
+            setIsSavingCrm(false);
+        }
+    };
+
+    // Confirmar Cierre / Finalización
+    const handleConfirmClose = async () => {
+        if (!selectedChat?.id || !onCloseChat) return;
+        setIsClosingChat(true);
+        try {
+            await onCloseChat(selectedChat.id, resolutionReason);
+            setCloseModalOpen(false);
+        } catch (err) {
+            console.error('Error cerrando:', err);
+        } finally {
+            setIsClosingChat(false);
+        }
+    };
 
     // Sincronizar estado del bot al cambiar de chat
     useEffect(() => {
@@ -75,25 +215,45 @@ export default function ContactCenterChatConsole({
         setBotActive(newState);
         if (selectedChat?.phone) {
             await toggleBotActive(selectedChat.phone, newState);
+            if (newState && onUnassignChat) {
+                onUnassignChat(selectedChat.id);
+            }
+        }
+    };
+
+    const handleResetBot = async () => {
+        if (!selectedChat?.phone) return;
+        if (window.confirm(`¿Reiniciar el flujo del chatbot para ${selectedChat.contactName}? El bot volverá a responder desde el inicio cuando el paciente escriba.`)) {
+            setBotActive(true);
+            await resetBotWorkflow(selectedChat.phone);
+            if (onUnassignChat) onUnassignChat(selectedChat.id);
+            alert(`Flujo del chatbot reiniciado para ${selectedChat.contactName}. Cuando envíe un mensaje, el bot responderá inmediatamente.`);
         }
     };
 
     // Determinar bloqueo para el chat seleccionado
     const isLocked = isChatLockedForUser(selectedChat, activeAgent.id, currentUser);
-    const isAssignedToMe = selectedChat.assignedTo && selectedChat.assignedTo.toLowerCase() === activeAgent.id.toLowerCase();
-    const isUnassigned = !selectedChat.assignedTo;
+    const myAliases = [activeAgent.id, activeAgent.username, activeAgent.legacyId].filter(Boolean).map(a => a.toLowerCase());
+    const isAssignedToMe = selectedChat.assignedTo && (
+        myAliases.includes(selectedChat.assignedTo.toLowerCase()) ||
+        (selectedChat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
+    );
+    const isUnassigned = !selectedChat.assignedTo || selectedChat.status === 'sin_asignar';
     const assignedAgentObj = selectedChat.assignedTo ? getAgentById(selectedChat.assignedTo) : null;
 
     // Filtrar chats según pestaña activa
     const filteredChats = chats.filter(chat => {
         const chatAssigned = (chat.assignedTo || '').toLowerCase();
-        const myId = activeAgent.id.toLowerCase();
+        const isMine = chatAssigned && (
+            myAliases.includes(chatAssigned) ||
+            (chat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
+        );
 
-        if (filterTab === 'sin_asignar') return !chat.assignedTo || chat.status === 'sin_asignar';
-        if (filterTab === 'asignadas_mi') return chatAssigned === myId;
-        if (filterTab === 'asignadas_otros') return chatAssigned && chatAssigned !== myId;
+        if (filterTab === 'sin_asignar') return (!chat.assignedTo || chat.status === 'sin_asignar') && chat.status !== 'archivado';
+        if (filterTab === 'asignadas_mi') return isMine && chat.status !== 'archivado';
+        if (filterTab === 'asignadas_otros') return chatAssigned && !isMine && chat.status !== 'archivado';
         if (filterTab === 'archivadas') return chat.status === 'archivado';
-        return true;
+        return chat.status !== 'archivado';
     }).filter(chat => {
         if (!searchTerm) return true;
         const q = searchTerm.toLowerCase();
@@ -145,7 +305,7 @@ export default function ContactCenterChatConsole({
                     <button 
                         onClick={() => {
                             setFilterTab('sin_asignar');
-                            const first = chats.find(c => !c.assignedTo || c.status === 'sin_asignar');
+                            const first = chats.find(c => (!c.assignedTo || c.status === 'sin_asignar') && c.status !== 'archivado');
                             if (first && onSelectChat) onSelectChat(first.id);
                         }}
                         style={{
@@ -156,12 +316,15 @@ export default function ContactCenterChatConsole({
                             boxShadow: filterTab === 'sin_asignar' ? '0 2px 4px rgba(2,132,199,0.25)' : 'none'
                         }}
                     >
-                        Sin asignar ({chats.filter(c => !c.assignedTo || c.status === 'sin_asignar').length})
+                        Sin asignar ({chats.filter(c => (!c.assignedTo || c.status === 'sin_asignar') && c.status !== 'archivado').length})
                     </button>
                     <button 
                         onClick={() => {
                             setFilterTab('asignadas_mi');
-                            const first = chats.find(c => (c.assignedTo || '').toLowerCase() === activeAgent.id.toLowerCase());
+                            const first = chats.find(c => {
+                                const a = (c.assignedTo || '').toLowerCase();
+                                return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && c.status !== 'archivado';
+                            });
                             if (first && onSelectChat) onSelectChat(first.id);
                         }}
                         style={{
@@ -171,12 +334,18 @@ export default function ContactCenterChatConsole({
                             color: filterTab === 'asignadas_mi' ? '#FFFFFF' : '#475569'
                         }}
                     >
-                        Mis chats ({chats.filter(c => (c.assignedTo || '').toLowerCase() === activeAgent.id.toLowerCase()).length})
+                        Mis chats ({chats.filter(c => {
+                            const a = (c.assignedTo || '').toLowerCase();
+                            return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && c.status !== 'archivado';
+                        }).length})
                     </button>
                     <button 
                         onClick={() => {
                             setFilterTab('asignadas_otros');
-                            const first = chats.find(c => c.assignedTo && (c.assignedTo || '').toLowerCase() !== activeAgent.id.toLowerCase());
+                            const first = chats.find(c => {
+                                const a = (c.assignedTo || '').toLowerCase();
+                                return a && !myAliases.includes(a) && !(c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()) && c.status !== 'archivado';
+                            });
                             if (first && onSelectChat) onSelectChat(first.id);
                         }}
                         style={{
@@ -186,7 +355,10 @@ export default function ContactCenterChatConsole({
                             color: filterTab === 'asignadas_otros' ? '#FFFFFF' : '#475569'
                         }}
                     >
-                        Otras ({chats.filter(c => c.assignedTo && (c.assignedTo || '').toLowerCase() !== activeAgent.id.toLowerCase()).length})
+                        Otras ({chats.filter(c => {
+                            const a = (c.assignedTo || '').toLowerCase();
+                            return a && !myAliases.includes(a) && !(c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()) && c.status !== 'archivado';
+                        }).length})
                     </button>
                     <button 
                         onClick={() => {
@@ -200,7 +372,7 @@ export default function ContactCenterChatConsole({
                             color: filterTab === 'todos' ? '#FFFFFF' : '#475569'
                         }}
                     >
-                        Todos ({chats.length})
+                        Todos ({chats.filter(c => c.status !== 'archivado').length})
                     </button>
                 </div>
 
@@ -349,6 +521,14 @@ export default function ContactCenterChatConsole({
                                 <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#0369A1', background: '#E0F2FE', padding: '2px 8px', borderRadius: '10px', border: '1px solid #BAE6FD' }}>
                                     Línea Contact Center (5492645825637)
                                 </span>
+                                <span style={{
+                                    fontSize: '0.68rem', fontWeight: 800, color: '#047857', background: '#ECFDF5',
+                                    border: '1px solid #A7F3D0', padding: '2px 8px', borderRadius: '10px',
+                                    display: 'flex', alignItems: 'center', gap: '4px'
+                                }} title="Canal Realtime activo: los mensajes se actualizan instantáneamente sin recargar">
+                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
+                                    EN VIVO
+                                </span>
                             </div>
                             <div style={{ fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
                                 <span>Tel: {selectedChat.phone}</span>
@@ -413,6 +593,20 @@ export default function ContactCenterChatConsole({
                                     }}
                                 >
                                     <ArrowRightLeft size={12} /> Transferir <ChevronDown size={12} />
+                                </button>
+
+                                <button
+                                    onClick={() => setCloseModalOpen(true)}
+                                    title="Finalizar atención y archivar conversación"
+                                    style={{
+                                        padding: '6px 12px', borderRadius: '6px', border: 'none',
+                                        background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                                        color: '#FFFFFF', fontWeight: 700, fontSize: '0.72rem',
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                                        boxShadow: '0 2px 4px rgba(5, 150, 105, 0.25)'
+                                    }}
+                                >
+                                    <CheckCircle2 size={12} /> Finalizar Atención
                                 </button>
                             </div>
                         )}
@@ -718,25 +912,42 @@ export default function ContactCenterChatConsole({
             {/* ═════════════════════════════════════════════════════════════════ */}
             {/* COLUMNA 3: FICHA DEL PACIENTE Y PARÁMETROS SALUS                */}
             {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* COLUMNA 3: FICHA CRM, HISTORIAL 360° Y PARÁMETROS SALUS         */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, borderLeft: '1px solid #E2E8F0', background: '#FFFFFF', overflowY: 'auto' }}>
                 <div style={{ display: 'flex', flexShrink: 0, borderBottom: '1px solid #F1F5F9', background: '#FAFAFA' }}>
                     <button 
                         onClick={() => setActiveDetailTab('info')}
                         style={{
                             flex: 1, padding: '12px 0', border: 'none', background: 'transparent',
-                            fontWeight: 700, fontSize: '0.78rem',
+                            fontWeight: 700, fontSize: '0.76rem',
                             color: activeDetailTab === 'info' ? '#0284C7' : '#64748B',
                             borderBottom: activeDetailTab === 'info' ? '2px solid #0284C7' : '2px solid transparent',
                             cursor: 'pointer'
                         }}
                     >
-                        Ficha Paciente
+                        Ficha CRM
+                    </button>
+                    <button 
+                        onClick={() => setActiveDetailTab('historial')}
+                        style={{
+                            flex: 1, padding: '12px 0', border: 'none', background: 'transparent',
+                            fontWeight: 700, fontSize: '0.76rem',
+                            color: activeDetailTab === 'historial' ? '#0284C7' : '#64748B',
+                            borderBottom: activeDetailTab === 'historial' ? '2px solid #0284C7' : '2px solid transparent',
+                            cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
+                        }}
+                    >
+                        <History size={13} />
+                        Historial 360°
                     </button>
                     <button 
                         onClick={() => setActiveDetailTab('prestadores')}
                         style={{
                             flex: 1, padding: '12px 0', border: 'none', background: 'transparent',
-                            fontWeight: 700, fontSize: '0.78rem',
+                            fontWeight: 700, fontSize: '0.76rem',
                             color: activeDetailTab === 'prestadores' ? '#0284C7' : '#64748B',
                             borderBottom: activeDetailTab === 'prestadores' ? '2px solid #0284C7' : '2px solid transparent',
                             cursor: 'pointer',
@@ -744,12 +955,13 @@ export default function ContactCenterChatConsole({
                         }}
                     >
                         <Stethoscope size={13} />
-                        Prestadores SALUS
+                        Prestadores
                     </button>
                 </div>
 
                 <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    {activeDetailTab === 'info' ? (
+                    {/* TAB 1: FICHA CRM DEL PACIENTE */}
+                    {activeDetailTab === 'info' && (
                         <>
                             {/* WIDGET: ESTADO DEL CHATBOT Y CONTROL DE SILENCIADO */}
                             <div style={{
@@ -763,19 +975,34 @@ export default function ContactCenterChatConsole({
                                         <Bot size={15} />
                                         {botActive ? 'CHATBOT ACTIVO (TRIAGE)' : 'CHATBOT SILENCIADO'}
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={handleToggleBot}
-                                        style={{
-                                            padding: '4px 8px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700,
-                                            border: 'none', cursor: 'pointer',
-                                            background: botActive ? '#DC2626' : '#16A34A',
-                                            color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '4px'
-                                        }}
-                                    >
-                                        <Power size={11} />
-                                        {botActive ? 'Silenciar Bot' : 'Reanudar Bot'}
-                                    </button>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={handleToggleBot}
+                                            style={{
+                                                padding: '4px 8px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700,
+                                                border: 'none', cursor: 'pointer',
+                                                background: botActive ? '#DC2626' : '#16A34A',
+                                                color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '4px'
+                                            }}
+                                        >
+                                            <Power size={11} />
+                                            {botActive ? 'Silenciar Bot' : 'Reanudar Bot'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleResetBot}
+                                            title="Reiniciar flujo del bot para que vuelva al saludo inicial de triage"
+                                            style={{
+                                                padding: '4px 8px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700,
+                                                border: '1px solid #CBD5E1', cursor: 'pointer',
+                                                background: '#FFFFFF', color: '#0284C7', display: 'flex', alignItems: 'center', gap: '4px'
+                                            }}
+                                        >
+                                            <RefreshCw size={11} />
+                                            Reiniciar
+                                        </button>
+                                    </div>
                                 </div>
                                 <div style={{ fontSize: '0.69rem', color: botActive ? '#166534' : '#92400E', lineHeight: 1.35 }}>
                                     {botActive 
@@ -816,85 +1043,350 @@ export default function ContactCenterChatConsole({
                                 </div>
                             </div>
 
-                            {/* FICHA COMPLETA DE VARIABLES DEL PACIENTE */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                        Variables del Paciente (IA)
-                                    </span>
-                                    <span style={{ fontSize: '0.68rem', color: '#0284C7', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                        <Sparkles size={11} /> Auto-detectadas
-                                    </span>
-                                </div>
-
-                                {/* DNI */}
-                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                    <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>DNI / IDENTIFICACIÓN</div>
-                                    <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
-                                        {selectedChat.customFields?.dni || 'A verificar'}
+                            {/* CABECERA DE LA FICHA CRM: BOTÓN EDITAR */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    Datos CRM del Paciente
+                                </span>
+                                {!isEditingCrm ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsEditingCrm(true)}
+                                        style={{
+                                            padding: '4px 8px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                            background: '#FFFFFF', color: '#0284C7', fontSize: '0.72rem', fontWeight: 700,
+                                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                                        }}
+                                    >
+                                        <Edit3 size={12} /> Editar Ficha
+                                    </button>
+                                ) : (
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsEditingCrm(false)}
+                                            style={{
+                                                padding: '4px 8px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                                background: '#FFFFFF', color: '#64748B', fontSize: '0.72rem', fontWeight: 600,
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px'
+                                            }}
+                                        >
+                                            <X size={12} /> Cancelar
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleSaveCrm}
+                                            disabled={isSavingCrm}
+                                            style={{
+                                                padding: '4px 10px', borderRadius: '6px', border: 'none',
+                                                background: '#0284C7', color: '#FFFFFF', fontSize: '0.72rem', fontWeight: 700,
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                                            }}
+                                        >
+                                            <Save size={12} /> {isSavingCrm ? 'Guardando...' : 'Guardar'}
+                                        </button>
                                     </div>
-                                </div>
-
-                                {/* NOMBRE COMPLETO */}
-                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                    <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>NOMBRE COMPLETO</div>
-                                    <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#0F172A' }}>
-                                        {selectedChat.customFields?.pacienteNombre || selectedChat.contactName || 'Paciente'}
-                                    </div>
-                                </div>
-
-                                {/* OBRA SOCIAL */}
-                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                    <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>OBRA SOCIAL / PREPAGA</div>
-                                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0284C7' }}>
-                                        {selectedChat.customFields?.obraSocial || 'A consultar'}
-                                    </div>
-                                </div>
-
-                                {/* FECHA DE NACIMIENTO */}
-                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                    <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>FECHA DE NACIMIENTO</div>
-                                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
-                                        {selectedChat.customFields?.fechaNacimiento || 'No informada'}
-                                    </div>
-                                </div>
-
-                                {/* EMAIL */}
-                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                    <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>EMAIL</div>
-                                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', wordBreak: 'break-all' }}>
-                                        {selectedChat.customFields?.email || 'No informado'}
-                                    </div>
-                                </div>
-
-                                {/* TELÉFONO DE CONTACTO */}
-                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                    <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>TELÉFONO DE CONTACTO</div>
-                                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0F172A' }}>
-                                        {selectedChat.customFields?.pacienteContacto || selectedChat.phone}
-                                    </div>
-                                </div>
-
-                                {/* DEPARTAMENTO */}
-                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                    <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>DEPARTAMENTO / RESIDENCIA</div>
-                                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <MapPin size={12} color="#0284C7" />
-                                        {selectedChat.customFields?.departamento || 'San Juan'}
-                                    </div>
-                                </div>
-
-                                {/* MOTIVO DE CONSULTA / MÉDICO */}
-                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                    <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>SOLICITUD / MOTIVO</div>
-                                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#0F172A' }}>
-                                        {selectedChat.customFields?.motivoConsulta || selectedChat.customFields?.turnosDiaHora || 'Consulta general'}
-                                    </div>
-                                </div>
+                                )}
                             </div>
+
+                            {/* FORMULARIO EDITABLE DE FICHA CRM */}
+                            {isEditingCrm ? (
+                                <form onSubmit={handleSaveCrm} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    {/* DNI con Búsqueda en SALUS */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>DNI / IDENTIFICACIÓN</label>
+                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                            <input 
+                                                type="text"
+                                                value={crmForm.dni}
+                                                onChange={(e) => setCrmForm(p => ({ ...p, dni: e.target.value }))}
+                                                placeholder="Ej: 34123456"
+                                                style={{ flex: 1, padding: '7px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem', outline: 'none' }}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleLookupSalus}
+                                                disabled={isSearchingSalus}
+                                                title="Buscar datos en el Padrón SALUS"
+                                                style={{
+                                                    padding: '7px 10px', borderRadius: '6px', border: '1px solid #0284C7',
+                                                    background: '#F0F9FF', color: '#0284C7', fontWeight: 700, fontSize: '0.72rem',
+                                                    cursor: 'pointer', whiteSpace: 'nowrap'
+                                                }}
+                                            >
+                                                {isSearchingSalus ? 'Buscando...' : 'Padrón SALUS 🔍'}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Nombre Completo */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>NOMBRE COMPLETO</label>
+                                        <input 
+                                            type="text"
+                                            value={crmForm.pacienteNombre}
+                                            onChange={(e) => setCrmForm(p => ({ ...p, pacienteNombre: e.target.value }))}
+                                            placeholder="Apellido y Nombre"
+                                            style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem', outline: 'none' }}
+                                        />
+                                    </div>
+
+                                    {/* Obra Social */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>OBRA SOCIAL / PREPAGA</label>
+                                        <input 
+                                            type="text"
+                                            value={crmForm.obraSocial}
+                                            onChange={(e) => setCrmForm(p => ({ ...p, obraSocial: e.target.value }))}
+                                            placeholder="Ej: OSP, Swiss Medical, OSDE"
+                                            style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem', outline: 'none' }}
+                                        />
+                                    </div>
+
+                                    {/* Email */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>EMAIL</label>
+                                        <input 
+                                            type="email"
+                                            value={crmForm.email}
+                                            onChange={(e) => setCrmForm(p => ({ ...p, email: e.target.value }))}
+                                            placeholder="paciente@ejemplo.com"
+                                            style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem', outline: 'none' }}
+                                        />
+                                    </div>
+
+                                    {/* Fecha de Nacimiento */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>FECHA DE NACIMIENTO</label>
+                                        <input 
+                                            type="text"
+                                            value={crmForm.fechaNacimiento}
+                                            onChange={(e) => setCrmForm(p => ({ ...p, fechaNacimiento: e.target.value }))}
+                                            placeholder="DD/MM/AAAA"
+                                            style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem', outline: 'none' }}
+                                        />
+                                    </div>
+
+                                    {/* Departamento */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>DEPARTAMENTO / LOCALIDAD</label>
+                                        <input 
+                                            type="text"
+                                            value={crmForm.departamento}
+                                            onChange={(e) => setCrmForm(p => ({ ...p, departamento: e.target.value }))}
+                                            placeholder="Ej: Capital, Rawson, Rivadavia"
+                                            style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem', outline: 'none' }}
+                                        />
+                                    </div>
+
+                                    {/* Motivo de Consulta */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>MOTIVO / SOLICITUD</label>
+                                        <input 
+                                            type="text"
+                                            value={crmForm.motivoConsulta}
+                                            onChange={(e) => setCrmForm(p => ({ ...p, motivoConsulta: e.target.value }))}
+                                            placeholder="Motivo principal"
+                                            style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem', outline: 'none' }}
+                                        />
+                                    </div>
+
+                                    {/* Notas CRM */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>NOTAS PERMANENTES CRM</label>
+                                        <textarea 
+                                            rows={3}
+                                            value={crmForm.notas}
+                                            onChange={(e) => setCrmForm(p => ({ ...p, notas: e.target.value }))}
+                                            placeholder="Observaciones de seguimiento para el equipo..."
+                                            style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.8rem', outline: 'none', resize: 'vertical' }}
+                                        />
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={isSavingCrm}
+                                        style={{
+                                            padding: '9px 14px', borderRadius: '8px', border: 'none',
+                                            background: '#0284C7', color: '#FFFFFF', fontWeight: 700, fontSize: '0.82rem',
+                                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                            boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)'
+                                        }}
+                                    >
+                                        <Save size={14} /> {isSavingCrm ? 'Guardando...' : 'Guardar Ficha en CRM'}
+                                    </button>
+                                </form>
+                            ) : (
+                                /* VISTA INSTITUCIONAL LIMPIA Y CLÍNICA DE LA FICHA CRM */
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {/* DNI */}
+                                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>DNI / IDENTIFICACIÓN</div>
+                                        <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
+                                            {crmForm.dni || selectedChat.customFields?.dni || 'A verificar'}
+                                        </div>
+                                    </div>
+
+                                    {/* NOMBRE COMPLETO */}
+                                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>NOMBRE COMPLETO</div>
+                                        <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#0F172A' }}>
+                                            {crmForm.pacienteNombre || selectedChat.customFields?.pacienteNombre || selectedChat.contactName || 'Paciente'}
+                                        </div>
+                                    </div>
+
+                                    {/* OBRA SOCIAL */}
+                                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>OBRA SOCIAL / PREPAGA</div>
+                                        <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0284C7' }}>
+                                            {crmForm.obraSocial || selectedChat.customFields?.obraSocial || 'A consultar'}
+                                        </div>
+                                    </div>
+
+                                    {/* FECHA DE NACIMIENTO */}
+                                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>FECHA DE NACIMIENTO</div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
+                                            {crmForm.fechaNacimiento || selectedChat.customFields?.fechaNacimiento || 'No informada'}
+                                        </div>
+                                    </div>
+
+                                    {/* EMAIL */}
+                                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>EMAIL</div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', wordBreak: 'break-all' }}>
+                                            {crmForm.email || selectedChat.customFields?.email || 'No informado'}
+                                        </div>
+                                    </div>
+
+                                    {/* TELÉFONO DE CONTACTO */}
+                                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>TELÉFONO DE CONTACTO</div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0F172A' }}>
+                                            {selectedChat.customFields?.pacienteContacto || selectedChat.phone}
+                                        </div>
+                                    </div>
+
+                                    {/* DEPARTAMENTO */}
+                                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>DEPARTAMENTO / RESIDENCIA</div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <MapPin size={12} color="#0284C7" />
+                                            {crmForm.departamento || selectedChat.customFields?.departamento || 'San Juan'}
+                                        </div>
+                                    </div>
+
+                                    {/* MOTIVO DE CONSULTA */}
+                                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>SOLICITUD / MOTIVO</div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#0F172A' }}>
+                                            {crmForm.motivoConsulta || selectedChat.customFields?.motivoConsulta || 'Consulta general'}
+                                        </div>
+                                    </div>
+
+                                    {/* NOTAS CRM */}
+                                    {crmForm.notas && (
+                                        <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '8px', padding: '8px 10px' }}>
+                                            <div style={{ fontSize: '0.65rem', color: '#B45309', fontWeight: 700 }}>NOTAS CRM</div>
+                                            <div style={{ fontSize: '0.78rem', color: '#78350F', whiteSpace: 'pre-line', marginTop: '2px' }}>
+                                                {crmForm.notas}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </>
-                    ) : (
-                        /* TAB 2: PARÁMETROS Y HONORARIOS DE MÉDICOS SALUS */
+                    )}
+
+                    {/* TAB 2: HISTORIAL CLÍNICO 360° */}
+                    {activeDetailTab === 'historial' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase' }}>
+                                Historial Sanatorio 360°
+                            </div>
+
+                            {loadingHistory ? (
+                                <div style={{ fontSize: '0.76rem', color: '#64748B', textAlign: 'center', padding: '20px' }}>
+                                    Consultando registros en Sanatorio Argentino...
+                                </div>
+                            ) : patientHistory ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    {/* Resumen KPI del Paciente */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                        <div style={{ background: '#F8FAFC', padding: '8px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>CIRUGÍAS</div>
+                                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0284C7' }}>
+                                                {patientHistory.cirugias?.length || 0}
+                                            </div>
+                                        </div>
+                                        <div style={{ background: '#F8FAFC', padding: '8px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>ADMISIONES</div>
+                                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#059669' }}>
+                                                {patientHistory.admisiones?.length || 0}
+                                            </div>
+                                        </div>
+                                        <div style={{ background: '#F8FAFC', padding: '8px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>PRESUPUESTOS</div>
+                                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#7C3AED' }}>
+                                                {patientHistory.presupuestos?.length || 0}
+                                            </div>
+                                        </div>
+                                        <div style={{ background: '#F8FAFC', padding: '8px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>DEUDA PENDIENTE</div>
+                                            <div style={{ fontSize: '0.95rem', fontWeight: 800, color: (patientHistory.deudaTotal || 0) > 0 ? '#DC2626' : '#16A34A' }}>
+                                                ${(patientHistory.deudaTotal || 0).toLocaleString('es-AR')}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Listado de Cirugías Recientes */}
+                                    {patientHistory.cirugias && patientHistory.cirugias.length > 0 && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569' }}>CIRUGÍAS REGISTRADAS</div>
+                                            {patientHistory.cirugias.slice(0, 3).map((cir, idx) => (
+                                                <div key={idx} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A' }}>
+                                                        {cir.modulo || 'Procedimiento Quirúrgico'}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.7rem', color: '#0284C7', marginTop: '2px' }}>
+                                                        Dr/a. {cir.medico || 'No especificado'} • {cir.fecha_cirugia || 'Fecha pendiente'}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '2px' }}>
+                                                        Estado: <strong>{cir.status || 'Programada'}</strong>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Listado de Admisiones */}
+                                    {patientHistory.admisiones && patientHistory.admisiones.length > 0 && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569' }}>ESTANCIAS / INTERNACIONES</div>
+                                            {patientHistory.admisiones.slice(0, 3).map((adm, idx) => (
+                                                <div key={idx} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A' }}>
+                                                        Hab: {adm.habitacion || 'Piso'} • {adm.servicio || 'Clínica'}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: '2px' }}>
+                                                        Ingreso: {adm.fecha_ingreso ? new Date(adm.fecha_ingreso).toLocaleDateString('es-AR') : 'S/D'} 
+                                                        {adm.fecha_alta ? ` • Alta: ${new Date(adm.fecha_alta).toLocaleDateString('es-AR')}` : ' (Internado activo)'}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div style={{ fontSize: '0.74rem', color: '#64748B', background: '#F8FAFC', padding: '14px', borderRadius: '8px', border: '1px solid #E2E8F0', lineHeight: 1.4 }}>
+                                    💡 No se encontraron antecedentes con el DNI actual. Asegúrate de verificar y guardar el DNI del paciente en la pestaña <strong>Ficha CRM</strong> para consultar su historial de cirugías, internaciones y deudas en el Sanatorio.
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* TAB 3: PARÁMETROS Y HONORARIOS DE MÉDICOS SALUS */}
+                    {activeDetailTab === 'prestadores' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase' }}>
                                 Consultar Parámetros de Prestador
@@ -965,6 +1457,84 @@ export default function ContactCenterChatConsole({
                     )}
                 </div>
             </div>
+
+            {/* MODAL PARA FINALIZAR ATENCIÓN / CERRAR CONVERSACIÓN */}
+            {closeModalOpen && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(15, 23, 42, 0.55)', backdropFilter: 'blur(3px)',
+                    zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
+                }}>
+                    <div style={{
+                        background: '#FFFFFF', borderRadius: '16px', maxWidth: '440px', width: '100%',
+                        padding: '24px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', border: '1px solid #E2E8F0'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800, fontSize: '1.05rem', color: '#0F172A' }}>
+                                <CheckCircle2 size={20} color="#059669" />
+                                Finalizar Atención
+                            </div>
+                            <button 
+                                onClick={() => setCloseModalOpen(false)}
+                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <p style={{ fontSize: '0.82rem', color: '#64748B', margin: '0 0 16px 0', lineHeight: 1.45 }}>
+                            Estás a punto de finalizar la conversación con <strong>{selectedChat.contactName}</strong>. 
+                            La conversación pasará a <strong>Archivadas</strong>, se liberará el bloqueo de agente y se reactivará el bot automático para futuras consultas.
+                        </p>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px' }}>
+                            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>MOTIVO DE RESOLUCIÓN</label>
+                            <select
+                                value={resolutionReason}
+                                onChange={(e) => setResolutionReason(e.target.value)}
+                                style={{
+                                    padding: '9px 12px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                    fontSize: '0.84rem', outline: 'none', background: '#FFFFFF', color: '#0F172A'
+                                }}
+                            >
+                                <option value="Turno Coordinado">✅ Turno Coordinado / Otorgado</option>
+                                <option value="Consulta Informativa Resuelta">ℹ️ Consulta Informativa Resuelta</option>
+                                <option value="Derivado a Guardia / Sector">🏥 Derivado a Guardia / Sector Específico</option>
+                                <option value="Cancelación / Reprogramación Confirmada">🗓️ Cancelación / Reprogramación Confirmada</option>
+                                <option value="Paciente No Responde">⏳ Paciente No Responde</option>
+                                <option value="Otro / Aclaración en Nota">📝 Otro / Ver Notas Internas</option>
+                            </select>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                            <button
+                                type="button"
+                                onClick={() => setCloseModalOpen(false)}
+                                style={{
+                                    padding: '8px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                    background: '#FFFFFF', color: '#64748B', fontSize: '0.82rem', fontWeight: 600,
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Volver
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmClose}
+                                disabled={isClosingChat}
+                                style={{
+                                    padding: '8px 18px', borderRadius: '8px', border: 'none',
+                                    background: '#059669', color: '#FFFFFF', fontSize: '0.82rem', fontWeight: 700,
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+                                }}
+                            >
+                                <CheckCircle2 size={15} /> {isClosingChat ? 'Finalizando...' : 'Confirmar y Archivar'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
+

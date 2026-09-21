@@ -11,10 +11,17 @@ import { canUserAccessContactCenter } from '../services/contactCenterService';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '', onOpenBeto, currentUser, selectedModules }) {
     const isFrojo = currentUser?.usuario === 'frojo';
+    const username = (currentUser?.usuario || '').toLowerCase().trim();
+    const isContactCenterOnly = ['daguilera', 'vjacques', 'solivier', 'eleal', 'daniela', 'sofia', 'virginia', 'erica'].includes(username);
 
     // Module visibility: null/empty = show all, array = only show listed + always-visible
     const ALWAYS_VISIBLE = ['inicio'];
     const isModuleVisible = (id) => {
+        if (isContactCenterOnly) {
+            // Strictly Contact Center and Simon IA chat only
+            return ['contact_center', 'turnos_online', 'beto', 'simon'].includes(id);
+        }
+
         if (!selectedModules || selectedModules.length === 0) return true;
         if (ALWAYS_VISIBLE.includes(id)) return true;
         
@@ -34,7 +41,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const [cirugiasOpen, setCirugiasOpen] = useState(false);
     const [simonOpen, setSimonOpen] = useState(false);
     const [gobernanzaOpen, setGobernanzaOpen] = useState(false);
-    const [contactCenterOpen, setContactCenterOpen] = useState(() => ['contact_center', 'turnos_online'].includes(activeView));
+    const [contactCenterOpen, setContactCenterOpen] = useState(() => ['contact_center', 'turnos_online'].includes(activeView) || isContactCenterOnly);
 
     // Sub-items dentro de "Gobernanza"
     const gobernanzaSubItems = [
@@ -251,7 +258,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
 
             <nav className="sidebar__nav">
                 {/* ─── Inicio ─── */}
-                {(() => {
+                {!isContactCenterOnly && (() => {
                     const isActive = activeView === 'inicio';
                     return (
                         <Link
@@ -308,7 +315,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                 })}
 
                 {/* ─── Separador visual ─── */}
-                {!collapsed && (
+                {!collapsed && !isContactCenterOnly && (
                     <div style={{
                         height: '1px', background: 'rgba(255, 255, 255, 0.1)',
                         margin: '4px 16px 4px',

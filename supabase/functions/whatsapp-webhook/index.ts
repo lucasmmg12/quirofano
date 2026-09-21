@@ -260,8 +260,10 @@ Deno.serve(async (req) => {
         // AUTO-ASIGNAR LÍNEA AL CONTACTO (CRM)
         // Cuando un paciente escribe por una línea, guardar esa línea
         // en crm_contacts.assigned_line_id para no perder la referencia
+        // SOLO para líneas quirúrgicas/admisión (no pisar con contact_center ni recepciones)
         // =============================================
-        if (direction === 'incoming' && lineId && phone) {
+        const admQuiLines = ['line_a', 'line_b', 'line_c', 'line_meta'];
+        if (direction === 'incoming' && lineId && admQuiLines.includes(lineId) && phone) {
             try {
                 const { error: upsertError } = await supabase
                     .from('crm_contacts')
@@ -286,9 +288,10 @@ Deno.serve(async (req) => {
 
         // =============================================
         // CHATBOT TRIAGE ULTRA-COST-SAVING (ASISTECLICK STYLE)
-        // Solo para mensajes entrantes de pacientes
+        // Solo para mensajes entrantes de pacientes EXCLUSIVAMENTE en la línea de Contact Center
+        // NUNCA ejecutar en line_a, line_b, line_c (Cirugías / Admisión) ni line_recepciones
         // =============================================
-        if (direction === 'incoming' && phone) {
+        if (direction === 'incoming' && phone && lineId === 'contact_center') {
             try {
                 await handleChatbotTriage(supabase, phone, content, senderName, lineId);
             } catch (triageError: any) {
@@ -612,7 +615,15 @@ async function handleChatbotTriage(
         }
     }
 
-    const currentStage = conv?.bot_stage || 'inicio';
+    let currentStage = conv?.bot_stage || 'inicio';
+    const isGreeting = /^(hola|buen|buenas|menu|opciones|inicio|ayuda|reiniciar|dia|tarde|noches)/i.test(cleanText);
+
+    // Si el bot está activo pero la etapa anterior era esperando_agente, o el paciente saluda/pide menú,
+    // permitir reanudar la interacción y mostrar el menú
+    if (currentStage === 'esperando_agente' || isGreeting) {
+        currentStage = (conv?.dni || paciente) ? 'menu_opciones' : 'inicio';
+    }
+
     let replyText = '';
     let nextStage = currentStage;
     let updates: Record<string, any> = {
@@ -662,20 +673,21 @@ async function handleChatbotTriage(
     }
 
     // ETAPA 1 & RE-EVALUACIÓN: Si el paciente está en el padrón, siempre darle la bienvenida de paciente registrado
-    if (paciente && (currentStage === 'inicio' || currentStage === 'esperando_dni' || currentStage === 'esperando_datos_nuevo')) {
+    if ((paciente || conv?.dni) && (currentStage === 'inicio' || currentStage === 'esperando_dni' || currentStage === 'esperando_datos_nuevo')) {
         // CASO A: PACIENTE EXISTENTE EN EL SANATORIO
-        const fullName = (paciente.nombre || senderName || 'Paciente').trim();
-        const os = (paciente.coseguro || 'Particular / A confirmar').trim();
+        const fullName = (paciente?.nombre || conv?.nombre_completo || senderName || 'Paciente').trim();
+        const os = (paciente?.coseguro || conv?.obra_social || 'Particular / A confirmar').trim();
 
         updates = {
             ...updates,
-            dni: paciente.dni || candidateDni,
+            dni: paciente?.dni || candidateDni || conv?.dni,
             nombre_completo: fullName,
             obra_social: os,
-            email: paciente.email || updates.email || null,
-            telefono_contacto: paciente.telefono || updates.telefono_contacto || phone,
+            email: paciente?.email || updates.email || conv?.email || null,
+            telefono_contacto: paciente?.telefono || updates.telefono_contacto || phone,
             es_paciente_existente: true,
-            bot_stage: 'menu_opciones'
+            bot_stage: 'menu_opciones',
+            bot_active: true
         };
         nextStage = 'menu_opciones';
 
@@ -685,17 +697,16 @@ async function handleChatbotTriage(
     } else if (currentStage === 'inicio' || currentStage === 'esperando_dni') {
         if (!candidateDni) {
             // El paciente escribió un saludo o consulta sin DNI:
-            // Solicitamos DNI y Nombre en UN SOLO mensaje consolidado para ahorrar costos
             replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nPara poder gestionar tu consulta de forma ágil y verificar tu cobertura médica, por favor indícanos en un solo mensaje tu número de *DNI* (sin puntos) y tu *Nombre Completo*.`;
             nextStage = 'esperando_dni';
         } else {
             // CASO B: PACIENTE NUEVO (No está registrado en el padrón hospital_pacientes)
-            // Se piden las 6 variables indispensables en UN SOLO MENSAJE para no inflar la cantidad de mensajes
             updates = {
                 ...updates,
                 dni: candidateDni,
                 es_paciente_existente: false,
-                bot_stage: 'esperando_datos_nuevo'
+                bot_stage: 'esperando_datos_nuevo',
+                bot_active: true
             };
             nextStage = 'esperando_datos_nuevo';
 
@@ -703,12 +714,12 @@ async function handleChatbotTriage(
         }
     } else if (currentStage === 'esperando_datos_nuevo') {
         // El paciente nuevo respondió con sus datos:
-        // Extraer las variables clínicas estructuradas y guardarlas en la ficha
         const extracted = await extractPatientVariables(cleanText, candidateDni);
         updates = {
             ...updates,
             ...extracted,
-            bot_stage: 'menu_opciones'
+            bot_stage: 'menu_opciones',
+            bot_active: true
         };
         nextStage = 'menu_opciones';
 
@@ -719,7 +730,13 @@ async function handleChatbotTriage(
         const isOpt2 = cleanText === '2' || /autoriz|orden|coseguro|auditor/i.test(cleanText);
         const isOpt3 = cleanText === '3' || /info|web|sede|estudio|laboratorio|direccion|telefono/i.test(cleanText);
 
-        if (isOpt1) {
+        if (isGreeting) {
+            const fullName = (conv?.nombre_completo || paciente?.nombre || senderName || 'Paciente').trim();
+            const os = (conv?.obra_social || paciente?.coseguro || 'Particular / A confirmar').trim();
+            replyText = `¡Hola *${fullName}*! 🏥 ¿En qué podemos ayudarte hoy?\n\n1️⃣ *Solicitar o reprogramar un turno*\n2️⃣ *Autorizaciones y cobertura*\n3️⃣ *Información institucional, sedes o estudios*\n\nResponde *1*, *2* o *3*, o escríbenos qué profesional o especialidad buscas.`;
+            nextStage = 'menu_opciones';
+            updates.bot_active = true;
+        } else if (isOpt1) {
             // Opción 1: Turnos y reprogramación
             let doctorNoteMsg = '';
             // Buscar si mencionó el nombre de algún médico o especialidad
@@ -891,6 +908,7 @@ async function extractPatientVariables(text: string, fallbackDni: string | null)
  */
 async function sendBotWhatsAppReply(supabase: any, phone: string, text: string, lineId: string | null) {
     try {
+        const targetLine = lineId || 'contact_center';
         // 1. Guardar mensaje saliente en whatsapp_messages
         await supabase
             .from('whatsapp_messages')
@@ -901,7 +919,7 @@ async function sendBotWhatsAppReply(supabase: any, phone: string, text: string, 
                 media_type: 'text',
                 sender_name: 'Bot Sanatorio',
                 is_read: true,
-                line_id: lineId,
+                line_id: targetLine,
                 raw_payload: {
                     source: 'bot_triage',
                     bot: true
@@ -919,7 +937,7 @@ async function sendBotWhatsAppReply(supabase: any, phone: string, text: string, 
             body: JSON.stringify({
                 number: phone,
                 content: text,
-                ...(lineId && { lineId })
+                lineId: targetLine
             })
         });
 

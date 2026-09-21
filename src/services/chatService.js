@@ -12,11 +12,13 @@ import { getCurrentUser } from './authService';
  * Retorna: [{ phone, lastMessage, lastDate, unreadCount, senderName, direction }]
  */
 export async function fetchConversations() {
-    // Get messages excluding line_recepciones (sistema Recepciones separado)
+    // Get messages strictly for ADM-QUI lines (excluding line_recepciones and contact_center)
     const { data, error } = await supabase
         .from('whatsapp_messages')
-        .select('phone, content, direction, sender_name, is_read, created_at, media_type, line_id')
+        .select('phone, content, direction, sender_name, is_read, created_at, media_type, line_id, raw_payload')
         .or('line_id.in.(line_a,line_b,line_c,line_meta),line_id.is.null')
+        .neq('line_id', 'contact_center')
+        .neq('line_id', 'line_recepciones')
         .order('created_at', { ascending: false })
         .limit(50000);
 
@@ -25,9 +27,15 @@ export async function fetchConversations() {
         throw error;
     }
 
+    const validLines = new Set(['line_a', 'line_b', 'line_c', 'line_meta']);
+
     // Group by phone — keep first (latest) as preview
     const map = {};
     (data || []).forEach(msg => {
+        // Descartar mensajes de otras líneas o del bot de triage de contact center
+        if (msg.line_id && !validLines.has(msg.line_id)) return;
+        if (msg.sender_name === 'Bot Sanatorio' || msg.raw_payload?.source === 'bot_triage') return;
+
         if (!map[msg.phone]) {
             map[msg.phone] = {
                 phone: msg.phone,
@@ -75,13 +83,21 @@ export async function fetchMessages(phone) {
         .select('*')
         .eq('phone', normalized)
         .or('line_id.in.(line_a,line_b,line_c,line_meta),line_id.is.null')
+        .neq('line_id', 'contact_center')
+        .neq('line_id', 'line_recepciones')
         .order('created_at', { ascending: true });
 
     if (error) {
         console.error('Error fetching messages:', error);
         throw error;
     }
-    return data || [];
+
+    const validLines = new Set(['line_a', 'line_b', 'line_c', 'line_meta']);
+    return (data || []).filter(msg => {
+        if (msg.line_id && !validLines.has(msg.line_id)) return false;
+        if (msg.sender_name === 'Bot Sanatorio' || msg.raw_payload?.source === 'bot_triage') return false;
+        return true;
+    });
 }
 
 /**
@@ -97,7 +113,9 @@ export async function markAsRead(phone) {
         .eq('phone', normalized)
         .eq('direction', 'incoming')
         .eq('is_read', false)
-        .or('line_id.in.(line_a,line_b,line_c,line_meta),line_id.is.null');
+        .or('line_id.in.(line_a,line_b,line_c,line_meta),line_id.is.null')
+        .neq('line_id', 'contact_center')
+        .neq('line_id', 'line_recepciones');
 
     if (error) {
         console.error('Error marking messages as read:', error);
@@ -113,7 +131,9 @@ export async function markAllAsRead() {
         .update({ is_read: true })
         .eq('direction', 'incoming')
         .eq('is_read', false)
-        .or('line_id.in.(line_a,line_b,line_c,line_meta),line_id.is.null');
+        .or('line_id.in.(line_a,line_b,line_c,line_meta),line_id.is.null')
+        .neq('line_id', 'contact_center')
+        .neq('line_id', 'line_recepciones');
 
     if (error) {
         console.error('Error marking all messages as read:', error);
@@ -133,10 +153,12 @@ export async function markAllAsRead() {
 export async function fetchUnreadCounts() {
     const { data, error } = await supabase
         .from('whatsapp_messages')
-        .select('phone')
+        .select('phone, line_id, raw_payload')
         .eq('direction', 'incoming')
         .eq('is_read', false)
         .or('line_id.in.(line_a,line_b,line_c,line_meta),line_id.is.null')
+        .neq('line_id', 'contact_center')
+        .neq('line_id', 'line_recepciones')
         .limit(5000);
 
     if (error) {
@@ -144,9 +166,13 @@ export async function fetchUnreadCounts() {
         return {};
     }
 
+    const validLines = new Set(['line_a', 'line_b', 'line_c', 'line_meta']);
+
     // Contar por teléfono — re-normalizar para consistencia con el frontend
     const counts = {};
     (data || []).forEach(msg => {
+        if (msg.line_id && !validLines.has(msg.line_id)) return;
+        if (msg.raw_payload?.source === 'bot_triage') return;
         const normalizedPhone = normalizeArgentinePhone(msg.phone);
         const key = normalizedPhone || msg.phone;
         counts[key] = (counts[key] || 0) + 1;
@@ -214,6 +240,12 @@ export function subscribeToMessages(phone, callback) {
                 filter: `phone=eq.${normalized}`,
             },
             (payload) => {
+                // Descartar mensajes de otras líneas (Recepciones o Contact Center)
+                if (payload.new.line_id === 'line_recepciones' || payload.new.line_id === 'contact_center') return;
+                // Descartar si es un mensaje de triage del bot de contact center
+                if (payload.new.sender_name === 'Bot Sanatorio' || payload.new.raw_payload?.source === 'bot_triage') return;
+                const validLines = ['line_a', 'line_b', 'line_c', 'line_meta'];
+                if (payload.new.line_id && !validLines.includes(payload.new.line_id)) return;
                 callback(payload.new);
             }
         )
@@ -240,8 +272,11 @@ export function subscribeToAllIncoming(callback) {
                 filter: 'direction=eq.incoming',
             },
             (payload) => {
-                // Excluir mensajes de line_recepciones (sistema Recepciones separado)
-                if (payload.new.line_id === 'line_recepciones') return;
+                // Excluir mensajes de líneas no pertenecientes a ADM-QUI (Control de Cirugías)
+                if (payload.new.line_id === 'line_recepciones' || payload.new.line_id === 'contact_center') return;
+                if (payload.new.sender_name === 'Bot Sanatorio' || payload.new.raw_payload?.source === 'bot_triage') return;
+                const validLines = ['line_a', 'line_b', 'line_c', 'line_meta'];
+                if (payload.new.line_id && !validLines.includes(payload.new.line_id)) return;
                 callback(payload.new);
             }
         )

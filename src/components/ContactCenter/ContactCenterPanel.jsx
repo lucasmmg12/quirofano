@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
     MessageSquare, CalendarCheck, PlusCircle, ShieldCheck, 
     Headphones, RefreshCw, Layers, CheckCircle2, Lock, Sparkles,
-    User, ChevronDown, AlertTriangle, BarChart3
+    User, ChevronDown, AlertTriangle, BarChart3, Volume2, VolumeX, Radio
 } from 'lucide-react';
 import ContactCenterMiSemana from './ContactCenterMiSemana';
 import ContactCenterChatConsole from './ContactCenterChatConsole';
@@ -15,8 +15,10 @@ import {
     canUserAccessContactCenter, MASTER_ADMINS,
     CONTACT_CENTER_AGENTS, getAgentById, fetchLiveAndDemoChats,
     sendContactCenterMessage, assignChatExclusively, unassignChat,
-    transferChatToAgent
+    transferChatToAgent, closeConversationWithResolution,
+    subscribeToContactCenterRealtime, playContactCenterChime
 } from '../../services/contactCenterService';
+import { normalizeArgentinePhone } from '../../services/builderbotApi';
 import { supabase } from '../../lib/supabase';
 
 export default function ContactCenterPanel({ currentUser, addToast, initialTab = 'conversaciones' }) {
@@ -27,15 +29,51 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             setActiveSubTab(initialTab);
         }
     }, [initialTab]);
-    const [chats, setChats] = useState(INITIAL_CHATS);
-    const [activeChatId, setActiveChatId] = useState('3CMI20');
+    const [chats, setChats] = useState([]);
+    const [activeChatId, setActiveChatId] = useState(null);
     const [allowedUsers, setAllowedUsers] = useState(['lmarinero', 'daniela', 'sofia', 'virginia', 'erica']);
     const [savingPermisos, setSavingPermisos] = useState(false);
     const [loadingLive, setLoadingLive] = useState(false);
 
-    // Agente activo: por defecto Daniela, o match con el usuario logueado
-    const initialAgent = CONTACT_CENTER_AGENTS.find(a => a.id === (currentUser?.usuario || '').toLowerCase()) || CONTACT_CENTER_AGENTS[0];
+    // Estado OnLive: Sonido y último ping recibido
+    const [soundEnabled, setSoundEnabled] = useState(() => {
+        const saved = localStorage.getItem('sa_cc_sound_enabled');
+        return saved === null ? true : saved === 'true';
+    });
+    const [lastLivePing, setLastLivePing] = useState(new Date());
+
+    const toggleSound = () => {
+        setSoundEnabled(prev => {
+            const next = !prev;
+            localStorage.setItem('sa_cc_sound_enabled', String(next));
+            return next;
+        });
+    };
+
+    // Agente activo: match con las credenciales del usuario logueado o primera agente por defecto
+    const userLogin = (currentUser?.usuario || '').toLowerCase().trim().split('@')[0];
+    const initialAgent = CONTACT_CENTER_AGENTS.find(a => 
+        a.id === userLogin || 
+        a.username === userLogin || 
+        (a.aliases && a.aliases.includes(userLogin)) ||
+        (a.legacyId && a.legacyId === userLogin)
+    ) || CONTACT_CENTER_AGENTS[0];
     const [activeAgent, setActiveAgent] = useState(initialAgent);
+
+    useEffect(() => {
+        if (currentUser?.usuario) {
+            const u = currentUser.usuario.toLowerCase().trim().split('@')[0];
+            const matched = CONTACT_CENTER_AGENTS.find(a => 
+                a.id === u || 
+                a.username === u || 
+                (a.aliases && a.aliases.includes(u)) ||
+                (a.legacyId && a.legacyId === u)
+            );
+            if (matched) {
+                setActiveAgent(matched);
+            }
+        }
+    }, [currentUser?.usuario]);
 
     const isLMarinero = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim().split('@')[0]);
 
@@ -43,18 +81,22 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
     const reloadChats = async () => {
         setLoadingLive(true);
         try {
-            const loaded = await fetchLiveAndDemoChats(INITIAL_CHATS);
+            const loaded = await fetchLiveAndDemoChats();
             setChats(loaded);
             
-            // Priorizar siempre el chat de Lucas Marinero o el chat real más reciente sobre los demos
+            // Seleccionar chat relevante (por ej. Lucas Marinero o el más reciente)
             const lucasChat = loaded.find(c => (c.phone || '').includes('5438114') || (c.contactName || '').toLowerCase().includes('marinero'));
-            const firstRealChat = loaded.find(c => c.id.startsWith('REAL_'));
+            const firstRealChat = loaded.find(c => c.id?.startsWith('REAL_'));
 
-            if (!activeChatId || activeChatId === '3CMI20' || !loaded.some(c => c.id === activeChatId)) {
+            if (!activeChatId || !loaded.some(c => c.id === activeChatId)) {
                 if (lucasChat) {
                     setActiveChatId(lucasChat.id);
                 } else if (firstRealChat) {
                     setActiveChatId(firstRealChat.id);
+                } else if (loaded.length > 0) {
+                    setActiveChatId(loaded[0].id);
+                } else {
+                    setActiveChatId(null);
                 }
             }
         } catch (err) {
@@ -73,30 +115,138 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
         reloadChats();
 
-        // 2. Suscripción en Tiempo Real a whatsapp_messages (Exclusivo Línea Contact Center)
-        const channel = supabase
-            .channel('contact-center-live-stream')
-            .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'whatsapp_messages'
-            }, (payload) => {
-                // Aislamiento estricto: descartar mensajes de otras líneas del sanatorio
-                if (['line_recepciones', 'line_b', 'line_a', 'line_c'].includes(payload.new?.line_id)) {
-                    return;
+        // 2. Suscripción OnLive en Tiempo Real (Exclusivo Línea Contact Center y Conversaciones)
+        const unsubscribe = subscribeToContactCenterRealtime({
+            onNewMessage: (newMsg) => {
+                console.log('[contact-center] ⚡ Evento Realtime entrante (OnLive):', newMsg);
+                setLastLivePing(new Date());
+
+                const normPhone = normalizeArgentinePhone(newMsg.phone);
+                const isIncoming = newMsg.direction === 'incoming';
+
+                // Reproducir sonido y notificación si es entrante
+                if (isIncoming) {
+                    if (soundEnabled) {
+                        playContactCenterChime();
+                    }
+                    if (addToast) {
+                        const senderDisplay = newMsg.sender_name || normPhone || 'Paciente';
+                        const preview = (newMsg.content || '').substring(0, 50);
+                        addToast(`💬 ${senderDisplay}: ${preview || 'Archivo multimedia adjunto'}`, 'info');
+                    }
                 }
-                console.log('[contact-center] ⚡ Evento Realtime entrante (Línea Contact Center):', payload.new);
+
+                // Inserción optimista sin esperar el re-fetch completo
+                setChats(prevChats => {
+                    const chatIdx = prevChats.findIndex(c => normalizeArgentinePhone(c.phone) === normPhone);
+                    const now = new Date();
+                    const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+
+                    const formattedMsg = {
+                        id: 'real_' + (newMsg.id || Date.now()),
+                        sender: isIncoming ? 'patient' : (newMsg.direction === 'note' ? 'note' : 'agent'),
+                        senderName: isIncoming ? (newMsg.sender_name || 'Paciente') : (newMsg.sender_name || 'Sanatorio Argentino'),
+                        type: newMsg.media_type || 'text',
+                        text: newMsg.content || '',
+                        mediaUrl: newMsg.media_url || null,
+                        timestamp: timeStr
+                    };
+
+                    if (chatIdx >= 0) {
+                        const existingChat = prevChats[chatIdx];
+                        const alreadyHasMsg = (existingChat.messages || []).some(m => 
+                            m.id === formattedMsg.id || (m.text === formattedMsg.text && m.timestamp === formattedMsg.timestamp)
+                        );
+                        const updatedMessages = alreadyHasMsg 
+                            ? existingChat.messages 
+                            : [...(existingChat.messages || []), formattedMsg];
+
+                        const updatedChat = {
+                            ...existingChat,
+                            messages: updatedMessages,
+                            lastMessage: newMsg.content || `[${newMsg.media_type}]`,
+                            lastMessageTimestamp: now.getTime(),
+                            timeAgo: 'hace instantes',
+                            unread: isIncoming ? true : existingChat.unread
+                        };
+
+                        const otherChats = prevChats.filter((_, idx) => idx !== chatIdx);
+                        return [updatedChat, ...otherChats];
+                    } else {
+                        // Nuevo chat en vivo no registrado previamente
+                        const newRealChat = {
+                            id: 'REAL_' + normPhone,
+                            contactName: newMsg.sender_name || `Paciente (${normPhone.slice(-4)})`,
+                            phone: normPhone,
+                            channel: 'WHATSAPP',
+                            channelNumber: '5492645825637',
+                            status: 'sin_asignar',
+                            unread: true,
+                            lastMessage: newMsg.content || `[${newMsg.media_type}]`,
+                            lastMessageTimestamp: now.getTime(),
+                            timeAgo: 'hace instantes',
+                            department: 'Atención al cliente',
+                            assignedTo: null,
+                            assignedToName: null,
+                            assignedAt: null,
+                            lastResponder: isIncoming ? 'Paciente' : 'Sanatorio',
+                            lastResponderRole: isIncoming ? 'patient' : 'agent',
+                            lastResponseAt: 'hace instantes',
+                            chatbot: '#betina-triage',
+                            avatarColor: '#0284C7',
+                            tags: ['Mensaje Nuevo'],
+                            customFields: {
+                                dni: 'A verificar',
+                                dniFotoUrl: null,
+                                turnosDiaHora: 'Consulta entrante',
+                                pedidoMedicoFoto: newMsg.media_type !== 'text' ? 'Adjunto' : '—',
+                                pacienteNombre: newMsg.sender_name || 'Paciente',
+                                pacienteContacto: normPhone,
+                                obraSocial: 'A consultar'
+                            },
+                            messages: [formattedMsg]
+                        };
+                        return [newRealChat, ...prevChats];
+                    }
+                });
+
+                // Sincronización de fondo
                 reloadChats();
-                if (addToast && payload.new?.direction === 'incoming') {
-                    addToast(`Nuevo mensaje en Contact Center (${payload.new.phone})`, 'info');
-                }
-            })
-            .subscribe();
+            },
+            onConversationChange: (conv) => {
+                console.log('[contact-center] ⚡ Evento Realtime Conversación cambiada:', conv);
+                setLastLivePing(new Date());
+                const normPhone = normalizeArgentinePhone(conv.phone);
+                setChats(prevChats => prevChats.map(c => {
+                    if (normalizeArgentinePhone(c.phone) === normPhone) {
+                        return {
+                            ...c,
+                            status: conv.status || c.status,
+                            assignedTo: conv.assigned_agent_id || c.assignedTo,
+                            assignedToName: conv.assigned_agent_name || c.assignedToName,
+                            assignedAt: conv.assigned_at || c.assignedAt,
+                            botActive: conv.bot_active ?? c.botActive,
+                            customFields: {
+                                ...c.customFields,
+                                dni: conv.dni || c.customFields?.dni,
+                                pacienteNombre: conv.nombre_completo || c.customFields?.pacienteNombre,
+                                obraSocial: conv.obra_social || c.customFields?.obraSocial,
+                                fechaNacimiento: conv.fecha_nacimiento || c.customFields?.fechaNacimiento,
+                                email: conv.email || c.customFields?.email,
+                                departamento: conv.departamento || c.customFields?.departamento,
+                                motivoConsulta: conv.motivo_consulta || c.customFields?.motivoConsulta
+                            }
+                        };
+                    }
+                    return c;
+                }));
+            }
+        });
 
         return () => {
-            supabase.removeChannel(channel);
+            if (unsubscribe) unsubscribe();
         };
-    }, []);
+    }, [soundEnabled]);
 
     // Manejar envío de mensaje en la consola de chat
     const handleSendMessage = async (chatId, text, isNote = false) => {
@@ -187,6 +337,27 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         }
     };
 
+    // Finalizar y archivar chat con motivo de resolución
+    const handleCloseChat = async (chatId, resolutionReason) => {
+        const targetChat = chats.find(c => c.id === chatId);
+        if (!targetChat) return;
+
+        try {
+            const updated = await closeConversationWithResolution({
+                chat: targetChat,
+                resolutionReason,
+                activeAgent,
+                currentUser
+            });
+            setChats(prev => prev.map(c => c.id === chatId ? updated : c));
+            if (addToast) {
+                addToast(`Atención finalizada con éxito (${resolutionReason})`, 'success');
+            }
+        } catch (err) {
+            if (addToast) addToast(err.message || 'Error al finalizar atención', 'error');
+        }
+    };
+
     // Cambiar permisos de un usuario (solo lmarinero)
     const handleToggleUser = async (username) => {
         if (!isLMarinero) return;
@@ -260,12 +431,55 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                             <h1 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#0F172A' }}>
                                 Contact Center
                             </h1>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 800, background: '#DCFCE7', color: '#16A34A', padding: '2px 8px', borderRadius: '8px', border: '1px solid #BBF7D0' }}>
-                                MULTI-AGENTE EN VIVO
-                            </span>
-                            {loadingLive && (
-                                <RefreshCw size={14} className="spin" color="#0284C7" />
-                            )}
+                            {/* ON LIVE STATUS BEACON */}
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                background: '#ECFDF5', border: '1px solid #A7F3D0',
+                                padding: '3px 9px', borderRadius: '12px',
+                                boxShadow: '0 1px 2px rgba(16, 185, 129, 0.15)'
+                            }} title="Canal WebSocket Realtime conectado a Supabase">
+                                <span style={{
+                                    width: '8px', height: '8px', borderRadius: '50%',
+                                    background: '#10B981',
+                                    boxShadow: '0 0 0 3px rgba(16, 185, 129, 0.25)',
+                                    display: 'inline-block'
+                                }} />
+                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#047857', letterSpacing: '0.5px' }}>
+                                    ON LIVE
+                                </span>
+                            </div>
+
+                            {/* TOGGLE DE SONIDO CHIME */}
+                            <button
+                                onClick={toggleSound}
+                                title={soundEnabled ? 'Silenciar avisos sonoros' : 'Activar sonido de nuevos mensajes'}
+                                style={{
+                                    padding: '4px 8px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                    background: soundEnabled ? '#F0FDF4' : '#FFFFFF',
+                                    color: soundEnabled ? '#16A34A' : '#94A3B8',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                                    fontSize: '0.72rem', fontWeight: 700, transition: 'all 0.15s'
+                                }}
+                            >
+                                {soundEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />}
+                                <span>{soundEnabled ? 'Sonido' : 'Mute'}</span>
+                            </button>
+
+                            {/* RECARGA MANUAL */}
+                            <button
+                                onClick={reloadChats}
+                                disabled={loadingLive}
+                                title="Forzar sincronización inmediata con SALUS y WhatsApp"
+                                style={{
+                                    padding: '4px 8px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                    background: '#FFFFFF', color: '#0284C7', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: '4px',
+                                    fontSize: '0.72rem', fontWeight: 700
+                                }}
+                            >
+                                <RefreshCw size={12} className={loadingLive ? 'spin' : ''} />
+                                <span>{loadingLive ? 'Sync...' : 'Sync'}</span>
+                            </button>
                         </div>
                         <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: '#64748B' }}>
                             Consola Multicanal de Sanatorio Argentino • 4 Agentes con Asignación Exclusiva
@@ -273,8 +487,8 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     </div>
                 </div>
 
-                {/* SELECTOR DE AGENTE ACTIVA (Daniela, Sofia, Virginia, Erica o Supervisor) */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {/* SELECTOR DE AGENTE ACTIVA CON CONTEO DE MENSAJES ASIGNADOS */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                     <div style={{
                         display: 'flex', alignItems: 'center', gap: '8px',
                         background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '10px',
@@ -285,19 +499,42 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         </span>
                         <div style={{ display: 'flex', gap: '4px' }}>
                             {CONTACT_CENTER_AGENTS.map(agent => {
-                                const isCurrent = activeAgent.id === agent.id;
+                                const isCurrent = activeAgent.id === agent.id || activeAgent.username === agent.username;
+                                
+                                // Cantidad de chats activos asignados a este agente
+                                const assignedCount = chats.filter(c => {
+                                    if (c.status === 'archivado') return false;
+                                    const assigned = (c.assignedTo || '').toLowerCase();
+                                    if (!assigned) return false;
+                                    return (
+                                        assigned === agent.id.toLowerCase() ||
+                                        (agent.username && assigned === agent.username.toLowerCase()) ||
+                                        (agent.legacyId && assigned === agent.legacyId.toLowerCase()) ||
+                                        (c.assignedToName || '').toLowerCase().includes(agent.name.toLowerCase())
+                                    );
+                                }).length;
+
+                                const canSwitch = isLMarinero;
+
                                 return (
                                     <button
                                         key={agent.id}
-                                        onClick={() => setActiveAgent(agent)}
-                                        title={`Cambiar a ${agent.fullName} (${agent.role})`}
+                                        onClick={() => {
+                                            if (canSwitch) {
+                                                setActiveAgent(agent);
+                                            } else if (!isCurrent) {
+                                                addToast?.(`Estás autenticada como ${activeAgent.name}. Solo supervisores pueden conmutar de agente.`, 'info');
+                                            }
+                                        }}
+                                        title={canSwitch ? `Cambiar a ${agent.fullName} (${assignedCount} asignados)` : `${agent.fullName}: ${assignedCount} chats asignados`}
                                         style={{
-                                            padding: '4px 10px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
-                                            border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px',
+                                            padding: '4px 8px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
+                                            border: 'none', cursor: canSwitch || isCurrent ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: '5px',
                                             background: isCurrent ? agent.color : '#F1F5F9',
                                             color: isCurrent ? '#FFFFFF' : '#475569',
                                             boxShadow: isCurrent ? `0 2px 5px ${agent.color}40` : 'none',
-                                            transition: 'all 0.15s'
+                                            transition: 'all 0.15s',
+                                            opacity: (!isCurrent && !canSwitch) ? 0.85 : 1
                                         }}
                                     >
                                         <div style={{
@@ -308,12 +545,41 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                                         }}>
                                             {agent.avatar}
                                         </div>
-                                        {agent.name}
+                                        <span>{agent.name}</span>
+                                        <span style={{
+                                            background: isCurrent ? 'rgba(255, 255, 255, 0.3)' : (assignedCount > 0 ? '#E2E8F0' : '#E2E8F0'),
+                                            color: isCurrent ? '#FFFFFF' : (assignedCount > 0 ? '#0F172A' : '#64748B'),
+                                            padding: '1px 6px',
+                                            borderRadius: '10px',
+                                            fontSize: '0.66rem',
+                                            fontWeight: 800,
+                                            marginLeft: '1px'
+                                        }} title={`${assignedCount} chats asignados`}>
+                                            {assignedCount}
+                                        </span>
                                     </button>
                                 );
                             })}
                         </div>
                     </div>
+
+                    {/* Badge de Sin Asignar */}
+                    {(() => {
+                        const unassignedCount = chats.filter(c => (!c.assignedTo || c.status === 'sin_asignar') && c.status !== 'archivado').length;
+                        if (unassignedCount === 0) return null;
+                        return (
+                            <div style={{
+                                fontSize: '0.72rem', fontWeight: 800,
+                                background: '#FEF3C7', color: '#B45309', border: '1px solid #FCD34D',
+                                padding: '4px 10px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '5px'
+                            }} title="Conversaciones sin asignar en la cola general de Contact Center">
+                                <span>⚠️ Sin asignar:</span>
+                                <span style={{ background: '#B45309', color: '#FFF', borderRadius: '10px', padding: '1px 6px', fontSize: '0.66rem', fontWeight: 800 }}>
+                                    {unassignedCount}
+                                </span>
+                            </div>
+                        );
+                    })()}
 
                     {/* Pestañas de Navegación del Módulo */}
                     <div style={{
@@ -465,6 +731,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     onAssignChat={handleAssignChat}
                     onUnassignChat={handleUnassignChat}
                     onTransferChat={handleTransferChat}
+                    onCloseChat={handleCloseChat}
                 />
             )}
 

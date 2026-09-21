@@ -19,21 +19,26 @@ const CONFIG_KEY = 'contact_center_allowed_users';
 // Administradores con acceso maestro permanente
 export const MASTER_ADMINS = ['lmarinero', 'admin'];
 
-// 4 Agentes canónicas del Contact Center de Sanatorio Argentino
+// 4 Agentes canónicas del Contact Center de Sanatorio Argentino (con soporte de credenciales y aliases)
 export const CONTACT_CENTER_AGENTS = [
-    { id: 'daniela', name: 'Daniela Aguilera', fullName: 'Daniela Aguilera', role: 'Atención al Paciente', color: '#E11D48', avatar: 'DA' },
-    { id: 'sofia', name: 'Sofia Olivieri', fullName: 'Sofia Olivieri', role: 'Atención al Paciente', color: '#8B5CF6', avatar: 'SO' },
-    { id: 'virginia', name: 'Virginia Jacques', fullName: 'Virginia Jacques', role: 'Atención al Paciente', color: '#059669', avatar: 'VJ' },
-    { id: 'erica', name: 'Erica Leal', fullName: 'Erica Leal', role: 'Atención al Paciente', color: '#D97706', avatar: 'EL' },
+    { id: 'daguilera', username: 'daguilera', legacyId: 'daniela', name: 'Daniela Aguilera', fullName: 'Daniela Aguilera', role: 'Atención al Paciente', color: '#E11D48', avatar: 'DA' },
+    { id: 'solivier', username: 'solivier', legacyId: 'sofia', name: 'Sofia Olivieri', fullName: 'Sofia Olivieri', role: 'Atención al Paciente', color: '#8B5CF6', avatar: 'SO' },
+    { id: 'vjacques', username: 'vjacques', legacyId: 'virginia', name: 'Virginia Jacques', fullName: 'Virginia Jacques', role: 'Atención al Paciente', color: '#059669', avatar: 'VJ' },
+    { id: 'eleal', username: 'eleal', legacyId: 'erica', name: 'Erica Leal', fullName: 'Erica Leal', role: 'Atención al Paciente', color: '#D97706', avatar: 'EL' },
 ];
 
 /**
- * Obtiene el objeto de agente a partir de un identificador o nombre
+ * Obtiene el objeto de agente a partir de un identificador, username o nombre
  */
 export function getAgentById(agentIdOrName) {
     if (!agentIdOrName) return null;
     const clean = String(agentIdOrName).toLowerCase().trim();
-    return CONTACT_CENTER_AGENTS.find(a => a.id === clean || a.name.toLowerCase() === clean) || {
+    return CONTACT_CENTER_AGENTS.find(a => 
+        a.id === clean || 
+        a.username === clean || 
+        a.legacyId === clean || 
+        a.name.toLowerCase() === clean
+    ) || {
         id: clean,
         name: agentIdOrName,
         fullName: agentIdOrName,
@@ -55,8 +60,8 @@ export function canUserAccessContactCenter(user, allowedUsersList = null) {
         return true;
     }
 
-    // Si es una de las 4 agentes autorizadas
-    if (['daniela', 'sofia', 'virginia', 'erica'].includes(username)) {
+    // Si es una de las 4 agentes autorizadas del Contact Center
+    if (['daguilera', 'vjacques', 'solivier', 'eleal', 'daniela', 'sofia', 'virginia', 'erica'].includes(username)) {
         return true;
     }
 
@@ -131,291 +136,7 @@ export async function updateAllowedUsers(usersList, updatedBy = 'lmarinero') {
 // MOCK DATA BASE DE ALTA FIDELIDAD CON ASIGNACIÓN Y AUDITORÍA
 // =========================================================================
 
-export const INITIAL_CHATS = [
-    {
-        id: '3CMI20',
-        contactName: 'Johana',
-        phone: '5492646020120',
-        channel: 'WHATSAPP',
-        channelNumber: '5492645825637',
-        status: 'abierto',
-        unread: false,
-        lastMessage: 'Damos por finalizada esta conversación...',
-        timeAgo: 'hace 2 minutos',
-        department: 'Atención al cliente',
-        assignedTo: 'daniela',
-        assignedToName: 'Daniela',
-        assignedAt: '2026-09-17T12:24:30.000Z',
-        lastResponder: 'Daniela',
-        lastResponderRole: 'agent',
-        lastResponseAt: 'hace 2 min',
-        chatbot: '#betina-encuesta2',
-        avatarColor: '#E11D48',
-        tags: ['Consulta Turnos', 'Citología'],
-        customFields: {
-            dni: '33289371',
-            dniFotoUrl: 'https://asisteclick-media.sfo2.cdn.digitaloceanspaces.com/sample_dni.jpg',
-            turnosDiaHora: 'Lunes a Viernes 08:00 a 13:00 hs',
-            pedidoMedicoFoto: 'Foto adjunta en chat',
-            pacienteNombre: 'Johana R.',
-            pacienteContacto: '5492646020120',
-            obraSocial: 'Obra Social Provincia (OSP)'
-        },
-        messages: [
-            {
-                id: 'm1',
-                sender: 'patient',
-                senderName: 'Johana',
-                type: 'image',
-                mediaUrl: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=600&auto=format&fit=crop&q=80',
-                caption: 'Foto de orden médica',
-                timestamp: '17-sep-26 12:23:50',
-            },
-            {
-                id: 'm2',
-                sender: 'system',
-                text: '17-sep-26 12:23:55 Bot Betina asignó la conversación a Atención al cliente',
-                timestamp: '17-sep-26 12:23:55'
-            },
-            {
-                id: 'm3',
-                sender: 'patient',
-                senderName: 'Johana',
-                type: 'text',
-                text: '33289371',
-                timestamp: '17-sep-26 12:24:11'
-            },
-            {
-                id: 'm4',
-                sender: 'system',
-                text: 'Daniela se asignó la conversación exclusivamente',
-                timestamp: '17-sep-26 12:24:30'
-            },
-            {
-                id: 'm5',
-                sender: 'agent',
-                senderName: 'Daniela',
-                senderAgentId: 'daniela',
-                agentRole: 'Atención al Paciente',
-                tagColor: '#E11D48',
-                type: 'text',
-                text: 'Hola soy Daniela de Sanatorio Argentino, gracias por tu contacto. Te escribo por tu consulta realizada, Usted debe comunicarse con citología al 2644552540.',
-                timestamp: '12:25'
-            },
-            {
-                id: 'm6',
-                sender: 'agent',
-                senderName: 'Daniela',
-                senderAgentId: 'daniela',
-                agentRole: 'Atención al Paciente',
-                tagColor: '#E11D48',
-                type: 'text',
-                text: '¡Gracias por comunicarte con el Sanatorio Argentino! 🏥 Damos por finalizada esta conversación.\nSi nuestra atención te fue de ayuda hoy, nos sumarías un montón dejándonos 5 estrellas aquí: https://oqdslqa.s.gy/sede1 ⭐\n¡Que tengas un excelente día!',
-                timestamp: '12:26'
-            }
-        ]
-    },
-    {
-        id: '3CMJV0',
-        contactName: 'VERÓNICA 💟',
-        phone: '5492644123456',
-        channel: 'WHATSAPP',
-        channelNumber: '5492645825637',
-        status: 'sin_asignar',
-        unread: true,
-        lastMessage: 'Hola, buenas tardes! Un turno con la Dra. Burgoa',
-        timeAgo: 'hace 21 minutos',
-        department: 'Atención al cliente',
-        assignedTo: null,
-        assignedToName: null,
-        assignedAt: null,
-        lastResponder: 'Paciente',
-        lastResponderRole: 'patient',
-        lastResponseAt: 'hace 21 min',
-        chatbot: '#betina-encuesta2',
-        avatarColor: '#8B5CF6',
-        tags: ['Ginecología', 'Turnos'],
-        customFields: {
-            dni: '28456123',
-            dniFotoUrl: null,
-            turnosDiaHora: 'Solicita Dra. Burgoa',
-            pedidoMedicoFoto: 'No requerido',
-            pacienteNombre: 'Verónica M.',
-            pacienteContacto: '5492644123456',
-            obraSocial: 'Swiss Medical'
-        },
-        messages: [
-            {
-                id: 'mv1',
-                sender: 'patient',
-                senderName: 'VERÓNICA',
-                type: 'text',
-                text: 'Hola, buenas tardes! Un turno con la Dra. Burgoa',
-                timestamp: '17-sep-26 12:02:15'
-            }
-        ]
-    },
-    {
-        id: '3CMJGW',
-        contactName: 'Anytapri',
-        phone: '5492645987654',
-        channel: 'WHATSAPP',
-        channelNumber: '5492645825637',
-        status: 'sin_asignar',
-        unread: true,
-        lastMessage: 'Hola estoy en la pagina web y quiero hacer una consulta sobre laboratorio',
-        timeAgo: 'hace 22 minutos',
-        department: 'Atención al cliente',
-        assignedTo: null,
-        assignedToName: null,
-        assignedAt: null,
-        lastResponder: 'Paciente',
-        lastResponderRole: 'patient',
-        lastResponseAt: 'hace 22 min',
-        chatbot: '#betina-encuesta2',
-        avatarColor: '#D97706',
-        tags: ['Web Inquiry', 'Laboratorio'],
-        customFields: {
-            dni: '35123987',
-            dniFotoUrl: null,
-            turnosDiaHora: 'Urgente',
-            pedidoMedicoFoto: 'Pendiente',
-            pacienteNombre: 'Ana P.',
-            pacienteContacto: '5492645987654',
-            obraSocial: 'OSDE 210'
-        },
-        messages: [
-            {
-                id: 'ma1',
-                sender: 'patient',
-                senderName: 'Anytapri',
-                type: 'text',
-                text: 'Hola estoy en la pagina web y quiero hacer una consulta sobre laboratorio',
-                timestamp: '17-sep-26 12:01:40'
-            }
-        ]
-    },
-    {
-        id: '3CMJW6',
-        contactName: 'Luchi',
-        phone: '5492644876543',
-        channel: 'WHATSAPP',
-        channelNumber: '5492645825637',
-        status: 'sin_asignar',
-        unread: true,
-        lastMessage: 'hola',
-        timeAgo: 'hace 24 minutos',
-        department: 'Atención al cliente',
-        assignedTo: null,
-        assignedToName: null,
-        assignedAt: null,
-        lastResponder: 'Paciente',
-        lastResponderRole: 'patient',
-        lastResponseAt: 'hace 24 min',
-        chatbot: '#betina-encuesta2',
-        avatarColor: '#10B981',
-        tags: ['Recepción'],
-        customFields: {
-            dni: '41987654',
-            dniFotoUrl: null,
-            turnosDiaHora: '—',
-            pedidoMedicoFoto: '—',
-            pacienteNombre: 'Luciana F.',
-            pacienteContacto: '5492644876543',
-            obraSocial: 'Particular'
-        },
-        messages: [
-            {
-                id: 'ml1',
-                sender: 'patient',
-                senderName: 'Luchi',
-                type: 'text',
-                text: 'hola',
-                timestamp: '17-sep-26 11:59:12'
-            }
-        ]
-    },
-    {
-        id: '3CMJTQ',
-        contactName: 'Cecilia Paez',
-        phone: '5492645345678',
-        channel: 'WHATSAPP',
-        channelNumber: '5492645825637',
-        status: 'sin_asignar',
-        unread: true,
-        lastMessage: 'Hola Buenos dias Solicito turno para chequeo ginec',
-        timeAgo: 'hace 15 minutos',
-        department: 'Atención al cliente',
-        assignedTo: null,
-        assignedToName: null,
-        assignedAt: null,
-        lastResponder: 'Paciente',
-        lastResponderRole: 'patient',
-        lastResponseAt: 'hace 15 min',
-        chatbot: '#betina-encuesta2',
-        avatarColor: '#0284C7',
-        tags: ['Ginecología', 'Chequeo'],
-        customFields: {
-            dni: '29876543',
-            dniFotoUrl: null,
-            turnosDiaHora: 'Próxima semana por la tarde',
-            pedidoMedicoFoto: '—',
-            pacienteNombre: 'Cecilia Paez',
-            pacienteContacto: '5492645345678',
-            obraSocial: 'Sancor Salud'
-        },
-        messages: [
-            {
-                id: 'mc1',
-                sender: 'patient',
-                senderName: 'Cecilia Paez',
-                type: 'text',
-                text: 'Hola Buenos dias Solicito turno para chequeo ginec',
-                timestamp: '17-sep-26 12:08:44'
-            }
-        ]
-    },
-    {
-        id: '3CMIT9',
-        contactName: 'Valeria Mercado',
-        phone: '5492646234567',
-        channel: 'WHATSAPP',
-        channelNumber: '5492645825637',
-        status: 'sin_asignar',
-        unread: true,
-        lastMessage: 'Buen dia',
-        timeAgo: 'hace 49 minutos',
-        department: 'Atención al cliente',
-        assignedTo: null,
-        assignedToName: null,
-        assignedAt: null,
-        lastResponder: 'Paciente',
-        lastResponderRole: 'patient',
-        lastResponseAt: 'hace 49 min',
-        chatbot: '#betina-encuesta2',
-        avatarColor: '#6366F1',
-        tags: ['Consultas'],
-        customFields: {
-            dni: '36543210',
-            dniFotoUrl: null,
-            turnosDiaHora: '—',
-            pedidoMedicoFoto: '—',
-            pacienteNombre: 'Valeria Mercado',
-            pacienteContacto: '5492646234567',
-            obraSocial: 'Medifé'
-        },
-        messages: [
-            {
-                id: 'mv1',
-                sender: 'patient',
-                senderName: 'Valeria Mercado',
-                type: 'text',
-                text: 'Buen dia',
-                timestamp: '17-sep-26 11:34:02'
-            }
-        ]
-    }
-];
+export const INITIAL_CHATS = [];
 
 export const SYSTEM_KNOWN_USERS = [
     { usuario: 'lmarinero', nombre: 'Lucas Marinero', rol: 'Supervisor General / Sistemas', avatar: 'LM' },
@@ -440,7 +161,17 @@ export function isChatLockedForUser(chat, currentAgentId, currentUser) {
     if (!chat || !chat.assignedTo) return false;
     const username = (currentUser?.usuario || '').toLowerCase().trim();
     if (MASTER_ADMINS.includes(username)) return false; // Supervisor nunca se bloquea
-    return chat.assignedTo.toLowerCase() !== currentAgentId.toLowerCase();
+    
+    const assigned = chat.assignedTo.toLowerCase();
+    const current = (currentAgentId || username).toLowerCase();
+
+    const agentAssigned = getAgentById(assigned);
+    const agentCurrent = getAgentById(current);
+    if (agentAssigned && agentCurrent && agentAssigned.id === agentCurrent.id) {
+        return false;
+    }
+
+    return assigned !== current;
 }
 
 /**
@@ -451,9 +182,13 @@ export function assignChatExclusively(chat, targetAgent, currentUser) {
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
     
     // Si ya está asignado a otra persona y no es supervisor
-    if (chat.assignedTo && chat.assignedTo.toLowerCase() !== targetAgent.id.toLowerCase() && !isSupervisor) {
-        const currentOwner = getAgentById(chat.assignedTo);
-        throw new Error(`Esta conversación ya está asignada a ${currentOwner.name}. Mientras la tenga asignada, nadie más puede asociársela.`);
+    const currentAssigned = chat.assignedTo ? chat.assignedTo.toLowerCase() : null;
+    const currentOwner = currentAssigned ? getAgentById(currentAssigned) : null;
+    const isSameAgent = currentOwner && currentOwner.id === targetAgent.id;
+
+    if (currentAssigned && !isSameAgent && !isSupervisor) {
+        const ownerName = currentOwner?.name || chat.assignedTo;
+        throw new Error(`Esta conversación ya está asignada a ${ownerName}. Mientras la tenga asignada, nadie más puede asociársela.`);
     }
 
     const now = new Date();
@@ -601,7 +336,7 @@ export function transferChatToAgent(chat, fromAgent, toAgent, currentUser) {
  * Si el usuario envía un mensaje desde su número alternativo de prueba, se crea
  * dinámicamente un chat real en la bandeja "sin_asignar".
  */
-export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
+export async function fetchLiveAndDemoChats() {
     try {
         // 1. Traer conversaciones estructuradas de contact_center_conversations
         const { data: convData, error: convError } = await supabase
@@ -616,20 +351,19 @@ export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
         }
 
         // 2. Traer mensajes EXCLUSIVOS de la línea de Contact Center
-        // Para asegurar aislamiento estricto: excluimos de raíz recepciones y quirófano/admisión
         const { data: rawMessages, error } = await supabase
             .from('whatsapp_messages')
             .select('*')
+            .eq('line_id', 'contact_center')
             .order('created_at', { ascending: false })
-            .limit(200);
+            .limit(1000);
 
-        if (error || !rawMessages || rawMessages.length === 0) {
-            return existingChats;
+        if (error) {
+            console.warn('[contact-center] Error consultando mensajes:', error);
         }
 
-        // Filtro estricto: solo mensajes de pacientes humanos en la línea de Contact Center
-        const realMessages = rawMessages.filter(msg => {
-            // 1. Descartar canales de WhatsApp (Newsletters), grupos y transmisiones
+        // Filtro estricto: solo mensajes de Contact Center (sin newsletters ni otras líneas)
+        const realMessages = (rawMessages || []).filter(msg => {
             const rawJid = String(msg.raw_payload?.data?.key?.remoteJid || msg.raw_payload?.data?.from || '');
             if (
                 rawJid.includes('newsletter') || 
@@ -639,15 +373,10 @@ export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
             ) {
                 return false;
             }
-
-            // 2. Excluir de raíz otras líneas de la clínica
-            if (['line_recepciones', 'line_b', 'line_a', 'line_c'].includes(msg.line_id)) {
+            if (['line_recepciones', 'line_b', 'line_a', 'line_c', 'line_meta'].includes(msg.line_id)) {
                 return false;
             }
-            if (msg.line_id === 'contact_center') return true;
-            const norm = normalizeArgentinePhone(msg.phone);
-            if (convByPhone[norm]) return true;
-            return false;
+            return true;
         });
 
         // Agrupar mensajes reales por teléfono
@@ -673,27 +402,23 @@ export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
             return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
         }
 
-        // Clonar chats existentes asignando fecha base antigua para que los reales queden arriba
-        let mergedChats = existingChats.map(c => ({
-            ...c,
-            lastMessageTimestamp: c.lastMessageTimestamp || (Date.now() - 86400000 * 3)
-        }));
-
-        // Construir chats reales
+        // Construir chats reales exclusivamente (CERO mocks / demos)
         const realChats = [];
+        const allPhones = Array.from(new Set([
+            ...Object.keys(convByPhone),
+            ...Object.keys(realChatsMap)
+        ])).filter(phone => !phone.startsWith('5491203') && !phone.startsWith('1203'));
 
-        // Para cada teléfono real detectado
-        Object.entries(realChatsMap).forEach(([phone, messages]) => {
-            // Ordenar cronológicamente (asc)
-            const chronological = [...messages].reverse();
-            const lastMsg = messages[0]; // el más reciente
+        allPhones.forEach(phone => {
+            const messages = realChatsMap[phone] || [];
             const conv = convByPhone[phone];
-            const lastDateRaw = conv?.last_message_at || lastMsg.created_at;
+            if (messages.length === 0 && !conv) return;
+
+            const chronological = [...messages].reverse();
+            const lastMsg = messages[0] || {};
+            const lastDateRaw = conv?.last_message_at || lastMsg.created_at || new Date().toISOString();
             const lastDateMs = new Date(lastDateRaw).getTime();
 
-            const existingIdx = mergedChats.findIndex(c => normalizeArgentinePhone(c.phone) === phone);
-
-            // Determinar último en responder
             let lastRespName = 'Paciente';
             let lastRespRole = 'patient';
             if (lastMsg.direction === 'outgoing') {
@@ -702,7 +427,6 @@ export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
                 lastRespRole = 'agent';
             }
 
-            // Mapear mensajes a formato Contact Center
             const formattedMessages = chronological.map(m => ({
                 id: 'real_' + m.id,
                 sender: m.direction === 'incoming' ? 'patient' : (m.direction === 'note' ? 'note' : 'agent'),
@@ -718,85 +442,57 @@ export async function fetchLiveAndDemoChats(existingChats = INITIAL_CHATS) {
             }));
 
             const patientFields = {
-                dni: conv?.dni || (existingIdx >= 0 ? mergedChats[existingIdx].customFields?.dni : 'A verificar'),
-                pacienteNombre: conv?.nombre_completo || lastMsg.sender_name || (existingIdx >= 0 ? mergedChats[existingIdx].customFields?.pacienteNombre : 'Paciente'),
-                obraSocial: conv?.obra_social || (existingIdx >= 0 ? mergedChats[existingIdx].customFields?.obraSocial : 'A consultar'),
+                dni: conv?.dni || 'A verificar',
+                pacienteNombre: conv?.nombre_completo || lastMsg.sender_name || 'Paciente',
+                obraSocial: conv?.obra_social || 'A consultar',
                 fechaNacimiento: conv?.fecha_nacimiento || 'No informada',
                 email: conv?.email || 'No informado',
                 pacienteContacto: conv?.telefono_contacto || phone,
                 departamento: conv?.departamento || 'San Juan',
                 esPacienteExistente: conv?.es_paciente_existente ?? null,
-                motivoConsulta: conv?.motivo_consulta || (existingIdx >= 0 ? mergedChats[existingIdx].customFields?.turnosDiaHora : 'Consulta entrante'),
+                motivoConsulta: conv?.motivo_consulta || (messages.find(m => m.direction === 'incoming')?.content || 'Consulta general'),
                 medicoOEspecialidad: conv?.medico_o_especialidad || 'A convenir',
-                botActive: conv?.bot_active ?? true,
+                botActive: conv?.bot_active ?? false,
                 botStage: conv?.bot_stage || 'saludo_dni',
-                pedidoMedicoFoto: lastMsg.media_type !== 'text' ? 'Adjunto en chat' : 'No adjuntado'
+                pedidoMedicoFoto: lastMsg.media_type && lastMsg.media_type !== 'text' ? 'Adjunto en chat' : 'No adjuntado'
             };
 
             const computedContactName = conv?.nombre_completo || lastMsg.sender_name || `Paciente (${phone.slice(-4)})`;
 
-            if (existingIdx >= 0) {
-                // Actualizar chat existente con mensajes reales y datos de conversación
-                mergedChats[existingIdx] = {
-                    ...mergedChats[existingIdx],
-                    contactName: computedContactName,
-                    status: conv?.status || mergedChats[existingIdx].status,
-                    assignedTo: conv?.assigned_agent_id || mergedChats[existingIdx].assignedTo,
-                    assignedToName: conv?.assigned_agent_name || mergedChats[existingIdx].assignedToName,
-                    assignedAt: conv?.assigned_at || mergedChats[existingIdx].assignedAt,
-                    botActive: conv?.bot_active ?? mergedChats[existingIdx].botActive,
-                    lastMessage: lastMsg.content || `[${lastMsg.media_type}]`,
-                    lastMessageTimestamp: lastDateMs,
-                    timeAgo: formatRelativeTime(lastDateRaw),
-                    lastResponder: lastRespName,
-                    lastResponderRole: lastRespRole,
-                    customFields: {
-                        ...mergedChats[existingIdx].customFields,
-                        ...patientFields
-                    },
-                    messages: formattedMessages
-                };
-            } else {
-                // Crear nueva conversación en vivo
-                const newRealChat = {
-                    id: 'REAL_' + phone.slice(-6),
-                    contactName: computedContactName,
-                    phone: phone,
-                    channel: 'WHATSAPP',
-                    channelNumber: '5492645825637',
-                    status: conv?.status || 'sin_asignar',
-                    unread: true,
-                    lastMessage: lastMsg.content || `[${lastMsg.media_type}]`,
-                    lastMessageTimestamp: lastDateMs,
-                    timeAgo: formatRelativeTime(lastDateRaw),
-                    department: 'Atención al cliente',
-                    assignedTo: conv?.assigned_agent_id || null,
-                    assignedToName: conv?.assigned_agent_name || null,
-                    assignedAt: conv?.assigned_at || null,
-                    botActive: conv?.bot_active ?? true,
-                    lastResponder: lastRespName,
-                    lastResponderRole: lastRespRole,
-                    lastResponseAt: formatRelativeTime(lastDateRaw),
-                    chatbot: '#triage-sanatorio',
-                    avatarColor: '#059669',
-                    tags: ['En Vivo', 'WhatsApp Real'],
-                    customFields: patientFields,
-                    messages: formattedMessages
-                };
-                realChats.push(newRealChat);
-            }
+            realChats.push({
+                id: 'REAL_' + phone.slice(-6),
+                contactName: computedContactName,
+                phone: phone,
+                channel: 'WHATSAPP',
+                channelNumber: '5492645825637',
+                status: conv?.status || 'sin_asignar',
+                unread: lastMsg.direction === 'incoming',
+                lastMessage: lastMsg.content || (lastMsg.media_type ? `[${lastMsg.media_type}]` : conv?.last_message_text || 'Conversación iniciada'),
+                lastMessageTimestamp: lastDateMs,
+                timeAgo: formatRelativeTime(lastDateRaw),
+                department: 'Atención al cliente',
+                assignedTo: conv?.assigned_agent_id || null,
+                assignedToName: conv?.assigned_agent_name || null,
+                assignedAt: conv?.assigned_at || null,
+                botActive: conv?.bot_active ?? false,
+                lastResponder: lastRespName,
+                lastResponderRole: lastRespRole,
+                lastResponseAt: formatRelativeTime(lastDateRaw),
+                chatbot: '#triage-sanatorio',
+                avatarColor: '#0284C7',
+                tags: ['Contact Center', 'WhatsApp'],
+                customFields: patientFields,
+                messages: formattedMessages
+            });
         });
 
-        // Unir chats reales y existentes
-        let allChats = [...realChats, ...mergedChats];
+        // Orden cronológico descendente (interacción más reciente arriba)
+        realChats.sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
 
-        // ORDENAMIENTO CRÍTICO: Los chats con interacción más reciente SIEMPRE van al principio
-        allChats.sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
-
-        return allChats;
+        return realChats;
     } catch (err) {
-        console.warn('Error al mezclar mensajes reales:', err);
-        return existingChats;
+        console.warn('[contact-center] Error al cargar mensajes:', err);
+        return [];
     }
 }
 
@@ -926,6 +622,32 @@ export async function toggleBotActive(phone, botActive) {
 }
 
 /**
+ * Reinicia el flujo del chatbot para una conversación
+ */
+export async function resetBotWorkflow(phone) {
+    if (!phone) return false;
+    const norm = normalizeArgentinePhone(phone);
+    try {
+        const { error } = await supabase
+            .from('contact_center_conversations')
+            .update({
+                bot_active: true,
+                bot_stage: 'menu_opciones',
+                assigned_agent_id: null,
+                assigned_agent_name: null,
+                assigned_at: null,
+                status: 'sin_asignar',
+                updated_at: new Date().toISOString()
+            })
+            .eq('phone', norm);
+        return !error;
+    } catch (err) {
+        console.error('Error in resetBotWorkflow:', err);
+        return false;
+    }
+}
+
+/**
  * Actualiza los datos o variables clínicas del paciente
  */
 export async function updatePatientVariables(phone, variables) {
@@ -969,3 +691,223 @@ export async function fetchDoctorParameters(query = '') {
         return [];
     }
 }
+
+/**
+ * Guarda y persiste la Ficha CRM del Paciente vinculada a la conversación y al módulo CRM
+ */
+export async function saveCrmPatientCard({ phone, dni, nombreCompleto, obraSocial, fechaNacimiento, email, departamento, notas, motivoConsulta }) {
+    if (!phone) throw new Error('Teléfono requerido');
+    const norm = normalizeArgentinePhone(phone);
+
+    const updatePayload = {
+        dni: dni ? String(dni).trim() : null,
+        nombre_completo: nombreCompleto ? String(nombreCompleto).trim() : null,
+        obra_social: obraSocial ? String(obraSocial).trim() : null,
+        fecha_nacimiento: fechaNacimiento ? String(fechaNacimiento).trim() : null,
+        email: email ? String(email).trim() : null,
+        departamento: departamento ? String(departamento).trim() : null,
+        motivo_consulta: motivoConsulta ? String(motivoConsulta).trim() : null,
+        notas: notas !== undefined ? notas : null,
+        updated_at: new Date().toISOString()
+    };
+
+    // 1. Persistir en contact_center_conversations
+    const { error: convErr } = await supabase
+        .from('contact_center_conversations')
+        .upsert({
+            phone: norm,
+            contact_name: updatePayload.nombre_completo || 'Paciente',
+            ...updatePayload
+        }, { onConflict: 'phone' });
+
+    if (convErr) {
+        console.error('Error actualizando contact_center_conversations:', convErr);
+    }
+
+    // 2. Persistir en crm_contacts para sincronización global (Admisiones, Cirugías, etc.)
+    try {
+        await supabase
+            .from('crm_contacts')
+            .upsert({
+                phone: norm,
+                nombre: updatePayload.nombre_completo || 'Paciente',
+                dni: updatePayload.dni,
+                notas: updatePayload.notas,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'phone' });
+    } catch (crmErr) {
+        console.warn('Advertencia actualizando crm_contacts:', crmErr);
+    }
+
+    return updatePayload;
+}
+
+/**
+ * Busca datos del paciente en el padrón maestro de SALUS (hospital_pacientes)
+ */
+export async function lookupPatientFromSalus(dniOrNhc) {
+    if (!dniOrNhc || String(dniOrNhc).trim().length < 4) return null;
+    const clean = String(dniOrNhc).trim().replace(/\D/g, '');
+
+    try {
+        const { data, error } = await supabase
+            .from('hospital_pacientes')
+            .select('*')
+            .or(`dni.eq.${clean},nhc.eq.${clean}`)
+            .limit(1)
+            .maybeSingle();
+
+        if (error) throw error;
+        return data;
+    } catch (err) {
+        console.error('Error buscando paciente en hospital_pacientes:', err);
+        return null;
+    }
+}
+
+/**
+ * Cierra o archiva una conversación con motivo de resolución y auditoría de agente
+ */
+export async function closeConversationWithResolution({ chat, resolutionReason, activeAgent, currentUser }) {
+    if (!chat || !chat.phone) throw new Error('Chat o teléfono inválido');
+    const norm = normalizeArgentinePhone(chat.phone);
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+
+    const updateFields = {
+        status: 'archivado',
+        resolution_reason: resolutionReason || 'Resuelto',
+        closed_at: now.toISOString(),
+        closed_by_agent_id: activeAgent?.id || null,
+        closed_by_agent_name: activeAgent?.name || null,
+        assigned_agent_id: null,
+        assigned_agent_name: null,
+        bot_active: true, // reactivar bot para futuros contactos
+        updated_at: now.toISOString()
+    };
+
+    const { error } = await supabase
+        .from('contact_center_conversations')
+        .upsert({
+            phone: norm,
+            ...updateFields
+        }, { onConflict: 'phone' });
+
+    if (error) {
+        console.error('Error cerrando conversación:', error);
+        throw error;
+    }
+
+    return {
+        ...chat,
+        status: 'archivado',
+        assignedTo: null,
+        assignedToName: null,
+        botActive: true,
+        resolutionReason: resolutionReason || 'Resuelto',
+        messages: [
+            ...(chat.messages || []),
+            {
+                id: 'sys_' + Date.now(),
+                sender: 'system',
+                text: `${activeAgent?.name || 'Operador'} finalizó la atención con motivo: "${resolutionReason || 'Resuelto'}". Bot reactivado para el paciente.`,
+                timestamp: timeStr
+            }
+        ]
+    };
+}
+
+/**
+ * Sonido de notificación característico para nuevos mensajes entrantes (tipo WhatsApp Web)
+ * Sintetizado con Web Audio API (no requiere archivos externos)
+ */
+export function playContactCenterChime() {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+
+        // Tono 1 (880Hz - A5)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(880, ctx.currentTime);
+        gain1.gain.setValueAtTime(0.18, ctx.currentTime);
+        gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.16);
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.start(ctx.currentTime);
+        osc1.stop(ctx.currentTime + 0.16);
+
+        // Tono 2 (1175Hz - D6, ligeramente más agudo)
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(1175, ctx.currentTime + 0.13);
+        gain2.gain.setValueAtTime(0.15, ctx.currentTime + 0.13);
+        gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.start(ctx.currentTime + 0.13);
+        osc2.stop(ctx.currentTime + 0.35);
+
+        setTimeout(() => {
+            try { ctx.close(); } catch { }
+        }, 600);
+    } catch (e) {
+        console.warn('[contact-center] Audio notification prevented:', e);
+    }
+}
+
+/**
+ * Suscripción en Tiempo Real (OnLive) para el CRM de Contact Center
+ * - Escucha nuevos mensajes en whatsapp_messages para contact_center
+ * - Escucha altas y modificaciones en contact_center_conversations (reasignaciones, ficha, estado)
+ */
+export function subscribeToContactCenterRealtime({ onNewMessage, onConversationChange }) {
+    const channel = supabase
+        .channel('contact-center-onlive-hub')
+        .on(
+            'postgres_changes',
+            {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'whatsapp_messages'
+            },
+            (payload) => {
+                const msg = payload.new;
+                if (!msg) return;
+                // Aislamiento estricto: ignorar mensajes de otras líneas de la clínica
+                if (['line_recepciones', 'line_a', 'line_b', 'line_c', 'line_meta'].includes(msg.line_id)) {
+                    return;
+                }
+                if (msg.line_id && msg.line_id !== 'contact_center') {
+                    return;
+                }
+                if (msg.phone && (msg.phone.startsWith('5491203') || msg.phone.startsWith('1203'))) {
+                    return;
+                }
+                if (onNewMessage) onNewMessage(msg);
+            }
+        )
+        .on(
+            'postgres_changes',
+            {
+                event: '*',
+                schema: 'public',
+                table: 'contact_center_conversations'
+            },
+            (payload) => {
+                const changed = payload.new || payload.old;
+                if (onConversationChange && changed) {
+                    onConversationChange(changed, payload.eventType);
+                }
+            }
+        )
+        .subscribe();
+
+    return () => {
+        supabase.removeChannel(channel);
+    };
+}
+
