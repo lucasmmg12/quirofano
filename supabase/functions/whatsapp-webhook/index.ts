@@ -605,6 +605,113 @@ function findMediaUrl(obj, depth = 0) {
 }
 
 // =============================================
+// DETECCIÓN INTELIGENTE DE INTENCIONES Y PROFESIONALES (AHORRO MÁXIMO DE MENSAJES)
+// =============================================
+
+interface IntentDetectionResult {
+    intent: 'turno' | 'autorizacion' | 'info' | 'general';
+    doctorCandidate: string | null;
+    doctorRecord: any | null;
+    isExplicitNumberOption: '1' | '2' | '3' | null;
+}
+
+async function detectIntentAndEntities(supabase: any, text: string): Promise<IntentDetectionResult> {
+    const clean = text.toLowerCase().trim();
+
+    // Si respondió un número directo '1', '2' o '3'
+    if (/^[1|1️⃣]$/.test(clean) || /^opci[oó]n\s*1$/i.test(clean)) {
+        return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
+    }
+    if (/^[2|2️⃣]$/.test(clean) || /^opci[oó]n\s*2$/i.test(clean)) {
+        return { intent: 'autorizacion', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
+    }
+    if (/^[3|3️⃣]$/.test(clean) || /^opci[oó]n\s*3$/i.test(clean)) {
+        return { intent: 'info', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '3' };
+    }
+
+    // 1. Detección de Turno / Consulta / Reprogramación
+    const isTurno = /\b(turno|turnos|cita|citas|reprogramar|reprogramacion|atencion|consulta|consultar|agendar|doctor|doctora|dr\b|dra\b|medico|medica|especialista|clinico|cardiolog|pediatr|ginecolog|traumatolog|dermatolog|neurolog|urolog|oftalmolog)\b/i.test(clean);
+
+    // 2. Detección de Autorización / Prácticas / Órdenes
+    const isAutoriz = /\b(autoriz|autorizar|orden|ordenes|pedido|pedidos|receta|recetas|cobertura|coseguro|auditoria|estudio|estudios|ecografia|tomografia|resonancia|laboratorio|analisis)\b/i.test(clean);
+
+    // 3. Detección de Información / Sedes / Web
+    const isInfo = /\b(informacion|donde\s+queda|ubicacion|direccion|sede|sedes|horarios?|telefono|contacto|web|portal|precios?|particular)\b/i.test(clean);
+
+    // Extracción inteligente de nombre de doctor/médico
+    let doctorCandidate: string | null = null;
+    const docRegexes = [
+        /(?:doctor|doctora|dr|dra)\.?\s+([a-záéíóúñ]+)/i,
+        /(?:con|para)\s+(?:el\s+|la\s+)?(?:dr\.?|doctor|dra\.?|doctora)?\s*([a-záéíóúñ]{4,})/i
+    ];
+
+    for (const reg of docRegexes) {
+        const m = clean.match(reg);
+        if (m && m[1]) {
+            const word = m[1].toLowerCase().trim();
+            const ignored = ['turno', 'turnos', 'para', 'hola', 'favor', 'como', 'hacer', 'pedir', 'pedirme', 'alguna', 'algun', 'buen', 'dia', 'ustedes'];
+            if (!ignored.includes(word) && word.length >= 3) {
+                doctorCandidate = word;
+                break;
+            }
+        }
+    }
+
+    // Si no encontró por regex pero mencionó "medico" o palabras clínicas, buscar en tokens
+    if (!doctorCandidate && isTurno) {
+        const tokens = clean.split(/\s+/).filter(w => w.length >= 4 && !['quiero', 'turno', 'turnos', 'pedir', 'pedirme', 'para', 'hola', 'buenas', 'buen', 'favor', 'necesito', 'saber', 'doctor', 'medico'].includes(w));
+        if (tokens.length > 0) {
+            doctorCandidate = tokens[tokens.length - 1];
+        }
+    }
+
+    // Buscar en la base de datos de parámetros médicos de Sanatorio Argentino
+    let doctorRecord: any = null;
+    if (doctorCandidate) {
+        try {
+            const isDoctorFemale = /\b(doctora|dra\.?|la\s+doctora)\b/i.test(clean);
+            const isDoctorMale = /\b(doctor|dr\.?|el\s+doctor)\b/i.test(clean) && !isDoctorFemale;
+
+            const { data: docs } = await supabase
+                .from('contact_center_doctor_parameters')
+                .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
+                .ilike('profesional_nombre', `%${doctorCandidate}%`)
+                .limit(10);
+
+            if (docs && docs.length > 0) {
+                if (isDoctorMale) {
+                    // Priorizar médicos masculinos (sin 'DRA.')
+                    doctorRecord = docs.find((d: any) => !d.profesional_nombre.toUpperCase().includes('DRA.')) || docs[0];
+                } else if (isDoctorFemale) {
+                    // Priorizar médicas femeninas (con 'DRA.')
+                    doctorRecord = docs.find((d: any) => d.profesional_nombre.toUpperCase().includes('DRA.')) || docs[0];
+                } else {
+                    doctorRecord = docs[0];
+                }
+            }
+        } catch (e) {
+            console.warn('[intent-detector] Error consultando doctor parameters:', e);
+        }
+    }
+
+    let intent: 'turno' | 'autorizacion' | 'info' | 'general' = 'general';
+    if (isTurno || doctorRecord) {
+        intent = 'turno';
+    } else if (isAutoriz) {
+        intent = 'autorizacion';
+    } else if (isInfo) {
+        intent = 'info';
+    }
+
+    return {
+        intent,
+        doctorCandidate,
+        doctorRecord,
+        isExplicitNumberOption: null
+    };
+}
+
+// =============================================
 // MOTOR DE TRIAGE DEL CHATBOT (AHORRO DE MENSAJES Y EXTRACCIÓN CON IA)
 // =============================================
 
@@ -625,7 +732,7 @@ async function handleChatbotTriage(
         .eq('phone', phone)
         .maybeSingle();
 
-    // Si ya está asignada a un agente humano (Daniela Aguilera, Sofia Olivieri, Virginia Jacques, Erica Leal)
+    // Si ya está asignada a un agente humano (Daniela, Sofia, Virginia, Erica)
     // O si el bot fue silenciado/pausado manualmente, NO responder
     if (conv) {
         if (conv.assigned_agent_id || conv.bot_active === false) {
@@ -640,14 +747,6 @@ async function handleChatbotTriage(
     }
 
     let currentStage = conv?.bot_stage || 'inicio';
-    const isGreeting = /^(hola|buen|buenas|menu|opciones|inicio|ayuda|reiniciar|dia|tarde|noches)/i.test(cleanText);
-
-    // Si el bot está activo pero la etapa anterior era esperando_agente, o el paciente saluda/pide menú,
-    // permitir reanudar la interacción y mostrar el menú
-    if (currentStage === 'esperando_agente' || isGreeting) {
-        currentStage = (conv?.dni || paciente) ? 'menu_opciones' : 'inicio';
-    }
-
     let replyText = '';
     let nextStage = currentStage;
     let updates: Record<string, any> = {
@@ -656,7 +755,7 @@ async function handleChatbotTriage(
         updated_at: new Date().toISOString()
     };
 
-    // Helper de extracción de DNI rápido por expresión regular (7 u 8 dígitos, con o sin puntos)
+    // Helper de extracción de DNI rápido por expresión regular (7 u 8 dígitos)
     const normalizedText = cleanText.replace(/\./g, '');
     const dniMatch = cleanText.match(/\b\d{7,8}\b/) || normalizedText.match(/\b\d{7,8}\b/);
     const candidateDni = dniMatch ? dniMatch[0] : (conv?.dni || null);
@@ -711,12 +810,12 @@ async function handleChatbotTriage(
         }
     }
 
-    // ETAPA 1 & RE-EVALUACIÓN: Si el paciente está en el padrón, siempre darle la bienvenida de paciente registrado
-    if ((paciente || conv?.dni) && (currentStage === 'inicio' || currentStage === 'esperando_dni' || currentStage === 'esperando_datos_nuevo')) {
-        // CASO A: PACIENTE EXISTENTE EN EL SANATORIO
-        const fullName = (paciente?.nombre || conv?.nombre_completo || senderName || 'Paciente').trim();
-        const os = (paciente?.coseguro || conv?.obra_social || 'Particular / A confirmar').trim();
+    // Datos del paciente identificado
+    const isExistingPatient = !!(paciente || conv?.dni);
+    const fullName = (paciente?.nombre || conv?.nombre_completo || senderName || 'Paciente').trim();
+    const os = (paciente?.coseguro || conv?.obra_social || 'Particular / A confirmar').trim();
 
+    if (isExistingPatient) {
         updates = {
             ...updates,
             dni: paciente?.dni || candidateDni || conv?.dni,
@@ -726,110 +825,109 @@ async function handleChatbotTriage(
             email: paciente?.email || updates.email || conv?.email || null,
             telefono_contacto: paciente?.telefono || updates.telefono_contacto || phone,
             departamento: paciente?.centro || updates.departamento || conv?.departamento || 'San Juan',
-            es_paciente_existente: true,
-            bot_stage: 'menu_opciones',
-            bot_active: true
+            es_paciente_existente: true
         };
-        nextStage = 'menu_opciones';
+    }
 
-        // MENSAJE ÚNICO CONSOLIDADO: Reconocimiento del paciente + Cobertura + Menú de 3 opciones
-        replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos como paciente registrado con cobertura *${os}*.\n\n¿En qué podemos ayudarte hoy?\n1️⃣ *Solicitar o reprogramar un turno*\n2️⃣ *Autorizaciones y cobertura*\n3️⃣ *Información institucional, sedes o estudios*\n\nResponde con el número *1*, *2* o *3*, o escríbenos qué médico o especialidad buscas.`;
+    // 2. DETECTAR INTENCIÓN Y ENTIDADES (MÉDICO, DOCTOR, ESTUDIO)
+    const analysis = await detectIntentAndEntities(supabase, cleanText);
+    console.log(`[triage-bot] Análisis de intención para "${cleanText}":`, analysis);
 
-    } else if (currentStage === 'inicio' || currentStage === 'esperando_dni') {
-        if (!candidateDni) {
-            // El paciente escribió un saludo o consulta sin DNI:
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nPara poder gestionar tu consulta de forma ágil y verificar tu cobertura médica, por favor indícanos en un solo mensaje tu número de *DNI* (sin puntos) y tu *Nombre Completo*.`;
-            nextStage = 'esperando_dni';
-        } else {
-            // CASO B: PACIENTE NUEVO (No está registrado en el padrón hospital_pacientes)
-            updates = {
-                ...updates,
-                dni: candidateDni,
-                es_paciente_existente: false,
-                bot_stage: 'esperando_datos_nuevo',
-                bot_active: true
-            };
-            nextStage = 'esperando_datos_nuevo';
+    // Construir etiqueta de doctor si fue detectado
+    let rawDocName = analysis.doctorRecord?.profesional_nombre || (analysis.doctorCandidate ? analysis.doctorCandidate.toUpperCase() : null);
+    if (rawDocName) {
+        rawDocName = rawDocName.replace(/^\([^)]+\)\s*/, '').replace(/\s*\([^)]+\)$/, '').replace(/\s+SSLN$/i, '').trim();
+    }
+    const hasHonorific = rawDocName && /^(dr|dra)\.?/i.test(rawDocName);
+    const doctorDisplay = rawDocName ? (hasHonorific ? rawDocName : `Dr. ${rawDocName}`) : null;
+    const doctorSpecialty = analysis.doctorRecord?.especialidad ? ` (${analysis.doctorRecord.especialidad})` : '';
 
-            replyText = `¡Hola! 👋 Tu DNI *${candidateDni}* no figura en nuestro padrón activo, por lo que crearemos tu ficha de atención.\n\nPara completar tu solicitud en un solo paso, por favor responde este mensaje con:\n• *Nombre y apellido completo*\n• *Obra Social o Prepaga*\n• *Fecha de nacimiento* (DD/MM/AAAA)\n• *Email*\n• *Teléfono alternativo*\n• *Departamento donde vives* (San Juan)\n\n¡Puedes enviarnos todo junto en un solo mensaje!`;
-        }
-    } else if (currentStage === 'esperando_datos_nuevo') {
-        // El paciente nuevo respondió con sus datos:
+    // =============================================
+    // FLUJO 1: PACIENTE NUEVO RESPONDIENDO DATOS
+    // =============================================
+    if (currentStage === 'esperando_datos_nuevo') {
         const extracted = await extractPatientVariables(cleanText, candidateDni);
         updates = {
             ...updates,
             ...extracted,
-            bot_stage: 'menu_opciones',
-            bot_active: true
+            status: 'sin_asignar',
+            bot_active: false
         };
-        nextStage = 'menu_opciones';
+        nextStage = 'esperando_agente';
 
-        replyText = `¡Muchas gracias *${extracted.nombre_completo || 'por tu respuesta'}*! ✅ Ya registramos tus datos correctamente.\n\n¿En qué podemos ayudarte hoy?\n1️⃣ *Solicitar o reprogramar un turno*\n2️⃣ *Autorizaciones y cobertura*\n3️⃣ *Información institucional, sedes o estudios*\n\nPor favor responde *1*, *2* o *3*.`;
-    } else if (currentStage === 'menu_opciones') {
-        // Evaluar selección del menú o consulta abierta
-        const isOpt1 = cleanText === '1' || /turno|reprogram|medico|doctor|agenda|cita/i.test(cleanText);
-        const isOpt2 = cleanText === '2' || /autoriz|orden|coseguro|auditor/i.test(cleanText);
-        const isOpt3 = cleanText === '3' || /info|web|sede|estudio|laboratorio|direccion|telefono/i.test(cleanText);
-
-        if (isGreeting) {
-            const fullName = (conv?.nombre_completo || paciente?.nombre || senderName || 'Paciente').trim();
-            const os = (conv?.obra_social || paciente?.coseguro || 'Particular / A confirmar').trim();
-            replyText = `¡Hola *${fullName}*! 🏥 ¿En qué podemos ayudarte hoy?\n\n1️⃣ *Solicitar o reprogramar un turno*\n2️⃣ *Autorizaciones y cobertura*\n3️⃣ *Información institucional, sedes o estudios*\n\nResponde *1*, *2* o *3*, o escríbenos qué profesional o especialidad buscas.`;
-            nextStage = 'menu_opciones';
-            updates.bot_active = true;
-        } else if (isOpt1) {
-            // Opción 1: Turnos y reprogramación
-            let doctorNoteMsg = '';
-            // Buscar si mencionó el nombre de algún médico o especialidad
-            const tokens = cleanText.split(/\s+/).filter(w => w.length > 3 && !['quiero', 'turno', 'para', 'hola', 'favor'].includes(w.toLowerCase()));
-            if (tokens.length > 0) {
-                const searchKeyword = tokens[tokens.length - 1];
-                const { data: doctors } = await supabase
-                    .from('contact_center_doctor_parameters')
-                    .select('profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
-                    .ilike('profesional_nombre', `%${searchKeyword}%`)
-                    .limit(1);
-
-                if (doctors && doctors.length > 0) {
-                    const doc = doctors[0];
-                    doctorNoteMsg = `\n\n📌 *Información de ${doc.profesional_nombre}* (${doc.especialidad}):\n`;
-                    if (doc.consultorio_actual) doctorNoteMsg += `• Consultorio habitual: ${doc.consultorio_actual}\n`;
-                    if (doc.condiciones_consulta) {
-                        const shortNote = doc.condiciones_consulta.replace(/[\r\n]+/g, ' ').substring(0, 160);
-                        doctorNoteMsg += `• Parámetros de atención: ${shortNote}...\n`;
-                    }
-                }
-            }
-
-            replyText = `¡Perfecto! Hemos registrado tu solicitud de turno.${doctorNoteMsg}\nEn unos momentos, una agente de nuestro equipo (Daniela, Sofia, Virginia o Erica) tomará la conversación para coordinar fecha y horario disponible. 👩‍⚕️`;
-            updates.motivo_consulta = 'Solicitud de Turno / Reprogramación';
-            updates.status = 'sin_asignar';
-            // Silenciamos el bot inmediatamente para la intervención del agente
-            updates.bot_active = false;
-            nextStage = 'esperando_agente';
-
-        } else if (isOpt2) {
-            // Opción 2: Autorizaciones (Ahorro de mensajes: pedir foto y DNI juntos)
-            replyText = `⚠️ *Gestión de Autorizaciones*\n\nPara gestionar tu solicitud en *un solo paso*, por favor envíanos en tu próximo mensaje:\n📸 *Una foto clara de la Orden Médica*\n🔢 *Tu número de DNI* (sin puntos ni espacios)\n\n*(Recuerda que los pedidos médicos tienen una vigencia de 30 días).* 👇`;
-            updates.motivo_consulta = 'Autorizaciones de Estudios / Cobertura';
-            updates.status = 'sin_asignar';
-            updates.bot_active = false;
-            nextStage = 'esperando_agente';
-
-        } else if (isOpt3) {
-            // Opción 3: Otras consultas (Sitio Web Obligatorio)
-            replyText = `Para consultar información institucional, cartilla de profesionales, sedes y servicios de Sanatorio Argentino, puedes ingresar a nuestro sitio web oficial:\n\n🌐 *www.sanatorioargentino.com.ar*\n\nSi necesitas asistencia personalizada, aguarda en línea y una de nuestras asesoras te responderá. ¡Muchas gracias!`;
-            updates.motivo_consulta = 'Información General / Web';
-            updates.bot_active = false;
-            nextStage = 'esperando_agente';
-
+        replyText = `¡Muchas gracias *${extracted.nombre_completo || fullName}*! ✅ Registramos tus datos correctamente.\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) se pondrá en contacto en breve para coordinar tu atención. ¡Aguardá unos instantes! 👩‍⚕️`;
+    } 
+    // =============================================
+    // FLUJO 2: INTENCIÓN DETECTADA DIRECTAMENTE: TURNO / REPROGRAMACIÓN
+    // =============================================
+    else if (analysis.intent === 'turno') {
+        let doctorNoteMsg = '';
+        if (doctorDisplay) {
+            doctorNoteMsg = ` con el *${doctorDisplay}*${doctorSpecialty}`;
+            updates.medico_o_especialidad = analysis.doctorRecord?.profesional_nombre || doctorDisplay;
+            updates.motivo_consulta = `Solicitud de Turno: ${doctorDisplay}`;
         } else {
-            // Consulta abierta no tipificada
-            replyText = `Hemos recibido tu mensaje. Una agente de nuestro equipo de atención se pondrá en contacto contigo a la brevedad para asistirte. ¡Aguardá un momento por favor!`;
-            updates.motivo_consulta = cleanText.substring(0, 100);
+            updates.motivo_consulta = 'Solicitud de Turno / Consulta';
+        }
+
+        if (isExistingPatient) {
+            // AHORRO MÁXIMO DE MENSAJES: Paciente reconocido + Turno directo sin menú ambiguo
+            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos con cobertura *${os}*.\n\nCon gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\nPara agilizar tu solicitud en un solo paso, por favor indícanos:\n• ¿Tienes preferencia de días u horarios (mañana o tarde)?\n• ¿Es una primera consulta o control?\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te asignará el turno disponible en agenda. 👩‍⚕️`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
+        } else {
+            // Paciente nuevo con intención de turno: pedir datos en un único mensaje
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nCon gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\nComo no registramos atenciones previas con este número, para abrir tu ficha y coordinar tu turno en un solo mensaje, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n• *Preferencia de día y horario* (mañana o tarde)\n\nUna de nuestras asesoras te asignará el turno a la brevedad. 👩‍⚕️`;
+            updates.bot_stage = 'esperando_datos_nuevo';
+            updates.bot_active = true;
+            nextStage = 'esperando_datos_nuevo';
+        }
+    }
+    // =============================================
+    // FLUJO 3: INTENCIÓN DETECTADA DIRECTAMENTE: AUTORIZACIONES
+    // =============================================
+    else if (analysis.intent === 'autorizacion') {
+        updates.motivo_consulta = 'Autorizaciones de Estudios / Cobertura';
+
+        if (isExistingPatient) {
+            replyText = `¡Hola *${fullName}*! 🏥\n\nCon gusto te ayudamos con la *autorización* de tu estudio o práctica.\n\nPara gestionarlo en un solo paso y ahorrar tiempo, por favor envíanos:\n📸 *Una foto clara de la Orden Médica*\n🔢 *Confirmación de tu DNI*\n\n*(Recuerda que los pedidos médicos tienen vigencia de 30 días).* Nuestras asesoras lo auditarán y te responderán a la brevedad. 👇`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+        } else {
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nCon gusto te ayudamos con tu trámite de *autorización*.\n\nPor favor envíanos en tus próximos mensajes:\n📸 *Foto clara de la Orden Médica*\n🔢 *Tu DNI, Nombre Completo y Obra Social*\n\nNuestro equipo tomará tu solicitud a la brevedad. 👇`;
+            updates.bot_stage = 'esperando_datos_nuevo';
+            updates.bot_active = true;
+            nextStage = 'esperando_datos_nuevo';
+        }
+    }
+    // =============================================
+    // FLUJO 4: INFORMACIÓN GENERAL / SEDES / WEB
+    // =============================================
+    else if (analysis.intent === 'info') {
+        replyText = `Para consultar información institucional, cartilla de profesionales, sedes y servicios de Sanatorio Argentino, puedes ingresar a nuestro sitio web oficial:\n\n🌐 *www.sanatorioargentino.com.ar*\n\nSi necesitas asistencia personalizada, aguarda un momento y una de nuestras asesoras te responderá. ¡Muchas gracias!`;
+        updates.motivo_consulta = 'Información General / Web';
+        updates.status = 'sin_asignar';
+        updates.bot_active = false;
+        nextStage = 'esperando_agente';
+    }
+    // =============================================
+    // FLUJO 5: SALUDO GENERAL O SOLICITUD ABIERTA (SIN INTENCIÓN PREVIA)
+    // =============================================
+    else {
+        if (isExistingPatient) {
+            // Mostrar menú de 3 opciones claro y amigable
+            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos como paciente registrado con cobertura *${os}*.\n\n¿En qué podemos ayudarte hoy?\n1️⃣ *Solicitar o reprogramar un turno*\n2️⃣ *Autorizaciones y cobertura*\n3️⃣ *Información institucional, sedes o estudios*\n\nResponde con el número *1*, *2* o *3*, o escríbenos directamente qué médico o trámite buscas.`;
+            updates.bot_stage = 'menu_opciones';
+            updates.bot_active = true;
+            nextStage = 'menu_opciones';
+        } else {
+            // Paciente nuevo que solo saludó: pedir DNI y nombre
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nPara poder gestionar tu consulta de forma ágil y verificar tu cobertura médica, por favor indícanos en un solo mensaje tu número de *DNI* (sin puntos) y tu *Nombre Completo*.`;
+            updates.bot_stage = 'esperando_dni';
+            updates.bot_active = true;
+            nextStage = 'esperando_dni';
         }
     }
 

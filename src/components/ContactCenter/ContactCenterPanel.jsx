@@ -78,8 +78,8 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
     const isLMarinero = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim().split('@')[0]);
 
     // 1. Cargar permisos y sincronizar mensajes en vivo
-    const reloadChats = async () => {
-        setLoadingLive(true);
+    const reloadChats = async (isSilent = false) => {
+        if (!isSilent) setLoadingLive(true);
         try {
             const loaded = await fetchLiveAndDemoChats();
             setChats(loaded);
@@ -102,7 +102,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         } catch (err) {
             console.warn('Error cargando chats:', err);
         } finally {
-            setLoadingLive(false);
+            if (!isSilent) setLoadingLive(false);
         }
     };
 
@@ -114,6 +114,12 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         });
 
         reloadChats();
+
+        // Heartbeat de sincronización continua (cada 3 segundos) para garantizar que si el socket parpadea,
+        // la consola siempre esté 100% al día sin que el usuario deba tocar F5
+        const heartbeatInterval = setInterval(() => {
+            reloadChats(true);
+        }, 3000);
 
         // 2. Suscripción OnLive en Tiempo Real (Exclusivo Línea Contact Center y Conversaciones)
         const unsubscribe = subscribeToContactCenterRealtime({
@@ -274,6 +280,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         });
 
         return () => {
+            clearInterval(heartbeatInterval);
             if (unsubscribe) unsubscribe();
         };
     }, [soundEnabled]);
