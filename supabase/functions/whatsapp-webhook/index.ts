@@ -1131,15 +1131,22 @@ async function handleChatbotTriage(
     }
 
     // Si la conversación NO estaba cerrada y ya está asignada a un agente humano en vivo
-    // O si el bot fue silenciado/pausado manualmente, NO responder
+    // O si el bot fue silenciado/pausado manualmente o ya está esperando a un asesor, NO responder
     if (conv && !wasClosed) {
-        if (conv.assigned_agent_id || conv.bot_active === false) {
-            console.log(`[triage-bot] Chat ${phone} asignado a ${conv.assigned_agent_name || conv.assigned_agent_id} o bot_active=false. Bot en silencio.`);
-            await supabase.from('contact_center_conversations').update({
+        if (conv.assigned_agent_id || conv.bot_active === false || conv.bot_stage === 'esperando_agente') {
+            console.log(`[triage-bot] Chat ${phone} asignado a ${conv.assigned_agent_name || conv.assigned_agent_id}, bot_active=false o bot_stage=${conv.bot_stage}. Bot en silencio.`);
+            
+            const silentUpdates: Record<string, any> = {
                 last_message_text: cleanText,
                 last_message_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            }).eq('phone', phone);
+                updated_at: new Date().toISOString(),
+                bot_active: false // asegurar que permanezca en silencio
+            };
+            const candidateDni = cleanText.match(/\b\d{7,8}\b/)?.[0];
+            if (candidateDni && !conv.dni) {
+                silentUpdates.dni = candidateDni;
+            }
+            await supabase.from('contact_center_conversations').update(silentUpdates).eq('phone', phone);
             return;
         }
     }
@@ -1282,7 +1289,6 @@ async function handleChatbotTriage(
             ...updates,
             dni: paciente?.dni || candidateDni || conv?.dni,
             nombre_completo: fullName,
-            contact_name: fullName,
             obra_social: os,
             nhc: paciente?.nhc || conv?.nhc || null,
             fecha_nacimiento: paciente?.fecha_nacimiento || updates.fecha_nacimiento || conv?.fecha_nacimiento || null,
@@ -1392,7 +1398,6 @@ async function handleChatbotTriage(
                 ...updates,
                 dni: paciente.dni || candidateDni,
                 nombre_completo: paciente.nombre,
-                contact_name: paciente.nombre,
                 obra_social: paciente.coseguro || 'Particular / A confirmar',
                 nhc: paciente.nhc || null,
                 email: paciente.email || updates.email || null,
@@ -1414,7 +1419,6 @@ async function handleChatbotTriage(
                 ...extracted,
                 dni: candidateDni || extracted.dni || null,
                 nombre_completo: resolvedName,
-                contact_name: resolvedName,
                 status: 'sin_asignar',
                 bot_active: false,
                 es_paciente_existente: false
@@ -1799,7 +1803,14 @@ async function handleChatbotTriage(
             updates.motivo_consulta = 'Solicitud de Turno / Consulta';
         }
 
-        if (turnoOnlineProximo) {
+        const alreadyAskedTurno = lastBotMessage?.content?.includes('Te ayudamos a coordinar tu turno');
+        if (alreadyAskedTurno) {
+            console.log(`[triage-bot] Chat ${phone}: Ya se enviaron pautas de turno previamente. Bot en silencio.`);
+            replyText = '';
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+        } else if (turnoOnlineProximo) {
             replyText = `¡Hola *${fullName}*! 🏥\n\n` +
                 `📅 *Tenés un turno online agendado:*\n` +
                 `• *Profesional:* ${turnoOnlineProximo.profesional}\n` +
@@ -1829,7 +1840,14 @@ async function handleChatbotTriage(
     else if (analysis.intent === 'autorizacion') {
         updates.motivo_consulta = 'Autorizaciones de Estudios / Cobertura';
 
-        if (isExistingPatient) {
+        const alreadyAskedAutorizacion = lastBotMessage?.content?.includes('Te ayudamos con la *autorización* de tu orden médica');
+        if (alreadyAskedAutorizacion) {
+            console.log(`[triage-bot] Chat ${phone}: Ya se enviaron pautas de autorización previamente. Bot en silencio esperando al asesor.`);
+            replyText = '';
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+        } else if (isExistingPatient) {
             replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos con la *autorización* de tu orden médica.\n\nPor favor envíanos:\n📸 *Foto clara de la orden médica*\n🔢 *Confirmación de tu DNI*\n\n*(Vigencia de órdenes: 30 días).* ${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
@@ -1883,23 +1901,41 @@ async function handleChatbotTriage(
         }
     }
 
+    // Columnas válidas estrictas de contact_center_conversations para evitar fallos de schema cache en Supabase
+    const VALID_CONVERSATION_COLUMNS = new Set([
+        'phone', 'status', 'assigned_agent_id', 'assigned_agent_name', 'assigned_at',
+        'bot_active', 'bot_stage', 'dni', 'nombre_completo', 'obra_social',
+        'fecha_nacimiento', 'email', 'telefono_contacto', 'departamento',
+        'es_paciente_existente', 'motivo_consulta', 'medico_o_especialidad',
+        'last_message_text', 'last_message_at', 'created_at', 'updated_at',
+        'ai_summary', 'nhc', 'resolution_reason', 'closed_at',
+        'closed_by_agent_id', 'closed_by_agent_name'
+    ]);
+
     // Persistir o actualizar en contact_center_conversations
     updates.bot_stage = nextStage;
-    if (conv) {
-        await supabase
-            .from('contact_center_conversations')
-            .update(updates)
-            .eq('phone', phone);
-    } else {
-        await supabase
-            .from('contact_center_conversations')
-            .insert({
-                phone,
-                ...updates
-            });
+
+    const cleanUpdates: Record<string, any> = {};
+    for (const [key, val] of Object.entries(updates)) {
+        if (VALID_CONVERSATION_COLUMNS.has(key)) {
+            cleanUpdates[key] = val;
+        }
     }
 
-    // Enviar el mensaje saliente al paciente vía WhatsApp
+    const { error: upsertErr } = await supabase
+        .from('contact_center_conversations')
+        .upsert({
+            phone,
+            ...cleanUpdates
+        }, { onConflict: 'phone' });
+
+    if (upsertErr) {
+        console.error('[triage-bot] ❌ Error actualizando contact_center_conversations:', upsertErr);
+    } else {
+        console.log(`[triage-bot] ✅ Conversación ${phone} persistida (stage: ${nextStage}, bot_active: ${cleanUpdates.bot_active})`);
+    }
+
+    // Enviar el mensaje saliente al paciente vía WhatsApp SOLO si hay respuesta explícita
     if (replyText) {
         await sendBotWhatsAppReply(supabase, phone, replyText, lineId);
     }
