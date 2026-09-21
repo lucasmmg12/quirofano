@@ -1808,182 +1808,29 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 </div>
                             )}
 
-                            {/* CABECERA DE LA FICHA CRM: BOTÓN EDITAR */}
+                            {/* CABECERA DE LA FICHA DEL PACIENTE: DATOS EXCLUSIVOS SALUS */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                    Datos CRM del Paciente
+                                    Datos del Paciente
                                 </span>
-                                {!isEditingCrm ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsEditingCrm(true)}
-                                        style={{
-                                            padding: '4px 8px', borderRadius: '6px', border: '1px solid #CBD5E1',
-                                            background: '#FFFFFF', color: '#0284C7', fontSize: '0.72rem', fontWeight: 700,
-                                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
-                                        }}
-                                    >
-                                        <Edit3 size={12} /> Editar Ficha
-                                    </button>
-                                ) : (
-                                    <div style={{ display: 'flex', gap: '6px' }}>
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsEditingCrm(false)}
-                                            style={{
-                                                padding: '4px 8px', borderRadius: '6px', border: '1px solid #CBD5E1',
-                                                background: '#FFFFFF', color: '#64748B', fontSize: '0.72rem', fontWeight: 600,
-                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px'
-                                            }}
-                                        >
-                                            <X size={12} /> Cancelar
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={handleSaveCrm}
-                                            disabled={isSavingCrm}
-                                            style={{
-                                                padding: '4px 10px', borderRadius: '6px', border: 'none',
-                                                background: '#0284C7', color: '#FFFFFF', fontSize: '0.72rem', fontWeight: 700,
-                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
-                                            }}
-                                        >
-                                            <Save size={12} /> {isSavingCrm ? 'Guardando...' : 'Guardar'}
-                                        </button>
-                                    </div>
-                                )}
+                                <span style={{
+                                    fontSize: '0.66rem',
+                                    fontWeight: 700,
+                                    color: '#0369A1',
+                                    background: '#F0F9FF',
+                                    border: '1px solid #BAE6FD',
+                                    padding: '3px 8px',
+                                    borderRadius: '6px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}>
+                                    <Lock size={11} color="#0284C7" /> Exclusivo SALUS
+                                </span>
                             </div>
 
-                            {/* FORMULARIO EDITABLE DE FICHA CRM */}
-                            {isEditingCrm ? (
-                                <form onSubmit={handleSaveCrm} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                    {/* DNI con Búsqueda en SALUS */}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>DNI / IDENTIFICACIÓN</label>
-                                        <div style={{ display: 'flex', gap: '6px' }}>
-                                            <input 
-                                                type="text"
-                                                value={crmForm.dni}
-                                                onChange={(e) => setCrmForm(p => ({ ...p, dni: e.target.value }))}
-                                                placeholder="Ej: 34123456"
-                                                style={{ flex: 1, padding: '7px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem', outline: 'none' }}
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={handleLookupSalus}
-                                                disabled={isSearchingSalus}
-                                                title="Buscar datos en el Padrón SALUS"
-                                                style={{
-                                                    padding: '7px 10px', borderRadius: '6px', border: '1px solid #0284C7',
-                                                    background: '#F0F9FF', color: '#0284C7', fontWeight: 700, fontSize: '0.72rem',
-                                                    cursor: 'pointer', whiteSpace: 'nowrap'
-                                                }}
-                                            >
-                                                {isSearchingSalus ? 'Buscando...' : 'Padrón SALUS 🔍'}
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Nombre Completo */}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>NOMBRE COMPLETO</label>
-                                        <input 
-                                            type="text"
-                                            value={crmForm.pacienteNombre}
-                                            onChange={(e) => setCrmForm(p => ({ ...p, pacienteNombre: e.target.value }))}
-                                            placeholder="Apellido y Nombre"
-                                            style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem', outline: 'none' }}
-                                        />
-                                    </div>
-
-                                    {/* Obra Social */}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>OBRA SOCIAL / PREPAGA</label>
-                                        <input 
-                                            type="text"
-                                            value={crmForm.obraSocial}
-                                            onChange={(e) => setCrmForm(p => ({ ...p, obraSocial: e.target.value }))}
-                                            placeholder="Ej: OSP, Swiss Medical, OSDE"
-                                            style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem', outline: 'none' }}
-                                        />
-                                    </div>
-
-                                    {/* Email */}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>EMAIL</label>
-                                        <input 
-                                            type="email"
-                                            value={crmForm.email}
-                                            onChange={(e) => setCrmForm(p => ({ ...p, email: e.target.value }))}
-                                            placeholder="paciente@ejemplo.com"
-                                            style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem', outline: 'none' }}
-                                        />
-                                    </div>
-
-                                    {/* Fecha de Nacimiento */}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>FECHA DE NACIMIENTO</label>
-                                        <input 
-                                            type="text"
-                                            value={crmForm.fechaNacimiento}
-                                            onChange={(e) => setCrmForm(p => ({ ...p, fechaNacimiento: e.target.value }))}
-                                            placeholder="DD/MM/AAAA"
-                                            style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem', outline: 'none' }}
-                                        />
-                                    </div>
-
-                                    {/* Departamento */}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>DEPARTAMENTO / LOCALIDAD</label>
-                                        <input 
-                                            type="text"
-                                            value={crmForm.departamento}
-                                            onChange={(e) => setCrmForm(p => ({ ...p, departamento: e.target.value }))}
-                                            placeholder="Ej: Capital, Rawson, Rivadavia"
-                                            style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem', outline: 'none' }}
-                                        />
-                                    </div>
-
-                                    {/* Motivo de Consulta */}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>MOTIVO / SOLICITUD</label>
-                                        <input 
-                                            type="text"
-                                            value={crmForm.motivoConsulta}
-                                            onChange={(e) => setCrmForm(p => ({ ...p, motivoConsulta: e.target.value }))}
-                                            placeholder="Motivo principal"
-                                            style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.82rem', outline: 'none' }}
-                                        />
-                                    </div>
-
-                                    {/* Notas CRM */}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>NOTAS PERMANENTES CRM</label>
-                                        <textarea 
-                                            rows={3}
-                                            value={crmForm.notas}
-                                            onChange={(e) => setCrmForm(p => ({ ...p, notas: e.target.value }))}
-                                            placeholder="Observaciones de seguimiento para el equipo..."
-                                            style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.8rem', outline: 'none', resize: 'vertical' }}
-                                        />
-                                    </div>
-
-                                    <button
-                                        type="submit"
-                                        disabled={isSavingCrm}
-                                        style={{
-                                            padding: '9px 14px', borderRadius: '8px', border: 'none',
-                                            background: '#0284C7', color: '#FFFFFF', fontWeight: 700, fontSize: '0.82rem',
-                                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                                            boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)'
-                                        }}
-                                    >
-                                        <Save size={14} /> {isSavingCrm ? 'Guardando...' : 'Guardar Ficha en CRM'}
-                                    </button>
-                                </form>
-                            ) : (
-                                /* VISTA INSTITUCIONAL LIMPIA Y CLÍNICA DE LA FICHA CRM */
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {/* VISTA INSTITUCIONAL LIMPIA Y CLÍNICA DE LA FICHA DEL PACIENTE (SOLO LECTURA SALUS) */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     {/* ALERTA ACCESO RÁPIDO: TURNOS PRÓXIMOS & ONLINE DEL PACIENTE */}
                                     {patientHistory?.turnosProximos && patientHistory.turnosProximos.length > 0 && (
                                         <div style={{
@@ -2120,7 +1967,6 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         </div>
                                     )}
                                 </div>
-                            )}
                         </>
                     )}
 
