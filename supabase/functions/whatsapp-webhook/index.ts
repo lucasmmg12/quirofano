@@ -321,6 +321,16 @@ Deno.serve(async (req) => {
             } catch (triageError: any) {
                 console.error('[webhook] Error en handleChatbotTriage (non-fatal):', triageError?.message || triageError);
             }
+
+            // Actualizar automáticamente el Resumen IA de la Consulta para la pantalla del operador
+            fetch(`${SUPABASE_URL}/functions/v1/contact-center-chat-summary`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+                },
+                body: JSON.stringify({ phone })
+            }).catch(aiErr => console.warn('[webhook] Background chat summary error:', aiErr?.message || aiErr));
         }
 
         return new Response(

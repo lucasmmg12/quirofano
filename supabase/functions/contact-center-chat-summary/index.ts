@@ -53,15 +53,16 @@ Deno.serve(async (req) => {
             .eq('phone', phone)
             .maybeSingle();
 
-        // 2. Obtener mensajes recientes del chat
+        // 2. Obtener los mensajes más RECIENTES del chat (orden descendente para tomar los últimos, luego revertir para OpenAI)
         const { data: rawMessages } = await supabase
             .from('whatsapp_messages')
             .select('*')
             .eq('phone', phone)
-            .order('created_at', { ascending: true })
+            .order('created_at', { ascending: false })
             .limit(40);
 
-        const messages = rawMessages || [];
+        // Invertir para presentar la conversación en orden cronológico real a OpenAI
+        const messages = (rawMessages || []).reverse();
 
         if (messages.length === 0 && !conv) {
             return new Response(JSON.stringify({ error: 'No messages or conversation found for this phone' }), {
@@ -82,28 +83,29 @@ Deno.serve(async (req) => {
         }).join('\n\n');
 
         // 3. Ejecutar análisis con OpenAI GPT-4o
-        console.log(`[chat-summary] Analizando conversación para ${phone} con ${messages.length} mensajes...`);
+        console.log(`[chat-summary] Analizando conversación para ${phone} con los ${messages.length} mensajes más recientes...`);
 
         const prompt = `Eres el Asistente Clínico y Administrativo de Inteligencia Artificial del Contact Center de Sanatorio Argentino en San Juan, Argentina.
 Tu misión es asistir al OPERADOR humano (las agentes de atención) resumiendo de forma exacta qué necesita el paciente, qué datos aportó y qué médico o prestador está involucrado.
 
-IMPORTANTE: El paciente NO verá este texto; es exclusivamente para la pantalla de la operadora.
+IMPORTANTE: El paciente NO verá este texto; es exclusivamente para la pantalla de la operadora. Prioriza los mensajes más recientes para entender la solicitud actual del paciente.
 
 Analiza el siguiente historial de conversación y los datos del paciente:
 
-DATOS ACTUALES REGISTRADOS:
+DATOS ACTUALES REGISTRADOS EN FICHA:
 - Nombre: ${conv?.nombre_completo || 'No informado'}
 - DNI: ${conv?.dni || 'No informado'}
 - Obra Social: ${conv?.obra_social || 'No informada'}
-- Motivo: ${conv?.motivo_consulta || 'No especificado'}
+- Motivo Registrado: ${conv?.motivo_consulta || 'No especificado'}
+- Médico/Especialidad en Ficha: ${conv?.medico_o_especialidad || 'No especificado'}
 - Teléfono: ${phone}
 
-HISTORIAL DE CHAT:
+HISTORIAL DE CHAT RECIENTE (Cronológico):
 ${chatTranscript || 'Sin mensajes de texto todavía.'}
 
 Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura exacta:
 {
-  "resumen_solicitud": "Resumen conciso y directo en 1 o 2 oraciones de qué necesita el paciente y qué trámite está solicitando (ej: 'El paciente solicita autorización de ecodoppler de vasos de cuello indicado por el Dr. Correa Gustavo por HTA')",
+  "resumen_solicitud": "Resumen conciso y directo en 1 o 2 oraciones de qué necesita el paciente y qué trámite está solicitando (ej: 'El paciente solicita turno para consulta médica con el Dr. Correa Gustavo')",
   "tipo_tramite": "Turno nuevo | Reprogramación de turno | Autorización de estudio | Consulta por guardia | Información general | Otro",
   "datos_paciente": {
     "nombre_completo": "Nombre y apellido del paciente detectado o null",
@@ -115,11 +117,11 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
     "es_paciente_existente": true/false/null
   },
   "doctor_detectado": {
-    "nombre_aproximado": "Nombre o apellido del médico mencionado por el paciente o que figura en el sello de la orden (ej: 'Correa', 'Correa Gustavo', 'Mariana Godoy', 'Orlando Gomez') o null si no se menciona ningún doctor",
-    "especialidad_mencionada": "Especialidad médica mencionada (ej: Cardiología, Ecografía, Pediatría) o null",
-    "estudio_solicitado": "Nombre de la práctica o estudio solicitada (ej: Ecodoppler, Consulta médica, etc.) o null"
+    "nombre_aproximado": "Nombre o apellido del médico mencionado por el paciente (ej: 'Correa', 'Correa Gustavo', 'Mariana Godoy', 'Orlando Gomez') o null si no se menciona ningún doctor",
+    "especialidad_mencionada": "Especialidad médica mencionada (ej: Medicina Familiar, Cardiología, Ecografía, Pediatría) o null",
+    "estudio_solicitado": "Nombre de la práctica o estudio solicitada (ej: Consulta médica, Ecodoppler, etc.) o null"
   }
-}`;
+} `;
 
         const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
@@ -148,35 +150,83 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
 
         // 4. Búsqueda automática de parámetros del prestador si se detectó médico
         let matchedDoctor = null;
-        const detectedDoctorName = parsed.doctor_detectado?.nombre_aproximado;
+        let detectedDoctorName = parsed.doctor_detectado?.nombre_aproximado;
+        if (!detectedDoctorName && conv?.medico_o_especialidad) {
+            detectedDoctorName = conv.medico_o_especialidad;
+        }
 
         if (detectedDoctorName && detectedDoctorName.length >= 3) {
+            const isDoctorFemale = /\b(doctora|dra\.?)\b/i.test(detectedDoctorName) || /\b(doctora|dra\.?)\b/i.test(chatTranscript);
+            const isDoctorMale = (/\b(doctor|dr\.?)\b/i.test(detectedDoctorName) || /\b(doctor|dr\.?)\b/i.test(chatTranscript)) && !isDoctorFemale;
+
             // Limpiar palabras comunes ("dr", "dra", "doctor", "doctora")
             const cleanDocSearch = detectedDoctorName
                 .replace(/\b(dr|dra|doctor|doctora)\b\.?/gi, '')
+                .replace(/^\([^)]+\)\s*/, '')
+                .replace(/\s*\([^)]+\)$/, '')
                 .trim();
 
-            const words = cleanDocSearch.split(/\s+/).filter((w: string) => w.length >= 3);
+            const words = cleanDocSearch.split(/\s+/).filter((w: string) => w.length >= 3 && !['ssln', 'sanatorio'].includes(w.toLowerCase()));
 
-            for (const word of words) {
-                const { data: docs } = await supabase
-                    .from('contact_center_doctor_parameters')
-                    .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
-                    .ilike('profesional_nombre', `%${word}%`)
-                    .limit(3);
+            // 1. Prioridad: Búsqueda compuesta con todos los tokens (ej: "Correa" AND "Gustavo")
+            if (words.length >= 2) {
+                try {
+                    let compQuery = supabase
+                        .from('contact_center_doctor_parameters')
+                        .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta');
 
-                if (docs && docs.length > 0) {
-                    // Preferir el que tenga condiciones_consulta cargadas
-                    const best = docs.find((d: any) => d.condiciones_consulta) || docs[0];
-                    matchedDoctor = {
-                        id: best.id,
-                        profesional_nombre: best.profesional_nombre,
-                        especialidad: best.especialidad,
-                        consultorio_actual: best.consultorio_actual,
-                        condiciones_consulta: best.condiciones_consulta,
-                        coincidencia: word
-                    };
-                    break;
+                    for (const w of words) {
+                        compQuery = compQuery.ilike('profesional_nombre', `%${w}%`);
+                    }
+
+                    const { data: compDocs } = await compQuery.limit(5);
+                    if (compDocs && compDocs.length > 0) {
+                        const best = compDocs.find((d: any) => d.condiciones_consulta) || compDocs[0];
+                        matchedDoctor = {
+                            id: best.id,
+                            profesional_nombre: best.profesional_nombre,
+                            especialidad: best.especialidad,
+                            consultorio_actual: best.consultorio_actual,
+                            condiciones_consulta: best.condiciones_consulta,
+                            coincidencia: words.join(' ')
+                        };
+                    }
+                } catch (compErr) {
+                    console.warn('[chat-summary] Error en búsqueda compuesta de doctor:', compErr);
+                }
+            }
+
+            // 2. Fallback: búsqueda palabra por palabra respetando género
+            if (!matchedDoctor) {
+                for (const word of words) {
+                    const { data: docs } = await supabase
+                        .from('contact_center_doctor_parameters')
+                        .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
+                        .ilike('profesional_nombre', `%${word}%`)
+                        .limit(10);
+
+                    if (docs && docs.length > 0) {
+                        let best = docs[0];
+                        if (isDoctorMale) {
+                            best = docs.find((d: any) => !d.profesional_nombre.toUpperCase().includes('DRA.') && d.condiciones_consulta) || 
+                                   docs.find((d: any) => !d.profesional_nombre.toUpperCase().includes('DRA.')) || docs[0];
+                        } else if (isDoctorFemale) {
+                            best = docs.find((d: any) => d.profesional_nombre.toUpperCase().includes('DRA.') && d.condiciones_consulta) || 
+                                   docs.find((d: any) => d.profesional_nombre.toUpperCase().includes('DRA.')) || docs[0];
+                        } else {
+                            best = docs.find((d: any) => d.condiciones_consulta) || docs[0];
+                        }
+
+                        matchedDoctor = {
+                            id: best.id,
+                            profesional_nombre: best.profesional_nombre,
+                            especialidad: best.especialidad,
+                            consultorio_actual: best.consultorio_actual,
+                            condiciones_consulta: best.condiciones_consulta,
+                            coincidencia: word
+                        };
+                        break;
+                    }
                 }
             }
         }
