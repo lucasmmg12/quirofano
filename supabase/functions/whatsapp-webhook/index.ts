@@ -690,12 +690,10 @@ function isContactCenterOpen(now: Date = new Date()): boolean {
  */
 function getAgentHandoffNotice(): string {
     const open = isContactCenterOpen();
-    const webNotice = `🌐 Para más información institucional, cartilla médica y servicios podés visitar nuestra web oficial:\n👉 https://www.sanatorioargentino.com.ar/`;
-
     if (open) {
-        return `Una de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contestando en breve dentro de nuestro horario de atención (lunes a viernes de 7:30 a 21:00 hs y sábados de 8:00 a 12:00 hs). Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. El bot quedará en pausa mientras una asesora toma tu caso. 👩‍⚕️\n\n${webNotice}`;
+        return `👩‍⚕️ Una de nuestras asesoras te responderá a la brevedad dentro del horario habitual (Lun a Vie 7:30 a 21:00 hs / Sáb 8:00 a 12:00 hs). El bot quedará en pausa.\n\n🌐 https://www.sanatorioargentino.com.ar/`;
     } else {
-        return `Nuestro horario de atención del Contact Center es de *lunes a viernes de 7:30 a 21:00 hs* y *sábados de 8:00 a 12:00 hs*.\n\nEn este momento nos encontramos fuera de horario de atención. El bot quedará en pausa y dejamos tu consulta registrada para que una de nuestras asesoras te responda al inicio del *próximo día hábil*. 👩‍⚕️\n\n🚨 *Si presentas una urgencia médica*, recordá que Sanatorio Argentino cuenta con servicio permanente de *Guardias Médicas las 24 horas* en Sede 01 (San Luis 432 Oeste) con Clínica, Pediatría, Ginecología y Obstetricia, Cardiología y Cirugía pasiva.\n\n${webNotice}`;
+        return `🕒 Estamos fuera del horario de atención (Lun a Vie 7:30 a 21:00 hs / Sáb 8:00 a 12:00 hs). El bot queda en pausa y te responderemos al inicio del próximo día hábil.\n🚨 *Guardias 24 hs:* Sede 01 (San Luis 432 O) activa.\n\n🌐 https://www.sanatorioargentino.com.ar/`;
     }
 }
 
@@ -1220,19 +1218,12 @@ async function handleChatbotTriage(
         updates.motivo_consulta = 'Chequeo Preventivo de Salud';
         updates.medico_o_especialidad = 'Circuito Chequeo Preventivo';
 
-        const infoChequeo = `El *Chequeo Preventivo de Salud* de Sanatorio Argentino es un circuito integral diseñado para que puedas realizarte todos tus estudios médicos de rutina en una sola mañana (aproximadamente 4 horas), sin traslados.\n\n` +
-            `🩺 *¿Qué incluye el circuito?*\n` +
-            `• Consulta clínica integral (apertura y cierre con recomendaciones de salud personalizadas)\n` +
-            `• Análisis de laboratorio completos de sangre y orina\n` +
-            `• Evaluación cardiológica con Electrocardiograma (ECG)\n` +
-            `• Diagnóstico por imágenes: Radiografía de tórax y Ecografías de control\n` +
-            `• Estudios complementarios según tu edad y perfil (ej: mamografía, densitometría)\n\n` +
-            `🌐 *Podés ver toda la información detallada del circuito aquí:*\n` +
-            `👉 https://www.sanatorioargentino.com.ar/chequeo-preventivo-de-salud.html\n\n` +
-            `Para este chequeo no es necesario elegir un médico en particular: nuestro equipo del Contact Center coordina todas las consultas y especialistas del circuito por vos.`;
+        const infoChequeo = `El *Chequeo Preventivo de Salud* te permite realizar todos tus estudios de rutina en una sola mañana (laboratorio, imágenes, cardiología y clínica) sin traslados.\n\n` +
+            `👉 Más detalles: https://www.sanatorioargentino.com.ar/chequeo-preventivo-de-salud.html\n\n` +
+            `Nuestro equipo coordina todos los especialistas por vos.`;
 
         if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos con cobertura *${os}*.\n\n${infoChequeo}\n\n${getAgentHandoffNotice()}`;
+            replyText = `¡Hola *${fullName}*! 🏥\n\n${infoChequeo}\n\n${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
@@ -1525,20 +1516,19 @@ async function handleChatbotTriage(
         }
 
         if (turnoOnlineProximo) {
-            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos como paciente registrado con cobertura *${os}*.\n\n` +
-                `📅 *Vemos en nuestro sistema que ya tenés un turno agendado online:*\n` +
+            replyText = `¡Hola *${fullName}*! 🏥\n\n` +
+                `📅 *Vemos en el sistema tu turno agendado online:*\n` +
                 `• *Profesional:* ${turnoOnlineProximo.profesional}\n` +
-                `• *Fecha:* ${turnoOnlineProximo.fecha}\n` +
-                `• *Horario:* ${turnoOnlineProximo.hora} hs\n` +
-                `• *Agenda / Servicio:* ${turnoOnlineProximo.agenda}\n\n` +
-                `Si tu consulta es para *confirmar, reprogramar o cancelar* este turno, indícanoslo por favor. Si necesitás coordinar una nueva cita adicional, dinos con qué médico o especialidad.\n\n${getAgentHandoffNotice()}`;
+                `• *Fecha y Hora:* ${turnoOnlineProximo.fecha} a las ${turnoOnlineProximo.hora} hs\n` +
+                `• *Agenda:* ${turnoOnlineProximo.agenda}\n\n` +
+                `¿Deseás confirmar, reprogramar o consultar sobre este turno?\n\n${getAgentHandoffNotice()}`;
             updates.motivo_consulta = `Turno Online: ${turnoOnlineProximo.profesional} (${turnoOnlineProximo.fecha} ${turnoOnlineProximo.hora} hs)`;
             updates.medico_o_especialidad = turnoOnlineProximo.profesional;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
         } else if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos con cobertura *${os}*.\n\nCon gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\nPara agilizar tu solicitud en un solo paso, por favor indícanos:\n• ¿Tenés preferencia de días u horarios (mañana o tarde)?\n• ¿Es una primera consulta o control?\n\n${getAgentHandoffNotice()}`;
+            replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\nPor favor indícanos:\n• ¿Preferencia de día u horario (mañana o tarde)?\n• ¿Primera consulta o control?\n\n${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
