@@ -823,7 +823,7 @@ export async function lookupPatientFromSalus(query) {
  * Mensaje oficial obligatorio de finalización de atención y encuesta de satisfacción (5 estrellas)
  */
 export const FINAL_ATTENTION_MESSAGE = `¡Gracias por comunicarte con el Sanatorio Argentino! 🏥
-Damos por finaliazada esta conversación.
+Damos por finalizada esta conversación.
 Si nuestra atención te fue de ayuda hoy, nos sumarías un montón dejándonos 5 estrellas aquí: https://oqdslqa.s.gy/sede1 ⭐
 ¡Que tengas un excelente día!`;
 
