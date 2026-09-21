@@ -1166,13 +1166,52 @@ async function handleChatbotTriage(
 
     // Búsqueda en el padrón maestro de SALUS (hospital_pacientes)
     // 1. Prioridad: Mapeo automático por TELÉFONO (+549..., 549..., 264..., 15..., 54..., etc.)
+    // Si hay varios pacientes vinculados al mismo teléfono (ej: madre e hijos), la RPC devuelve primero al de MAYOR EDAD (madre/titular).
     let paciente: any = null;
+    let familiaresDetectados: any[] = [];
     if (phone) {
         try {
             const { data: rpcRes, error: rpcErr } = await supabase.rpc('buscar_paciente_por_telefono', { p_telefono: phone });
             if (!rpcErr && rpcRes && rpcRes.length > 0) {
+                familiaresDetectados = rpcRes;
+                // Por defecto: persona de mayor edad (madre / titular a cargo)
                 paciente = rpcRes[0];
-                console.log(`[triage-bot] Paciente mapeado automáticamente por Teléfono ${phone}: ${paciente.nombre} (DNI: ${paciente.dni}, NHC: ${paciente.nhc}, OS: ${paciente.coseguro})`);
+                console.log(`[triage-bot] Paciente principal (mayor edad/madre) por Teléfono ${phone}: ${paciente.nombre} (${paciente.edad} años)`);
+
+                // Si hay más de un miembro familiar en la misma línea telefónica:
+                if (familiaresDetectados.length > 1) {
+                    const textLower = cleanText.toLowerCase();
+
+                    // A. ¿El usuario escribió el DNI de algún familiar específico?
+                    const matchDniFam = familiaresDetectados.find(f => f.dni && textLower.includes(String(f.dni).trim()));
+                    if (matchDniFam) {
+                        paciente = matchDniFam;
+                        console.log(`[triage-bot] Conmutado a familiar por DNI explícito en mensaje: ${paciente.nombre} (DNI: ${paciente.dni})`);
+                    } else {
+                        // B. ¿El usuario menciona el nombre de pila de algún familiar? (ej: "Felipe", "Sofia", etc.)
+                        const matchNombreFam = familiaresDetectados.find(f => {
+                            const raw = (f.nombre || '').toLowerCase();
+                            // Si formato es "APELLIDO, NOMBRE" extraer NOMBRE
+                            const pName = raw.includes(',') ? raw.split(',')[1].trim().split(' ')[0] : raw.split(' ')[0];
+                            return pName && pName.length >= 3 && new RegExp(`\\b${pName}\\b`, 'i').test(textLower);
+                        });
+
+                        if (matchNombreFam) {
+                            paciente = matchNombreFam;
+                            console.log(`[triage-bot] Conmutado a familiar por mención de nombre ("${matchNombreFam.nombre}") en mensaje.`);
+                        } else if (/\b(hijo|hija|nene|nena|bebe|bebé|niño|niña|pediatra|pediatria|pediatría)\b/i.test(textLower)) {
+                            // C. Si menciona que es para su hijo/a o pediatría, y hay un menor de edad en el grupo familiar
+                            const menorFam = familiaresDetectados.find(f => {
+                                const ed = parseInt(String(f.edad || '99').replace(/\D/g, ''), 10);
+                                return !isNaN(ed) && ed < 18;
+                            });
+                            if (menorFam) {
+                                paciente = menorFam;
+                                console.log(`[triage-bot] Conmutado a hijo/menor familiar por palabra clave de pediatría/hijo: ${paciente.nombre} (${paciente.edad} años)`);
+                            }
+                        }
+                    }
+                }
             }
         } catch (e) {
             console.warn('[triage-bot] Error llamando buscar_paciente_por_telefono:', e);
@@ -1183,7 +1222,7 @@ async function handleChatbotTriage(
     if (!paciente && candidateDni) {
         const { data: pByDni, error: pacError } = await supabase
             .from('hospital_pacientes')
-            .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro')
+            .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
             .eq('dni', candidateDni)
             .limit(1)
             .maybeSingle();
@@ -1196,20 +1235,22 @@ async function handleChatbotTriage(
         }
     }
 
-    // 3. Fallback de búsqueda textual en teléfono si falló la RPC
+    // 3. Fallback de búsqueda textual en teléfono si falló la RPC (ordenando por edad descendente para priorizar a la madre)
     if (!paciente && phone) {
         const rawPhoneDigits = phone.replace(/\D/g, '');
         const last7 = rawPhoneDigits.slice(-7);
         if (last7.length >= 6) {
-            const { data: pByPhone } = await supabase
+            const { data: pByPhoneList } = await supabase
                 .from('hospital_pacientes')
-                .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro')
+                .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
                 .ilike('telefono', `%${last7}%`)
-                .limit(1)
-                .maybeSingle();
-            if (pByPhone) {
-                paciente = pByPhone;
-                console.log(`[triage-bot] Paciente encontrado por fallback Teléfono ${last7}: ${paciente.nombre}`);
+                .order('edad', { ascending: false })
+                .limit(5);
+
+            if (pByPhoneList && pByPhoneList.length > 0) {
+                familiaresDetectados = pByPhoneList;
+                paciente = pByPhoneList[0];
+                console.log(`[triage-bot] Paciente encontrado por fallback Teléfono ${last7} (prioridad edad): ${paciente.nombre} (${paciente.edad} años)`);
             }
         }
     }

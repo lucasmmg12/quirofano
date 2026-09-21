@@ -15,7 +15,7 @@ import {
     MASTER_ADMINS, toggleBotActive, fetchDoctorParameters,
     saveCrmPatientCard, lookupPatientFromSalus, resetBotWorkflow,
     analyzeMedicalOrderImage, generateChatAiSummary,
-    FINAL_ATTENTION_MESSAGE, isClosedOrArchived
+    FINAL_ATTENTION_MESSAGE, isClosedOrArchived, fetchFamilyMembersByPhone
 } from '../../services/contactCenterService';
 import { fetchPacienteDetalle } from '../../services/pacienteUnificadoService';
 import { 
@@ -147,11 +147,12 @@ export default function ContactCenterChatConsole({
     // Estados Resumen IA del Paciente y Prestador
     const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
     const [aiSummaryData, setAiSummaryData] = useState(null);
+    const [familyMembers, setFamilyMembers] = useState([]);
 
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
     const selectedChat = chats.find(c => c.id === activeChatId) || chats[0] || {};
 
-    // Sincronizar formulario CRM y Resumen IA cuando cambia el chat activo
+    // Sincronizar formulario CRM, familiares y Resumen IA cuando cambia el chat activo
     useEffect(() => {
         if (selectedChat) {
             const initialDni = selectedChat.customFields?.dni && selectedChat.customFields?.dni !== 'A verificar' ? selectedChat.customFields?.dni : '';
@@ -167,6 +168,19 @@ export default function ContactCenterChatConsole({
             });
             setIsEditingCrm(false);
             setAiSummaryData(selectedChat.aiSummary || null);
+
+            // Consultar si hay más de un familiar vinculado al mismo número de teléfono
+            if (selectedChat.phone) {
+                fetchFamilyMembersByPhone(selectedChat.phone).then(fams => {
+                    if (Array.isArray(fams) && fams.length > 1) {
+                        setFamilyMembers(fams);
+                    } else {
+                        setFamilyMembers([]);
+                    }
+                }).catch(() => setFamilyMembers([]));
+            } else {
+                setFamilyMembers([]);
+            }
 
             // Si no tiene DNI mapeado o faltan datos esenciales (fecha de nacimiento, email), resolver en background con SALUS
             const currentFechaNac = selectedChat.customFields?.fechaNacimiento;
@@ -202,6 +216,51 @@ export default function ContactCenterChatConsole({
             }
         }
     }, [selectedChat?.id, selectedChat?.phone, selectedChat?.aiSummary]);
+
+    // Conmutar ficha activa a otro miembro del grupo familiar
+    const handleSelectFamilyMember = async (fam) => {
+        if (!fam) return;
+        const birth = fam.fecha_nacimiento || '';
+        const formattedBirth = birth.includes('/') ? birth : (birth.includes('-') ? `${birth.split('-')[2]}/${birth.split('-')[1]}/${birth.split('-')[0]}` : birth);
+
+        const updated = {
+            dni: fam.dni || '',
+            pacienteNombre: fam.nombre || '',
+            obraSocial: fam.coseguro || crmForm.obraSocial || '',
+            fechaNacimiento: formattedBirth || crmForm.fechaNacimiento || '',
+            email: fam.email || crmForm.email || '',
+            departamento: fam.centro || crmForm.departamento || 'San Juan'
+        };
+
+        setCrmForm(prev => ({ ...prev, ...updated }));
+
+        if (selectedChat.customFields) {
+            selectedChat.customFields.dni = fam.dni;
+            selectedChat.customFields.nhc = fam.nhc;
+            selectedChat.customFields.pacienteNombre = fam.nombre;
+            selectedChat.customFields.obraSocial = fam.coseguro;
+            selectedChat.customFields.fechaNacimiento = formattedBirth;
+            selectedChat.customFields.email = fam.email || selectedChat.customFields.email;
+            selectedChat.customFields.esPacienteExistente = true;
+        }
+        selectedChat.contactName = fam.nombre;
+
+        try {
+            await saveCrmPatientCard({
+                phone: selectedChat.phone,
+                dni: fam.dni,
+                nombreCompleto: fam.nombre,
+                obraSocial: fam.coseguro,
+                fechaNacimiento: formattedBirth,
+                email: fam.email,
+                departamento: fam.centro || 'San Juan',
+                motivoConsulta: crmForm.motivoConsulta
+            });
+            showToast(`Ficha vinculada a ${fam.nombre}`, 'success');
+        } catch (err) {
+            console.warn('Error guardando conmutación de ficha familiar:', err);
+        }
+    };
 
     // Sincronizar catálogo institucional de respuestas rápidas de Contact Center
     useEffect(() => {
@@ -2164,6 +2223,101 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                     </div>
                                                 </div>
                                             ))}
+                                        </div>
+                                    )}
+
+                                    {/* SELECTOR DE GRUPO FAMILIAR VINCULADO (MADRE E HIJOS) */}
+                                    {familyMembers && familyMembers.length > 1 && (
+                                        <div style={{
+                                            background: '#F8FAFC',
+                                            border: '1.5px solid #E2E8F0',
+                                            borderRadius: '8px',
+                                            padding: '10px 12px',
+                                            marginBottom: '8px'
+                                        }}>
+                                            <div style={{
+                                                fontSize: '0.66rem',
+                                                fontWeight: 800,
+                                                color: '#334155',
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.04em',
+                                                marginBottom: '8px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between'
+                                            }}>
+                                                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    👨‍👩‍👧 GRUPO FAMILIAR ({familyMembers.length})
+                                                </span>
+                                                <span style={{ fontSize: '0.62rem', color: '#0284C7', fontWeight: 700 }}>
+                                                    Prioridad: Mayor Edad (Madre)
+                                                </span>
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                {familyMembers.map((fam) => {
+                                                    const isCurrent = String(crmForm.dni) === String(fam.dni) || (selectedChat.customFields?.dni && String(selectedChat.customFields.dni) === String(fam.dni));
+                                                    const edadNum = parseInt(String(fam.edad || '0').replace(/\D/g, ''), 10);
+                                                    const isMinor = !isNaN(edadNum) && edadNum < 18;
+                                                    const icon = isMinor ? '👦' : (fam.sexo === 'F' ? '👩' : '👨');
+
+                                                    return (
+                                                        <button
+                                                            key={fam.id_paciente || fam.dni}
+                                                            type="button"
+                                                            onClick={() => handleSelectFamilyMember(fam)}
+                                                            style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'space-between',
+                                                                padding: '6px 10px',
+                                                                borderRadius: '6px',
+                                                                border: isCurrent ? '1.5px solid #0284C7' : '1px solid #CBD5E1',
+                                                                background: isCurrent ? '#EFF6FF' : '#FFFFFF',
+                                                                cursor: 'pointer',
+                                                                textAlign: 'left',
+                                                                transition: 'all 0.15s ease'
+                                                            }}
+                                                            title={`Clic para conmutar ficha a ${fam.nombre}`}
+                                                        >
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{ fontSize: '1rem' }}>{icon}</span>
+                                                                <div>
+                                                                    <div style={{
+                                                                        fontSize: '0.78rem',
+                                                                        fontWeight: isCurrent ? 800 : 600,
+                                                                        color: isCurrent ? '#0369A1' : '#1E293B'
+                                                                    }}>
+                                                                        {fam.nombre}
+                                                                    </div>
+                                                                    <div style={{ fontSize: '0.66rem', color: '#64748B' }}>
+                                                                        DNI: {fam.dni} • {fam.edad ? `${fam.edad} años` : 'Edad s/d'}{fam.nhc ? ` • #${fam.nhc}` : ''}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            {isCurrent ? (
+                                                                <span style={{
+                                                                    fontSize: '0.62rem',
+                                                                    fontWeight: 800,
+                                                                    background: '#0284C7',
+                                                                    color: '#FFFFFF',
+                                                                    padding: '2px 6px',
+                                                                    borderRadius: '4px'
+                                                                }}>
+                                                                    ACTIVO
+                                                                </span>
+                                                            ) : (
+                                                                <span style={{
+                                                                    fontSize: '0.64rem',
+                                                                    color: '#0284C7',
+                                                                    fontWeight: 700
+                                                                }}>
+                                                                    Asignar →
+                                                                </span>
+                                                            )}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
                                     )}
 

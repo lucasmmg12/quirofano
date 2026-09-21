@@ -843,19 +843,33 @@ export async function saveCrmPatientCard({ phone, dni, nombreCompleto, obraSocia
  * Busca datos del paciente por teléfono en el padrón maestro de SALUS (hospital_pacientes)
  * Admite todos los formatos: +549..., 549..., 264..., 15..., 54..., o últimos dígitos locales.
  */
+export async function fetchFamilyMembersByPhone(phone) {
+    if (!phone || String(phone).replace(/\D/g, '').length < 6) return [];
+    try {
+        const { data, error } = await supabase.rpc('buscar_familiares_por_telefono', { p_telefono: String(phone) });
+        if (!error && Array.isArray(data) && data.length > 0) {
+            return data;
+        }
+    } catch (e) {
+        console.warn('Error en fetchFamilyMembersByPhone:', e);
+    }
+    return [];
+}
+
 export async function lookupPatientByPhone(phone) {
     if (!phone || String(phone).replace(/\D/g, '').length < 6) return null;
     let patient = null;
     try {
         const { data, error } = await supabase.rpc('buscar_paciente_por_telefono', { p_telefono: String(phone) });
         if (!error && data && data.length > 0) {
+            // El primer resultado siempre es la persona de mayor edad (madre/titular adulto)
             patient = data[0];
         }
     } catch (err) {
         console.warn('Advertencia ejecutando RPC buscar_paciente_por_telefono:', err);
     }
 
-    // Fallback de búsqueda con ILIKE por los últimos 7 dígitos
+    // Fallback de búsqueda con ILIKE por los últimos 7 dígitos ordenando por mayor edad (madre)
     if (!patient) {
         try {
             const clean = String(phone).replace(/\D/g, '');
@@ -865,6 +879,7 @@ export async function lookupPatientByPhone(phone) {
                     .from('hospital_pacientes')
                     .select('*')
                     .ilike('telefono', `%${last7}%`)
+                    .order('edad', { ascending: false })
                     .limit(1)
                     .maybeSingle();
                 if (data) patient = data;
