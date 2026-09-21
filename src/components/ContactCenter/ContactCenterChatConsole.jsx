@@ -1754,59 +1754,6 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 </div>
                             </div>
 
-                            {/* ACCESO RÁPIDO: ESTADO DE TURNOS PRÓXIMOS */}
-                            {patientHistory?.turnosProximos && patientHistory.turnosProximos.length > 0 ? (
-                                <div style={{
-                                    background: '#ECFDF5',
-                                    border: '1.5px solid #6EE7B7',
-                                    borderRadius: '10px',
-                                    padding: '10px 12px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '6px'
-                                }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#065F46', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                            <Calendar size={13} color="#059669" />
-                                            TIENE TURNOS PRÓXIMOS ({patientHistory.turnosProximos.length})
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={() => setActiveDetailTab('historial')}
-                                            style={{ background: 'none', border: 'none', color: '#047857', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer', textDecoration: 'underline' }}
-                                        >
-                                            Ver en Historial ↗
-                                        </button>
-                                    </div>
-                                    {patientHistory.turnosProximos.slice(0, 2).map((tp, idx) => (
-                                        <div key={idx} style={{ fontSize: '0.74rem', color: '#0F172A', fontWeight: 700, background: '#FFFFFF', padding: '5px 8px', borderRadius: '6px', border: '1px solid #A7F3D0' }}>
-                                            📅 {tp.fecha_visita} {tp.hora_visita ? `(${tp.hora_visita} hs)` : ''} • {tp.medico || 'Profesional Asignado'} {tp.origen === 'online' ? '🌐 ONLINE' : '🏥 PRESENCIAL'}
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div style={{
-                                    background: '#F8FAFC',
-                                    border: '1px solid #E2E8F0',
-                                    borderRadius: '8px',
-                                    padding: '8px 10px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between'
-                                }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
-                                        <Calendar size={12} color="#94A3B8" />
-                                        Turnos próximos: <strong>Sin turnos pendientes</strong>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setActiveDetailTab('historial')}
-                                        style={{ background: 'none', border: 'none', color: '#0284C7', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}
-                                    >
-                                        Ver Historial ↗
-                                    </button>
-                                </div>
-                            )}
 
                             {/* CABECERA DE LA FICHA DEL PACIENTE: DATOS EXCLUSIVOS SALUS */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
