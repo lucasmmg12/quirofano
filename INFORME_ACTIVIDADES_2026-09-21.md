@@ -3,13 +3,18 @@
 **Fecha:** Lunes, 21 de Septiembre de 2026  
 **Líder Técnico / Consultor:** Grow Labs Integrado  
 **Supervisión / Operaciones:** Lic. Lucas Marinero  
-**Sistema:** Plataforma Sanatorio Argentino (ADM-QUI & Contact Center Omnicanal)
+**Sistema:** Plataforma Sanatorio Argentino (ADM-QUI & Contact Center Omnicanal)  
+**Repositorio Oficial GitHub:** [github.com/lucasmmg12/quirofano](https://github.com/lucasmmg12/quirofano)  
+**Historial de Commits en Vivo (Auditoría):** [github.com/lucasmmg12/quirofano/commits/main](https://github.com/lucasmmg12/quirofano/commits/main)
 
 ---
 
 ## 🎯 1. Resumen Ejecutivo de la Jornada
 
 Durante la jornada del 21 de septiembre de 2026 se llevó a cabo un sprint integral de desarrollo, estabilización y puesta a punto operativa sobre el ecosistema de **Contact Center**, **Chatbot Institucional WhatsApp** y la integración directa en tiempo real con el padrón hospitalario **SALUS** y **Supabase**.
+
+Todos los cambios y tareas descritos en este informe cuentan con trazabilidad pública/institucional y pueden ser auditados de forma transparente commit a commit en el repositorio oficial:
+👉 **[Ver historial completo de commits del 21/09/2026 en GitHub](https://github.com/lucasmmg12/quirofano/commits/main)**
 
 Los objetivos cumplidos abarcaron desde la arquitectura de seguridad y permisos (RBAC para agentes autorizadas), análisis clínico automatizado con Inteligencia Artificial (visión computacional sobre pedidos médicos), optimización integral del flujo del paciente en el chatbot, incorporación masiva del catálogo oficial de respuestas rápidas de AsisteClick (93 plantillas activas), visor profesional multiformato de documentos médicos y la resolución definitiva de casos de gestión familiar y tiempos de respuesta.
 

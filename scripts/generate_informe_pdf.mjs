@@ -130,7 +130,7 @@ async function generateReportPdf() {
             doc.setFontSize(7);
             doc.setFont(fontName, 'normal');
             doc.setTextColor(...COLORS.mutedText);
-            doc.text('Sanatorio Argentino SRL · Plataforma Sanatorio Argentino · Documento Oficial de Auditoría de Trabajo', margin, pageH - 7);
+            doc.text('Sanatorio Argentino SRL · Plataforma Sanatorio Argentino · GitHub: github.com/lucasmmg12/quirofano', margin, pageH - 7);
             doc.text(`Página ${i} de ${pageCount}`, pageW - margin, pageH - 7, { align: 'right' });
         }
     }
@@ -220,7 +220,31 @@ async function generateReportPdf() {
         doc.text(splitCard, cx + 3, y + 9.5);
     });
 
-    y += 24;
+    y += 22;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // AUDITORÍA Y TRAZABILIDAD EN GITHUB (Link oficial verificable)
+    // ═══════════════════════════════════════════════════════════════════
+    doc.setFillColor(240, 249, 255); // #F0F9FF azul tenue clínico
+    doc.roundedRect(margin, y, colW, 13, 2, 2, 'F');
+    doc.setDrawColor(186, 230, 253); // #BAE6FD
+    doc.roundedRect(margin, y, colW, 13, 2, 2, 'S');
+
+    doc.setFontSize(7.2);
+    doc.setFont(fontName, 'bold');
+    doc.setTextColor(...COLORS.tagFeat);
+    doc.text('AUDITORIA DE CODIGO Y TRAZABILIDAD EN GITHUB (REPOSITORIO OFICIAL):', margin + 4, y + 4.8);
+
+    doc.setFontSize(6.8);
+    doc.setFont(fontName, 'normal');
+    doc.setTextColor(...COLORS.darkText);
+    doc.text('Comprobación de commits en vivo:', margin + 4, y + 9.2);
+
+    doc.setFont(fontName, 'bold');
+    doc.setTextColor(2, 132, 199);
+    doc.textWithLink('https://github.com/lucasmmg12/quirofano/commits/main', margin + 46, y + 9.2, { url: 'https://github.com/lucasmmg12/quirofano/commits/main' });
+
+    y += 18;
 
     // ═══════════════════════════════════════════════════════════════════
     // SECCIÓN 2: CRONOGRAMA HORARIO DE ACTIVIDADES Y COMMITS (TABLA)
@@ -349,7 +373,8 @@ async function generateReportPdf() {
         "• Validación Técnica: Se ejecutó npm run build finalizando con código de salida 0 (sin advertencias críticas de Rollup ni fallos de dependencias).\n" +
         "• Conectividad SALUS: El servicio sync-server se encuentra operando en el puerto 3456 con conexión estable a 128.223.16.29:2450.\n" +
         "• Catálogo Oficial: Las 93 respuestas rápidas de AsisteClick se encuentran persistidas en la tabla contact_center_quick_replies con variables funcionales.\n" +
-        "• Experiencia de Usuario: Se regularizó el orden cronológico del chat y se corrigió el scroll para asegurar la visualización inmediata de los mensajes.";
+        "• Experiencia de Usuario: Se regularizó el orden cronológico del chat y se corrigió el scroll para asegurar la visualización inmediata de los mensajes.\n" +
+        "• Auditoría de Código (GitHub): Repositorio oficial https://github.com/lucasmmg12/quirofano/commits/main con trazabilidad pública/inmutable de cada commit.";
 
     doc.setFontSize(7.8);
     doc.setFont(fontName, 'normal');
@@ -385,10 +410,20 @@ async function generateReportPdf() {
     // Agregar pie de página a todas las hojas creadas
     addFooters();
 
-    // Guardar archivo en disco
-    const outputPath = path.resolve('INFORME_TRABAJO_2026_09_21_LUCAS_MARINERO.pdf');
+    // Guardar archivo en disco con fallback si está abierto por el usuario
+    let outputPath = path.resolve('INFORME_TRABAJO_2026_09_21_LUCAS_MARINERO.pdf');
     const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
-    fs.writeFileSync(outputPath, pdfBuffer);
+    try {
+        fs.writeFileSync(outputPath, pdfBuffer);
+    } catch (writeErr) {
+        if (writeErr.code === 'EBUSY') {
+            outputPath = path.resolve('INFORME_TRABAJO_2026_09_21_LUCAS_MARINERO_GITHUB.pdf');
+            fs.writeFileSync(outputPath, pdfBuffer);
+            console.warn(`⚠️ El archivo original está abierto por el lector de PDF. Se guardó una copia actualizada en: ${outputPath}`);
+        } else {
+            throw writeErr;
+        }
+    }
 
     console.log(`✓ Archivo PDF generado exitosamente: ${outputPath} (${pdfBuffer.length} bytes)`);
 }
