@@ -4,7 +4,7 @@ import {
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
     ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain, Users, PackageCheck, Microscope,
     Activity, FileSpreadsheet, BookMarked, FolderOpen, Receipt, FileCheck, Shield, Wrench, ShieldCheck,
-    Headphones, AlertTriangle
+    Headphones, AlertTriangle, MessageSquare, CalendarCheck, PlusCircle
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { canUserAccessContactCenter } from '../services/contactCenterService';
@@ -19,7 +19,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const isModuleVisible = (id) => {
         if (isContactCenterOnly) {
             // Strictly Contact Center and Simon IA chat only
-            return ['contact_center', 'turnos_online', 'beto', 'simon'].includes(id);
+            return ['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'beto', 'simon'].includes(id);
         }
 
         if (!selectedModules || selectedModules.length === 0) return true;
@@ -31,7 +31,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         }
         
         // Normal users always see config, manual, actividad_usuarios, Simon IA, Gobernanza and Contact Center if permitted
-        if (['config', 'manual', 'actividad_usuarios', 'contact_center', 'turnos_online', 'beto', 'beto_rules', 'beto_analytics', 'simon', 'gobernanza', 'gobernanza_indicadores'].includes(id)) return true;
+        if (['config', 'manual', 'actividad_usuarios', 'contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'beto', 'beto_rules', 'beto_analytics', 'simon', 'gobernanza', 'gobernanza_indicadores'].includes(id)) return true;
         
         return selectedModules.includes(id);
     };
@@ -41,7 +41,9 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const [cirugiasOpen, setCirugiasOpen] = useState(false);
     const [simonOpen, setSimonOpen] = useState(false);
     const [gobernanzaOpen, setGobernanzaOpen] = useState(false);
-    const [contactCenterOpen, setContactCenterOpen] = useState(() => ['contact_center', 'turnos_online'].includes(activeView) || isContactCenterOnly);
+    const [contactCenterOpen, setContactCenterOpen] = useState(() => 
+        ['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'].includes(activeView) || isContactCenterOnly
+    );
 
     // Sub-items dentro de "Gobernanza"
     const gobernanzaSubItems = [
@@ -89,18 +91,29 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         { id: 'laboratorios', label: 'Anatomía Pat.', icon: Microscope },
     ].filter(i => isModuleVisible(i.id));
 
-    // Sub-items dentro de "Contact Center"
+    // Sub-items dentro de "Contact Center" (con submódulos de Consola y Chats)
     const contactCenterSubItems = [
-        { id: 'contact_center', label: 'Consola y Chats', icon: Headphones },
-        { id: 'turnos_online', label: 'Turnos Online Duplicados', icon: AlertTriangle },
-    ].filter(i => isModuleVisible(i.id));
+        { 
+            id: 'contact_center', 
+            label: 'Consola y Chats', 
+            icon: Headphones,
+            subChildren: [
+                { id: 'contact_center_chats', label: 'Chats', icon: MessageSquare },
+                { id: 'contact_center_semana', label: 'Semana', icon: CalendarCheck },
+                { id: 'contact_center_nueva', label: '+ Nueva Conv.', icon: PlusCircle },
+                { id: 'turnos_online', label: 'Turnos', icon: AlertTriangle, badge: 'Alertas' },
+                { id: 'contact_center_metricas', label: 'Métricas', icon: BarChart3 },
+            ]
+        },
+        { id: 'turnos_online_duplicados', originalId: 'turnos_online', label: 'Turnos Online Duplicados', icon: AlertTriangle },
+    ].filter(i => isModuleVisible(i.originalId || i.id));
 
     const isPedidosActive = pedidosSubItems.some(i => activeView === i.id);
     const isMensajeriaActive = mensajeriaSubItems.some(i => activeView === i.id);
     const isAltasActive = altasSubItems.some(i => activeView === i.id);
     const isCirugiasActive = cirugiasSubItems.some(i => activeView === i.id);
     const isSimonActive = simonSubItems.some(i => activeView === i.id);
-    const isContactCenterActive = contactCenterSubItems.some(i => activeView === i.id);
+    const isContactCenterActive = ['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'].includes(activeView);
 
     useEffect(() => {
         if (isContactCenterActive) {
@@ -148,13 +161,14 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         if (collapsed) {
             return subItems.map(item => {
                 const Icon = item.icon;
-                const isActive = activeView === item.id;
+                const targetId = item.originalId || item.id;
+                const isActive = activeView === targetId || (item.subChildren && item.subChildren.some(c => c.id === activeView));
                 return (
                     <Link
                         key={item.id}
-                        to={item.id === 'inicio' ? '/' : `/${item.id}`}
+                        to={targetId === 'inicio' ? '/' : `/${targetId}`}
                         className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
-                        onClick={() => onViewChange && onViewChange(item.id, true)}
+                        onClick={() => onViewChange && onViewChange(targetId, true)}
                         title={item.label}
                         style={{ display: 'flex', textDecoration: 'none' }}
                     >
@@ -196,19 +210,84 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     }}>
                         {subItems.map(item => {
                             const Icon = item.icon;
-                            const isActive = activeView === item.id;
+                            const targetId = item.originalId || item.id;
+                            const hasChildren = item.subChildren && item.subChildren.length > 0;
+                            const isChildActive = hasChildren && item.subChildren.some(c => 
+                                activeView === c.id || (c.id === 'contact_center_chats' && activeView === 'contact_center')
+                            );
+                            const isActive = activeView === targetId || isChildActive;
+
                             return (
-                                <Link
-                                    key={item.id}
-                                    to={item.id === 'inicio' ? '/' : `/${item.id}`}
-                                    className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
-                                    onClick={() => onViewChange && onViewChange(item.id, true)}
-                                    style={{ paddingLeft: '14px', fontSize: '0.8rem', display: 'flex', textDecoration: 'none' }}
-                                >
-                                    <Icon size={17} className="sidebar__item-icon" />
-                                    <span className="sidebar__item-label">{item.label}</span>
-                                    {isActive && <div className="sidebar__item-indicator" />}
-                                </Link>
+                                <div key={item.id} style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <Link
+                                        to={targetId === 'inicio' ? '/' : `/${targetId}`}
+                                        className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
+                                        onClick={() => onViewChange && onViewChange(targetId, true)}
+                                        style={{ paddingLeft: '14px', fontSize: '0.8rem', display: 'flex', textDecoration: 'none' }}
+                                    >
+                                        <Icon size={17} className="sidebar__item-icon" />
+                                        <span className="sidebar__item-label" style={{ flex: 1 }}>{item.label}</span>
+                                        {isActive && <div className="sidebar__item-indicator" />}
+                                    </Link>
+
+                                    {/* Sub-módulos anidados (ej: de Consola y Chats) */}
+                                    {hasChildren && (
+                                        <div style={{
+                                            marginLeft: '22px',
+                                            borderLeft: '1.5px solid rgba(255, 255, 255, 0.15)',
+                                            paddingLeft: '4px',
+                                            marginTop: '2px',
+                                            marginBottom: '6px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '2px'
+                                        }}>
+                                            {item.subChildren.map(child => {
+                                                const ChildIcon = child.icon;
+                                                const isThisChildActive = activeView === child.id || (child.id === 'contact_center_chats' && activeView === 'contact_center');
+                                                return (
+                                                    <Link
+                                                        key={child.id}
+                                                        to={`/${child.id}`}
+                                                        className={`sidebar__item ${isThisChildActive ? 'sidebar__item--active' : ''}`}
+                                                        onClick={() => onViewChange && onViewChange(child.id, true)}
+                                                        style={{
+                                                            paddingLeft: '10px',
+                                                            paddingTop: '5px',
+                                                            paddingBottom: '5px',
+                                                            fontSize: '0.74rem',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            textDecoration: 'none',
+                                                            borderRadius: '6px',
+                                                            background: isThisChildActive ? 'rgba(56, 189, 248, 0.18)' : 'transparent',
+                                                            color: isThisChildActive ? '#FFFFFF' : 'rgba(255, 255, 255, 0.7)',
+                                                            fontWeight: isThisChildActive ? 700 : 500,
+                                                            transition: 'all 0.12s ease'
+                                                        }}
+                                                    >
+                                                        <ChildIcon size={13} style={{ marginRight: '7px', color: isThisChildActive ? '#38BDF8' : 'rgba(255, 255, 255, 0.6)' }} />
+                                                        <span style={{ flex: 1 }}>{child.label}</span>
+                                                        {child.badge && (
+                                                            <span style={{
+                                                                background: '#EF4444',
+                                                                color: '#FFFFFF',
+                                                                fontSize: '0.58rem',
+                                                                padding: '1px 5px',
+                                                                borderRadius: '8px',
+                                                                fontWeight: 800,
+                                                                marginRight: '6px'
+                                                            }}>
+                                                                {child.badge}
+                                                            </span>
+                                                        )}
+                                                        {isThisChildActive && <div className="sidebar__item-indicator" style={{ height: '14px' }} />}
+                                                    </Link>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
                             );
                         })}
                     </div>

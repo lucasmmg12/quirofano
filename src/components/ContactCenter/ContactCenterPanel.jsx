@@ -22,14 +22,21 @@ import {
 import { normalizeArgentinePhone } from '../../services/builderbotApi';
 import { supabase } from '../../lib/supabase';
 
-export default function ContactCenterPanel({ currentUser, addToast, initialTab = 'conversaciones' }) {
+export default function ContactCenterPanel({ currentUser, addToast, initialTab = 'conversaciones', onTabChange }) {
     const [activeSubTab, setActiveSubTab] = useState(initialTab);
 
     useEffect(() => {
-        if (initialTab) {
+        if (initialTab && initialTab !== activeSubTab) {
             setActiveSubTab(initialTab);
         }
     }, [initialTab]);
+
+    const handleNavigateTab = (newTab) => {
+        setActiveSubTab(newTab);
+        if (onTabChange) {
+            onTabChange(newTab);
+        }
+    };
     const [chats, setChats] = useState([]);
     const [activeChatId, setActiveChatId] = useState(null);
     const [allowedUsers, setAllowedUsers] = useState(['lmarinero', 'daniela', 'sofia', 'virginia', 'erica']);
@@ -462,7 +469,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         overflowX: 'auto'
                     }}>
                         <button
-                            onClick={() => setActiveSubTab('conversaciones')}
+                            onClick={() => handleNavigateTab('conversaciones')}
                             style={{
                                 padding: '6px 12px', borderRadius: '6px', border: 'none',
                                 fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
@@ -484,7 +491,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         </button>
 
                         <button
-                            onClick={() => setActiveSubTab('mi_semana')}
+                            onClick={() => handleNavigateTab('mi_semana')}
                             style={{
                                 padding: '6px 12px', borderRadius: '6px', border: 'none',
                                 fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
@@ -499,7 +506,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         </button>
 
                         <button
-                            onClick={() => setActiveSubTab('nueva_conversacion')}
+                            onClick={() => handleNavigateTab('nueva_conversacion')}
                             style={{
                                 padding: '6px 12px', borderRadius: '6px', border: 'none',
                                 fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
@@ -514,7 +521,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         </button>
 
                         <button
-                            onClick={() => setActiveSubTab('turnos_online')}
+                            onClick={() => handleNavigateTab('turnos_online')}
                             style={{
                                 padding: '6px 12px', borderRadius: '6px', border: 'none',
                                 fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
@@ -536,7 +543,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         </button>
 
                         <button
-                            onClick={() => setActiveSubTab('metricas')}
+                            onClick={() => handleNavigateTab('metricas')}
                             style={{
                                 padding: '6px 12px', borderRadius: '6px', border: 'none',
                                 fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
@@ -552,7 +559,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
                         {isLMarinero && (
                             <button
-                                onClick={() => setActiveSubTab('permisos')}
+                                onClick={() => handleNavigateTab('permisos')}
                                 style={{
                                     padding: '6px 12px', borderRadius: '6px', border: 'none',
                                     fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
@@ -681,7 +688,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     currentUser={currentUser}
                     addToast={addToast}
                     onOpenChatWithPhone={handleOpenChatWithPhone}
-                    onBackToConsole={() => setActiveSubTab('conversaciones')}
+                    onBackToConsole={() => handleNavigateTab('conversaciones')}
                 />
             )}
 
@@ -704,7 +711,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     onTransferChat={handleTransferChat}
                     onCloseChat={handleCloseChat}
                     activeSubTab={activeSubTab}
-                    onNavigateTab={setActiveSubTab}
+                    onNavigateTab={handleNavigateTab}
                     onSwitchAgent={setActiveAgent}
                     soundEnabled={soundEnabled}
                     onToggleSound={toggleSound}
@@ -719,7 +726,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     chats={chats}
                     activeAgent={activeAgent}
                     onSelectChat={handleSelectChatFromSummary}
-                    onNavigateTab={setActiveSubTab}
+                    onNavigateTab={handleNavigateTab}
                 />
             )}
 
@@ -727,7 +734,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 <ContactCenterNuevaConversacion 
                     activeAgent={activeAgent}
                     onCreateChat={handleCreateChat}
-                    onNavigateTab={setActiveSubTab}
+                    onNavigateTab={handleNavigateTab}
                 />
             )}
 

@@ -170,7 +170,11 @@ const VIEW_LABELS = {
     activos: 'Gestión de Activos',
     liquidaciones: 'Liquidaciones Médicas',
     contact_center: 'Contact Center',
+    contact_center_chats: 'Contact Center - Chats',
+    contact_center_semana: 'Contact Center - Mi Semana',
+    contact_center_nueva: 'Contact Center - Nueva Conversación',
     turnos_online: 'Turnos Online Duplicados',
+    contact_center_metricas: 'Contact Center - Métricas y Costos',
 };
 
 function App({ currentUser, onLogout }) {
@@ -229,7 +233,8 @@ function App({ currentUser, onLogout }) {
                 setSelectedModules(['contact_center', 'turnos_online', 'beto']);
                 setNeedsModuleOnboarding(false);
                 setShowModuleOnboarding(false);
-                if (activeView === 'inicio' || !['contact_center', 'turnos_online', 'beto', 'simon'].includes(activeView)) {
+                const CC_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'beto', 'simon'];
+                if (activeView === 'inicio' || !CC_VIEWS.includes(activeView)) {
                     navigate('/contact_center', { replace: true });
                 }
                 return;
@@ -278,9 +283,10 @@ function App({ currentUser, onLogout }) {
     useEffect(() => {
         const username = (currentUser?.usuario || '').toLowerCase().trim();
         const isContactCenterOnly = ['daguilera', 'vjacques', 'solivier', 'eleal', 'daniela', 'sofia', 'virginia', 'erica'].includes(username);
+        const CC_ALL_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'];
 
         if (isContactCenterOnly) {
-            const ALLOWED_VIEWS = ['contact_center', 'turnos_online', 'beto', 'simon'];
+            const ALLOWED_VIEWS = [...CC_ALL_VIEWS, 'beto', 'simon'];
             if (!ALLOWED_VIEWS.includes(activeView)) {
                 setActiveView('contact_center');
             }
@@ -294,7 +300,7 @@ function App({ currentUser, onLogout }) {
         if (selectedModules.length === 1 && selectedModules[0] !== 'config') {
             isVisible = selectedModules.includes(activeView);
         } else {
-            if (['config', 'manual', 'actividad_usuarios', 'contact_center', 'turnos_online', 'beto', 'simon', 'beto_rules', 'beto_analytics', 'gobernanza', 'gobernanza_indicadores'].includes(activeView)) isVisible = true;
+            if (['config', 'manual', 'actividad_usuarios', ...CC_ALL_VIEWS, 'beto', 'simon', 'beto_rules', 'beto_analytics', 'gobernanza', 'gobernanza_indicadores'].includes(activeView)) isVisible = true;
             else if (ALWAYS_VISIBLE.includes(activeView)) isVisible = true;
             else isVisible = selectedModules.includes(activeView);
         }
@@ -303,7 +309,7 @@ function App({ currentUser, onLogout }) {
             isVisible = false;
         }
 
-        if ((activeView === 'contact_center' || activeView === 'turnos_online') && !canUserAccessContactCenter(currentUser)) {
+        if (CC_ALL_VIEWS.includes(activeView) && !canUserAccessContactCenter(currentUser)) {
             isVisible = false;
         }
 
@@ -833,11 +839,29 @@ function App({ currentUser, onLogout }) {
                     <ActivosPanel currentUser={currentUser} addToast={addToast} />
                 )}
 
-                {(activeView === 'contact_center' || activeView === 'turnos_online') && canUserAccessContactCenter(currentUser) && (
+                {['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'].includes(activeView) && canUserAccessContactCenter(currentUser) && (
                     <ContactCenterPanel 
                         currentUser={currentUser} 
                         addToast={addToast} 
-                        initialTab={activeView === 'turnos_online' ? 'turnos_online' : 'conversaciones'} 
+                        initialTab={
+                            activeView === 'contact_center_semana' ? 'mi_semana' :
+                            activeView === 'contact_center_nueva' ? 'nueva_conversacion' :
+                            activeView === 'turnos_online' ? 'turnos_online' :
+                            activeView === 'contact_center_metricas' ? 'metricas' :
+                            'conversaciones'
+                        }
+                        onTabChange={(tab) => {
+                            const tabToView = {
+                                conversaciones: 'contact_center_chats',
+                                mi_semana: 'contact_center_semana',
+                                nueva_conversacion: 'contact_center_nueva',
+                                turnos_online: 'turnos_online',
+                                metricas: 'contact_center_metricas',
+                            };
+                            if (tabToView[tab] && activeView !== tabToView[tab]) {
+                                setActiveView(tabToView[tab]);
+                            }
+                        }}
                     />
                 )}
 
