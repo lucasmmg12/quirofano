@@ -8,7 +8,7 @@ import {
     Power, Sparkles, Stethoscope, DollarSign, CreditCard,
     Edit3, Save, X, History, Activity, FileCheck, RefreshCw,
     Zap, CalendarCheck, PlusCircle, ShieldCheck, BarChart3, Volume2, VolumeX,
-    GripVertical
+    GripVertical, Download, ZoomIn, ZoomOut, RotateCw, Copy
 } from 'lucide-react';
 import { 
     CONTACT_CENTER_AGENTS, getAgentById, isChatLockedForUser, 
@@ -100,6 +100,65 @@ export default function ContactCenterChatConsole({
     const [, setForceUpdate] = useState(0);
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
+
+    // Estado del Visor Profesional de Documentos y Órdenes Médicas
+    const [viewerImage, setViewerImage] = useState(null); 
+    const [viewerZoom, setViewerZoom] = useState(1);
+    const [viewerRotation, setViewerRotation] = useState(0);
+    const [isDownloadingImage, setIsDownloadingImage] = useState(false);
+    const [copiedViewerData, setCopiedViewerData] = useState(false);
+
+    // Atajos de teclado en el visor profesional
+    useEffect(() => {
+        if (!viewerImage) return;
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                setViewerImage(null);
+            } else if (e.key === '+' || e.key === '=') {
+                setViewerZoom(z => Math.min(4, +(z + 0.25).toFixed(2)));
+            } else if (e.key === '-') {
+                setViewerZoom(z => Math.max(0.5, +(z - 0.25).toFixed(2)));
+            } else if (e.key === 'r' || e.key === 'R') {
+                setViewerRotation(r => (r + 90) % 360);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [viewerImage]);
+
+    // Descarga profesional directa sin redirigir a enlaces externos
+    const handleDownloadViewerImage = async () => {
+        if (!viewerImage?.url) return;
+        try {
+            setIsDownloadingImage(true);
+            const res = await fetch(viewerImage.url);
+            const blob = await res.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+            const safeName = (viewerImage.senderName || 'orden_medica')
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, '_')
+                .replace(/_+/g, '_');
+            const filename = `${safeName}_${Date.now().toString().slice(-6)}.jpg`;
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(blobUrl);
+        } catch (err) {
+            console.error('Error descargando imagen vía blob:', err);
+            const a = document.createElement('a');
+            a.href = viewerImage.url;
+            a.download = 'orden_medica.jpg';
+            a.target = '_self';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        } finally {
+            setIsDownloadingImage(false);
+        }
+    };
 
     // Helper de validación de nombres genéricos que NUNCA deben mostrarse como contacto
     const isGenericName = (name) => {
@@ -1524,11 +1583,40 @@ export default function ContactCenterChatConsole({
                                         {msg.type === 'image' && (
                                             <div style={{ marginBottom: '8px', maxWidth: '340px' }}>
                                                 <div 
-                                                    style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid #E2E8F0', cursor: 'pointer' }}
-                                                    onClick={() => msg.mediaUrl && window.open(msg.mediaUrl, '_blank')}
-                                                    title="Click para ver imagen completa"
+                                                    style={{ 
+                                                        borderRadius: '8px', 
+                                                        overflow: 'hidden', 
+                                                        border: '1px solid #CBD5E1', 
+                                                        cursor: 'pointer',
+                                                        position: 'relative',
+                                                        boxShadow: '0 2px 6px rgba(0,0,0,0.06)'
+                                                    }}
+                                                    onClick={() => {
+                                                        if (!msg.mediaUrl) return;
+                                                        setViewerZoom(1);
+                                                        setViewerRotation(0);
+                                                        setCopiedViewerData(false);
+                                                        setViewerImage({
+                                                            url: msg.mediaUrl,
+                                                            caption: msg.caption,
+                                                            orderAnalysis: msg.orderAnalysis,
+                                                            senderName: selectedChat?.contactName || msg.senderName || 'Paciente',
+                                                            dni: selectedChat?.dni,
+                                                            timestamp: msg.timestamp
+                                                        });
+                                                    }}
+                                                    title="Click para abrir en el visor profesional integrado"
                                                 >
-                                                    <img src={msg.mediaUrl} alt={msg.caption || 'Foto de Orden'} style={{ width: '100%', maxHeight: '220px', objectFit: 'contain', background: '#0F172A' }} />
+                                                    <img src={msg.mediaUrl} alt={msg.caption || 'Foto de Orden'} style={{ width: '100%', maxHeight: '220px', objectFit: 'contain', background: '#0F172A', display: 'block' }} />
+                                                    <div style={{
+                                                        position: 'absolute', bottom: msg.caption ? '36px' : '8px', right: '8px',
+                                                        background: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(4px)',
+                                                        color: '#FFFFFF', padding: '3px 8px', borderRadius: '4px',
+                                                        fontSize: '0.68rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px',
+                                                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                                                    }}>
+                                                        <Eye size={12} /> Abrir Visor
+                                                    </div>
                                                     {msg.caption && (
                                                         <div style={{ padding: '6px 10px', background: '#F8FAFC', fontSize: '0.75rem', color: '#64748B' }}>
                                                             📄 {msg.caption}
@@ -3134,6 +3222,289 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                     >
                         <X size={14} />
                     </button>
+                </div>
+            )}
+
+            {/* VISOR PROFESIONAL INTEGRADO DE DOCUMENTOS Y ÓRDENES MÉDICAS */}
+            {viewerImage && (
+                <div 
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 99999,
+                        backgroundColor: 'rgba(10, 15, 29, 0.95)',
+                        backdropFilter: 'blur(14px)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        userSelect: 'none'
+                    }}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            setViewerImage(null);
+                        }
+                    }}
+                >
+                    {/* BARRA SUPERIOR DE HERRAMIENTAS */}
+                    <div style={{
+                        height: '64px',
+                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '0 24px',
+                        color: '#FFFFFF',
+                        zIndex: 10
+                    }}>
+                        {/* Título e Información del Paciente */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{
+                                width: '38px', height: '38px', borderRadius: '8px',
+                                backgroundColor: 'rgba(2, 132, 199, 0.25)',
+                                border: '1px solid rgba(56, 189, 248, 0.4)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                color: '#38BDF8'
+                            }}>
+                                <FileCheck size={22} />
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span>{viewerImage.senderName || 'Orden Médica'}</span>
+                                    {viewerImage.dni && (
+                                        <span style={{ fontSize: '0.72rem', backgroundColor: 'rgba(255,255,255,0.14)', padding: '2px 8px', borderRadius: '4px', color: '#93C5FD' }}>
+                                            DNI: {viewerImage.dni}
+                                        </span>
+                                    )}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
+                                    {viewerImage.caption ? `Nota: ${viewerImage.caption}` : 'Visor Profesional de Documentos — Sanatorio Argentino'}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Controles de Zoom, Rotación y Restablecer */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(30, 41, 59, 0.75)', padding: '4px 12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)' }}>
+                            <button
+                                type="button"
+                                onClick={() => setViewerZoom(z => Math.max(0.5, +(z - 0.25).toFixed(2)))}
+                                title="Alejar imagen (-)"
+                                style={{
+                                    background: 'transparent', border: 'none', color: '#E2E8F0', cursor: 'pointer',
+                                    padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center'
+                                }}
+                            >
+                                <ZoomOut size={18} />
+                            </button>
+                            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#38BDF8', minWidth: '48px', textAlign: 'center' }}>
+                                {Math.round(viewerZoom * 100)}%
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setViewerZoom(z => Math.min(4, +(z + 0.25).toFixed(2)))}
+                                title="Acercar imagen (+)"
+                                style={{
+                                    background: 'transparent', border: 'none', color: '#E2E8F0', cursor: 'pointer',
+                                    padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center'
+                                }}
+                            >
+                                <ZoomIn size={18} />
+                            </button>
+                            <div style={{ width: '1px', height: '18px', backgroundColor: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
+                            <button
+                                type="button"
+                                onClick={() => setViewerRotation(r => (r + 90) % 360)}
+                                title="Rotar 90° (R)"
+                                style={{
+                                    background: 'transparent', border: 'none', color: '#E2E8F0', cursor: 'pointer',
+                                    padding: '6px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '5px',
+                                    fontSize: '0.74rem'
+                                }}
+                            >
+                                <RotateCw size={16} />
+                                <span style={{ fontSize: '0.74rem', color: '#CBD5E1', fontWeight: 600 }}>Rotar</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setViewerZoom(1); setViewerRotation(0); }}
+                                title="Restablecer vista original"
+                                style={{
+                                    background: 'transparent', border: 'none', color: '#94A3B8', cursor: 'pointer',
+                                    padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center'
+                                }}
+                            >
+                                <RefreshCw size={15} />
+                            </button>
+                        </div>
+
+                        {/* Acciones: Descargar y Cerrar */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <button
+                                type="button"
+                                onClick={handleDownloadViewerImage}
+                                disabled={isDownloadingImage}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '8px',
+                                    backgroundColor: '#059669',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    padding: '9px 18px',
+                                    fontSize: '0.82rem',
+                                    fontWeight: 700,
+                                    cursor: isDownloadingImage ? 'wait' : 'pointer',
+                                    transition: 'all 0.15s',
+                                    boxShadow: '0 4px 14px rgba(5, 150, 105, 0.4)'
+                                }}
+                                title="Descargar orden médica directamente a tu equipo"
+                            >
+                                <Download size={17} />
+                                <span>{isDownloadingImage ? 'Descargando...' : 'Descargar Orden'}</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setViewerImage(null)}
+                                style={{
+                                    width: '40px', height: '40px', borderRadius: '8px',
+                                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                                    color: '#F87171',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    cursor: 'pointer', transition: 'all 0.15s'
+                                }}
+                                title="Cerrar visor (Esc)"
+                            >
+                                <X size={22} />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* ÁREA CENTRAL: LIENZO DE LA IMAGEN + PANEL LATERAL IA */}
+                    <div style={{
+                        flex: 1,
+                        display: 'flex',
+                        overflow: 'hidden',
+                        position: 'relative'
+                    }}>
+                        {/* LIENZO DE LA IMAGEN */}
+                        <div 
+                            style={{
+                                flex: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                overflow: 'auto',
+                                padding: '32px',
+                                cursor: viewerZoom > 1 ? 'grab' : 'default'
+                            }}
+                            onWheel={(e) => {
+                                e.preventDefault();
+                                setViewerZoom(z => Math.max(0.5, Math.min(4, +(z - e.deltaY * 0.0015).toFixed(2))));
+                            }}
+                            onClick={(e) => {
+                                if (e.target === e.currentTarget) setViewerImage(null);
+                            }}
+                        >
+                            <img
+                                src={viewerImage.url}
+                                alt={viewerImage.caption || 'Orden médica'}
+                                style={{
+                                    maxWidth: '88%',
+                                    maxHeight: '88%',
+                                    objectFit: 'contain',
+                                    borderRadius: '6px',
+                                    boxShadow: '0 25px 60px -15px rgba(0,0,0,0.7)',
+                                    transform: `scale(${viewerZoom}) rotate(${viewerRotation}deg)`,
+                                    transformOrigin: 'center center',
+                                    transition: 'transform 0.15s ease-out'
+                                }}
+                            />
+                        </div>
+
+                        {/* PANEL LATERAL: DATOS DE LA ORDEN IA (SI EXISTE ANÁLISIS) */}
+                        {viewerImage.orderAnalysis && (
+                            <div style={{
+                                width: '360px',
+                                backgroundColor: 'rgba(15, 23, 42, 0.94)',
+                                borderLeft: '1px solid rgba(255, 255, 255, 0.12)',
+                                padding: '24px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '18px',
+                                overflowY: 'auto'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#4ADE80', fontWeight: 800, fontSize: '0.86rem' }}>
+                                        <Stethoscope size={20} />
+                                        DATOS DE LA ORDEN (IA)
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const textToCopy = viewerImage.orderAnalysis.raw_summary || 
+`Estudio a autorizar: ${viewerImage.orderAnalysis.estudio || 'No especificado'}
+Solicitante: ${viewerImage.orderAnalysis.solicitante || 'No especificado'}
+Matricula: ${viewerImage.orderAnalysis.matricula || 'No especificada'}
+Diagnostico: ${viewerImage.orderAnalysis.diagnostico || 'No especificado'}
+Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especificada'}`;
+                                            navigator.clipboard.writeText(textToCopy);
+                                            setCopiedViewerData(true);
+                                            setTimeout(() => setCopiedViewerData(false), 2000);
+                                        }}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '5px',
+                                            background: copiedViewerData ? '#15803D' : 'rgba(255, 255, 255, 0.12)',
+                                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                                            color: '#FFFFFF',
+                                            padding: '5px 10px', borderRadius: '6px',
+                                            fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
+                                            transition: 'background 0.15s'
+                                        }}
+                                        title="Copiar datos al portapapeles"
+                                    >
+                                        <Copy size={13} />
+                                        <span>{copiedViewerData ? '¡Copiado!' : 'Copiar'}</span>
+                                    </button>
+                                </div>
+
+                                <div style={{
+                                    backgroundColor: 'rgba(30, 41, 59, 0.65)',
+                                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                                    borderRadius: '10px',
+                                    padding: '16px',
+                                    display: 'grid',
+                                    gap: '14px',
+                                    fontSize: '0.82rem',
+                                    lineHeight: 1.45
+                                }}>
+                                    <div>
+                                        <div style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Estudio a autorizar</div>
+                                        <div style={{ color: '#FFFFFF', fontWeight: 700, marginTop: '2px', fontSize: '0.9rem' }}>{viewerImage.orderAnalysis.estudio || 'No especificado'}</div>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Médico Solicitante</div>
+                                        <div style={{ color: '#FFFFFF', fontWeight: 600, marginTop: '2px' }}>{viewerImage.orderAnalysis.solicitante || 'No especificado'}</div>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Matrícula Profesional</div>
+                                        <div style={{ color: '#FFFFFF', fontWeight: 600, marginTop: '2px' }}>{viewerImage.orderAnalysis.matricula || 'No especificada'}</div>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Diagnóstico / Motivo</div>
+                                        <div style={{ color: '#FFFFFF', fontWeight: 600, marginTop: '2px' }}>{viewerImage.orderAnalysis.diagnostico || 'No especificado'}</div>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Fecha de la Orden</div>
+                                        <div style={{ color: '#FFFFFF', fontWeight: 600, marginTop: '2px' }}>{viewerImage.orderAnalysis.fecha_solicitud || 'No especificada'}</div>
+                                    </div>
+                                </div>
+
+                                <div style={{ marginTop: 'auto', padding: '12px', borderRadius: '8px', backgroundColor: 'rgba(2, 132, 199, 0.1)', border: '1px solid rgba(2, 132, 199, 0.2)', fontSize: '0.72rem', color: '#94A3B8', lineHeight: 1.5 }}>
+                                    💡 <strong style={{ color: '#38BDF8' }}>Atajos:</strong> Usá <strong style={{ color: '#FFFFFF' }}>+</strong> / <strong style={{ color: '#FFFFFF' }}>-</strong> o la rueda del ratón para hacer zoom, <strong style={{ color: '#FFFFFF' }}>R</strong> para rotar 90°, y <strong style={{ color: '#FFFFFF' }}>Esc</strong> para cerrar.
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
         </div>
