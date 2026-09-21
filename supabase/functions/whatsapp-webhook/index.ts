@@ -317,7 +317,8 @@ Deno.serve(async (req) => {
         // =============================================
         if (direction === 'incoming' && phone && lineId === 'contact_center') {
             try {
-                await handleChatbotTriage(supabase, phone, content, senderName, lineId);
+                const textToTriage = content || (mediaUrl ? `[${finalMediaType}]` : '');
+                await handleChatbotTriage(supabase, phone, textToTriage, senderName, lineId, finalMediaType, mediaUrl);
             } catch (triageError: any) {
                 console.error('[webhook] Error en handleChatbotTriage (non-fatal):', triageError?.message || triageError);
             }
@@ -793,6 +794,9 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
     if (/^[l|l️⃣]$/i.test(clean) || /^opci[oó]n\s*l$/i.test(clean)) {
         return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'L' };
     }
+    const lastBotContent = (context?.lastBotMessage?.content || '').toLowerCase();
+    const isLastBotImageMenu = lastBotContent.includes('recibimos tu imagen') || lastBotContent.includes('presupuesto o aranceles particulares');
+
     if (/^[1|1️⃣]$/.test(clean) || /^opci[oó]n\s*1$/i.test(clean)) {
         return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
     }
@@ -800,7 +804,16 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         return { intent: 'autorizacion', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
     }
     if (/^[3|3️⃣]$/.test(clean) || /^opci[oó]n\s*3$/i.test(clean)) {
+        if (isLastBotImageMenu) {
+            return { intent: 'administracion_presupuestos', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '3' };
+        }
         return { intent: 'guardia', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '3' };
+    }
+    if (/^[4|4️⃣]$/.test(clean) || /^opci[oó]n\s*4$/i.test(clean)) {
+        if (isLastBotImageMenu) {
+            return { intent: 'derivacion_agente', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '4' };
+        }
+        return { intent: 'informes_general', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '4' };
     }
 
     // 1. GUARDIAS MÉDICAS 24 HORAS
@@ -1073,10 +1086,13 @@ async function handleChatbotTriage(
     phone: string,
     incomingText: string,
     senderName: string | null,
-    lineId: string | null
+    lineId: string | null,
+    mediaType?: string | null,
+    mediaUrl?: string | null
 ) {
-    if (!phone || !incomingText) return;
-    const cleanText = incomingText.trim();
+    if (!phone || (!incomingText && !mediaUrl)) return;
+    const cleanText = (incomingText || '').trim();
+    const isIncomingMedia = (mediaType === 'image' || mediaType === 'document' || cleanText === '[image]' || cleanText === '[document]' || Boolean(mediaUrl));
 
     // 1. Obtener estado actual de la conversación
     const { data: conv } = await supabase
@@ -1336,12 +1352,17 @@ async function handleChatbotTriage(
     // 2.1 RECUPERAR HISTORIAL RECIENTE PARA BRINDAR CONTEXTO CONVERSACIONAL (BOT Y ASESORES HUMANOS)
     const { data: rawHistory } = await supabase
         .from('whatsapp_messages')
-        .select('id, direction, sender_name, content, created_at, raw_payload')
+        .select('id, direction, sender_name, content, created_at, raw_payload, media_type')
         .eq('phone', phone)
         .order('created_at', { ascending: false })
         .limit(15);
 
     const recentHistory = (rawHistory || []).reverse();
+
+    // Detectar si el paciente envió recientemente una imagen o documento (en este mensaje o en los últimos 2)
+    const patientSentImageRecently = isIncomingMedia || recentHistory.slice(-3).some((m: any) => 
+        m.direction === 'incoming' && (m.media_type === 'image' || m.content === '[image]' || (m.raw_payload && m.raw_payload.media_type === 'image'))
+    );
 
     // Detectar si un asesor humano intervino previamente en el chat
     const agentInterventions = recentHistory.filter((m: any) => 
@@ -1358,6 +1379,24 @@ async function handleChatbotTriage(
         (m.sender_name === 'Bot Sanatorio' || m.raw_payload?.bot)
     );
     const lastBotMessage = botMessages.length > 0 ? botMessages[botMessages.length - 1] : null;
+    const lastBotContent = (lastBotMessage?.content || '').toLowerCase();
+
+    // ¿El bot estaba esperando activamente una foto de orden médica?
+    const wasWaitingForPhoto = 
+        conv?.bot_stage === 'esperando_orden_foto' ||
+        lastBotContent.includes('foto clara de la orden') ||
+        (lastBotContent.includes('envíanos:') && lastBotContent.includes('orden'));
+
+    // ¿La imagen fue enviada de la nada (sin contexto previo del bot ni indicación de trámite en el texto)?
+    const isImageWithoutContext = !wasWaitingForPhoto && (
+        (isIncomingMedia && (
+            cleanText === '[image]' || 
+            cleanText === '[document]' || 
+            cleanText === '' ||
+            /^(hola|buenas|buen\s+dia|buenas\s+tardes|buenas\s+noches|doc|doctor|hola\s+buenas|foto|orden|aca\s+esta|te\s+paso)[!.\s]*$/i.test(cleanText)
+        )) ||
+        (patientSentImageRecently && /^(hola|buenas|buen\s+dia|buenas\s+tardes|buenas\s+noches|doc|doctor|hola\s+buenas)[!.\s]*$/i.test(cleanText) && (conv?.bot_stage === 'inicio' || wasClosed || !conv))
+    );
 
     // 3. DETECTAR INTENCIÓN Y ENTIDADES (CON MEMORIA CONVERSACIONAL Y SEGUIMIENTO DE ASESORES)
     const conversationContext: ConversationContext = {
@@ -1390,9 +1429,39 @@ async function handleChatbotTriage(
     const doctorSpecialty = analysis.doctorRecord?.especialidad ? ` (${analysis.doctorRecord.especialidad})` : '';
 
     // =============================================
+    // FLUJO ESPECIAL: IMAGEN U ORDEN MÉDICA ENVIADA SIN CONTEXTO PREVIO
+    // Si el paciente envía una foto/documento sin que el bot la haya pedido previamente,
+    // o saluda inmediatamente después de haberla enviado, consultarle qué gestión desea realizar.
+    // =============================================
+    if (isImageWithoutContext) {
+        console.log(`[triage-bot] Chat ${phone}: Imagen/orden médica enviada sin contexto previo. Preguntando al paciente qué desea realizar.`);
+        updates.motivo_consulta = 'Imagen / Orden médica recibida (aguardando selección de trámite)';
+        updates.bot_stage = 'menu_opciones';
+        updates.bot_active = true;
+        nextStage = 'menu_opciones';
+
+        if (isExistingPatient) {
+            replyText = `¡Hola *${fullName}*! 🏥 Recibimos tu imagen / orden médica.\n\n` +
+                `Para orientarte con la gestión correspondiente, por favor indícanos qué deseás realizar:\n\n` +
+                `1️⃣ *Solicitar un turno* para el estudio o práctica médica\n` +
+                `2️⃣ *Autorización de orden médica* (para presentar a tu obra social o coseguro)\n` +
+                `3️⃣ *Presupuesto o aranceles particulares*\n` +
+                `4️⃣ *Hablar con un asesor humano*\n\n` +
+                `Podés responder directamente con el número *1*, *2*, *3* o *4*, o detallarnos tu consulta por escrito.`;
+        } else {
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*. Recibimos tu imagen / orden médica.\n\n` +
+                `Para orientarte con la gestión correspondiente, por favor indícanos qué deseás realizar:\n\n` +
+                `1️⃣ *Solicitar un turno* para el estudio o práctica médica\n` +
+                `2️⃣ *Autorización de orden médica* (para presentar a tu obra social o cobertura)\n` +
+                `3️⃣ *Presupuesto o aranceles particulares*\n` +
+                `4️⃣ *Hablar con un asesor humano*\n\n` +
+                `Podés responder directamente con el número *1*, *2*, *3* o *4*, o escribirnos tu consulta junto a tu *Nombre completo* y *DNI*.`;
+        }
+    }
+    // =============================================
     // FLUJO 1: PACIENTE RESPONDIENDO DNI O DATOS DESDE NÚMERO NUEVO/NO REGISTRADO
     // =============================================
-    if (currentStage === 'esperando_dni' || currentStage === 'esperando_datos_nuevo') {
+    else if (currentStage === 'esperando_dni' || currentStage === 'esperando_datos_nuevo') {
         if (paciente) {
             updates = {
                 ...updates,
@@ -1631,15 +1700,25 @@ async function handleChatbotTriage(
     // FLUJO: ADMINISTRACIÓN, CIRUGÍAS Y PRESUPUESTOS
     // =============================================
     else if (analysis.intent === 'administracion_presupuestos') {
-        updates.motivo_consulta = 'Administración: Presupuestos e Internación';
-        replyText = `💼 *Administración de Cirugías, Presupuestos e Internación*\n\n` +
-            `Si te vas a realizar una cirugía en Sanatorio Argentino y necesitas presupuesto o consultar cobertura:\n\n` +
-            `📍 *Atención Presencial:* Oficina de Administración en Sede 02 (San Luis 433 Oeste). De lunes a viernes de 7:30 a 20:00 hs.\n` +
-            `📧 *Email:* administracion@sanatorioargentino.com.ar\n` +
-            `📞 *Teléfono:* 2644303040\n` +
-            `📲 *WhatsApp:* https://wa.me/5492644809396?text=Hola%20necesito\n\n` +
-            `🌐 Para más información institucional visitá: https://www.sanatorioargentino.com.ar/`;
-        nextStage = 'informacion_respondida';
+        if (patientSentImageRecently) {
+            updates.motivo_consulta = 'Presupuesto de Estudio / Práctica Médica';
+            replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos con el *presupuesto y aranceles* de tu estudio.\n\n` +
+                `Un asesor revisará la orden médica que nos enviaste y te informará los valores y cobertura de tu obra social a la brevedad.\n\n` +
+                `${getAgentHandoffNotice()}`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+        } else {
+            updates.motivo_consulta = 'Administración: Presupuestos e Internación';
+            replyText = `💼 *Administración de Cirugías, Presupuestos e Internación*\n\n` +
+                `Si te vas a realizar una cirugía en Sanatorio Argentino y necesitas presupuesto o consultar cobertura:\n\n` +
+                `📍 *Atención Presencial:* Oficina de Administración en Sede 02 (San Luis 433 Oeste). De lunes a viernes de 7:30 a 20:00 hs.\n` +
+                `📧 *Email:* administracion@sanatorioargentino.com.ar\n` +
+                `📞 *Teléfono:* 2644303040\n` +
+                `📲 *WhatsApp:* https://wa.me/5492644809396?text=Hola%20necesito\n\n` +
+                `🌐 Para más información institucional visitá: https://www.sanatorioargentino.com.ar/`;
+            nextStage = 'informacion_respondida';
+        }
     }
     // =============================================
     // FLUJO: HORARIOS DE SEDES Y VISITAS
@@ -1823,7 +1902,8 @@ async function handleChatbotTriage(
             updates.bot_active = false;
             nextStage = 'esperando_agente';
         } else if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\nPor favor indícanos:\n• ¿Preferencia de día u horario (mañana o tarde)?\n• ¿Primera consulta o control?\n\n${getAgentHandoffNotice()}`;
+            const hasOrderImageMsg = patientSentImageRecently ? '\n\n✅ *Ya recibimos la foto de tu orden médica.*' : '';
+            replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos a coordinar tu turno${doctorNoteMsg}.${hasOrderImageMsg}\n\nPor favor indícanos:\n• ¿Preferencia de día u horario (mañana o tarde)?\n• ¿Primera consulta o control?\n\n${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
@@ -1848,7 +1928,10 @@ async function handleChatbotTriage(
             updates.bot_active = false;
             nextStage = 'esperando_agente';
         } else if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos con la *autorización* de tu orden médica.\n\nPor favor envíanos:\n📸 *Foto clara de la orden médica*\n🔢 *Confirmación de tu DNI*\n\n*(Vigencia de órdenes: 30 días).* ${getAgentHandoffNotice()}`;
+            const hasOrderImageMsg = patientSentImageRecently 
+                ? '✅ *Ya recibimos la foto de tu orden médica.*' 
+                : '📸 *Foto clara de la orden médica*';
+            replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos con la *autorización* de tu orden médica.\n\n${hasOrderImageMsg}\n🔢 *Confirmación de tu DNI*\n\n*(Vigencia de órdenes: 30 días).* ${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
