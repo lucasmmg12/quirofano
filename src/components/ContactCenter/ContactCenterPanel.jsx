@@ -585,77 +585,30 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         )}
                     </div>
 
-                    {/* SELECTOR DE AGENTE ACTIVA CON CONTEO DE MENSAJES ASIGNADOS */}
+                    {/* IDENTIFICACIÓN DEL OPERADOR CONECTADO */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <div style={{
                             display: 'flex', alignItems: 'center', gap: '6px',
-                            background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px',
-                            padding: '3px 6px'
+                            background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px',
+                            padding: '4px 10px'
                         }}>
-                            <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B' }}>
-                                Atendiendo como:
-                            </span>
-                            <div style={{ display: 'flex', gap: '3px' }}>
-                                {CONTACT_CENTER_AGENTS.map(agent => {
-                                    const isCurrent = activeAgent.id === agent.id || activeAgent.username === agent.username;
-                                    const assignedCount = chats.filter(c => {
-                                        if (c.status === 'archivado') return false;
-                                        const assigned = (c.assignedTo || '').toLowerCase();
-                                        if (!assigned) return false;
-                                        return (
-                                            assigned === agent.id.toLowerCase() ||
-                                            (agent.username && assigned === agent.username.toLowerCase()) ||
-                                            (agent.legacyId && assigned === agent.legacyId.toLowerCase()) ||
-                                            (c.assignedToName || '').toLowerCase().includes(agent.name.toLowerCase())
-                                        );
-                                    }).length;
-                                    const canSwitch = isLMarinero;
-
-                                    return (
-                                        <button
-                                            key={agent.id}
-                                            onClick={() => {
-                                                if (canSwitch) {
-                                                    setActiveAgent(agent);
-                                                } else if (!isCurrent) {
-                                                    addToast?.(`Estás autenticada como ${activeAgent.name}. Solo supervisores pueden conmutar de agente.`, 'info');
-                                                }
-                                            }}
-                                            title={canSwitch ? `Cambiar a ${agent.fullName} (${assignedCount} asignados)` : `${agent.fullName}: ${assignedCount} chats asignados`}
-                                            style={{
-                                                padding: '3px 6px', borderRadius: '5px', fontSize: '0.7rem', fontWeight: 700,
-                                                border: 'none', cursor: canSwitch || isCurrent ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: '4px',
-                                                background: isCurrent ? agent.color : '#FFFFFF',
-                                                color: isCurrent ? '#FFFFFF' : '#475569',
-                                                boxShadow: isCurrent ? `0 1px 4px ${agent.color}40` : 'none',
-                                                transition: 'all 0.15s'
-                                            }}
-                                        >
-                                            <div style={{
-                                                width: '14px', height: '14px', borderRadius: '50%',
-                                                background: isCurrent ? '#FFFFFF' : agent.color,
-                                                color: isCurrent ? agent.color : '#FFFFFF',
-                                                fontSize: '0.58rem', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                            }}>
-                                                {agent.avatar}
-                                            </div>
-                                            <span>{agent.name.split(' ')[0]}</span>
-                                            {assignedCount > 0 && (
-                                                <span style={{
-                                                    background: isCurrent ? 'rgba(255, 255, 255, 0.3)' : '#E2E8F0',
-                                                    color: isCurrent ? '#FFFFFF' : '#0F172A',
-                                                    padding: '0 4px',
-                                                    borderRadius: '8px',
-                                                    fontSize: '0.6rem',
-                                                    fontWeight: 800
-                                                }}>
-                                                    {assignedCount}
-                                                </span>
-                                            )}
-                                        </button>
-                                    );
-                                })}
+                            <div style={{
+                                width: '18px', height: '18px', borderRadius: '50%',
+                                background: activeAgent.color || '#0284C7',
+                                color: '#FFFFFF',
+                                fontSize: '0.62rem', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}>
+                                {activeAgent.avatar || 'OP'}
                             </div>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1E293B' }}>
+                                {activeAgent.fullName || activeAgent.name}
+                            </span>
+                            <span style={{
+                                fontSize: '0.62rem', color: '#64748B', background: '#E2E8F0',
+                                padding: '1px 6px', borderRadius: '4px', fontWeight: 600
+                            }}>
+                                {activeAgent.role}
+                            </span>
                         </div>
 
                         {/* Sonido y Sync */}

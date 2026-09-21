@@ -21,7 +21,7 @@ const MOTIVOS_FINALIZACION_CATALOGO = [
 
 export default function ContactCenterMetricsTab({ addToast }) {
     const [loading, setLoading] = useState(true);
-    const [timeRange, setTimeRange] = useState('all'); // 'all', 'month', 'week', 'today'
+    const [timeRange, setTimeRange] = useState('today'); // 'today', 'week', 'month', 'all'
     
     const [metrics, setMetrics] = useState({
         // 1. Mensajes totales enviados (salientes)
@@ -54,32 +54,46 @@ export default function ContactCenterMetricsTab({ addToast }) {
     const loadMetrics = async () => {
         setLoading(true);
         try {
-            // 1. Cargar mensajes de whatsapp_messages
-            const { data: messages, error: msgErr } = await supabase
+            // 1. Cargar mensajes EXCLUSIVOS de la línea de Contact Center
+            let msgQuery = supabase
                 .from('whatsapp_messages')
                 .select('id, phone, direction, sender_name, content, created_at, raw_payload')
-                .order('created_at', { ascending: true });
-
-            if (msgErr) throw msgErr;
+                .eq('line_id', 'contact_center')
+                .order('created_at', { ascending: false });
 
             // 2. Cargar conversaciones de contact_center_conversations
-            const { data: convs, error: convErr } = await supabase
+            let convQuery = supabase
                 .from('contact_center_conversations')
-                .select('phone, status, resolution_reason, closed_at, closed_by_agent_name, motivo_consulta, ai_summary, created_at');
+                .select('phone, status, resolution_reason, closed_at, closed_by_agent_name, motivo_consulta, ai_summary, created_at')
+                .order('created_at', { ascending: false });
 
+            // Filtro por rango temporal en base de datos
+            if (timeRange === 'today') {
+                const startToday = new Date();
+                startToday.setHours(0, 0, 0, 0);
+                msgQuery = msgQuery.gte('created_at', startToday.toISOString());
+                convQuery = convQuery.gte('created_at', startToday.toISOString());
+            } else if (timeRange === 'week') {
+                const startWeek = new Date();
+                startWeek.setDate(startWeek.getDate() - 7);
+                msgQuery = msgQuery.gte('created_at', startWeek.toISOString());
+                convQuery = convQuery.gte('created_at', startWeek.toISOString());
+            } else if (timeRange === 'month') {
+                const startMonth = new Date();
+                startMonth.setDate(startMonth.getDate() - 30);
+                msgQuery = msgQuery.gte('created_at', startMonth.toISOString());
+                convQuery = convQuery.gte('created_at', startMonth.toISOString());
+            }
+
+            const [{ data: messages, error: msgErr }, { data: convs, error: convErr }] = await Promise.all([
+                msgQuery,
+                convQuery
+            ]);
+
+            if (msgErr) throw msgErr;
             if (convErr) throw convErr;
 
-            // Filtrar por rango temporal si aplica
-            const now = new Date();
-            const filteredMessages = (messages || []).filter(m => {
-                if (timeRange === 'all') return true;
-                const date = new Date(m.created_at);
-                const diffHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
-                if (timeRange === 'today') return diffHours <= 24;
-                if (timeRange === 'week') return diffHours <= 24 * 7;
-                if (timeRange === 'month') return diffHours <= 24 * 30;
-                return true;
-            });
+            const filteredMessages = messages || [];
 
             // ── Métricas de Mensajes ──
             let totalOut = 0;
@@ -87,8 +101,13 @@ export default function ContactCenterMetricsTab({ addToast }) {
             let botCount = 0;
             let agentCount = 0;
 
+            const ALL_AGENTS_METRICS = [
+                ...CONTACT_CENTER_AGENTS,
+                { id: 'lmarinero', username: 'lmarinero', legacyId: 'lucas', name: 'Lucas Marinero', fullName: 'Lucas Marinero', role: 'Supervisor Contact Center', color: '#0284C7', avatar: 'LM' }
+            ];
+
             const agentCounts = {};
-            CONTACT_CENTER_AGENTS.forEach(ag => {
+            ALL_AGENTS_METRICS.forEach(ag => {
                 agentCounts[ag.id] = {
                     id: ag.id,
                     name: ag.fullName || ag.name,
@@ -123,7 +142,7 @@ export default function ContactCenterMetricsTab({ addToast }) {
                         agentCount++;
                         // Matching agente humano
                         let matched = false;
-                        for (const ag of CONTACT_CENTER_AGENTS) {
+                        for (const ag of ALL_AGENTS_METRICS) {
                             if (
                                 rawAgent === ag.id || 
                                 rawAgent === (ag.username || '').toLowerCase() ||
@@ -146,8 +165,10 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 }
             });
 
-            // Ordenar agentes por cantidad de despachos
-            const agentList = Object.values(agentCounts).sort((a, b) => b.count - a.count);
+            // Ordenar agentes por cantidad de despachos (ocultando 'otros_operadores' si no tiene envíos)
+            const agentList = Object.values(agentCounts)
+                .filter(a => a.id !== 'otros_operadores' || a.count > 0)
+                .sort((a, b) => b.count - a.count);
 
             // ── Conversaciones Finalizadas y Motivos de Finalización ──
             let closedCount = 0;

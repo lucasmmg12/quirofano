@@ -693,12 +693,12 @@ function App({ currentUser, onLogout }) {
                     <div className="topbar__left">
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <h1 className="topbar__title topbar__title--wave">
-                                {'Administración'.split('').map((char, i) => (
+                                {'Plataforma'.split('').map((char, i) => (
                                     <span key={`a-${i}`} className="topbar__wave-letter topbar__title-accent" style={{ animationDelay: `${i * 0.08}s` }}>{char === ' ' ? '\u00A0' : char}</span>
                                 ))}
-                                <span className="topbar__wave-letter" style={{ animationDelay: `${14 * 0.08}s` }}>&nbsp;</span>
+                                <span className="topbar__wave-letter" style={{ animationDelay: `${10 * 0.08}s` }}>&nbsp;</span>
                                 {'Sanatorio Argentino'.split('').map((char, i) => (
-                                    <span key={`s-${i}`} className="topbar__wave-letter" style={{ animationDelay: `${(15 + i) * 0.08}s` }}>{char === ' ' ? '\u00A0' : char}</span>
+                                    <span key={`s-${i}`} className="topbar__wave-letter" style={{ animationDelay: `${(11 + i) * 0.08}s` }}>{char === ' ' ? '\u00A0' : char}</span>
                                 ))}
                             </h1>
                             {activeView !== 'inicio' && (

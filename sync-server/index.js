@@ -228,6 +228,40 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
                         }
                     }
                 }
+
+                // Validación en vivo contra SALUS: si el turno fue borrado en SALUS, eliminarlo de la lista y de Supabase
+                if (onlineTurnosList.length > 0 && pool) {
+                    try {
+                        const idVisitas = onlineTurnosList.map(t => t.id_visita).filter(Boolean);
+                        if (idVisitas.length > 0) {
+                            const checkVisitas = await pool.request().query(`
+                                SELECT id FROM Visitas WHERE id IN (${idVisitas.join(',')})
+                            `);
+                            const existingIds = new Set(checkVisitas.recordset.map(r => r.id));
+                            const invalidIds = idVisitas.filter(id => !existingIds.has(id));
+
+                            if (invalidIds.length > 0) {
+                                console.log(`[Historial Clinico] 🗑️ Turnos online eliminados en SALUS detectados: ${invalidIds.join(', ')}. Purgando...`);
+                                onlineTurnosList = onlineTurnosList.filter(t => existingIds.has(t.id_visita));
+                                for (const row of turnosOnlineSb) {
+                                    if (Array.isArray(row.turnos)) {
+                                        const validTurnos = row.turnos.filter(t => existingIds.has(t.idVisita));
+                                        if (validTurnos.length === 0) {
+                                            await supabase.from('contact_center_turnos_online').delete().eq('id', row.id);
+                                        } else if (validTurnos.length !== row.turnos.length) {
+                                            await supabase.from('contact_center_turnos_online').update({
+                                                turnos: validTurnos,
+                                                total_turnos: validTurnos.length
+                                            }).eq('id', row.id);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (errCheck) {
+                        console.warn('⚠️ Error verificando existencia de turnos online en SALUS:', errCheck.message);
+                    }
+                }
             }
         } catch (e) {
             console.warn('⚠️ Error consultando turnos online en Supabase:', e.message);
@@ -3196,7 +3230,7 @@ app.get('/api/salus/health', async (req, res) => {
     }
 });
 
-// ── Búsqueda de Paciente en Tiempo Real (Kiosco / Tótem) ──
+// ── Búsqueda de Paciente en Tiempo Real (Kiosco / Tótem / Contact Center) ──
 app.get('/api/salus/paciente/:dni', async (req, res) => {
     try {
         const rawDni = String(req.params.dni || '').trim();
@@ -3217,7 +3251,9 @@ app.get('/api/salus/paciente/:dni', async (req, res) => {
                     NIF,
                     NHC,
                     mutua,
-                    telefono1
+                    telefono1,
+                    FechaNacimiento,
+                    DATEDIFF(hour, FechaNacimiento, GETDATE())/8766 AS edad
                 FROM PR_FICHA_PACIENTE_QRY
                 WHERE tipoEntidad = 1
                   AND (NIF = @dni OR NIF LIKE '%' + @dni)
@@ -3227,13 +3263,17 @@ app.get('/api/salus/paciente/:dni', async (req, res) => {
             const p = result.recordset[0];
             const paciente = {
                 id: p.id,
+                id_paciente: p.id,
                 nombre: p.nombre,
                 nombre1: p.nombre1,
                 nombre2: p.nombre2,
                 dni: p.NIF,
                 nhc: p.NHC,
                 mutua: p.mutua,
-                telefono: p.telefono1
+                coseguro: p.mutua,
+                telefono: p.telefono1,
+                fecha_nacimiento: p.FechaNacimiento,
+                edad: p.edad
             };
 
             // Cachear en Supabase hospital_pacientes en segundo plano
@@ -3245,6 +3285,8 @@ app.get('/api/salus/paciente/:dni', async (req, res) => {
                     nhc: p.NHC,
                     telefono: p.telefono1,
                     coseguro: p.mutua,
+                    fecha_nacimiento: p.FechaNacimiento,
+                    edad: p.edad,
                     updated_at: new Date().toISOString()
                 }, { onConflict: 'id_paciente' });
             } catch (cacheErr) {
@@ -3257,6 +3299,107 @@ app.get('/api/salus/paciente/:dni', async (req, res) => {
         return res.json({ success: true, paciente: null });
     } catch (err) {
         console.error('Error buscando paciente en SALUS:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ── Búsqueda de Grupo Familiar por Teléfono en Tiempo Real (SALUS) ──
+app.get('/api/salus/familiares/:telefono', async (req, res) => {
+    try {
+        const rawTel = String(req.params.telefono || '').trim();
+        let cleanTel = rawTel.replace(/\D/g, '');
+        if (cleanTel.startsWith('549')) cleanTel = cleanTel.slice(3);
+        else if (cleanTel.startsWith('54')) cleanTel = cleanTel.slice(2);
+
+        // Tomar los últimos 7 dígitos centrales para coincidencia de teléfono local (ej: 5095753)
+        const coreTel = cleanTel.slice(-7);
+        if (!coreTel || coreTel.length < 6) {
+            return res.status(400).json({ success: false, error: 'Teléfono inválido' });
+        }
+
+        const db = await getPool();
+        const result = await db.request()
+            .input('tel', sql.VarChar(50), coreTel)
+            .query(`
+                SELECT 
+                    id,
+                    nombre,
+                    nombre1,
+                    nombre2,
+                    NIF AS dni,
+                    NHC AS nhc,
+                    mutua AS coseguro,
+                    telefono1 AS telefono,
+                    telefono2,
+                    FechaNacimiento,
+                    DATEDIFF(hour, FechaNacimiento, GETDATE())/8766 AS edad
+                FROM PR_FICHA_PACIENTE_QRY
+                WHERE tipoEntidad = 1
+                  AND (telefono1 LIKE '%' + @tel + '%' OR telefono2 LIKE '%' + @tel + '%')
+                ORDER BY FechaNacimiento ASC
+            `);
+
+        if (result.recordset && result.recordset.length > 0) {
+            const seen = new Set();
+            const familiares = [];
+            for (const p of result.recordset) {
+                const key = p.dni || p.id;
+                if (key && !seen.has(key)) {
+                    seen.add(key);
+                    familiares.push({
+                        id_paciente: p.id,
+                        nombre: p.nombre,
+                        nombre1: p.nombre1,
+                        nombre2: p.nombre2,
+                        dni: p.dni,
+                        nhc: p.nhc,
+                        coseguro: p.coseguro,
+                        telefono: p.telefono || p.telefono2,
+                        fecha_nacimiento: p.FechaNacimiento,
+                        edad: p.edad
+                    });
+                }
+            }
+
+            // Ordenar: primero adultos de 18+ (priorizando madres/adultos jóvenes sobre abuelos), luego menores de mayor a menor
+            familiares.sort((a, b) => {
+                const edadA = a.edad || 0;
+                const edadB = b.edad || 0;
+                const isAdultA = edadA >= 18;
+                const isAdultB = edadB >= 18;
+                if (isAdultA && !isAdultB) return -1;
+                if (!isAdultA && isAdultB) return 1;
+                if (isAdultA && isAdultB) return edadA - edadB; // Madre primero (ej 33 vs 55)
+                return edadB - edadA; // Niños: 5 años antes que 1 año
+            });
+
+            // Auto-upsert de cada familiar en Supabase hospital_pacientes en segundo plano
+            (async () => {
+                for (const f of familiares) {
+                    try {
+                        await supabase.from('hospital_pacientes').upsert({
+                            id_paciente: f.id_paciente,
+                            nombre: f.nombre,
+                            dni: f.dni,
+                            nhc: f.nhc,
+                            telefono: f.telefono,
+                            coseguro: f.coseguro,
+                            fecha_nacimiento: f.fecha_nacimiento,
+                            edad: f.edad,
+                            updated_at: new Date().toISOString()
+                        }, { onConflict: 'id_paciente' });
+                    } catch (e) {
+                        console.warn('Cache familiar error:', e.message);
+                    }
+                }
+            })().catch(() => {});
+
+            return res.json({ success: true, familiares });
+        }
+
+        return res.json({ success: true, familiares: [] });
+    } catch (err) {
+        console.error('Error buscando familiares en SALUS:', err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 });

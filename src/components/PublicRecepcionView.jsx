@@ -452,7 +452,7 @@ export default function PublicRecepcionView() {
                         />
                         <div>
                             <div style={{ color: 'white', fontSize: '1.1rem', fontWeight: 700, letterSpacing: '-0.3px' }}>
-                                Administración Sanatorio Argentino
+                                Plataforma Sanatorio Argentino
                             </div>
                             <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.78rem' }}>
                                 Sistema de Gestión Integral

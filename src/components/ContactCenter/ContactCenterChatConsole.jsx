@@ -95,14 +95,16 @@ import {
     MASTER_ADMINS, toggleBotActive, fetchDoctorParameters,
     saveCrmPatientCard, lookupPatientFromSalus, resetBotWorkflow,
     analyzeMedicalOrderImage, generateChatAiSummary,
-    FINAL_ATTENTION_MESSAGE, isClosedOrArchived, fetchFamilyMembersByPhone
+    FINAL_ATTENTION_MESSAGE, isClosedOrArchived, fetchFamilyMembersByPhone,
+    isUserAuthorizedForContactCenter
 } from '../../services/contactCenterService';
 import { fetchPacienteDetalle } from '../../services/pacienteUnificadoService';
 import { 
     getContactCenterQuickReplies, 
     findQuickReplyByShortcut, 
     filterQuickReplies, 
-    syncQuickRepliesFromDb 
+    syncQuickRepliesFromDb,
+    interpolateQuickReplyVariables
 } from '../../data/contactCenterQuickReplies';
 
 export default function ContactCenterChatConsole({ 
@@ -177,8 +179,9 @@ export default function ContactCenterChatConsole({
     const [doctorResults, setDoctorResults] = useState([]);
     const [isSearchingDoctor, setIsSearchingDoctor] = useState(false);
     const [analyzingMsgId, setAnalyzingMsgId] = useState(null);
-    const [, setForceUpdate] = useState(0);
-    const [messageSortOrder, setMessageSortOrder] = useState('newest_first'); // 'newest_first' o 'chronological'
+    const [messageSortOrder, setMessageSortOrder] = useState(() => {
+        return localStorage.getItem('cc_message_sort_order') || 'chronological';
+    }); // 'chronological' (estándar WhatsApp/AsisteClick) o 'newest_first'
     const messagesEndRef = useRef(null);
     const messagesContainerRef = useRef(null);
     const inputRef = useRef(null);
@@ -301,6 +304,15 @@ export default function ContactCenterChatConsole({
     const [selectedQuickReplyIndex, setSelectedQuickReplyIndex] = useState(0);
     const [quickRepliesList, setQuickRepliesList] = useState(() => getContactCenterQuickReplies());
 
+    // Resuelve variables como {{name}}, {{agent_name}}, {{tipo_consulta}}
+    const resolveQuickReplyText = (content) => {
+        return interpolateQuickReplyVariables(content, {
+            patientName: selectedChat?.contactName && !selectedChat.contactName.startsWith('+') ? selectedChat.contactName : (crmForm?.pacienteNombre || 'Paciente'),
+            agentName: activeAgent?.name || currentUser?.nombre || 'Sanatorio Argentino',
+            queryType: selectedChat?.customFields?.motivoConsulta || 'por tu consulta'
+        });
+    };
+
     // Estados CRM: Edición de Ficha y Búsqueda en Padrón SALUS
     const [isEditingCrm, setIsEditingCrm] = useState(false);
     const [crmForm, setCrmForm] = useState({
@@ -367,8 +379,23 @@ export default function ContactCenterChatConsole({
             // Consultar si hay más de un familiar vinculado al mismo número de teléfono
             if (selectedChat.phone) {
                 fetchFamilyMembersByPhone(selectedChat.phone).then(fams => {
-                    if (Array.isArray(fams) && fams.length > 1) {
-                        setFamilyMembers(fams);
+                    if (Array.isArray(fams) && fams.length > 0) {
+                        if (fams.length > 1) {
+                            setFamilyMembers(fams);
+                        } else {
+                            setFamilyMembers([]);
+                        }
+
+                        // Auto-asignación inteligente: Si el chat actual no tiene paciente o está asignado a un menor (<18),
+                        // y existe un adulto en el grupo familiar (madre/padre/titular), auto-conmutar al adulto prioritario
+                        const firstAdult = fams.find(f => (f.edad || 0) >= 18);
+                        const currentDni = selectedChat.customFields?.dni;
+                        const isCurrentMinor = fams.some(f => String(f.dni) === String(currentDni) && (f.edad || 0) < 18);
+                        const hasNoDni = !currentDni || currentDni === 'A verificar';
+
+                        if (firstAdult && (hasNoDni || isCurrentMinor)) {
+                            handleSelectFamilyMember(firstAdult);
+                        }
                     } else {
                         setFamilyMembers([]);
                     }
@@ -452,6 +479,9 @@ export default function ContactCenterChatConsole({
                 motivoConsulta: crmForm.motivoConsulta
             });
             showToast(`Ficha vinculada a ${fam.nombre}`, 'success');
+            if (typeof onReloadChats === 'function') {
+                onReloadChats();
+            }
         } catch (err) {
             console.warn('Error guardando conmutación de ficha familiar:', err);
         }
@@ -515,13 +545,16 @@ export default function ContactCenterChatConsole({
         }
     }, [lastMsgId, lastMsgSender, selectedChat?.phone]);
 
-    // Control de desplazamiento según orden de mensajes (más recientes arriba o cronológico)
+    // Control de desplazamiento según orden de mensajes (cronológico clásico abajo o más recientes arriba)
     useEffect(() => {
-        if (messageSortOrder === 'chronological') {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        } else if (messagesContainerRef.current) {
-            messagesContainerRef.current.scrollTop = 0;
-        }
+        const timer = setTimeout(() => {
+            if (messageSortOrder === 'chronological') {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            } else if (messagesContainerRef.current) {
+                messagesContainerRef.current.scrollTop = 0;
+            }
+        }, 50);
+        return () => clearTimeout(timer);
     }, [selectedChat?.id, selectedChat?.messages?.length, messageSortOrder]);
 
     // Si el chat activo no tiene análisis IA generado pero tiene mensajes del paciente, analizar automáticamente
@@ -650,9 +683,22 @@ export default function ContactCenterChatConsole({
                     motivoConsulta: crmForm.motivoConsulta
                 });
 
+                // Integrar inmediatamente al grupo familiar si no estaba listado
+                setFamilyMembers(prev => {
+                    const exists = prev.some(p => String(p.dni) === String(found.dni));
+                    if (!exists) {
+                        return [found, ...prev];
+                    }
+                    return prev;
+                });
+
                 showToast(`Ficha vinculada exitosamente a ${found.nombre} (DNI ${found.dni})`, 'success');
                 setIsSearchingThirdParty(false);
                 setThirdPartyDniInput('');
+
+                if (typeof onReloadChats === 'function') {
+                    onReloadChats();
+                }
             } else {
                 alert(`No se encontró paciente en el padrón de SALUS con el DNI ${queryToSearch}.`);
             }
@@ -723,11 +769,6 @@ export default function ContactCenterChatConsole({
         }
     }, [selectedChat?.id, selectedChat?.botActive, selectedChat?.assignedTo]);
 
-    // Auto-scroll al final del chat para ver siempre el último mensaje y el compositor
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [selectedChat?.messages?.length, selectedChat?.id]);
-
     // Búsqueda de médicos en SALUS
     useEffect(() => {
         if (!doctorQuery || doctorQuery.trim().length < 2) {
@@ -781,7 +822,8 @@ export default function ContactCenterChatConsole({
         }
     };
 
-    // Determinar bloqueo para el chat seleccionado
+    // Determinar autorización para responder y bloqueo de chat
+    const isAuthorized = isUserAuthorizedForContactCenter(currentUser);
     const isLocked = isChatLockedForUser(selectedChat, activeAgent.id, currentUser);
     const myAliases = [activeAgent.id, activeAgent.username, activeAgent.legacyId].filter(Boolean).map(a => a.toLowerCase());
     const isAssignedToMe = selectedChat.assignedTo && (
@@ -820,6 +862,10 @@ export default function ContactCenterChatConsole({
 
     const sendDirectMessage = (text, isNote = false) => {
         if (!text || !text.trim()) return;
+        if (!isAuthorized) {
+            alert('No tienes autorización para responder en el Contact Center. Solo las 4 agentes asignadas y Lucas Marinero tienen permisos de respuesta.');
+            return;
+        }
         if (isLocked) {
             alert(`Esta conversación está asignada exclusivamente a ${assignedAgentObj?.name || 'otra agente'}.`);
             return;
@@ -886,7 +932,7 @@ export default function ContactCenterChatConsole({
             e.preventDefault();
             const targetItem = currentMatches[selectedQuickReplyIndex] || currentMatches[0];
             if (targetItem) {
-                setMessageInput(targetItem.content);
+                setMessageInput(resolveQuickReplyText(targetItem.content));
                 setQuickRepliesOpen(false);
             }
         } else if (e.key === 'Enter' && !e.shiftKey) {
@@ -896,7 +942,7 @@ export default function ContactCenterChatConsole({
             const targetItem = matchedByDirectCmd || currentMatches[selectedQuickReplyIndex] || currentMatches[0];
 
             if (targetItem) {
-                sendDirectMessage(targetItem.content, isPrivateNote);
+                sendDirectMessage(resolveQuickReplyText(targetItem.content), isPrivateNote);
             } else {
                 handleSend(e);
             }
@@ -934,98 +980,51 @@ export default function ContactCenterChatConsole({
                     flexDirection: 'column',
                     gap: '6px'
                 }}>
-                    {/* Selector de Agentes ("Atendiendo como:") + Sonido + Sync */}
+                    {/* Identificación de Operador y Controles de Sonido / Sincronización */}
                     <div style={{
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        gap: '4px'
+                        gap: '6px'
                     }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflowX: 'auto' }}>
-                            <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748B', whiteSpace: 'nowrap' }}>
-                                Atendiendo:
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                color: '#475569',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                background: '#F8FAFC',
+                                border: '1px solid #E2E8F0',
+                                padding: '3px 8px',
+                                borderRadius: '6px'
+                            }}>
+                                <span style={{
+                                    width: '7px',
+                                    height: '7px',
+                                    borderRadius: '50%',
+                                    background: isAuthorized ? '#10B981' : '#94A3B8'
+                                }} />
+                                <span>Operador:</span>
+                                <strong style={{ color: activeAgent.color || '#0F2942' }}>{activeAgent.fullName || activeAgent.name}</strong>
                             </span>
-                            <div style={{ display: 'flex', gap: '3px' }}>
-                                {CONTACT_CENTER_AGENTS.map(agent => {
-                                    const isCurrent = activeAgent.id === agent.id || activeAgent.username === agent.username;
-                                    const assignedCount = chats.filter(c => {
-                                        if (c.status === 'archivado') return false;
-                                        const assigned = (c.assignedTo || '').toLowerCase();
-                                        if (!assigned) return false;
-                                        return (
-                                            assigned === agent.id.toLowerCase() ||
-                                            (agent.username && assigned === agent.username.toLowerCase()) ||
-                                            (agent.legacyId && assigned === agent.legacyId.toLowerCase()) ||
-                                            (c.assignedToName || '').toLowerCase().includes(agent.name.toLowerCase())
-                                        );
-                                    }).length;
-                                    const canSwitch = isLMarinero;
-
-                                    return (
-                                        <button
-                                            key={agent.id}
-                                            type="button"
-                                            onClick={() => {
-                                                if (canSwitch) {
-                                                    onSwitchAgent?.(agent);
-                                                }
-                                            }}
-                                            title={`${agent.fullName} (${assignedCount} asignados)`}
-                                            style={{
-                                                padding: '2px 5px',
-                                                borderRadius: '5px',
-                                                border: 'none',
-                                                cursor: canSwitch ? 'pointer' : 'default',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '3px',
-                                                background: isCurrent ? agent.color : '#F1F5F9',
-                                                color: isCurrent ? '#FFFFFF' : '#475569',
-                                                fontSize: '0.67rem',
-                                                fontWeight: 700,
-                                                boxShadow: isCurrent ? `0 1px 4px ${agent.color}40` : 'none',
-                                                whiteSpace: 'nowrap'
-                                            }}
-                                        >
-                                            <span style={{
-                                                width: '14px', height: '14px', borderRadius: '50%',
-                                                background: isCurrent ? '#FFFFFF' : agent.color,
-                                                color: isCurrent ? agent.color : '#FFFFFF',
-                                                fontSize: '0.56rem', fontWeight: 900,
-                                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
-                                            }}>
-                                                {agent.avatar}
-                                            </span>
-                                            <span>{agent.name.split(' ')[0]}</span>
-                                            {assignedCount > 0 && (
-                                                <span style={{
-                                                    background: isCurrent ? 'rgba(255,255,255,0.3)' : '#E2E8F0',
-                                                    color: isCurrent ? '#FFFFFF' : '#0F172A',
-                                                    padding: '0 4px', borderRadius: '8px', fontSize: '0.6rem', fontWeight: 800
-                                                }}>
-                                                    {assignedCount}
-                                                </span>
-                                            )}
-                                        </button>
-                                    );
-                                })}
-                            </div>
                         </div>
 
                         {/* Sonido y Sync */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                             <button
                                 type="button"
                                 onClick={onToggleSound}
                                 title={soundEnabled ? 'Silenciar avisos sonoros' : 'Activar sonido de nuevos mensajes'}
                                 style={{
-                                    padding: '3px 5px', borderRadius: '5px', border: '1px solid #CBD5E1',
+                                    padding: '3px 6px', borderRadius: '5px', border: '1px solid #CBD5E1',
                                     background: soundEnabled ? '#F0FDF4' : '#FFFFFF',
                                     color: soundEnabled ? '#16A34A' : '#94A3B8',
                                     cursor: 'pointer', display: 'flex', alignItems: 'center'
                                 }}
                             >
-                                {soundEnabled ? <Volume2 size={11} /> : <VolumeX size={11} />}
+                                {soundEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
                             </button>
                             <button
                                 type="button"
@@ -1033,12 +1032,12 @@ export default function ContactCenterChatConsole({
                                 disabled={loadingLive}
                                 title="Forzar sincronización inmediata"
                                 style={{
-                                    padding: '3px 5px', borderRadius: '5px', border: '1px solid #CBD5E1',
+                                    padding: '3px 6px', borderRadius: '5px', border: '1px solid #CBD5E1',
                                     background: '#FFFFFF', color: '#0284C7',
                                     cursor: 'pointer', display: 'flex', alignItems: 'center'
                                 }}
                             >
-                                <RefreshCw size={11} className={loadingLive ? 'spin' : ''} />
+                                <RefreshCw size={12} className={loadingLive ? 'spin' : ''} />
                             </button>
                         </div>
                     </div>
@@ -1622,7 +1621,13 @@ export default function ContactCenterChatConsole({
                         </div>
                         <button
                             type="button"
-                            onClick={() => setMessageSortOrder(prev => prev === 'newest_first' ? 'chronological' : 'newest_first')}
+                            onClick={() => {
+                                setMessageSortOrder(prev => {
+                                    const next = prev === 'newest_first' ? 'chronological' : 'newest_first';
+                                    try { localStorage.setItem('cc_message_sort_order', next); } catch {}
+                                    return next;
+                                });
+                            }}
                             title="Alternar entre ver mensajes más recientes arriba o cronológico clásico"
                             style={{
                                 display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -2083,24 +2088,65 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                         </div>
                     ) : null}
 
-                    {/* Formulario de redacción (solo habilitado si NO está bloqueado) */}
+                    {/* Formulario de redacción de mensaje */}
                     <form onSubmit={handleSend} style={{ opacity: isLocked ? 0.4 : 1, pointerEvents: isLocked ? 'none' : 'auto' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsPrivateNote(!isPrivateNote)}
-                                    style={{
-                                        padding: '4px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                                        border: '1px solid', borderColor: isPrivateNote ? '#EA580C' : '#E2E8F0',
-                                        background: isPrivateNote ? '#FFF7ED' : '#FFFFFF',
-                                        color: isPrivateNote ? '#EA580C' : '#64748B', cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '4px'
-                                    }}
-                                >
-                                    {isPrivateNote ? <Lock size={12} /> : <MessageSquare size={12} />}
-                                    {isPrivateNote ? 'Nota Interna' : 'WhatsApp Público'}
-                                </button>
+                                {/* Selector Segmentado: WhatsApp Público vs Nota Privada */}
+                                <div style={{
+                                    display: 'inline-flex',
+                                    background: '#F1F5F9',
+                                    padding: '2px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #CBD5E1'
+                                }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsPrivateNote(false)}
+                                        style={{
+                                            padding: '4px 10px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 700,
+                                            border: 'none',
+                                            background: !isPrivateNote ? '#0284C7' : 'transparent',
+                                            color: !isPrivateNote ? '#FFFFFF' : '#64748B',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            boxShadow: !isPrivateNote ? '0 1px 3px rgba(2,132,199,0.3)' : 'none',
+                                            transition: 'all 0.15s'
+                                        }}
+                                    >
+                                        <Send size={12} />
+                                        WhatsApp
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsPrivateNote(true)}
+                                        title="Registrar una nota interna confidencial para el equipo del Sanatorio (no se envía al paciente)"
+                                        style={{
+                                            padding: '4px 10px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 700,
+                                            border: 'none',
+                                            background: isPrivateNote ? '#EA580C' : 'transparent',
+                                            color: isPrivateNote ? '#FFFFFF' : '#64748B',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            boxShadow: isPrivateNote ? '0 1px 3px rgba(234,88,12,0.3)' : 'none',
+                                            transition: 'all 0.15s'
+                                        }}
+                                    >
+                                        <Lock size={12} />
+                                        Nota Privada
+                                    </button>
+                                </div>
 
                                 <button
                                     type="button"
@@ -2154,7 +2200,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                 return (
                                                     <div 
                                                         key={qr.id}
-                                                        onClick={() => sendDirectMessage(qr.content, isPrivateNote)}
+                                                        onClick={() => sendDirectMessage(resolveQuickReplyText(qr.content), isPrivateNote)}
                                                         style={{
                                                             padding: '8px 12px', cursor: 'pointer',
                                                             background: isSel ? '#F0F9FF' : '#FFFFFF',
@@ -2173,7 +2219,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                                     type="button"
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        setMessageInput(qr.content);
+                                                                        setMessageInput(resolveQuickReplyText(qr.content));
                                                                         setQuickRepliesOpen(false);
                                                                         inputRef.current?.focus();
                                                                     }}
@@ -2189,7 +2235,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                                     type="button"
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        sendDirectMessage(qr.content, isPrivateNote);
+                                                                        sendDirectMessage(resolveQuickReplyText(qr.content), isPrivateNote);
                                                                     }}
                                                                     style={{
                                                                         padding: '2px 8px', fontSize: '0.65rem', fontWeight: 700,
@@ -3315,7 +3361,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                setMessageInput(qr.content);
+                                                setMessageInput(resolveQuickReplyText(qr.content));
                                                 setQuickRepliesModalOpen(false);
                                                 inputRef.current?.focus();
                                             }}
@@ -3329,7 +3375,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         </button>
                                         <button
                                             type="button"
-                                            onClick={() => sendDirectMessage(qr.content, isPrivateNote)}
+                                            onClick={() => sendDirectMessage(resolveQuickReplyText(qr.content), isPrivateNote)}
                                             style={{
                                                 padding: '6px 14px', borderRadius: '6px', border: 'none',
                                                 background: '#0284C7', color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 700,

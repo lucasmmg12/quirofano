@@ -19,13 +19,65 @@ const CONFIG_KEY = 'contact_center_allowed_users';
 // Administradores con acceso maestro permanente
 export const MASTER_ADMINS = ['lmarinero', 'admin'];
 
-// 4 Agentes canónicas del Contact Center de Sanatorio Argentino (con soporte de credenciales y aliases)
+// 4 Agentes canónicas del Contact Center de Sanatorio Argentino + Supervisor Lucas Marinero
 export const CONTACT_CENTER_AGENTS = [
     { id: 'daguilera', username: 'daguilera', legacyId: 'daniela', name: 'Daniela Aguilera', fullName: 'Daniela Aguilera', role: 'Atención al Paciente', color: '#E11D48', avatar: 'DA' },
     { id: 'solivier', username: 'solivier', legacyId: 'sofia', name: 'Sofia Olivieri', fullName: 'Sofia Olivieri', role: 'Atención al Paciente', color: '#8B5CF6', avatar: 'SO' },
     { id: 'vjacques', username: 'vjacques', legacyId: 'virginia', name: 'Virginia Jacques', fullName: 'Virginia Jacques', role: 'Atención al Paciente', color: '#059669', avatar: 'VJ' },
     { id: 'eleal', username: 'eleal', legacyId: 'erica', name: 'Erica Leal', fullName: 'Erica Leal', role: 'Atención al Paciente', color: '#D97706', avatar: 'EL' },
+    { id: 'lmarinero', username: 'lmarinero', legacyId: 'lucas', name: 'Lucas Marinero', fullName: 'Lucas Marinero', role: 'Supervisor Contact Center', color: '#0284C7', avatar: 'LM' },
 ];
+
+export const CONTACT_CENTER_AUTHORIZED_USERNAMES = [
+    'lmarinero', 'admin',
+    'daguilera', 'daniela',
+    'solivier', 'sofia',
+    'vjacques', 'virginia',
+    'eleal', 'erica'
+];
+
+/**
+ * Valida si el usuario actual es una de las 4 agentes o Lucas Marinero para autorizar envíos de mensajes
+ */
+export function isUserAuthorizedForContactCenter(user) {
+    if (!user) return true; // Fallback permisivo si no hay sesión estricta
+    const username = (user.usuario || user.username || user.email || user.id || '').toLowerCase().trim().split('@')[0];
+    const nombre = (user.nombre || user.fullName || '').toLowerCase().trim();
+
+    // 1. Lucas Marinero (Supervisor)
+    if (
+        username.includes('lucas') || 
+        username.includes('marinero') || 
+        username === 'lmarinero' || 
+        username === 'admin' || 
+        nombre.includes('lucas') || 
+        nombre.includes('marinero')
+    ) {
+        return true;
+    }
+
+    // 2. Daniela Aguilera
+    if (username.includes('daniela') || username.includes('aguilera') || username === 'daguilera' || nombre.includes('daniela')) {
+        return true;
+    }
+
+    // 3. Sofia Olivieri
+    if (username.includes('sofia') || username.includes('olivieri') || username.includes('solivier') || username.includes('olivier') || nombre.includes('sofia')) {
+        return true;
+    }
+
+    // 4. Virginia Jacques
+    if (username.includes('virginia') || username.includes('jacques') || username === 'vjacques' || nombre.includes('virginia')) {
+        return true;
+    }
+
+    // 5. Erica Leal
+    if (username.includes('erica') || username.includes('leal') || username === 'eleal' || nombre.includes('erica')) {
+        return true;
+    }
+
+    return false;
+}
 
 /**
  * Obtiene el objeto de agente a partir de un identificador, username o nombre
@@ -661,6 +713,10 @@ export async function fetchLiveAndDemoChats() {
  * Inmediatamente pausa el chatbot para que no interfiera.
  */
 export async function sendContactCenterMessage({ chat, text, isNote, activeAgent, currentUser }) {
+    if (!isUserAuthorizedForContactCenter(currentUser)) {
+        throw new Error('No tienes autorización para responder en el Contact Center. Solo las 4 agentes asignadas y Lucas Marinero tienen permisos operativos de respuesta.');
+    }
+
     const isLocked = isChatLockedForUser(chat, activeAgent.id, currentUser);
     if (isLocked) {
         throw new Error(`No puedes responder. Esta conversación está asignada exclusivamente a ${chat.assignedToName || chat.assignedTo}.`);
@@ -969,9 +1025,31 @@ export async function saveCrmPatientCard({ phone, dni, nombreCompleto, obraSocia
 /**
  * Busca datos del paciente por teléfono en el padrón maestro de SALUS (hospital_pacientes)
  * Admite todos los formatos: +549..., 549..., 264..., 15..., 54..., o últimos dígitos locales.
+ * Prioriza conexión en tiempo real a SQL Server de SALUS vía sync-server.
  */
 export async function fetchFamilyMembersByPhone(phone) {
     if (!phone || String(phone).replace(/\D/g, '').length < 6) return [];
+    
+    // 1. Prioridad: Consulta en tiempo real a SALUS SQL Server (sync-server local) con timeout 2.5s
+    try {
+        const cleanDigits = String(phone).replace(/\D/g, '');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2500);
+        const res = await fetch(`http://localhost:3456/api/salus/familiares/${cleanDigits}`, {
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+            const json = await res.json();
+            if (json.success && Array.isArray(json.familiares) && json.familiares.length > 0) {
+                return json.familiares;
+            }
+        }
+    } catch (_) {
+        // Fallback silencioso si sync-server local no está activo
+    }
+
+    // 2. Fallback: RPC de Supabase hospital_pacientes
     try {
         const { data, error } = await supabase.rpc('buscar_familiares_por_telefono', { p_telefono: String(phone) });
         if (!error && Array.isArray(data) && data.length > 0) {
@@ -985,6 +1063,15 @@ export async function fetchFamilyMembersByPhone(phone) {
 
 export async function lookupPatientByPhone(phone) {
     if (!phone || String(phone).replace(/\D/g, '').length < 6) return null;
+
+    // 1. Prioridad: Buscar grupo familiar en tiempo real en SALUS (el primer registro siempre es la madre/adulto)
+    try {
+        const fams = await fetchFamilyMembersByPhone(phone);
+        if (Array.isArray(fams) && fams.length > 0) {
+            return fams[0];
+        }
+    } catch (_) {}
+
     let patient = null;
     try {
         const { data, error } = await supabase.rpc('buscar_paciente_por_telefono', { p_telefono: String(phone) });
@@ -1039,6 +1126,7 @@ export async function lookupPatientByPhone(phone) {
 /**
  * Busca datos del paciente en el padrón maestro de SALUS (hospital_pacientes)
  * Soporta búsqueda por DNI, NHC o TELÉFONO (+549..., 264..., 15..., etc.)
+ * Realiza búsqueda en tiempo real en SQL Server de SALUS con fallback local.
  */
 export async function lookupPatientFromSalus(query) {
     if (!query || String(query).trim().length < 4) return null;
@@ -1051,7 +1139,27 @@ export async function lookupPatientFromSalus(query) {
         if (byPhone) return byPhone;
     }
 
-    // Búsqueda por DNI o NHC
+    // 1. Prioridad: Búsqueda en tiempo real en SALUS SQL Server vía sync-server (timeout 2.5s)
+    if (clean.length >= 5) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2500);
+            const res = await fetch(`http://localhost:3456/api/salus/paciente/${clean}`, {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            if (res.ok) {
+                const json = await res.json();
+                if (json.success && json.paciente) {
+                    return json.paciente;
+                }
+            }
+        } catch (_) {
+            // Fallback a Supabase si sync-server no responde
+        }
+    }
+
+    // 2. Fallback: Búsqueda por DNI o NHC en Supabase hospital_pacientes
     try {
         const { data, error } = await supabase
             .from('hospital_pacientes')
