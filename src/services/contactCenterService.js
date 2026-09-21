@@ -478,6 +478,7 @@ export async function fetchLiveAndDemoChats() {
                 assignedToName: conv?.assigned_agent_name || null,
                 assignedAt: conv?.assigned_at || null,
                 botActive: conv?.bot_active ?? false,
+                aiSummary: conv?.ai_summary || null,
                 lastResponder: lastRespName,
                 lastResponderRole: lastRespRole,
                 lastResponseAt: formatRelativeTime(lastDateRaw),
@@ -934,3 +935,22 @@ export async function analyzeMedicalOrderImage(imageUrl, messageId = null, phone
     }
 }
 
+/**
+ * Invoca la Edge Function contact-center-chat-summary para resumir la solicitud del paciente y detectar doctor/parámetros
+ */
+export async function generateChatAiSummary(phone) {
+    if (!phone) return null;
+    try {
+        const { data, error } = await supabase.functions.invoke('contact-center-chat-summary', {
+            body: { phone }
+        });
+        if (error) {
+            console.error('[contactCenterService] Error en generateChatAiSummary:', error);
+            throw error;
+        }
+        return data?.summary || null;
+    } catch (err) {
+        console.error('[contactCenterService] Error invocando contact-center-chat-summary:', err);
+        throw err;
+    }
+}

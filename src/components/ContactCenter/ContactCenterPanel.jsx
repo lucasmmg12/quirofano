@@ -254,6 +254,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                             assignedToName: conv.assigned_agent_name || c.assignedToName,
                             assignedAt: conv.assigned_at || c.assignedAt,
                             botActive: conv.bot_active ?? c.botActive,
+                            aiSummary: conv.ai_summary !== undefined ? conv.ai_summary : c.aiSummary,
                             customFields: {
                                 ...c.customFields,
                                 dni: conv.dni || c.customFields?.dni,
@@ -262,7 +263,8 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                                 fechaNacimiento: conv.fecha_nacimiento || c.customFields?.fechaNacimiento,
                                 email: conv.email || c.customFields?.email,
                                 departamento: conv.departamento || c.customFields?.departamento,
-                                motivoConsulta: conv.motivo_consulta || c.customFields?.motivoConsulta
+                                motivoConsulta: conv.motivo_consulta || c.customFields?.motivoConsulta,
+                                medicoOEspecialidad: conv.medico_o_especialidad || c.customFields?.medicoOEspecialidad
                             }
                         };
                     }

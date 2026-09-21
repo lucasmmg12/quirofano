@@ -12,7 +12,7 @@ import {
     CONTACT_CENTER_AGENTS, getAgentById, isChatLockedForUser, 
     MASTER_ADMINS, toggleBotActive, fetchDoctorParameters,
     saveCrmPatientCard, lookupPatientFromSalus, resetBotWorkflow,
-    analyzeMedicalOrderImage
+    analyzeMedicalOrderImage, generateChatAiSummary
 } from '../../services/contactCenterService';
 import { fetchPacienteDetalle } from '../../services/pacienteUnificadoService';
 
@@ -66,10 +66,14 @@ export default function ContactCenterChatConsole({
     const [resolutionReason, setResolutionReason] = useState('Turno Coordinado');
     const [isClosingChat, setIsClosingChat] = useState(false);
 
+    // Estados Resumen IA del Paciente y Prestador
+    const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+    const [aiSummaryData, setAiSummaryData] = useState(null);
+
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
     const selectedChat = chats.find(c => c.id === activeChatId) || chats[0] || {};
 
-    // Sincronizar formulario CRM cuando cambia el chat activo
+    // Sincronizar formulario CRM y Resumen IA cuando cambia el chat activo
     useEffect(() => {
         if (selectedChat) {
             setCrmForm({
@@ -83,8 +87,36 @@ export default function ContactCenterChatConsole({
                 notas: selectedChat.customFields?.notas || ''
             });
             setIsEditingCrm(false);
+            setAiSummaryData(selectedChat.aiSummary || null);
         }
-    }, [selectedChat?.id, selectedChat?.phone]);
+    }, [selectedChat?.id, selectedChat?.phone, selectedChat?.aiSummary]);
+
+    const handleRunAiSummary = async () => {
+        if (!selectedChat?.phone) return;
+        try {
+            setIsGeneratingSummary(true);
+            const summary = await generateChatAiSummary(selectedChat.phone);
+            if (summary) {
+                setAiSummaryData(summary);
+                selectedChat.aiSummary = summary;
+                // Autocompletar datos del paciente en el formulario si están vacíos
+                if (summary.datos_paciente) {
+                    setCrmForm(prev => ({
+                        ...prev,
+                        dni: prev.dni || summary.datos_paciente.dni || '',
+                        pacienteNombre: prev.pacienteNombre || summary.datos_paciente.nombre_completo || '',
+                        obraSocial: prev.obraSocial || summary.datos_paciente.obra_social || '',
+                        fechaNacimiento: prev.fechaNacimiento || summary.datos_paciente.fecha_nacimiento || '',
+                        departamento: prev.departamento || summary.datos_paciente.departamento || 'San Juan'
+                    }));
+                }
+            }
+        } catch (err) {
+            alert('Error al generar resumen IA: ' + (err.message || 'Error'));
+        } finally {
+            setIsGeneratingSummary(false);
+        }
+    };
 
     // Cargar Historial 360° del paciente si se abre la pestaña Historial
     useEffect(() => {
@@ -1058,6 +1090,196 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                     {/* TAB 1: FICHA CRM DEL PACIENTE */}
                     {activeDetailTab === 'info' && (
                         <>
+                            {/* WIDGET PRINCIPAL: RESUMEN INTELIGENTE IA (OPENAI) & PRESTADOR DETECTADO */}
+                            <div style={{
+                                background: '#F8FAFC',
+                                border: '1.5px solid #E2E8F0',
+                                borderRadius: '12px',
+                                padding: '14px',
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '10px'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 800, color: '#4F46E5' }}>
+                                        <Sparkles size={16} color="#6366F1" />
+                                        RESUMEN IA DE LA CONSULTA
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleRunAiSummary}
+                                        disabled={isGeneratingSummary}
+                                        title="Analizar historial completo de la conversación con IA"
+                                        style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                            padding: '4px 8px', borderRadius: '6px',
+                                            border: '1px solid #C7D2FE', background: '#EEF2FF',
+                                            color: '#4338CA', fontSize: '0.7rem', fontWeight: 700,
+                                            cursor: isGeneratingSummary ? 'wait' : 'pointer'
+                                        }}
+                                    >
+                                        <RefreshCw size={11} className={isGeneratingSummary ? 'animate-spin' : ''} />
+                                        {isGeneratingSummary ? 'Analizando...' : (aiSummaryData ? 'Actualizar IA' : 'Generar')}
+                                    </button>
+                                </div>
+
+                                {aiSummaryData ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        {/* 1. QUÉ NECESITA EL PACIENTE */}
+                                        <div style={{
+                                            background: '#FFFFFF', padding: '10px', borderRadius: '8px',
+                                            border: '1px solid #E2E8F0', borderLeft: '3px solid #6366F1'
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                                                    ¿Qué necesita el paciente?
+                                                </span>
+                                                {aiSummaryData.tipo_tramite && (
+                                                    <span style={{
+                                                        fontSize: '0.65rem', fontWeight: 700, background: '#E0E7FF',
+                                                        color: '#3730A3', padding: '1px 6px', borderRadius: '4px'
+                                                    }}>
+                                                        {aiSummaryData.tipo_tramite}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div style={{ fontSize: '0.8rem', color: '#1E293B', lineHeight: 1.45, fontWeight: 600 }}>
+                                                {aiSummaryData.resumen_solicitud || 'El paciente no ha especificado aún su solicitud.'}
+                                            </div>
+                                        </div>
+
+                                        {/* 2. DATOS DETECTADOS POR LA IA */}
+                                        {aiSummaryData.datos_paciente && (
+                                            <div style={{
+                                                background: '#FFFFFF', padding: '10px', borderRadius: '8px',
+                                                border: '1px solid #E2E8F0'
+                                            }}>
+                                                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                                    Datos Aportados por el Paciente
+                                                </div>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '0.74rem' }}>
+                                                    <div>
+                                                        <span style={{ color: '#64748B', fontSize: '0.68rem', display: 'block' }}>DNI</span>
+                                                        <strong>{aiSummaryData.datos_paciente.dni || '—'}</strong>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: '#64748B', fontSize: '0.68rem', display: 'block' }}>Obra Social</span>
+                                                        <strong>{aiSummaryData.datos_paciente.obra_social || '—'}</strong>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: '#64748B', fontSize: '0.68rem', display: 'block' }}>Nacimiento</span>
+                                                        <strong>{aiSummaryData.datos_paciente.fecha_nacimiento || '—'}</strong>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: '#64748B', fontSize: '0.68rem', display: 'block' }}>Dpto / Localidad</span>
+                                                        <strong>{aiSummaryData.datos_paciente.departamento || '—'}</strong>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* 3. DOCTOR DETECTADO & PARÁMETROS DE ATENCIÓN */}
+                                        {aiSummaryData.prestador_matched ? (
+                                            <div style={{
+                                                background: '#F0FDF4', padding: '10px', borderRadius: '8px',
+                                                border: '1.5px solid #86EFAC'
+                                            }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                                    <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#15803D', textTransform: 'uppercase' }}>
+                                                        👨‍⚕️ Prestador Detectado
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setActiveDetailTab('prestadores');
+                                                            setDoctorQuery(aiSummaryData.prestador_matched.profesional_nombre);
+                                                        }}
+                                                        style={{
+                                                            background: 'none', border: 'none', color: '#166534',
+                                                            fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer', padding: 0,
+                                                            textDecoration: 'underline'
+                                                        }}
+                                                    >
+                                                        Ver en Prestadores ↗
+                                                    </button>
+                                                </div>
+
+                                                <div style={{ fontWeight: 800, fontSize: '0.84rem', color: '#0F172A' }}>
+                                                    {aiSummaryData.prestador_matched.profesional_nombre}
+                                                </div>
+                                                <div style={{ fontSize: '0.72rem', color: '#0284C7', fontWeight: 600 }}>
+                                                    {aiSummaryData.prestador_matched.especialidad || 'Consulta Médica'}
+                                                </div>
+                                                {aiSummaryData.prestador_matched.consultorio_actual && (
+                                                    <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, marginTop: '2px' }}>
+                                                        📍 {aiSummaryData.prestador_matched.consultorio_actual}
+                                                    </div>
+                                                )}
+
+                                                {aiSummaryData.prestador_matched.condiciones_consulta && (
+                                                    <div style={{
+                                                        marginTop: '8px', padding: '8px', background: '#FFFFFF',
+                                                        borderRadius: '6px', border: '1px solid #BBF7D0',
+                                                        fontSize: '0.72rem', color: '#334155', lineHeight: 1.45,
+                                                        whiteSpace: 'pre-line', maxHeight: '160px', overflowY: 'auto'
+                                                    }}>
+                                                        <div style={{ fontWeight: 800, color: '#166534', fontSize: '0.68rem', marginBottom: '4px' }}>
+                                                            📋 CONDICIONES Y PARÁMETROS:
+                                                        </div>
+                                                        {aiSummaryData.prestador_matched.condiciones_consulta}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : aiSummaryData.doctor_detectado?.nombre_aproximado ? (
+                                            <div style={{
+                                                background: '#FFFBEB', padding: '10px', borderRadius: '8px',
+                                                border: '1px solid #FDE68A', fontSize: '0.74rem'
+                                            }}>
+                                                <div style={{ fontWeight: 800, color: '#B45309', marginBottom: '2px' }}>
+                                                    ⚠️ Doctor mencionado: {aiSummaryData.doctor_detectado.nombre_aproximado}
+                                                </div>
+                                                <div style={{ color: '#92400E', fontSize: '0.7rem' }}>
+                                                    No se encontró coincidencia exacta en SALUS. Puedes buscarlo por nombre parcial en la pestaña "Prestadores".
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div style={{
+                                                padding: '8px 10px', background: '#FFFFFF', borderRadius: '6px',
+                                                border: '1px solid #E2E8F0', fontSize: '0.7rem', color: '#64748B'
+                                            }}>
+                                                ℹ️ La IA no detectó un médico específico en la conversación. Puedes consultar la cartilla en la pestaña "Prestadores".
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div style={{
+                                        padding: '12px', background: '#FFFFFF', borderRadius: '8px',
+                                        border: '1px dashed #CBD5E1', textAlign: 'center'
+                                    }}>
+                                        <div style={{ fontSize: '0.76rem', color: '#475569', marginBottom: '8px' }}>
+                                            Genera con IA un resumen ejecutivo de lo que necesita el paciente y detecta automáticamente los parámetros del médico consultado.
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleRunAiSummary}
+                                            disabled={isGeneratingSummary}
+                                            style={{
+                                                padding: '6px 14px', borderRadius: '8px',
+                                                background: 'linear-gradient(135deg, #4F46E5, #6366F1)',
+                                                color: '#FFFFFF', border: 'none', fontWeight: 700,
+                                                fontSize: '0.76rem', cursor: isGeneratingSummary ? 'wait' : 'pointer',
+                                                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                                boxShadow: '0 2px 6px rgba(99, 102, 241, 0.3)'
+                                            }}
+                                        >
+                                            <Sparkles size={13} />
+                                            {isGeneratingSummary ? 'Analizando con IA...' : 'Generar Resumen con IA'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
                             {/* WIDGET: ESTADO DEL CHATBOT Y CONTROL DE SILENCIADO */}
                             <div style={{
                                 padding: '12px 14px', borderRadius: '10px',
