@@ -3390,12 +3390,12 @@ app.listen(PORT, '0.0.0.0', () => {
 â•šâ• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• 
     `);
     getPool().then(p => {
-        console.log('✅ Conexión inicial lista. Configurando sincronizador automático de turnos online...');
+        console.log('✅ Conexión inicial lista. Configurando sincronizadores automáticos de Contact Center y SALUS...');
         
-        // Ejecución inicial diferida (15 seg tras arranque)
+        // 1. TURNOS ONLINE (Cada 10 min)
         setTimeout(async () => {
             try {
-                console.log('⏰ [Turnos Online Auto] Ejecutando sincronización inicial de inconsistencias...');
+                console.log('⏰ [Turnos Online Auto] Ejecutando sincronización inicial...');
                 const poolInst = await getPool();
                 await syncTurnosOnlineToSupabase(poolInst, { days: 2, supabaseClient: supabase });
                 console.log('⏰ [Turnos Online Auto] ✅ Sincronización inicial completada con éxito.');
@@ -3404,7 +3404,6 @@ app.listen(PORT, '0.0.0.0', () => {
             }
         }, 15000);
 
-        // Ejecución periódica cada 10 minutos
         setInterval(async () => {
             try {
                 console.log('⏰ [Turnos Online Auto] Ejecutando sincronización periódica (cada 10 min)...');
@@ -3415,6 +3414,50 @@ app.listen(PORT, '0.0.0.0', () => {
                 console.warn('⚠️ [Turnos Online Auto] Error en ciclo periódico:', e.message);
             }
         }, 10 * 60 * 1000);
+
+        // 2. DIAGNÓSTICOS, SÍNTOMAS Y EVOLUCIÓN (Cada 20 min)
+        setTimeout(async () => {
+            try {
+                console.log('⏰ [Diagnósticos Auto] Ejecutando sincronización inicial (últimos 7 días)...');
+                const f7 = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString().split('T')[0];
+                await syncDiagnosticos(f7);
+                console.log('⏰ [Diagnósticos Auto] ✅ Sincronización inicial completada con éxito.');
+            } catch (e) {
+                console.warn('⚠️ [Diagnósticos Auto] Error en sincronización inicial:', e.message);
+            }
+        }, 30000);
+
+        setInterval(async () => {
+            try {
+                console.log('⏰ [Diagnósticos Auto] Ejecutando sincronización periódica (últimos 7 días)...');
+                const f7 = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString().split('T')[0];
+                await syncDiagnosticos(f7);
+                console.log('⏰ [Diagnósticos Auto] ✅ Sincronización periódica finalizada.');
+            } catch (e) {
+                console.warn('⚠️ [Diagnósticos Auto] Error en ciclo periódico:', e.message);
+            }
+        }, 20 * 60 * 1000);
+
+        // 3. PARÁMETROS MÉDICOS Y AGENDAS (Cada 30 min)
+        setTimeout(async () => {
+            try {
+                console.log('⏰ [Médicos Auto] Ejecutando sincronización inicial de parámetros y condiciones...');
+                await syncDoctorParameters();
+                console.log('⏰ [Médicos Auto] ✅ Sincronización inicial completada con éxito.');
+            } catch (e) {
+                console.warn('⚠️ [Médicos Auto] Error en sincronización inicial:', e.message);
+            }
+        }, 45000);
+
+        setInterval(async () => {
+            try {
+                console.log('⏰ [Médicos Auto] Ejecutando sincronización periódica de parámetros...');
+                await syncDoctorParameters();
+                console.log('⏰ [Médicos Auto] ✅ Sincronización periódica finalizada.');
+            } catch (e) {
+                console.warn('⚠️ [Médicos Auto] Error en ciclo periódico:', e.message);
+            }
+        }, 30 * 60 * 1000);
     }).catch(err => console.warn('⚠️ Conexión inicial fallida:', err.message));
 });
 

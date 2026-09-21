@@ -21,6 +21,8 @@ config({ path: resolve(__dirname, '..', '.env') });
 import { syncHistorialCamas } from './sync_ocupacion.mjs';
 import { syncDiagnosticos } from './sync_diagnosticos.mjs';
 import { syncKinesiologiaUci } from './sync_kinesiologia_uci.mjs';
+import { syncDoctorParameters } from './sync_doctor_parameters.mjs';
+import { syncTurnosOnlineToSupabase } from './sync_turnos_online.mjs';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://hakysnqiryimxbwdslwe.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
@@ -448,10 +450,38 @@ async function runDailySync() {
         log(`⚠️ Error no bloqueante en Paso 6 (Kinesiología UCI): ${eKine.message}`);
     }
 
+    // ──────────────────────────────────────────────────────────
+    // PASO 7: Parámetros de Médicos y Agendas (Contact Center & IA)
+    // ──────────────────────────────────────────────────────────
+    log('PASO 7/8: Sincronizando Parámetros y Condiciones de Médicos desde SALUS...');
+    let syncedDocs = 0;
+    try {
+        const docRes = await syncDoctorParameters();
+        syncedDocs = docRes?.total || 0;
+        log(`Paso 7 completado: ${syncedDocs} parámetros médicos actualizados.`);
+    } catch (eDoc) {
+        log(`⚠️ Error no bloqueante en Paso 7 (Parámetros Médicos): ${eDoc.message}`);
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // PASO 8: Turnos Online y Gestión de Inconsistencias (Contact Center)
+    // ──────────────────────────────────────────────────────────
+    log('PASO 8/8: Sincronizando Turnos Online e Inconsistencias desde SALUS (últimos 7 días)...');
+    let syncedTurnos = 0;
+    try {
+        pool = await sql.connect(SQL_CONFIG);
+        const tOnlineRes = await syncTurnosOnlineToSupabase(pool, { days: 7, supabaseClient: supabase });
+        syncedTurnos = tOnlineRes?.casosGuardados || 0;
+        log(`Paso 8 completado: ${syncedTurnos} casos de turnos online sincronizados.`);
+        await pool.close();
+    } catch (eTurnos) {
+        log(`⚠️ Error no bloqueante en Paso 8 (Turnos Online): ${eTurnos.message}`);
+    }
+
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     log('========================================================');
     log(`✅ Sincronización Diaria completada con éxito en ${elapsed}s.`);
-    log(`📊 Resumen: ${syncedOcup} ocupaciones, ${syncedLab} lab UCI, ${syncedImg} imágenes, ${syncedDiag} diagnósticos, ${syncedKine} kinesiología/ARM.`);
+    log(`📊 Resumen: ${syncedOcup} ocupaciones, ${syncedLab} lab UCI, ${syncedImg} imágenes, ${syncedDiag} diagnósticos, ${syncedKine} kinesiología/ARM, ${syncedDocs} médicos, ${syncedTurnos} turnos online.`);
     log('========================================================');
 }
 
