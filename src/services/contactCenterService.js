@@ -470,10 +470,56 @@ export async function fetchLiveAndDemoChats() {
                 return String(val).trim();
             };
 
+            // Helper de validación de nombres genéricos que NUNCA deben mostrarse como contacto
+            const isGenericName = (name) => {
+                if (!name) return true;
+                const norm = String(name).trim().toLowerCase();
+                return (
+                    norm === 'bot sanatorio' ||
+                    norm === 'bot' ||
+                    norm === 'sanatorio' ||
+                    norm === 'sanatorio argentino' ||
+                    norm === 'paciente' ||
+                    norm.startsWith('paciente (') ||
+                    norm === 'recepciones'
+                );
+            };
+
+            // A. Extraer nombre saludado por el bot en el historial (ej: "¡Hola *PILAR MARTINEZ AGUILERA*!")
+            let botGreetingName = null;
+            for (const m of messages) {
+                const text = m.content || '';
+                const match = text.match(/¡Hola\s+\*([^*]+)\*!/i);
+                if (match && match[1] && !isGenericName(match[1])) {
+                    botGreetingName = match[1].trim();
+                    break;
+                }
+            }
+
+            // B. Remitente de mensajes entrantes de WhatsApp (pushName de la persona)
+            const incomingWithName = messages.find(m => 
+                m.direction === 'incoming' && 
+                m.sender_name && 
+                !isGenericName(m.sender_name)
+            );
+            const incomingSenderName = incomingWithName?.sender_name || null;
+
+            // C. Determinar nombre de contacto final prioritario
+            let resolvedContactName = null;
+            if (conv?.nombre_completo && !isGenericName(conv.nombre_completo)) {
+                resolvedContactName = conv.nombre_completo.trim();
+            } else if (botGreetingName) {
+                resolvedContactName = botGreetingName;
+            } else if (incomingSenderName) {
+                resolvedContactName = incomingSenderName.trim();
+            } else {
+                resolvedContactName = `+${phone.replace(/\D/g, '')}`;
+            }
+
             const patientFields = {
                 dni: conv?.dni || 'A verificar',
                 nhc: conv?.nhc || null,
-                pacienteNombre: conv?.nombre_completo || lastMsg.sender_name || 'Paciente',
+                pacienteNombre: resolvedContactName,
                 obraSocial: conv?.obra_social || 'A consultar',
                 fechaNacimiento: formatBirthDate(conv?.fecha_nacimiento),
                 email: conv?.email || 'No informado',
@@ -487,11 +533,9 @@ export async function fetchLiveAndDemoChats() {
                 pedidoMedicoFoto: lastMsg.media_type && lastMsg.media_type !== 'text' ? 'Adjunto en chat' : 'No adjuntado'
             };
 
-            const computedContactName = conv?.nombre_completo || lastMsg.sender_name || `Paciente (${phone.slice(-4)})`;
-
             realChats.push({
                 id: 'REAL_' + phone.slice(-6),
-                contactName: computedContactName,
+                contactName: resolvedContactName,
                 phone: phone,
                 channel: 'WHATSAPP',
                 channelNumber: '5492645825637',

@@ -101,6 +101,57 @@ export default function ContactCenterChatConsole({
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
 
+    // Helper de validación de nombres genéricos que NUNCA deben mostrarse como contacto
+    const isGenericName = (name) => {
+        if (!name) return true;
+        const norm = String(name).trim().toLowerCase();
+        return (
+            norm === 'bot sanatorio' ||
+            norm === 'bot' ||
+            norm === 'sanatorio' ||
+            norm === 'sanatorio argentino' ||
+            norm === 'paciente' ||
+            norm.startsWith('paciente (') ||
+            norm === 'recepciones'
+        );
+    };
+
+    const getCleanChatName = (c) => {
+        if (!c) return 'Paciente';
+        if (c.customFields?.pacienteNombre && !isGenericName(c.customFields.pacienteNombre)) {
+            return c.customFields.pacienteNombre;
+        }
+        if (c.contactName && !isGenericName(c.contactName)) {
+            return c.contactName;
+        }
+        // Extraer de saludo del bot en mensajes
+        const msgs = c.messages || [];
+        for (const m of msgs) {
+            const text = m.content || m.text || '';
+            const match = text.match(/¡Hola\s+\*([^*]+)\*!/i);
+            if (match && match[1] && !isGenericName(match[1])) {
+                return match[1].trim();
+            }
+        }
+        // Extraer de pushName entrante de WhatsApp
+        const inc = msgs.find(m => (m.direction === 'incoming' || m.sender === 'patient') && m.sender_name && !isGenericName(m.sender_name));
+        if (inc?.sender_name) return inc.sender_name;
+
+        return c.phone ? `+${c.phone.replace(/\D/g, '')}` : 'Paciente';
+    };
+
+    const getChatAvatarInitials = (c) => {
+        const name = getCleanChatName(c);
+        if (!name || name === 'Paciente') return 'P';
+        if (name.startsWith('+')) return '#';
+        const clean = name.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '').trim();
+        const parts = clean.split(/\s+/).filter(Boolean);
+        if (parts.length >= 2) {
+            return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase();
+        }
+        return clean.substring(0, 2).toUpperCase();
+    };
+
     // Estados Atajos y Respuestas Rápidas (Exclusivo Contact Center)
     const [quickRepliesOpen, setQuickRepliesOpen] = useState(false);
     const [quickRepliesModalOpen, setQuickRepliesModalOpen] = useState(false);
@@ -507,7 +558,7 @@ export default function ContactCenterChatConsole({
     }).filter(chat => {
         if (!searchTerm) return true;
         const q = searchTerm.toLowerCase();
-        return (chat.contactName || '').toLowerCase().includes(q) 
+        return (getCleanChatName(chat) || '').toLowerCase().includes(q) 
             || (chat.phone || '').includes(q)
             || (chat.id || '').toLowerCase().includes(q) 
             || (chat.lastMessage || '').toLowerCase().includes(q)
@@ -993,11 +1044,11 @@ export default function ContactCenterChatConsole({
                                             fontSize: '0.7rem', fontWeight: 800, display: 'flex',
                                             alignItems: 'center', justifyContent: 'center'
                                         }}>
-                                            {(chat.contactName || 'P').substring(0, 2).toUpperCase()}
+                                            {getChatAvatarInitials(chat)}
                                         </div>
                                         <div>
                                             <span style={{ fontSize: '0.85rem', fontWeight: 700, color: isSelected ? '#1E40AF' : '#0F172A' }}>
-                                                {chat.contactName}
+                                                {getCleanChatName(chat)}
                                             </span>
                                             <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
                                                 +{chat.phone}
@@ -1094,7 +1145,7 @@ export default function ContactCenterChatConsole({
                         <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0284C7' }}>
-                                    {selectedChat.contactName}
+                                    {getCleanChatName(selectedChat)}
                                 </span>
 
                                 {/* CONDICIÓN PADRÓN */}
