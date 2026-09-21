@@ -234,6 +234,8 @@ export default function ContactCenterChatConsole({
     });
     const [isSavingCrm, setIsSavingCrm] = useState(false);
     const [isSearchingSalus, setIsSearchingSalus] = useState(false);
+    const [isSearchingThirdParty, setIsSearchingThirdParty] = useState(false);
+    const [thirdPartyDniInput, setThirdPartyDniInput] = useState('');
 
     // Estados Historial Clínico 360°
     const [patientHistory, setPatientHistory] = useState(null);
@@ -515,6 +517,67 @@ export default function ContactCenterChatConsole({
             }
         } catch (e) {
             console.error(e);
+        } finally {
+            setIsSearchingSalus(false);
+        }
+    };
+
+    // Vincular o conmutar ficha médica a otro paciente buscando por su DNI en SALUS (gestión a nombre de terceros)
+    const handleLinkThirdPartyDni = async () => {
+        const queryToSearch = (thirdPartyDniInput || '').trim();
+        if (!queryToSearch || queryToSearch.length < 5) {
+            alert('Ingresa un número de DNI válido de al menos 5 dígitos para buscar en SALUS');
+            return;
+        }
+        setIsSearchingSalus(true);
+        try {
+            const found = await lookupPatientFromSalus(queryToSearch);
+            if (found) {
+                const birth = found.fecha_nacimiento || '';
+                const formattedBirth = birth.includes('/') ? birth : (birth.includes('-') ? `${birth.split('-')[2]}/${birth.split('-')[1]}/${birth.split('-')[0]}` : birth);
+
+                setCrmForm(prev => ({
+                    ...prev,
+                    dni: found.dni || prev.dni,
+                    pacienteNombre: found.nombre || prev.pacienteNombre,
+                    obraSocial: found.coseguro || prev.obraSocial,
+                    fechaNacimiento: formattedBirth || prev.fechaNacimiento,
+                    email: found.email || prev.email,
+                    departamento: found.centro || prev.departamento,
+                    notas: (prev.notas ? prev.notas + '\n' : '') + `[Gestión a nombre de otro paciente] Paciente: ${found.nombre} (DNI ${found.dni}) - Solicitado vía WhatsApp +${selectedChat.phone}`
+                }));
+
+                if (selectedChat?.customFields) {
+                    selectedChat.customFields.dni = found.dni || selectedChat.customFields.dni;
+                    selectedChat.customFields.nhc = found.nhc || selectedChat.customFields.nhc;
+                    selectedChat.customFields.pacienteNombre = found.nombre || selectedChat.customFields.pacienteNombre;
+                    selectedChat.customFields.obraSocial = found.coseguro || selectedChat.customFields.obraSocial;
+                    selectedChat.customFields.fechaNacimiento = formattedBirth || selectedChat.customFields.fechaNacimiento;
+                    selectedChat.customFields.email = found.email || selectedChat.customFields.email;
+                    selectedChat.customFields.esPacienteExistente = true;
+                }
+                selectedChat.contactName = found.nombre;
+
+                await saveCrmPatientCard({
+                    phone: selectedChat.phone,
+                    dni: found.dni,
+                    nombreCompleto: found.nombre,
+                    obraSocial: found.coseguro,
+                    fechaNacimiento: formattedBirth,
+                    email: found.email,
+                    departamento: found.centro || 'San Juan',
+                    motivoConsulta: crmForm.motivoConsulta
+                });
+
+                showToast(`Ficha vinculada exitosamente a ${found.nombre} (DNI ${found.dni})`, 'success');
+                setIsSearchingThirdParty(false);
+                setThirdPartyDniInput('');
+            } else {
+                alert(`No se encontró paciente en el padrón de SALUS con el DNI ${queryToSearch}.`);
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Error al buscar paciente en SALUS: ' + (err.message || 'Error'));
         } finally {
             setIsSearchingSalus(false);
         }
@@ -2252,7 +2315,76 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                     Datos del Paciente
                                 </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsSearchingThirdParty(prev => !prev)}
+                                    title="Vincular o conmutar ficha médica por DNI si el titular gestiona para otro paciente (hijo/a, familiar)"
+                                    style={{
+                                        fontSize: '0.66rem',
+                                        fontWeight: 700,
+                                        color: isSearchingThirdParty ? '#DC2626' : '#0284C7',
+                                        background: isSearchingThirdParty ? '#FEF2F2' : '#F0F9FF',
+                                        border: `1px solid ${isSearchingThirdParty ? '#FCA5A5' : '#BAE6FD'}`,
+                                        padding: '3px 8px',
+                                        borderRadius: '6px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <Search size={11} />
+                                    {isSearchingThirdParty ? 'Cerrar búsqueda' : 'Gestionar para otro DNI'}
+                                </button>
                             </div>
+
+                            {/* BUSCADOR DE TERCEROS / OTRO PACIENTE POR DNI EN SALUS */}
+                            {isSearchingThirdParty && (
+                                <div style={{
+                                    background: '#F0F9FF',
+                                    border: '1.5px solid #BAE6FD',
+                                    borderRadius: '8px',
+                                    padding: '10px 12px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '6px'
+                                }}>
+                                    <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0369A1', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                        <span>🔍 Vincular Paciente por DNI en SALUS</span>
+                                    </div>
+                                    <div style={{ fontSize: '0.67rem', color: '#475569' }}>
+                                        Ingresá el DNI del paciente que realmente se atenderá (ej: hijo/a, madre, familiar):
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
+                                        <input 
+                                            type="text"
+                                            placeholder="DNI del paciente (sin puntos)..."
+                                            value={thirdPartyDniInput}
+                                            onChange={(e) => setThirdPartyDniInput(e.target.value.replace(/\D/g, ''))}
+                                            onKeyDown={(e) => { if (e.key === 'Enter') handleLinkThirdPartyDni(); }}
+                                            style={{
+                                                flex: 1, padding: '5px 8px', fontSize: '0.76rem',
+                                                borderRadius: '6px', border: '1px solid #CBD5E1', outline: 'none',
+                                                background: '#FFFFFF'
+                                            }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={handleLinkThirdPartyDni}
+                                            disabled={isSearchingSalus}
+                                            style={{
+                                                padding: '5px 12px', background: '#0284C7', color: '#FFFFFF',
+                                                border: 'none', borderRadius: '6px', fontSize: '0.72rem',
+                                                fontWeight: 700, cursor: isSearchingSalus ? 'wait' : 'pointer',
+                                                display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                            }}
+                                        >
+                                            <Search size={11} />
+                                            {isSearchingSalus ? 'Buscando...' : 'Vincular'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* VISTA INSTITUCIONAL LIMPIA Y CLÍNICA DE LA FICHA DEL PACIENTE (SOLO LECTURA SALUS) */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

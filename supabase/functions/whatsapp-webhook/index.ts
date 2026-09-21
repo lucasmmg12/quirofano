@@ -1250,8 +1250,10 @@ async function handleChatbotTriage(
         }
     }
 
-    // 2. Si no se encontró por teléfono pero hay DNI extraído o previo, consultar por DNI
-    if (!paciente && candidateDni) {
+    // 2. Si se detectó un DNI en el mensaje (candidateDni):
+    // Un contacto/paciente puede gestionar un turno o autorización para OTRO paciente (hijo, cónyuge, familiar, etc.)
+    // Por lo tanto, si hay candidateDni y no coincide con el paciente del teléfono, priorizamos el paciente del DNI aportado
+    if (candidateDni && (!paciente || String(paciente.dni) !== String(candidateDni))) {
         const { data: pByDni, error: pacError } = await supabase
             .from('hospital_pacientes')
             .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
@@ -1263,7 +1265,7 @@ async function handleChatbotTriage(
             console.error('[triage-bot] Error consultando hospital_pacientes por DNI:', pacError);
         } else if (pByDni) {
             paciente = pByDni;
-            console.log(`[triage-bot] Paciente encontrado por DNI ${candidateDni}: ${paciente.nombre} (${paciente.coseguro})`);
+            console.log(`[triage-bot] Paciente conmutado a beneficiario por DNI provisto ${candidateDni}: ${paciente.nombre} (${paciente.coseguro})`);
         }
     }
 
@@ -1903,12 +1905,27 @@ async function handleChatbotTriage(
             nextStage = 'esperando_agente';
         } else if (isExistingPatient) {
             const hasOrderImageMsg = patientSentImageRecently ? '\n\n✅ *Ya recibimos la foto de tu orden médica.*' : '';
-            replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos a coordinar tu turno${doctorNoteMsg}.${hasOrderImageMsg}\n\nPor favor indícanos:\n• ¿Preferencia de día u horario (mañana o tarde)?\n• ¿Primera consulta o control?\n\n${getAgentHandoffNotice()}`;
+            replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos a coordinar tu turno${doctorNoteMsg}.${hasOrderImageMsg}\n\n` +
+                `Por favor indícanos:\n` +
+                `• ¿El turno es para vos (*${fullName}*), o estás gestionando para otro paciente / familiar?\n` +
+                `• Si es para vos: indícanos preferencia de día/horario y si es primera consulta o control.\n` +
+                `• Si es para otra persona: indícanos el *DNI* (sin puntos) y *Nombre Completo* del paciente que se va a atender.\n\n` +
+                `${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
         } else {
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nCon gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\nPara abrir tu ficha y coordinar tu turno en un solo mensaje, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n• *Preferencia de día y horario* (mañana o tarde)\n\nEl bot quedará en pausa una vez recibidos tus datos.\n\n🌐 Más información en: https://www.sanatorioargentino.com.ar/`;
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n` +
+                `Con gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\n` +
+                `Por favor indícanos en un solo mensaje:\n` +
+                `1. ¿Sos paciente de Sanatorio Argentino o es tu primera consulta?\n` +
+                `2. ¿El turno es para vos o para otra persona (hijo/a, familiar)?\n\n` +
+                `• *Nombre y Apellido completo del paciente a atender*\n` +
+                `• *Número de DNI* (sin puntos)\n` +
+                `• *Obra Social o Prepaga*\n` +
+                `• *Preferencia de día y horario* (mañana o tarde)\n\n` +
+                `El bot quedará en pausa una vez recibidos tus datos.\n\n` +
+                `🌐 Más información en: https://www.sanatorioargentino.com.ar/`;
             updates.bot_stage = 'esperando_datos_nuevo';
             updates.bot_active = true;
             nextStage = 'esperando_datos_nuevo';
@@ -1931,12 +1948,26 @@ async function handleChatbotTriage(
             const hasOrderImageMsg = patientSentImageRecently 
                 ? '✅ *Ya recibimos la foto de tu orden médica.*' 
                 : '📸 *Foto clara de la orden médica*';
-            replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos con la *autorización* de tu orden médica.\n\n${hasOrderImageMsg}\n🔢 *Confirmación de tu DNI*\n\n*(Vigencia de órdenes: 30 días).* ${getAgentHandoffNotice()}`;
+            replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos con la *autorización* de tu orden médica.\n\n` +
+                `Por favor indícanos:\n` +
+                `• ¿La orden médica es a tu nombre (*${fullName}*), o de otro paciente/familiar?\n` +
+                `• *DNI* y *Nombre Completo* del paciente titular de la orden médica.\n` +
+                `• ${hasOrderImageMsg}\n\n` +
+                `*(Vigencia de órdenes: 30 días).* ${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
         } else {
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nCon gusto te ayudamos con tu trámite de *autorización*.\n\nPor favor envíanos en un solo mensaje:\n📸 *Foto clara de la Orden Médica*\n🔢 *Tu DNI, Nombre Completo y Obra Social*\n\nEl bot quedará en pausa una vez recibidos tus datos.\n\n🌐 Más info: https://www.sanatorioargentino.com.ar/`;
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n` +
+                `Con gusto te ayudamos con tu trámite de *autorización*.\n\n` +
+                `Por favor envíanos en un solo mensaje:\n` +
+                `1. ¿Sos paciente de Sanatorio Argentino o primera consulta?\n` +
+                `2. ¿La autorización es para vos o para otra persona (hijo/a, familiar)?\n\n` +
+                `• *DNI y Nombre Completo del paciente titular de la orden*\n` +
+                `• *Obra Social o Prepaga*\n` +
+                `• 📸 *Foto clara de la Orden Médica*\n\n` +
+                `El bot quedará en pausa una vez recibidos tus datos.\n\n` +
+                `🌐 Más info: https://www.sanatorioargentino.com.ar/`;
             updates.bot_stage = 'esperando_datos_nuevo';
             updates.bot_active = true;
             nextStage = 'esperando_datos_nuevo';
@@ -1972,12 +2003,25 @@ async function handleChatbotTriage(
     // =============================================
     else {
         if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥 ¿En qué podemos ayudarte hoy?\n\n1️⃣ *Solicitar o reprogramar un turno*\n2️⃣ *Autorizaciones y cobertura*\n3️⃣ *Guardias médicas las 24 horas*\n4️⃣ *Informes, estudios, horarios y sedes*\n\nPodés responder con el número *1*, *2*, *3* o *4*, o escribir directamente tu consulta.`;
+            replyText = `¡Hola *${fullName}*! 🏥 ¿En qué podemos ayudarte hoy?\n\n` +
+                `¿El trámite es para vos (*${fullName}*) o estás gestionando para otro paciente / familiar?\n\n` +
+                `1️⃣ *El turno o autorización es para mí*\n` +
+                `2️⃣ *Estoy gestionando para otro paciente / familiar*\n` +
+                `3️⃣ *Guardias médicas las 24 horas*\n` +
+                `4️⃣ *Informes, estudios, horarios y sedes*\n\n` +
+                `• Si es para vos: indícanos qué especialidad o práctica necesitás.\n` +
+                `• Si es para otra persona: indícanos el *DNI* (sin puntos) y *Nombre Completo* del paciente a atender.`;
             updates.bot_stage = 'menu_opciones';
             updates.bot_active = true;
             nextStage = 'menu_opciones';
         } else {
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n¿En qué podemos ayudarte hoy?\n• Si buscás *solicitar un turno* o *autorizaciones*, indícanos tu número de *DNI* (sin puntos) y tu *Nombre Completo*.\n• También podés consultarnos directamente por *guardias 24hs*, *análisis clínicos*, *vacunatorio*, *informes de estudios* o *sedes*.\n\n🌐 Para conocer más ingresá a: https://www.sanatorioargentino.com.ar/`;
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n` +
+                `Para coordinar tu atención con precisión, por favor indícanos:\n\n` +
+                `1️⃣ ¿Sos paciente de Sanatorio Argentino o es tu primera consulta?\n` +
+                `2️⃣ ¿El turno o autorización es para vos, o estás gestionando para otra persona (hijo/a, familiar)?\n\n` +
+                `• Si el trámite es para vos: envíanos tu *DNI* (sin puntos), *Nombre Completo* y *Obra Social*.\n` +
+                `• Si gestionás para otro paciente: envíanos el *DNI* y *Nombre Completo del paciente que se va a atender*, más tu nombre de contacto.\n\n` +
+                `🌐 Para conocer más ingresá a: https://www.sanatorioargentino.com.ar/`;
             updates.bot_stage = 'esperando_dni';
             updates.bot_active = true;
             nextStage = 'esperando_dni';
