@@ -619,14 +619,37 @@ function findMediaUrl(obj, depth = 0) {
 // =============================================
 
 interface IntentDetectionResult {
-    intent: 'turno' | 'autorizacion' | 'info' | 'general';
+    intent: 'turno' | 'autorizacion' | 'info' | 'chequeo' | 'general';
     doctorCandidate: string | null;
     doctorRecord: any | null;
     isExplicitNumberOption: '1' | '2' | '3' | null;
 }
 
+const STOPWORDS_MEDICOS = new Set([
+    'hacer', 'hacerme', 'hacerse', 'sacar', 'sacarme', 'sacarse', 'pedir', 'pedirme',
+    'ver', 'verme', 'verse', 'saber', 'consultar', 'chequeo', 'chequeos', 'control',
+    'controles', 'estudio', 'estudios', 'turno', 'turnos', 'consulta', 'atencion',
+    'atención', 'manana', 'mañana', 'tarde', 'hoy', 'lunes', 'martes', 'miercoles', 'miércoles',
+    'jueves', 'viernes', 'sabado', 'sábado', 'domingo', 'semana', 'mes', 'algun', 'alguna',
+    'alguno', 'favor', 'hola', 'buenas', 'buenos', 'ustedes', 'sanatorio', 'argentino',
+    'salud', 'clinica', 'clínica', 'medico', 'médico', 'medica', 'médica', 'doctor', 'doctora',
+    'profesional', 'especialista', 'analisis', 'análisis', 'laboratorio', 'ecografia', 'ecografía',
+    'radiografia', 'radiografía', 'orden', 'receta', 'como', 'para', 'buen', 'dia', 'días', 'bienvenido'
+]);
+
 async function detectIntentAndEntities(supabase: any, text: string): Promise<IntentDetectionResult> {
     const clean = text.toLowerCase().trim();
+
+    // 0. DETECCIÓN PRIORITARIA: CHEQUEO PREVENTIVO DE SALUD
+    const isChequeo = /\b(chequeo|chequeos|chequeo\s+preventivo|circuito\s+preventivo|chequeo\s+de\s+salud|control\s+anual|chequeo\s+anual|estudios\s+preventivos)\b/i.test(clean);
+    if (isChequeo) {
+        return {
+            intent: 'chequeo',
+            doctorCandidate: null,
+            doctorRecord: null,
+            isExplicitNumberOption: null
+        };
+    }
 
     // Si respondió un número directo '1', '2' o '3'
     if (/^[1|1️⃣]$/.test(clean) || /^opci[oó]n\s*1$/i.test(clean)) {
@@ -648,30 +671,21 @@ async function detectIntentAndEntities(supabase: any, text: string): Promise<Int
     // 3. Detección de Información / Sedes / Web
     const isInfo = /\b(informacion|donde\s+queda|ubicacion|direccion|sede|sedes|horarios?|telefono|contacto|web|portal|precios?|particular)\b/i.test(clean);
 
-    // Extracción inteligente de nombre de doctor/médico
+    // Extracción inteligente de nombre de doctor/médico (requiere explícitamente título médico y descarta stopwords)
     let doctorCandidate: string | null = null;
     const docRegexes = [
         /(?:doctor|doctora|dr|dra)\.?\s+([a-záéíóúñ]+)/i,
-        /(?:con|para)\s+(?:el\s+|la\s+)?(?:dr\.?|doctor|dra\.?|doctora)?\s*([a-záéíóúñ]{4,})/i
+        /(?:con|para)\s+(?:el\s+|la\s+)?(?:dr\.?|doctor|dra\.?|doctora)\s+([a-záéíóúñ]{3,})/i
     ];
 
     for (const reg of docRegexes) {
         const m = clean.match(reg);
         if (m && m[1]) {
             const word = m[1].toLowerCase().trim();
-            const ignored = ['turno', 'turnos', 'para', 'hola', 'favor', 'como', 'hacer', 'pedir', 'pedirme', 'alguna', 'algun', 'buen', 'dia', 'ustedes'];
-            if (!ignored.includes(word) && word.length >= 3) {
+            if (!STOPWORDS_MEDICOS.has(word) && word.length >= 3) {
                 doctorCandidate = word;
                 break;
             }
-        }
-    }
-
-    // Si no encontró por regex pero mencionó "medico" o palabras clínicas, buscar en tokens
-    if (!doctorCandidate && isTurno) {
-        const tokens = clean.split(/\s+/).filter(w => w.length >= 4 && !['quiero', 'turno', 'turnos', 'pedir', 'pedirme', 'para', 'hola', 'buenas', 'buen', 'favor', 'necesito', 'saber', 'doctor', 'medico'].includes(w));
-        if (tokens.length > 0) {
-            doctorCandidate = tokens[tokens.length - 1];
         }
     }
 
@@ -704,7 +718,7 @@ async function detectIntentAndEntities(supabase: any, text: string): Promise<Int
         }
     }
 
-    let intent: 'turno' | 'autorizacion' | 'info' | 'general' = 'general';
+    let intent: 'turno' | 'autorizacion' | 'info' | 'chequeo' | 'general' = 'general';
     if (isTurno || doctorRecord) {
         intent = 'turno';
     } else if (isAutoriz) {
@@ -844,8 +858,13 @@ async function handleChatbotTriage(
     const analysis = await detectIntentAndEntities(supabase, cleanText);
     console.log(`[triage-bot] Análisis de intención para "${cleanText}":`, analysis);
 
-    // Construir etiqueta de doctor si fue detectado
-    let rawDocName = analysis.doctorRecord?.profesional_nombre || (analysis.doctorCandidate ? analysis.doctorCandidate.toUpperCase() : null);
+    // Construir etiqueta de doctor SOLO si fue verificado en base de datos o venía con Dr./Dra. explícito y no es stopword
+    let rawDocName = analysis.doctorRecord?.profesional_nombre || null;
+    if (!rawDocName && analysis.doctorCandidate && !STOPWORDS_MEDICOS.has(analysis.doctorCandidate.toLowerCase())) {
+        if (/\b(doctor|doctora|dr|dra)\.?\s+/i.test(cleanText)) {
+            rawDocName = analysis.doctorCandidate.charAt(0).toUpperCase() + analysis.doctorCandidate.slice(1).toLowerCase();
+        }
+    }
     if (rawDocName) {
         rawDocName = rawDocName.replace(/^\([^)]+\)\s*/, '').replace(/\s*\([^)]+\)$/, '').replace(/\s+SSLN$/i, '').trim();
     }
@@ -901,6 +920,36 @@ async function handleChatbotTriage(
             nextStage = 'esperando_dni';
         }
     } 
+    // =============================================
+    // FLUJO ESPECIAL: CHEQUEO PREVENTIVO DE SALUD
+    // =============================================
+    else if (analysis.intent === 'chequeo') {
+        updates.motivo_consulta = 'Chequeo Preventivo de Salud';
+        updates.medico_o_especialidad = 'Circuito Chequeo Preventivo';
+
+        const infoChequeo = `El *Chequeo Preventivo de Salud* de Sanatorio Argentino es un circuito integral diseñado para que puedas realizarte todos tus estudios médicos de rutina en una sola mañana (aproximadamente 4 horas), sin tener que trasladarte.\n\n` +
+            `🩺 *¿Qué incluye el circuito?*\n` +
+            `• Consulta clínica integral (apertura y cierre con recomendaciones de salud personalizadas)\n` +
+            `• Análisis de laboratorio completos de sangre y orina\n` +
+            `• Evaluación cardiológica con Electrocardiograma (ECG)\n` +
+            `• Diagnóstico por imágenes: Radiografía de tórax y Ecografías de control\n` +
+            `• Estudios complementarios según tu edad y perfil (ej: mamografía, densitometría)\n\n` +
+            `🌐 *Podés ver toda la información detallada del circuito aquí:*\n` +
+            `👉 https://www.sanatorioargentino.com.ar/chequeo-preventivo-de-salud.html\n\n` +
+            `Para este chequeo no es necesario elegir un médico en particular: nuestro equipo del Contact Center coordina todas las consultas y especialistas del circuito por vos.`;
+
+        if (isExistingPatient) {
+            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos con cobertura *${os}*.\n\n${infoChequeo}\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contestando en breve para coordinar tu turno y fecha disponible del circuito en *Sede Santa Fe* o *Sede San Luis*. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+        } else {
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n${infoChequeo}\n\nPara que nuestras asesoras puedan abrir tu ficha y coordinar la fecha del circuito, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n• *Sede de preferencia* (Sede Santa Fe o Sede San Luis)\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contactando a la brevedad. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
+            updates.bot_stage = 'esperando_datos_nuevo';
+            updates.bot_active = true;
+            nextStage = 'esperando_datos_nuevo';
+        }
+    }
     // =============================================
     // FLUJO 2: INTENCIÓN DETECTADA DIRECTAMENTE: TURNO / REPROGRAMACIÓN
     // =============================================
