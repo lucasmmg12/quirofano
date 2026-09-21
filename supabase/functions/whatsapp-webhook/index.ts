@@ -1102,7 +1102,38 @@ async function handleChatbotTriage(
         };
     }
 
-    // 2. DETECTAR INTENCIÓN Y ENTIDADES (MÉDICO, DOCTOR, ESTUDIO)
+    // 2. VINCULAR TURNOS ONLINE AGENDADOS DEL PACIENTE USANDO SU DNI
+    const resolvedDni = updates.dni || paciente?.dni || candidateDni || conv?.dni || null;
+    let turnoOnlineProximo: any = null;
+    if (resolvedDni) {
+        try {
+            const todayIso = new Date().toISOString().split('T')[0];
+            const { data: turnosOn } = await supabase
+                .from('contact_center_turnos_online')
+                .select('*')
+                .eq('dni', resolvedDni)
+                .gte('fechas_resumen', todayIso)
+                .order('fechas_resumen', { ascending: true })
+                .limit(1);
+
+            if (turnosOn && turnosOn.length > 0) {
+                const tRow = turnosOn[0];
+                const primerTurno = Array.isArray(tRow.turnos) && tRow.turnos.length > 0 ? tRow.turnos[0] : null;
+                turnoOnlineProximo = {
+                    profesional: tRow.prestador_nombre || primerTurno?.profesional || 'Profesional Asignado',
+                    fecha: primerTurno?.fechaTurno || tRow.fechas_resumen,
+                    hora: primerTurno?.horaInicio || '16:30',
+                    agenda: tRow.agenda_nombre || primerTurno?.agenda || 'Agenda de Consultorios',
+                    motivo: primerTurno?.motivo || tRow.notas || ''
+                };
+                console.log(`[triage-bot] Turno online vinculado para DNI ${resolvedDni}:`, turnoOnlineProximo);
+            }
+        } catch (tErr) {
+            console.warn('[triage-bot] Error vinculando turnos online:', tErr);
+        }
+    }
+
+    // 3. DETECTAR INTENCIÓN Y ENTIDADES (MÉDICO, DOCTOR, ESTUDIO)
     const analysis = await detectIntentAndEntities(supabase, cleanText);
     console.log(`[triage-bot] Análisis de intención para "${cleanText}":`, analysis);
 
@@ -1493,7 +1524,20 @@ async function handleChatbotTriage(
             updates.motivo_consulta = 'Solicitud de Turno / Consulta';
         }
 
-        if (isExistingPatient) {
+        if (turnoOnlineProximo) {
+            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos como paciente registrado con cobertura *${os}*.\n\n` +
+                `📅 *Vemos en nuestro sistema que ya tenés un turno agendado online:*\n` +
+                `• *Profesional:* ${turnoOnlineProximo.profesional}\n` +
+                `• *Fecha:* ${turnoOnlineProximo.fecha}\n` +
+                `• *Horario:* ${turnoOnlineProximo.hora} hs\n` +
+                `• *Agenda / Servicio:* ${turnoOnlineProximo.agenda}\n\n` +
+                `Si tu consulta es para *confirmar, reprogramar o cancelar* este turno, indícanoslo por favor. Si necesitás coordinar una nueva cita adicional, dinos con qué médico o especialidad.\n\n${getAgentHandoffNotice()}`;
+            updates.motivo_consulta = `Turno Online: ${turnoOnlineProximo.profesional} (${turnoOnlineProximo.fecha} ${turnoOnlineProximo.hora} hs)`;
+            updates.medico_o_especialidad = turnoOnlineProximo.profesional;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+        } else if (isExistingPatient) {
             replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos con cobertura *${os}*.\n\nCon gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\nPara agilizar tu solicitud en un solo paso, por favor indícanos:\n• ¿Tenés preferencia de días u horarios (mañana o tarde)?\n• ¿Es una primera consulta o control?\n\n${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;

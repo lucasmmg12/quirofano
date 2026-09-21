@@ -53,6 +53,26 @@ Deno.serve(async (req) => {
             .eq('phone', phone)
             .maybeSingle();
 
+        // 1.1 Consultar si el paciente tiene turnos online agendados por DNI
+        let turnosOnlineInfo = 'Sin turnos online agendados.';
+        if (conv?.dni) {
+            try {
+                const { data: tOnline } = await supabase
+                    .from('contact_center_turnos_online')
+                    .select('*')
+                    .eq('dni', conv.dni)
+                    .limit(2);
+                if (tOnline && tOnline.length > 0) {
+                    turnosOnlineInfo = tOnline.map((t: any) => {
+                        const first = Array.isArray(t.turnos) && t.turnos.length > 0 ? t.turnos[0] : null;
+                        return `• Profesional: ${t.prestador_nombre || 'Asignado'} | Fecha: ${first?.fechaTurno || t.fechas_resumen} ${first?.horaInicio || ''} hs | Agenda: ${t.agenda_nombre || first?.agenda || ''}`;
+                    }).join('\n');
+                }
+            } catch (tErr) {
+                console.warn('[chat-summary] Error consultando turnos online:', tErr);
+            }
+        }
+
         // 2. Obtener los mensajes más RECIENTES del chat (orden descendente para tomar los últimos, luego revertir para OpenAI)
         const { data: rawMessages } = await supabase
             .from('whatsapp_messages')
@@ -99,6 +119,8 @@ DATOS ACTUALES REGISTRADOS EN FICHA:
 - Motivo Registrado: ${conv?.motivo_consulta || 'No especificado'}
 - Médico/Especialidad en Ficha: ${conv?.medico_o_especialidad || 'No especificado'}
 - Teléfono: ${phone}
+- TURNOS ONLINE AGENDADOS EN EL SISTEMA:
+${turnosOnlineInfo}
 
 HISTORIAL DE CHAT RECIENTE (Cronológico):
 ${chatTranscript || 'Sin mensajes de texto todavía.'}
