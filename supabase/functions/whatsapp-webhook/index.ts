@@ -619,10 +619,32 @@ function findMediaUrl(obj, depth = 0) {
 // =============================================
 
 interface IntentDetectionResult {
-    intent: 'turno' | 'autorizacion' | 'info' | 'chequeo' | 'prevenir' | 'general';
+    intent: 
+        | 'turno' 
+        | 'autorizacion' 
+        | 'info' 
+        | 'chequeo' 
+        | 'prevenir' 
+        | 'guardia' 
+        | 'informes_laboratorio'
+        | 'informes_imagenes'
+        | 'informes_biopsia_pap'
+        | 'informes_general'
+        | 'servicio_laboratorio'
+        | 'vacunatorio'
+        | 'curso_embarazadas'
+        | 'registro_civil'
+        | 'administracion_presupuestos'
+        | 'horarios_sedes'
+        | 'telefonos_sedes'
+        | 'reclamos_calidad'
+        | 'fundacion'
+        | 'derivacion_agente'
+        | 'general';
     doctorCandidate: string | null;
     doctorRecord: any | null;
-    isExplicitNumberOption: '1' | '2' | '3' | null;
+    isExplicitNumberOption: string | null;
+    sectorKey?: string | null;
 }
 
 const STOPWORDS_MEDICOS = new Set([
@@ -635,35 +657,88 @@ const STOPWORDS_MEDICOS = new Set([
     'salud', 'clinica', 'clínica', 'medico', 'médico', 'medica', 'médica', 'doctor', 'doctora',
     'profesional', 'especialista', 'analisis', 'análisis', 'laboratorio', 'ecografia', 'ecografía',
     'radiografia', 'radiografía', 'orden', 'receta', 'como', 'para', 'buen', 'dia', 'días', 'bienvenido',
-    'prevenir', 'prevencion', 'prevención'
+    'prevenir', 'prevencion', 'prevención', 'guardia', 'guardias', 'vacuna', 'vacunas', 'registro',
+    'presupuesto', 'presupuestos', 'informe', 'informes', 'reclamo', 'reclamos'
 ]);
+
+/**
+ * Verifica si el Contact Center se encuentra dentro del horario de atención:
+ * Lunes a Viernes de 7:30 a 21:00 hs
+ * Sábados de 8:00 a 12:00 hs
+ * Hora oficial de San Juan, Argentina (UTC-3)
+ */
+function isContactCenterOpen(now: Date = new Date()): boolean {
+    const timeStr = now.toLocaleString('en-US', { timeZone: 'America/Argentina/San_Juan' });
+    const local = new Date(timeStr);
+    const day = local.getDay(); // 0 = Dom, 1 = Lun, ..., 6 = Sab
+    const hour = local.getHours();
+    const min = local.getMinutes();
+    const currentMin = hour * 60 + min;
+
+    if (day >= 1 && day <= 5) {
+        // Lunes a Viernes: 7:30 a 21:00 hs
+        return currentMin >= 450 && currentMin < 1260;
+    } else if (day === 6) {
+        // Sábados: 8:00 a 12:00 hs
+        return currentMin >= 480 && currentMin < 720;
+    }
+    return false; // Domingos y fuera de horario
+}
+
+/**
+ * Mensaje institucional cuando el bot se frena y transfiere a las asesoras humanas
+ */
+function getAgentHandoffNotice(): string {
+    const open = isContactCenterOpen();
+    const webNotice = `🌐 Para más información institucional, cartilla médica y servicios podés visitar nuestra web oficial:\n👉 https://www.sanatorioargentino.com.ar/`;
+
+    if (open) {
+        return `Una de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contestando en breve dentro de nuestro horario de atención (lunes a viernes de 7:30 a 21:00 hs y sábados de 8:00 a 12:00 hs). Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. El bot quedará en pausa mientras una asesora toma tu caso. 👩‍⚕️\n\n${webNotice}`;
+    } else {
+        return `Nuestro horario de atención del Contact Center es de *lunes a viernes de 7:30 a 21:00 hs* y *sábados de 8:00 a 12:00 hs*.\n\nEn este momento nos encontramos fuera de horario de atención. El bot quedará en pausa y dejamos tu consulta registrada para que una de nuestras asesoras te responda al inicio del *próximo día hábil*. 👩‍⚕️\n\n🚨 *Si presentas una urgencia médica*, recordá que Sanatorio Argentino cuenta con servicio permanente de *Guardias Médicas las 24 horas* en Sede 01 (San Luis 432 Oeste) con Clínica, Pediatría, Ginecología y Obstetricia, Cardiología y Cirugía pasiva.\n\n${webNotice}`;
+    }
+}
 
 async function detectIntentAndEntities(supabase: any, text: string): Promise<IntentDetectionResult> {
     const clean = text.toLowerCase().trim();
 
-    // 0. DETECCIÓN PRIORITARIA: CHEQUEO PREVENTIVO DE SALUD
-    const isChequeo = /\b(chequeo|chequeos|chequeo\s+preventivo|circuito\s+preventivo|chequeo\s+de\s+salud|control\s+anual|chequeo\s+anual|estudios\s+preventivos)\b/i.test(clean);
-    if (isChequeo) {
-        return {
-            intent: 'chequeo',
-            doctorCandidate: null,
-            doctorRecord: null,
-            isExplicitNumberOption: null
-        };
+    // 0. DETECCIÓN POR OPCIÓN DIRECTA DEL MENÚ HISTÓRICO (LETRAS A..M o NÚMEROS 1..4)
+    if (/^[a|a️⃣]$/i.test(clean) || /^opci[oó]n\s*a$/i.test(clean)) {
+        return { intent: 'informes_general', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'A' };
     }
-
-    // 0.1 DETECCIÓN PRIORITARIA: PROGRAMA PREVENIR (OSP)
-    const isPrevenir = /\b(programa\s+prevenir|prevenir|el\s+prevenir|turno\s+(?:para\s+)?prevenir|hacerme\s+(?:el\s+)?prevenir|sacar\s+(?:el\s+)?prevenir|estudios?\s+(?:de\s+|del\s+)?prevenir)\b/i.test(clean);
-    if (isPrevenir) {
-        return {
-            intent: 'prevenir',
-            doctorCandidate: null,
-            doctorRecord: null,
-            isExplicitNumberOption: null
-        };
+    if (/^[b|b️⃣]$/i.test(clean) || /^opci[oó]n\s*b$/i.test(clean)) {
+        return { intent: 'curso_embarazadas', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'B' };
     }
-
-    // Si respondió un número directo '1', '2' o '3'
+    if (/^[c|c️⃣]$/i.test(clean) || /^opci[oó]n\s*c$/i.test(clean)) {
+        return { intent: 'vacunatorio', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'C' };
+    }
+    if (/^[d|d️⃣]$/i.test(clean) || /^opci[oó]n\s*d$/i.test(clean)) {
+        return { intent: 'registro_civil', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'D' };
+    }
+    if (/^[e|e️⃣]$/i.test(clean) || /^opci[oó]n\s*e$/i.test(clean)) {
+        return { intent: 'administracion_presupuestos', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'E' };
+    }
+    if (/^[f|f️⃣]$/i.test(clean) || /^opci[oó]n\s*f$/i.test(clean)) {
+        return { intent: 'horarios_sedes', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'F' };
+    }
+    if (/^[g|g️⃣]$/i.test(clean) || /^opci[oó]n\s*g$/i.test(clean)) {
+        return { intent: 'telefonos_sedes', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'G' };
+    }
+    if (/^[h|h️⃣]$/i.test(clean) || /^opci[oó]n\s*h$/i.test(clean)) {
+        return { intent: 'reclamos_calidad', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'H' };
+    }
+    if (/^[i|i️⃣]$/i.test(clean) || /^opci[oó]n\s*i$/i.test(clean)) {
+        return { intent: 'chequeo', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'I' };
+    }
+    if (/^[j|j️⃣]$/i.test(clean) || /^opci[oó]n\s*j$/i.test(clean)) {
+        return { intent: 'servicio_laboratorio', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'J' };
+    }
+    if (/^[k|k️⃣]$/i.test(clean) || /^opci[oó]n\s*k$/i.test(clean)) {
+        return { intent: 'fundacion', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'K' };
+    }
+    if (/^[l|l️⃣]$/i.test(clean) || /^opci[oó]n\s*l$/i.test(clean)) {
+        return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'L' };
+    }
     if (/^[1|1️⃣]$/.test(clean) || /^opci[oó]n\s*1$/i.test(clean)) {
         return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
     }
@@ -671,19 +746,122 @@ async function detectIntentAndEntities(supabase: any, text: string): Promise<Int
         return { intent: 'autorizacion', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
     }
     if (/^[3|3️⃣]$/.test(clean) || /^opci[oó]n\s*3$/i.test(clean)) {
-        return { intent: 'info', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '3' };
+        return { intent: 'guardia', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '3' };
     }
 
-    // 1. Detección de Turno / Consulta / Reprogramación
+    // 1. GUARDIAS MÉDICAS 24 HORAS
+    const isGuardia = /\b(guardia|guardias|urgencia|urgencias|emergencia|emergencias|medico\s+de\s+guardia|pediatra\s+de\s+guardia|clinico\s+de\s+guardia)\b/i.test(clean);
+    if (isGuardia) {
+        return { intent: 'guardia', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    // 2. CHEQUEO PREVENTIVO DE SALUD
+    const isChequeo = /\b(chequeo|chequeos|chequeo\s+preventivo|circuito\s+preventivo|chequeo\s+de\s+salud|control\s+anual|chequeo\s+anual|estudios\s+preventivos)\b/i.test(clean);
+    if (isChequeo) {
+        return { intent: 'chequeo', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    // 3. PROGRAMA PREVENIR (OSP)
+    const isPrevenir = /\b(programa\s+prevenir|prevenir|el\s+prevenir|turno\s+(?:para\s+)?prevenir|hacerme\s+(?:el\s+)?prevenir|sacar\s+(?:el\s+)?prevenir|estudios?\s+(?:de\s+|del\s+)?prevenir)\b/i.test(clean);
+    if (isPrevenir) {
+        return { intent: 'prevenir', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    // 4. INFORMES Y RESULTADOS DE ESTUDIOS
+    const isInfLab = /\b(resultados?\s+(?:de\s+)?(?:los\s+|mis\s+|el\s+)?(?:analisis|laboratorio|sangre|orina)|ver\s+(?:mis\s+|los\s+)?(?:analisis|laboratorio)|portal\s+laboratorio|clave\s+laboratorio|informes?\s+(?:de\s+)?(?:laboratorio|analisis))\b/i.test(clean);
+    if (isInfLab) {
+        return { intent: 'informes_laboratorio', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    const isInfImg = /\b(resultados?\s+(?:de\s+)?(?:la\s+|el\s+|mis\s+|las\s+)?(?:ecografia|resonancia|radiografia|tomografia|mamografia|imagenes|estudios?)|ver\s+(?:mi\s+|mis\s+)?(?:ecografia|resonancia|radiografia|tomografia|mamografia|estudio)|portal\s+imagenes|informes?\s+(?:de\s+)?(?:imagenes|diagnostico\s+por\s+imagen))\b/i.test(clean);
+    if (isInfImg) {
+        return { intent: 'informes_imagenes', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    const isInfPap = /\b(biopsia|biopsias|pap\b|papanicolau|citologia|resultado\s+(?:de\s+)?(?:la\s+)?biopsia|resultado\s+(?:del\s+)?pap)\b/i.test(clean);
+    if (isInfPap) {
+        return { intent: 'informes_biopsia_pap', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    const isInfGen = /\b(solicitar\s+informes?|mis\s+informes?|mis\s+estudios?|resultados?\s+de\s+estudios?|entrega\s+de\s+informes?)\b/i.test(clean);
+    if (isInfGen) {
+        return { intent: 'informes_general', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    // 5. ATENCIÓN Y EXTRACCIÓN DE LABORATORIO (IR A HACERSE LOS ANÁLISIS)
+    const isServicioLab = /\b(hacerme\s+(?:un\s+|el\s+)?(?:analisis|laboratorio|estudio\s+de\s+sangre)|sacar\s+sangre|extraccion(?:es)?|ayuno\s+(?:para\s+)?analisis|horario\s+(?:de\s+)?laboratorio|guardia\s+de\s+laboratorio)\b/i.test(clean);
+    if (isServicioLab) {
+        return { intent: 'servicio_laboratorio', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    // 6. VACUNATORIO
+    const isVacunatorio = /\b(vacuna|vacunas|vacunatorio|vacunacion|vacunarse|calendario\s+(?:de\s+)?vacunacion)\b/i.test(clean);
+    if (isVacunatorio) {
+        return { intent: 'vacunatorio', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    // 7. CURSO DE EMBARAZADAS Y YOGA
+    const isCursoEmb = /\b(embarazada|embarazadas|preparto|gimnasia\s+(?:para\s+)?embarazadas|curso\s+(?:de\s+|para\s+)?embarazadas|yoga\s+(?:para\s+)?embarazadas)\b/i.test(clean);
+    if (isCursoEmb) {
+        return { intent: 'curso_embarazadas', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    // 8. REGISTRO CIVIL (INSCRIPCIÓN DE NACIMIENTOS)
+    const isRegistroCivil = /\b(registro\s+civil|inscribir\s+(?:a\s+mi\s+)?(?:bebe|hijo|hija|nacimiento|recien\s+nacido)|partida\s+(?:de\s+)?nacimiento|acta\s+(?:de\s+)?nacimiento|inscripcion\s+(?:de\s+)?nacimiento)\b/i.test(clean);
+    if (isRegistroCivil) {
+        return { intent: 'registro_civil', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    // 9. ADMINISTRACIÓN, CIRUGÍAS Y PRESUPUESTOS
+    const isAdminPresup = /\b(presupuesto|presupuestos|costo\s+(?:de\s+)?(?:cirugia|operacion)|precio\s+(?:de\s+)?(?:cirugia|operacion)|administracion\s+internado|cobertura\s+(?:de\s+)?cirugia)\b/i.test(clean);
+    if (isAdminPresup) {
+        return { intent: 'administracion_presupuestos', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    // 10. HORARIOS DE SEDES Y VISITAS
+    const isHorarios = /\b(horarios?\s+(?:de\s+)?(?:atencion|sedes?)|a\s+que\s+hora\s+(?:abren|cierran|atienden)|horarios?\s+(?:de\s+)?visita|visitas?\s+(?:de\s+)?internad[oa]s?)\b/i.test(clean);
+    if (isHorarios) {
+        return { intent: 'horarios_sedes', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    // 11. TELÉFONOS Y WHATSAPPS DE SEDES Y SECTORES
+    const isTelefonos = /\b(telefonos?|whatsapps?|wa\.link|numeros?\s+(?:de\s+)?(?:telefono|contacto)|contactos?\s+(?:de\s+)?(?:whatsapp|telefono|las\s+sedes|sede)|contacto\s+sede)\b/i.test(clean);
+    if (isTelefonos) {
+        let sectorKey: string | null = null;
+        if (/fertilidad|reproductiva/i.test(clean)) sectorKey = 'fertilidad';
+        else if (/administracion|presupuesto/i.test(clean)) sectorKey = 'administracion';
+        else if (/internacion/i.test(clean)) sectorKey = 'internacion';
+        else if (/citologia/i.test(clean)) sectorKey = 'citologia';
+        else if (/imagen|radiologia|ecografia|mamografia/i.test(clean)) sectorKey = 'imagenes';
+        else if (/laboratorio/i.test(clean)) sectorKey = 'laboratorio';
+        else if (/fundacion/i.test(clean)) sectorKey = 'fundacion';
+        return { intent: 'telefonos_sedes', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null, sectorKey };
+    }
+
+    // 12. RECLAMOS, SUGERENCIAS Y ENCUESTAS DE CALIDAD
+    const isReclamos = /\b(reclamo|reclamos|queja|quejas|sugerencia|sugerencias|encuesta|encuestas|area\s+de\s+calidad|disconforme|mala\s+atencion)\b/i.test(clean);
+    if (isReclamos) {
+        return { intent: 'reclamos_calidad', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    // 13. FUNDACIÓN SANATORIO ARGENTINO
+    const isFundacion = /\b(fundacion|fsa\b|campañas?\s+(?:de\s+)?salud\s+(?:ginecologica|pediatrica)|charlas\s+de\s+la\s+fundacion)\b/i.test(clean);
+    if (isFundacion) {
+        return { intent: 'fundacion', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    // 14. DERIVACIÓN EXPLÍCITA A ASESOR HUMANO / OPERADOR
+    const isAgente = /\b(hablar\s+con\s+(?:un\s+|una\s+)?(?:asesor|asesora|persona|operador|operadora|humano|agente|representante|alguien)|atencion\s+humana|comunicarme\s+con\s+(?:alguien|un\s+agente)|pasame\s+con\s+(?:un\s+|una\s+)?(?:asesor|asesora|operador|agente))\b/i.test(clean);
+    if (isAgente) {
+        return { intent: 'derivacion_agente', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    // 15. DETECCIÓN DE TURNO / DOCTOR / AUTORIZACIÓN
     const isTurno = /\b(turno|turnos|cita|citas|reprogramar|reprogramacion|atencion|consulta|consultar|agendar|doctor|doctora|dr\b|dra\b|medico|medica|especialista|clinico|cardiolog|pediatr|ginecolog|traumatolog|dermatolog|neurolog|urolog|oftalmolog)\b/i.test(clean);
+    const isAutoriz = /\b(autoriz|autorizar|orden|ordenes|pedido|pedidos|receta|recetas|cobertura|coseguro|auditoria)\b/i.test(clean);
+    const isInfo = /\b(informacion|donde\s+queda|ubicacion|direccion|sede|sedes|web|portal|precios?|particular|cartilla|servicios)\b/i.test(clean);
 
-    // 2. Detección de Autorización / Prácticas / Órdenes
-    const isAutoriz = /\b(autoriz|autorizar|orden|ordenes|pedido|pedidos|receta|recetas|cobertura|coseguro|auditoria|estudio|estudios|ecografia|tomografia|resonancia|laboratorio|analisis)\b/i.test(clean);
-
-    // 3. Detección de Información / Sedes / Web
-    const isInfo = /\b(informacion|donde\s+queda|ubicacion|direccion|sede|sedes|horarios?|telefono|contacto|web|portal|precios?|particular)\b/i.test(clean);
-
-    // Extracción inteligente de nombre de doctor/médico (requiere explícitamente título médico y descarta stopwords)
+    // Extracción inteligente de nombre de doctor/médico
     let doctorCandidate: string | null = null;
     const docRegexes = [
         /(?:doctor|doctora|dr|dra)\.?\s+([a-záéíóúñ]+)/i,
@@ -716,10 +894,8 @@ async function detectIntentAndEntities(supabase: any, text: string): Promise<Int
 
             if (docs && docs.length > 0) {
                 if (isDoctorMale) {
-                    // Priorizar médicos masculinos (sin 'DRA.')
                     doctorRecord = docs.find((d: any) => !d.profesional_nombre.toUpperCase().includes('DRA.')) || docs[0];
                 } else if (isDoctorFemale) {
-                    // Priorizar médicas femeninas (con 'DRA.')
                     doctorRecord = docs.find((d: any) => d.profesional_nombre.toUpperCase().includes('DRA.')) || docs[0];
                 } else {
                     doctorRecord = docs[0];
@@ -730,7 +906,7 @@ async function detectIntentAndEntities(supabase: any, text: string): Promise<Int
         }
     }
 
-    let intent: 'turno' | 'autorizacion' | 'info' | 'chequeo' | 'general' = 'general';
+    let intent: IntentDetectionResult['intent'] = 'general';
     if (isTurno || doctorRecord) {
         intent = 'turno';
     } else if (isAutoriz) {
@@ -888,7 +1064,6 @@ async function handleChatbotTriage(
     // FLUJO 1: PACIENTE RESPONDIENDO DNI O DATOS DESDE NÚMERO NUEVO/NO REGISTRADO
     // =============================================
     if (currentStage === 'esperando_dni' || currentStage === 'esperando_datos_nuevo') {
-        // A. Si se reconoció el DNI en SALUS (hospital_pacientes), vincular historia clínica completa
         if (paciente) {
             updates = {
                 ...updates,
@@ -906,9 +1081,8 @@ async function handleChatbotTriage(
             };
             nextStage = 'esperando_agente';
 
-            replyText = `¡Muchas gracias *${paciente.nombre}*! ✅ Te encontramos en nuestro sistema con DNI *${paciente.dni}* y cobertura *${paciente.coseguro || 'Particular'}*.\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contestando en breve para asistirte. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
+            replyText = `¡Muchas gracias *${paciente.nombre}*! ✅ Te encontramos en nuestro sistema con DNI *${paciente.dni}* y cobertura *${paciente.coseguro || 'Particular'}*.\n\n${getAgentHandoffNotice()}`;
         } 
-        // B. Si brindó DNI o datos pero NO está en SALUS (paciente nuevo real)
         else if (candidateDni || cleanText.length > 5) {
             const extracted = await extractPatientVariables(cleanText, candidateDni);
             const resolvedName = extracted.nombre_completo || fullName || 'Paciente';
@@ -924,22 +1098,38 @@ async function handleChatbotTriage(
             };
             nextStage = 'esperando_agente';
 
-            replyText = `¡Muchas gracias *${resolvedName}*! ✅ Registramos tus datos${candidateDni ? ` con DNI *${candidateDni}*` : ''}.\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contestando en breve para asistirte. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
+            replyText = `¡Muchas gracias *${resolvedName}*! ✅ Registramos tus datos${candidateDni ? ` con DNI *${candidateDni}*` : ''}.\n\n${getAgentHandoffNotice()}`;
         } 
-        // C. Si no se detectó DNI ni datos mínimos, reiterar pedido de forma clara
         else {
-            replyText = `Para poder encontrar tu historia clínica o darte de alta en nuestro sistema, necesitamos tu número de *DNI* (sin puntos ni letras) y tu *Nombre Completo*. Por favor indícanoslo para que una de nuestras asesoras pueda atenderte.`;
+            replyText = `Para poder encontrar tu historia clínica o darte de alta en nuestro sistema, necesitamos tu número de *DNI* (sin puntos ni letras) y tu *Nombre Completo*. Por favor indícanoslo para que una de nuestras asesoras pueda atenderte.\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/`;
             nextStage = 'esperando_dni';
         }
     } 
     // =============================================
-    // FLUJO ESPECIAL: CHEQUEO PREVENTIVO DE SALUD
+    // FLUJO: GUARDIAS MÉDICAS 24 HORAS
+    // =============================================
+    else if (analysis.intent === 'guardia') {
+        updates.motivo_consulta = 'Guardia Médica 24hs / Urgencias';
+        replyText = `🚨 *Guardias Médicas las 24 Horas — Sanatorio Argentino*\n\n` +
+            `Contamos con un servicio permanente de guardia médica activa las 24 horas, todos los días del año, por orden de llegada con triage de urgencia en nuestra *SEDE 01*:\n\n` +
+            `📍 *Lugar de atención:* San Luis 432 Oeste, Capital, San Juan.\n\n` +
+            `🩺 *Especialidades disponibles de guardia:*\n` +
+            `• *Clínica Médica* (Adultos)\n` +
+            `• *Pediatría* (Guardia Pediátrica activa 24 hs)\n` +
+            `• *Ginecología y Obstetricia* (Maternidad y urgencias)\n` +
+            `• *Guardia Cardiológica*\n` +
+            `• *Cirugía General* (Guardia pasiva especializada)\n\n` +
+            `🌐 Para más información institucional podés ingresar a:\n👉 https://www.sanatorioargentino.com.ar/`;
+        nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: CHEQUEO PREVENTIVO DE SALUD
     // =============================================
     else if (analysis.intent === 'chequeo') {
         updates.motivo_consulta = 'Chequeo Preventivo de Salud';
         updates.medico_o_especialidad = 'Circuito Chequeo Preventivo';
 
-        const infoChequeo = `El *Chequeo Preventivo de Salud* de Sanatorio Argentino es un circuito integral diseñado para que puedas realizarte todos tus estudios médicos de rutina en una sola mañana (aproximadamente 4 horas), sin tener que trasladarte.\n\n` +
+        const infoChequeo = `El *Chequeo Preventivo de Salud* de Sanatorio Argentino es un circuito integral diseñado para que puedas realizarte todos tus estudios médicos de rutina en una sola mañana (aproximadamente 4 horas), sin traslados.\n\n` +
             `🩺 *¿Qué incluye el circuito?*\n` +
             `• Consulta clínica integral (apertura y cierre con recomendaciones de salud personalizadas)\n` +
             `• Análisis de laboratorio completos de sangre y orina\n` +
@@ -951,19 +1141,19 @@ async function handleChatbotTriage(
             `Para este chequeo no es necesario elegir un médico en particular: nuestro equipo del Contact Center coordina todas las consultas y especialistas del circuito por vos.`;
 
         if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos con cobertura *${os}*.\n\n${infoChequeo}\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contestando en breve para coordinar tu turno y fecha disponible del circuito en *Sede Santa Fe* o *Sede San Luis*. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
+            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos con cobertura *${os}*.\n\n${infoChequeo}\n\n${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
         } else {
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n${infoChequeo}\n\nPara que nuestras asesoras puedan abrir tu ficha y coordinar la fecha del circuito, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n• *Sede de preferencia* (Sede Santa Fe o Sede San Luis)\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contactando a la brevedad. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n${infoChequeo}\n\nPara que nuestras asesoras puedan abrir tu ficha y coordinar la fecha del circuito, por favor indícanos en un solo mensaje:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n• *Sede de preferencia* (Sede Santa Fe o Sede San Luis)\n\nEl bot quedará en pausa una vez recibidos tus datos.\n\n🌐 Más info: https://www.sanatorioargentino.com.ar/`;
             updates.bot_stage = 'esperando_datos_nuevo';
             updates.bot_active = true;
             nextStage = 'esperando_datos_nuevo';
         }
     }
     // =============================================
-    // FLUJO ESPECIAL: PROGRAMA PREVENIR (OSP)
+    // FLUJO: PROGRAMA PREVENIR (OSP)
     // =============================================
     else if (analysis.intent === 'prevenir') {
         updates.motivo_consulta = 'Programa Prevenir (OSP)';
@@ -980,19 +1170,258 @@ async function handleChatbotTriage(
             `Para este programa no es necesario elegir un médico en particular, ya que nuestro equipo del Contact Center coordina las citas y especialistas del circuito por vos.`;
 
         if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos con cobertura *${os}*.\n\n${infoPrevenir}\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contestando en breve para coordinar tu cita integrada en Sede Santa Fe. Por favor estate atenta/o, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
+            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos con cobertura *${os}*.\n\n${infoPrevenir}\n\n${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
         } else {
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n${infoPrevenir}\n\nPara abrir tu ficha y coordinar tu turno en un solo mensaje, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Confirmación de Obra Social Provincia (OSP)* u otra cobertura\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contactando a la brevedad. Por favor estate atenta/o, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n${infoPrevenir}\n\nPara abrir tu ficha y coordinar tu turno en un solo mensaje, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Confirmación de Obra Social Provincia (OSP)* u otra cobertura\n\nEl bot quedará en pausa una vez recibidos tus datos.\n\n🌐 Más info: https://www.sanatorioargentino.com.ar/`;
             updates.bot_stage = 'esperando_datos_nuevo';
             updates.bot_active = true;
             nextStage = 'esperando_datos_nuevo';
         }
     }
     // =============================================
-    // FLUJO 2: INTENCIÓN DETECTADA DIRECTAMENTE: TURNO / REPROGRAMACIÓN
+    // FLUJO: INFORMES Y RESULTADOS DE LABORATORIO (WEB GLIMS)
+    // =============================================
+    else if (analysis.intent === 'informes_laboratorio') {
+        updates.motivo_consulta = 'Informes: Laboratorio (Portal Web)';
+        replyText = `🔬 *Consulta de Resultados de Laboratorio*\n\n` +
+            `Para consultar los resultados de tus análisis clínicos de laboratorio:\n\n` +
+            `🔑 *Acceso Web:*\n` +
+            `Al momento de la extracción, el laboratorio te entrega tu *usuario y contraseña*. Esta clave es permanente y no es necesario gestionarla cada vez que concurras.\n\n` +
+            `👉 *Ingresá a consultar tus resultados aquí:*\n` +
+            `http://6430052dd12b.sn.myname.net:8082/glymsweb?tipo_u=4\n\n` +
+            `⚠️ *Prácticas confidenciales:* Aquellos estudios que requieran estricta confidencialidad médica no se publican por web y deben ser retirados personalmente en el laboratorio.\n\n` +
+            `🌐 Para más información sobre el Sanatorio visitá:\n👉 https://www.sanatorioargentino.com.ar/`;
+        nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: INFORMES DE DIAGNÓSTICO POR IMÁGENES (PORTAL ITS)
+    // =============================================
+    else if (analysis.intent === 'informes_imagenes') {
+        updates.motivo_consulta = 'Informes: Diagnóstico por Imágenes';
+        replyText = `🖼️ *Portal de Diagnóstico por Imágenes*\n\n` +
+            `Para consultar y descargar tus estudios de imágenes (radiografías, ecografías, tomografías, resonancias, mamografías):\n\n` +
+            `👉 *Portal de Pacientes ITS - Diagnóstico por Imágenes:*\n` +
+            `https://imagenes.itsanarg.com.ar/patientportal/index.php\n\n` +
+            `Podés acceder con tu número de DNI y la contraseña provista al momento de realizar la práctica médica.\n\n` +
+            `🌐 Para conocer sedes y servicios podés ingresar a:\n👉 https://www.sanatorioargentino.com.ar/`;
+        nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: CITOLOGÍA (PAP) Y BIOPSIAS
+    // =============================================
+    else if (analysis.intent === 'informes_biopsia_pap') {
+        updates.motivo_consulta = 'Informes: Citología / Biopsia';
+        replyText = `📄 *Entrega de Resultados de Citología (PAP) y Biopsias*\n\n` +
+            `Por favor tené en cuenta las siguientes indicaciones institucionales:\n\n` +
+            `👨‍⚕️ *Si tu médico atiende en Consultorios del Sanatorio:*\n` +
+            `• NO es necesario retirar el informe en papel: queda registrado en tu *Historia Clínica Digital* y el profesional te indicará el resultado en tu próxima consulta médica.\n\n` +
+            `🏢 *Si tu médico es externo (no atiende en consultorios de Sanatorio Argentino):*\n` +
+            `• *Biopsias:* Se retiran personalmente en Administración (Sede 02: San Luis 433 Oeste, 1° Piso).\n` +
+            `• *Citología (PAP):* Podés solicitar tu informe por WhatsApp en el siguiente link:\n` +
+            `👉 https://wa.me/5492644552540?text=Hola%20quiero%20solicitar%20un%20informe\n\n` +
+            `🌐 Para más información institucional visitá:\n👉 https://www.sanatorioargentino.com.ar/`;
+        nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: INFORMES GENERAL (MENÚ DE INFORMES)
+    // =============================================
+    else if (analysis.intent === 'informes_general') {
+        updates.motivo_consulta = 'Informes: Menú General';
+        replyText = `📁 *Consulta y Retiro de Informes Médicos*\n\n` +
+            `Seleccioná o escribí qué tipo de informe necesitás consultar:\n\n` +
+            `1️⃣ *Diagnóstico por Imágenes* (Radiografía, Ecografía, Resonancia, Tomografía, Mamografía):\n` +
+            `👉 Portal Web: https://imagenes.itsanarg.com.ar/patientportal/index.php\n\n` +
+            `2️⃣ *Laboratorio de Análisis Clínicos:*\n` +
+            `👉 Portal Web: http://6430052dd12b.sn.myname.net:8082/glymsweb?tipo_u=4\n\n` +
+            `3️⃣ *Citología (PAP) o Biopsias:*\n` +
+            `• Médico interno: Se visualiza en tu Historia Clínica Digital en consulta.\n` +
+            `• Médico externo: Biopsias en San Luis 433 Oeste (1° Piso) o Citología por WhatsApp al: https://wa.me/5492644552540\n\n` +
+            `🌐 Más detalles en: https://www.sanatorioargentino.com.ar/`;
+        nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: SERVICIO DE LABORATORIO (ATENCIÓN PRESENCIAL Y EXTRACCIONES)
+    // =============================================
+    else if (analysis.intent === 'servicio_laboratorio') {
+        updates.motivo_consulta = 'Laboratorio: Atención Presencial y Extracciones';
+        replyText = `🩸 *Laboratorio de Análisis Clínicos — Sanatorio Argentino*\n\n` +
+            `Contamos con laboratorio de análisis clínicos en:\n` +
+            `📍 *Sede 01 (San Luis 432 Oeste):* Guardias activas las *24 horas*.\n` +
+            `📍 *Sede Santa Fe (Santa Fe 263 Este):* Horario de atención de *7:30 a 21:00 hs*.\n\n` +
+            `📋 *Pautas para la atención:*\n` +
+            `• La atención en ambas sedes es *por orden de llegada* (no se saca turno previo).\n` +
+            `• *Extracciones de sangre:* Hasta las 10:00 am (por condiciones de ayuno).\n\n` +
+            `📲 *Líneas de WhatsApp para consultas de preparación / ayuno:*\n` +
+            `• Sede 01: https://wa.me/5492644867408\n` +
+            `• Sede Santa Fe: https://wa.me/5492644609384\n\n` +
+            `🌐 Para más información visitá: https://www.sanatorioargentino.com.ar/`;
+        nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: VACUNATORIO
+    // =============================================
+    else if (analysis.intent === 'vacunatorio') {
+        updates.motivo_consulta = 'Información: Vacunatorio';
+        replyText = `💉 *Vacunatorio Oficial y Extraoficial — Sanatorio Argentino*\n\n` +
+            `📍 *Ubicación:* Sede 02 — Calle San Luis 433 Oeste.\n\n` +
+            `🕒 *Horarios de atención:*\n` +
+            `• Lunes a viernes de 7:30 a 20:30 hs.\n` +
+            `• Sábados de 8:30 a 12:30 hs.\n\n` +
+            `📋 *Detalles del servicio:*\n` +
+            `• Cuenta con todas las vacunas oficiales del Calendario Nacional (gratuitas) y vacunas extraoficiales.\n` +
+            `• Adhesión a campañas nacionales de vacunación.\n` +
+            `• Para la compra de vacunas extraoficiales se reciben obras sociales, tarjetas de débito y crédito.\n\n` +
+            `🌐 Para conocer más ingresá a: https://www.sanatorioargentino.com.ar/`;
+        nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: CURSO DE EMBARAZADAS Y YOGA
+    // =============================================
+    else if (analysis.intent === 'curso_embarazadas') {
+        updates.motivo_consulta = 'Información: Preparto y Yoga para Embarazadas';
+        replyText = `🤰 *Espacio para Futuras Mamás — Sanatorio Argentino*\n\n` +
+            `1️⃣ *Curso y Gimnasia para Embarazadas:*\n` +
+            `• Todos los sábados a las 10:00 hs en la Sala de Ateneos de Sede 02 (San Luis 433 Oeste).\n` +
+            `• Las temáticas varían cada fin de semana y se difunden en nuestras redes: Facebook e Instagram (@sanatorioargentino).\n\n` +
+            `2️⃣ *Clases de Yoga para Embarazadas:*\n` +
+            `• De martes a viernes de 18:00 a 19:00 hs.\n` +
+            `• Más información e inscripción por WhatsApp:\n` +
+            `👉 https://wa.me/5492644117778\n` +
+            `• Web: https://www.sanatorioargentino.com.ar/novedades/actualidad/clases-de-yoga-para-embarazadas.html\n\n` +
+            `🌐 Portal oficial: https://www.sanatorioargentino.com.ar/`;
+        nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: REGISTRO CIVIL (NACIMIENTOS)
+    // =============================================
+    else if (analysis.intent === 'registro_civil') {
+        updates.motivo_consulta = 'Información: Registro Civil / Nacimientos';
+        replyText = `👶 *Delegación Registro Civil — Sanatorio Argentino*\n\n` +
+            `📍 *Ubicación:* 1° Piso de Sede 02 (San Luis 433 Oeste).\n` +
+            `🕒 *Horario de atención:* Lunes a viernes de 7:30 a 12:30 hs.\n\n` +
+            `📝 *Inscripción de Nacimiento (Plazo: 40 días corridos desde el parto):*\n\n` +
+            `• *Primer bebé:* Deben presentarse obligatoriamente ambos padres.\n` +
+            `• *Mamá soltera:* Fotocopia del DNI de la madre.\n` +
+            `• *Padres no casados:* Ambos padres presentes sin excepción + Fotocopia DNI de ambos.\n` +
+            `• *Padres casados:* Fotocopia DNI de ambos + Libreta o Acta de Matrimonio (puede concurrir cualquiera de los cónyuges).\n\n` +
+            `🌐 Para más información institucional visitá: https://www.sanatorioargentino.com.ar/`;
+        nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: ADMINISTRACIÓN, CIRUGÍAS Y PRESUPUESTOS
+    // =============================================
+    else if (analysis.intent === 'administracion_presupuestos') {
+        updates.motivo_consulta = 'Administración: Presupuestos e Internación';
+        replyText = `💼 *Administración de Cirugías, Presupuestos e Internación*\n\n` +
+            `Si te vas a realizar una cirugía en Sanatorio Argentino y necesitas presupuesto o consultar cobertura:\n\n` +
+            `📍 *Atención Presencial:* Oficina de Administración en Sede 02 (San Luis 433 Oeste). De lunes a viernes de 7:30 a 20:00 hs.\n` +
+            `📧 *Email:* administracion@sanatorioargentino.com.ar\n` +
+            `📞 *Teléfono:* 2644303040\n` +
+            `📲 *WhatsApp:* https://wa.me/5492644809396?text=Hola%20necesito\n\n` +
+            `🌐 Para más información institucional visitá: https://www.sanatorioargentino.com.ar/`;
+        nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: HORARIOS DE SEDES Y VISITAS
+    // =============================================
+    else if (analysis.intent === 'horarios_sedes') {
+        updates.motivo_consulta = 'Información: Horarios de Sedes y Visitas';
+        replyText = `🕒 *Horarios de Atención de Sedes y Visitas — Sanatorio Argentino*\n\n` +
+            `🏢 *SEDE 01 (San Luis 432 Oeste - Capital):*\n` +
+            `• Lunes a viernes de 7:30 a 21:00 hs | Sábados de 8:00 a 13:00 hs.\n` +
+            `• *Horario de Visitas de Internados:* 18:00 a 21:00 hs.\n\n` +
+            `🏢 *SEDE 02 (San Luis 433 Oeste - Capital):*\n` +
+            `• Lunes a viernes de 7:30 a 21:00 hs | Sábados de 8:00 a 13:00 hs.\n\n` +
+            `🏢 *SEDE 03 (San Luis 463 Oeste - Capital):*\n` +
+            `• Lunes a viernes de 7:30 a 21:00 hs | Sábados de 8:00 a 12:00 hs.\n\n` +
+            `🏢 *SEDE SANTA FE (Santa Fe 263 Este - Capital):*\n` +
+            `• Lunes a viernes de 7:30 a 21:00 hs | Sábados de 8:00 a 12:00 hs.\n\n` +
+            `🚨 *Guardia Médica:* Sede 01 activa las 24 horas.\n\n` +
+            `🌐 Más información en: https://www.sanatorioargentino.com.ar/`;
+        nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: TELÉFONOS Y WHATSAPPS DE SEDES Y SECTORES
+    // =============================================
+    else if (analysis.intent === 'telefonos_sedes') {
+        updates.motivo_consulta = 'Información: Directorio Telefónico y WhatsApps';
+        if (analysis.sectorKey === 'fertilidad') {
+            replyText = `📲 *Contacto de Medicina Reproductiva / Fertilidad:*\nPodés comunicarte por WhatsApp directamente con el sector al siguiente enlace:\n👉 https://wa.link/kfqzc2\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/`;
+        } else if (analysis.sectorKey === 'administracion') {
+            replyText = `📲 *Contacto de Administración:* https://wa.link/4po00r\nTeléfono: 2644303040\nMail: administracion@sanatorioargentino.com.ar\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/`;
+        } else if (analysis.sectorKey === 'internacion') {
+            replyText = `📲 *Recepción de Internación (Sede 01):* https://wa.link/xpsjx4\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/`;
+        } else if (analysis.sectorKey === 'citologia') {
+            replyText = `📲 *Citología (Sede Santa Fe):* https://wa.link/nxmj56\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/`;
+        } else if (analysis.sectorKey === 'imagenes') {
+            replyText = `📲 *Diagnóstico por Imágenes:*\n• Sede 01 (1° Piso): https://wa.link/ori86c\n• Sede Santa Fe: https://wa.link/dcx4bz\n• Portal Web: https://imagenes.itsanarg.com.ar/patientportal/index.php\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/`;
+        } else if (analysis.sectorKey === 'laboratorio') {
+            replyText = `📲 *Laboratorio de Análisis Clínicos:*\n• Sede 01: https://wa.link/17bfdt (o https://wa.me/5492644867408)\n• Sede Santa Fe: https://wa.link/9l2ix4 (o https://wa.me/5492644609384)\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/`;
+        } else if (analysis.sectorKey === 'fundacion') {
+            replyText = `📲 *Fundación Sanatorio Argentino:* https://wa.link/iazmw0 (o https://wa.me/5492644867318)\nWeb: https://fundacion.sanatorioargentino.com.ar\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/`;
+        } else {
+            replyText = `📞 *Directorio de WhatsApps por Sede y Sector — Sanatorio Argentino:*\n\n` +
+                `🏢 *SEDE 01 (San Luis 432 Oeste):*\n` +
+                `• 1° Piso (Consultorios, Imágenes, Recién nacido): https://wa.link/ori86c\n` +
+                `• Chequeo: https://wa.link/a6pumc\n` +
+                `• Laboratorio: https://wa.link/17bfdt\n` +
+                `• Recepción Internación: https://wa.link/xpsjx4\n\n` +
+                `🏢 *SEDE 02 (San Luis 433 Oeste):*\n` +
+                `• Recepción de Consultorios: https://wa.link/x0ov0y\n` +
+                `• Administración: https://wa.link/4po00r\n` +
+                `• Fertilidad / Medicina Reproductiva: https://wa.link/kfqzc2\n` +
+                `• Fundación: https://wa.link/iazmw0\n\n` +
+                `🏢 *SEDE 03 (San Luis 463 Oeste):*\n` +
+                `• Recepción de Consultorios: https://wa.link/q1khuw\n\n` +
+                `🏢 *SEDE SANTA FE (Santa Fe 263 Este):*\n` +
+                `• Sector 1: https://wa.link/hs438c\n` +
+                `• Sector 2: https://wa.link/ssl628\n` +
+                `• Citología: https://wa.link/nxmj56\n` +
+                `• Laboratorio: https://wa.link/9l2ix4\n` +
+                `• Diagnóstico por Imágenes: https://wa.link/dcx4bz\n` +
+                `• Chequeo Preventivo: https://wa.link/mvuq3g\n\n` +
+                `🌐 Web oficial: https://www.sanatorioargentino.com.ar/`;
+        }
+        nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: RECLAMOS, SUGERENCIAS Y CALIDAD
+    // =============================================
+    else if (analysis.intent === 'reclamos_calidad') {
+        updates.motivo_consulta = 'Reclamos y Sugerencias / Calidad';
+        replyText = `⚠️ *Gestión de Sugerencias, Reclamos y Calidad*\n\n` +
+            `¡Tu opinión nos interesa para seguir mejorando! Todos los datos son confidenciales.\n\n` +
+            `📝 *Encuestas de satisfacción por servicio:*\n` +
+            `• Paciente Ambulatorio: https://forms.gle/yCkvJ8EutPeZ7tVY6\n` +
+            `• Internación Adultos: https://forms.gle/sKjtM3xRuxCiPvmG9\n` +
+            `• Internación Neonatal y Pediátrica: https://forms.gle/2LjgybCQdHQhhdev9\n` +
+            `• Guardia Pediátrica: https://forms.gle/hq3t6fZfYD6evVnw8\n` +
+            `• Chequeo de Salud: https://forms.gle/vab2nNeuUAHTRLKbA\n` +
+            `• Medicina Reproductiva: https://forms.gle/VffF2zcgyujXckPi7\n` +
+            `• Curso para Embarazadas: https://forms.gle/1h55LBQxvjUA442X9\n\n` +
+            `📧 *Canal formal para comentarios o reclamos:* calidad@sanatorioargentino.com.ar\n\n` +
+            `🌐 Para más información ingresá a: https://www.sanatorioargentino.com.ar/`;
+        nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: FUNDACIÓN SANATORIO ARGENTINO
+    // =============================================
+    else if (analysis.intent === 'fundacion') {
+        updates.motivo_consulta = 'Información: Fundación Sanatorio Argentino';
+        replyText = `💓 *Fundación Sanatorio Argentino (FSA)*\n\n` +
+            `FSA tiene como misión la prevención y detección de enfermedades de la mujer y del niño en zonas alejadas y de difícil acceso a centros de salud de San Juan, mediante campañas de atención directa y estudios médicos necesarios.\n\n` +
+            `✅ *Capacitaciones y Charlas:* Programas formativos diseñados para nuestra comunidad a lo largo del año.\n` +
+            `✅ *Actividades y Eventos:* Eventos y encuentros solidarios para promover la salud.\n\n` +
+            `🗓️ *Conocer actividades:* https://fundacion.sanatorioargentino.com.ar\n` +
+            `📲 *WhatsApp directo con un asistente de la Fundación:* https://wa.me/5492644867318\n\n` +
+            `🌐 Para más información visitá: https://www.sanatorioargentino.com.ar/`;
+        nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: TURNOS / REPROGRAMACIÓN
     // =============================================
     else if (analysis.intent === 'turno') {
         let doctorNoteMsg = '';
@@ -1005,60 +1434,71 @@ async function handleChatbotTriage(
         }
 
         if (isExistingPatient) {
-            // AHORRO MÁXIMO DE MENSAJES: Paciente reconocido + Turno directo sin menú ambiguo
-            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos con cobertura *${os}*.\n\nCon gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\nPara agilizar tu solicitud en un solo paso, por favor indícanos:\n• ¿Tienes preferencia de días u horarios (mañana o tarde)?\n• ¿Es una primera consulta o control?\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contestando en breve para asignarte el turno disponible en agenda. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
+            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos con cobertura *${os}*.\n\nCon gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\nPara agilizar tu solicitud en un solo paso, por favor indícanos:\n• ¿Tenés preferencia de días u horarios (mañana o tarde)?\n• ¿Es una primera consulta o control?\n\n${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
         } else {
-            // Paciente nuevo con intención de turno: pedir datos en un único mensaje
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nCon gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\nComo no registramos atenciones previas con este número, para abrir tu ficha y coordinar tu turno en un solo mensaje, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n• *Preferencia de día y horario* (mañana o tarde)\n\nUna de nuestras asesoras (Daniela, Sofia, Virginia o Erica) te estará contestando en breve para asignarte el turno. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👩‍⚕️`;
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nCon gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\nPara abrir tu ficha y coordinar tu turno en un solo mensaje, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n• *Preferencia de día y horario* (mañana o tarde)\n\nEl bot quedará en pausa una vez recibidos tus datos.\n\n🌐 Más información en: https://www.sanatorioargentino.com.ar/`;
             updates.bot_stage = 'esperando_datos_nuevo';
             updates.bot_active = true;
             nextStage = 'esperando_datos_nuevo';
         }
     }
     // =============================================
-    // FLUJO 3: INTENCIÓN DETECTADA DIRECTAMENTE: AUTORIZACIONES
+    // FLUJO: AUTORIZACIONES
     // =============================================
     else if (analysis.intent === 'autorizacion') {
         updates.motivo_consulta = 'Autorizaciones de Estudios / Cobertura';
 
         if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥\n\nCon gusto te ayudamos con la *autorización* de tu estudio o práctica.\n\nPara gestionarlo en un solo paso y ahorrar tiempo, por favor envíanos:\n📸 *Una foto clara de la Orden Médica*\n🔢 *Confirmación de tu DNI*\n\n*(Recuerda que los pedidos médicos tienen vigencia de 30 días).* Nuestras asesoras lo auditarán y te responderán a la brevedad. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👇`;
+            replyText = `¡Hola *${fullName}*! 🏥\n\nCon gusto te ayudamos con la *autorización* de tu estudio o práctica.\n\nPara gestionarlo en un solo paso y ahorrar tiempo, por favor envíanos:\n📸 *Una foto clara de la Orden Médica*\n🔢 *Confirmación de tu DNI*\n\n*(Recordá que los pedidos médicos tienen vigencia de 30 días).* ${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
         } else {
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nCon gusto te ayudamos con tu trámite de *autorización*.\n\nPor favor envíanos en tus próximos mensajes:\n📸 *Foto clara de la Orden Médica*\n🔢 *Tu DNI, Nombre Completo y Obra Social*\n\nNuestro equipo tomará tu solicitud a la brevedad. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. 👇`;
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nCon gusto te ayudamos con tu trámite de *autorización*.\n\nPor favor envíanos en un solo mensaje:\n📸 *Foto clara de la Orden Médica*\n🔢 *Tu DNI, Nombre Completo y Obra Social*\n\nEl bot quedará en pausa una vez recibidos tus datos.\n\n🌐 Más info: https://www.sanatorioargentino.com.ar/`;
             updates.bot_stage = 'esperando_datos_nuevo';
             updates.bot_active = true;
             nextStage = 'esperando_datos_nuevo';
         }
     }
     // =============================================
-    // FLUJO 4: INFORMACIÓN GENERAL / SEDES / WEB
+    // FLUJO: DERIVACIÓN DIRECTA A AGENTE HUMANO
     // =============================================
-    else if (analysis.intent === 'info') {
-        replyText = `Para consultar información institucional, cartilla de profesionales, sedes y servicios de Sanatorio Argentino, puedes ingresar a nuestro sitio web oficial:\n\n🌐 *www.sanatorioargentino.com.ar*\n\nSi necesitas asistencia personalizada, aguarda un momento y una de nuestras asesoras te responderá. Por favor estate atento, tenemos una demora estimada como máximo de entre 30 minutos y 1 hora. ¡Muchas gracias!`;
-        updates.motivo_consulta = 'Información General / Web';
-        updates.status = 'sin_asignar';
-        updates.bot_active = false;
-        nextStage = 'esperando_agente';
+    else if (analysis.intent === 'derivacion_agente') {
+        updates.motivo_consulta = 'Solicitud de Atención con Asesora Humana';
+        if (isExistingPatient) {
+            replyText = `¡Hola *${fullName}*! 🏥 Te comunicamos con nuestro equipo de atención.\n\n${getAgentHandoffNotice()}`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+        } else {
+            replyText = `¡Hola! 👋 Te transferimos con una de nuestras asesoras.\n\nPara que puedan tomar tu caso en un solo mensaje, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n\n${getAgentHandoffNotice()}`;
+            updates.bot_stage = 'esperando_datos_nuevo';
+            updates.bot_active = true;
+            nextStage = 'esperando_datos_nuevo';
+        }
     }
     // =============================================
-    // FLUJO 5: SALUDO GENERAL O SOLICITUD ABIERTA (SIN INTENCIÓN PREVIA)
+    // FLUJO: INFORMACIÓN GENERAL / WEB
+    // =============================================
+    else if (analysis.intent === 'info') {
+        replyText = `Para consultar información institucional, cartilla de profesionales, sedes y servicios de Sanatorio Argentino, podés ingresar a nuestro sitio web oficial:\n\n🌐 *https://www.sanatorioargentino.com.ar/*\n\nSi necesitás realizar un trámite en particular, indícanos si buscás turnos, autorizaciones, guardias o resultados de estudios.`;
+        updates.motivo_consulta = 'Información General / Web';
+        nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: SALUDO GENERAL O SOLICITUD ABIERTA
     // =============================================
     else {
         if (isExistingPatient) {
-            // Mostrar menú de 3 opciones claro y amigable
-            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos como paciente registrado con cobertura *${os}*.\n\n¿En qué podemos ayudarte hoy?\n1️⃣ *Solicitar o reprogramar un turno*\n2️⃣ *Autorizaciones y cobertura*\n3️⃣ *Información institucional, sedes o estudios*\n\nResponde con el número *1*, *2* o *3*, o escríbenos directamente qué médico o trámite buscas.`;
+            replyText = `¡Hola *${fullName}*! 🏥 Confirmamos tus datos como paciente registrado con cobertura *${os}*.\n\n¿En qué podemos ayudarte hoy?\n1️⃣ *Solicitar o reprogramar un turno*\n2️⃣ *Autorizaciones y cobertura*\n3️⃣ *Guardias médicas las 24 horas*\n4️⃣ *Informes, estudios, horarios y sedes*\n\nPodés responder con el número *1*, *2*, *3* o *4*, o escribir directamente tu consulta en un solo mensaje.\n\n🌐 Web oficial: https://www.sanatorioargentino.com.ar/`;
             updates.bot_stage = 'menu_opciones';
             updates.bot_active = true;
             nextStage = 'menu_opciones';
         } else {
-            // Paciente nuevo que solo saludó: pedir DNI y nombre
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\nPara poder gestionar tu consulta de forma ágil y verificar tu cobertura médica, por favor indícanos en un solo mensaje tu número de *DNI* (sin puntos) y tu *Nombre Completo*.`;
+            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n¿En qué podemos ayudarte hoy?\n• Si buscás *solicitar un turno* o *autorizaciones*, indícanos tu número de *DNI* (sin puntos) y tu *Nombre Completo*.\n• También podés consultarnos directamente por *guardias 24hs*, *análisis clínicos*, *vacunatorio*, *informes de estudios* o *sedes*.\n\n🌐 Para conocer más ingresá a: https://www.sanatorioargentino.com.ar/`;
             updates.bot_stage = 'esperando_dni';
             updates.bot_active = true;
             nextStage = 'esperando_dni';
