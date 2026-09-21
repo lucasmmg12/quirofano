@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
     Search, Paperclip, Send, Lock, Tag, User, 
     Calendar, CheckCircle2, ChevronDown, Check, Star, 
@@ -170,6 +170,31 @@ export default function ContactCenterChatConsole({
     }, [isDraggingRight]);
     const [filterTab, setFilterTab] = useState('sin_asignar');
     const [searchTerm, setSearchTerm] = useState('');
+    const [searchScope, setSearchScope] = useState('all'); // 'all' (todas las carpetas) o 'tab' (en esta pestaña)
+    const searchInputRef = useRef(null);
+
+    // Atajo de teclado global: '/' o 'Ctrl+K' para activar el buscador al instante
+    useEffect(() => {
+        const handleGlobalKeyDown = (e) => {
+            const tag = e.target?.tagName?.toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) {
+                if (e.key === 'Escape' && document.activeElement === searchInputRef.current) {
+                    setSearchTerm('');
+                    searchInputRef.current?.blur();
+                }
+                return;
+            }
+
+            if (e.key === '/' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
+                e.preventDefault();
+                searchInputRef.current?.focus();
+                searchInputRef.current?.select();
+            }
+        };
+
+        window.addEventListener('keydown', handleGlobalKeyDown);
+        return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+    }, []);
     const [messageInput, setMessageInput] = useState('');
     const [isPrivateNote, setIsPrivateNote] = useState(false);
     const [activeDetailTab, setActiveDetailTab] = useState('info'); // 'info', 'historial', 'prestadores'
@@ -833,32 +858,185 @@ export default function ContactCenterChatConsole({
     const isUnassigned = !selectedChat.assignedTo || selectedChat.status === 'sin_asignar';
     const assignedAgentObj = selectedChat.assignedTo ? getAgentById(selectedChat.assignedTo) : null;
 
-    // Filtrar chats según pestaña activa
-    const filteredChats = chats.filter(chat => {
-        const chatAssigned = (chat.assignedTo || '').toLowerCase();
-        const isMine = chatAssigned && (
-            myAliases.includes(chatAssigned) ||
-            (chat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
-        );
-        const closed = isClosedOrArchived(chat.status);
+    // ── BUSCADOR INTELIGENTE DE CHATS (NOMBRE, DNI, TELÉFONO, MENSAJES Y ANÁLISIS IA) ──
+    const normalizeSearch = (s) => {
+        if (!s) return '';
+        return String(s)
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim();
+    };
 
-        if (filterTab === 'sin_asignar') return (!chat.assignedTo || chat.status === 'sin_asignar') && !closed;
-        if (filterTab === 'asignadas_mi') return isMine && !closed;
-        if (filterTab === 'asignadas_otros') return chatAssigned && !isMine && !closed;
-        if (filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') return closed;
-        if (filterTab === 'todos') return true;
-        return !closed;
-    }).filter(chat => {
-        if (!searchTerm) return true;
-        const q = searchTerm.toLowerCase();
-        return (getCleanChatName(chat) || '').toLowerCase().includes(q) 
-            || (chat.phone || '').includes(q)
-            || (chat.id || '').toLowerCase().includes(q) 
-            || (chat.lastMessage || '').toLowerCase().includes(q)
-            || (chat.customFields?.dni || '').toLowerCase().includes(q)
-            || (chat.customFields?.pacienteNombre || '').toLowerCase().includes(q)
-            || (chat.customFields?.obraSocial || '').toLowerCase().includes(q);
-    }).sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
+    const getSearchMatchInfo = (chat, term) => {
+        if (!term || !term.trim()) return { isMatch: true, matchType: null, snippet: null };
+
+        const q = normalizeSearch(term);
+        const digits = term.replace(/\D/g, '');
+        const tokens = q.split(/\s+/).filter(t => t.length >= 2);
+
+        // 1. DNI (coincidencia con o sin puntos/guiones)
+        const dniRaw = chat.customFields?.dni || '';
+        const dniDigits = dniRaw.replace(/\D/g, '');
+        if (digits && digits.length >= 4 && dniDigits.includes(digits)) {
+            return { isMatch: true, matchType: 'dni', matchText: `DNI: ${dniRaw || digits}` };
+        }
+        if (dniRaw && normalizeSearch(dniRaw).includes(q)) {
+            return { isMatch: true, matchType: 'dni', matchText: `DNI: ${dniRaw}` };
+        }
+
+        // 2. Nombre de Paciente / Contacto / Familiar
+        const cleanName = getCleanChatName(chat);
+        const normCleanName = normalizeSearch(cleanName);
+        const normPaciente = normalizeSearch(chat.customFields?.pacienteNombre);
+        const normContact = normalizeSearch(chat.contactName);
+        if (normCleanName.includes(q) || normPaciente.includes(q) || normContact.includes(q)) {
+            return { isMatch: true, matchType: 'nombre', matchText: cleanName };
+        }
+        if (tokens.length > 1 && (tokens.every(t => normCleanName.includes(t)) || tokens.every(t => normPaciente.includes(t)))) {
+            return { isMatch: true, matchType: 'nombre', matchText: cleanName };
+        }
+
+        if (Array.isArray(chat.familyMembers)) {
+            for (const fam of chat.familyMembers) {
+                const famName = normalizeSearch(fam.nombre || fam.name);
+                const famDni = (fam.dni || '').replace(/\D/g, '');
+                if (famName.includes(q)) {
+                    return { isMatch: true, matchType: 'familiar', matchText: `Familiar: ${fam.nombre || fam.name}` };
+                }
+                if (digits && digits.length >= 4 && famDni.includes(digits)) {
+                    return { isMatch: true, matchType: 'familiar', matchText: `Familiar DNI: ${fam.dni}` };
+                }
+            }
+        }
+
+        // 3. Teléfono
+        const phoneDigits = (chat.phone || '').replace(/\D/g, '');
+        if (digits && digits.length >= 4 && phoneDigits.includes(digits)) {
+            return { isMatch: true, matchType: 'telefono', matchText: `+${chat.phone}` };
+        }
+
+        // 4. Búsqueda profunda en CADA mensaje del historial
+        const msgs = chat.messages || [];
+        for (let i = msgs.length - 1; i >= 0; i--) {
+            const m = msgs[i];
+            const mText = m.text || m.content || '';
+            const normMText = normalizeSearch(mText);
+            const mCaption = m.caption || '';
+            const normCaption = normalizeSearch(mCaption);
+            const orderStudy = m.orderAnalysis?.estudioDetectado || '';
+            const normStudy = normalizeSearch(orderStudy);
+            const orderDiag = m.orderAnalysis?.diagnostico || '';
+            const normDiag = normalizeSearch(orderDiag);
+
+            // DNI escrito en el cuerpo del mensaje por el paciente o bot
+            if (digits && digits.length >= 6) {
+                const msgDigits = mText.replace(/\D/g, '');
+                if (msgDigits.includes(digits)) {
+                    const idx = mText.indexOf(digits);
+                    const start = Math.max(0, idx - 15);
+                    const end = Math.min(mText.length, idx + digits.length + 20);
+                    const snippet = (start > 0 ? '...' : '') + mText.substring(start, end).replace(/\n+/g, ' ').trim() + (end < mText.length ? '...' : '');
+                    return { isMatch: true, matchType: 'dni_en_mensaje', snippet, messageDate: m.timestamp };
+                }
+            }
+
+            // Coincidencia de texto dentro del mensaje
+            if (normMText && (normMText.includes(q) || (tokens.length > 1 && tokens.every(t => normMText.includes(t))))) {
+                const matchWord = tokens.length > 0 && !normMText.includes(q) ? tokens[0] : q;
+                const matchIdx = normMText.indexOf(matchWord);
+                const start = Math.max(0, matchIdx - 20);
+                const end = Math.min(mText.length, matchIdx + matchWord.length + 40);
+                const snippet = (start > 0 ? '...' : '') + mText.substring(start, end).replace(/\n+/g, ' ').trim() + (end < mText.length ? '...' : '');
+                return {
+                    isMatch: true,
+                    matchType: 'mensaje',
+                    snippet,
+                    sender: m.senderName || (m.sender === 'patient' ? 'Paciente' : 'Sanatorio'),
+                    messageDate: m.timestamp
+                };
+            }
+
+            if (normCaption && normCaption.includes(q)) {
+                return { isMatch: true, matchType: 'adjunto', snippet: `Adjunto: "${mCaption.slice(0, 45)}"`, messageDate: m.timestamp };
+            }
+
+            if (normStudy && normStudy.includes(q)) {
+                return { isMatch: true, matchType: 'orden_medica', snippet: `Orden Médica: "${orderStudy}"`, messageDate: m.timestamp };
+            }
+
+            if (normDiag && normDiag.includes(q)) {
+                return { isMatch: true, matchType: 'orden_medica', snippet: `Diagnóstico: "${orderDiag}"`, messageDate: m.timestamp };
+            }
+        }
+
+        // 5. Último mensaje, motivo de consulta, resumen IA u obra social
+        if (normalizeSearch(chat.lastMessage).includes(q)) {
+            return { isMatch: true, matchType: 'mensaje', snippet: chat.lastMessage };
+        }
+        if (normalizeSearch(chat.customFields?.motivoConsulta).includes(q)) {
+            return { isMatch: true, matchType: 'motivo', matchText: `Motivo: ${chat.customFields.motivoConsulta}` };
+        }
+        if (normalizeSearch(chat.customFields?.obraSocial).includes(q)) {
+            return { isMatch: true, matchType: 'obra_social', matchText: `OS: ${chat.customFields.obraSocial}` };
+        }
+        if (normalizeSearch(chat.aiSummary).includes(q)) {
+            return { isMatch: true, matchType: 'resumen_ia', snippet: `IA: ${chat.aiSummary.slice(0, 55)}...` };
+        }
+
+        return { isMatch: false, matchType: null, snippet: null };
+    };
+
+    const isSearching = !!searchTerm.trim();
+
+    // Evaluar todas las conversaciones con el buscador
+    const searchedChats = useMemo(() => {
+        if (!isSearching) return [];
+        return chats.map(chat => {
+            const matchInfo = getSearchMatchInfo(chat, searchTerm);
+            return matchInfo.isMatch ? { ...chat, _searchMatch: matchInfo } : null;
+        }).filter(Boolean);
+    }, [chats, searchTerm]);
+
+    // Filtrar chats según pestaña activa o alcance de búsqueda
+    const filteredChats = useMemo(() => {
+        if (isSearching) {
+            if (searchScope === 'all') {
+                return [...searchedChats].sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
+            } else {
+                return searchedChats.filter(chat => {
+                    const chatAssigned = (chat.assignedTo || '').toLowerCase();
+                    const isMine = chatAssigned && (
+                        myAliases.includes(chatAssigned) ||
+                        (chat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
+                    );
+                    const closed = isClosedOrArchived(chat.status);
+                    if (filterTab === 'sin_asignar') return (!chat.assignedTo || chat.status === 'sin_asignar') && !closed;
+                    if (filterTab === 'asignadas_mi') return isMine && !closed;
+                    if (filterTab === 'asignadas_otros') return chatAssigned && !isMine && !closed;
+                    if (filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') return closed;
+                    if (filterTab === 'todos') return true;
+                    return !closed;
+                }).sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
+            }
+        }
+
+        return chats.filter(chat => {
+            const chatAssigned = (chat.assignedTo || '').toLowerCase();
+            const isMine = chatAssigned && (
+                myAliases.includes(chatAssigned) ||
+                (chat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
+            );
+            const closed = isClosedOrArchived(chat.status);
+
+            if (filterTab === 'sin_asignar') return (!chat.assignedTo || chat.status === 'sin_asignar') && !closed;
+            if (filterTab === 'asignadas_mi') return isMine && !closed;
+            if (filterTab === 'asignadas_otros') return chatAssigned && !isMine && !closed;
+            if (filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') return closed;
+            if (filterTab === 'todos') return true;
+            return !closed;
+        }).sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
+    }, [chats, isSearching, searchScope, searchedChats, filterTab, myAliases, activeAgent.name]);
 
     const sendDirectMessage = (text, isNote = false) => {
         if (!text || !text.trim()) return;
@@ -1042,8 +1220,133 @@ export default function ContactCenterChatConsole({
                         </div>
                     </div>
                 </div>
+                {/* BUSCADOR DE CHATS A MANO (NOMBRE, DNI, TELÉFONO O TEXTO EN MENSAJES) */}
+                <div style={{ padding: '8px 10px', borderBottom: '1px solid #E2E8F0', background: '#FFFFFF' }}>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: isSearching ? '#F0F9FF' : '#F8FAFC',
+                        border: `1.5px solid ${isSearching ? '#0284C7' : '#CBD5E1'}`,
+                        borderRadius: '8px',
+                        padding: '6px 10px',
+                        transition: 'all 0.15s ease',
+                        boxShadow: isSearching ? '0 0 0 2px rgba(2, 132, 199, 0.15)' : 'none'
+                    }}>
+                        <Search size={15} color={isSearching ? '#0284C7' : '#64748B'} style={{ flexShrink: 0 }} />
+                        <input 
+                            ref={searchInputRef}
+                            type="text"
+                            placeholder="Buscar por nombre, DNI o texto en mensajes... (Atajo: /)"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            style={{
+                                border: 'none',
+                                background: 'transparent',
+                                outline: 'none',
+                                fontSize: '0.78rem',
+                                color: '#0F172A',
+                                width: '100%',
+                                fontWeight: 500
+                            }}
+                        />
+                        {searchTerm ? (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSearchTerm('');
+                                    searchInputRef.current?.focus();
+                                }}
+                                title="Limpiar búsqueda (Esc)"
+                                style={{
+                                    border: 'none',
+                                    background: '#E2E8F0',
+                                    borderRadius: '50%',
+                                    width: '18px',
+                                    height: '18px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    color: '#475569',
+                                    padding: 0,
+                                    flexShrink: 0
+                                }}
+                            >
+                                <X size={11} />
+                            </button>
+                        ) : (
+                            <span 
+                                title="Atajo de teclado: presiona / o Ctrl+K para buscar"
+                                style={{
+                                    fontSize: '0.62rem',
+                                    color: '#94A3B8',
+                                    background: '#F1F5F9',
+                                    border: '1px solid #CBD5E1',
+                                    borderRadius: '4px',
+                                    padding: '1px 5px',
+                                    fontWeight: 700,
+                                    userSelect: 'none',
+                                    flexShrink: 0
+                                }}
+                            >
+                                /
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Selector de Alcance y Contador al Buscar */}
+                    {isSearching && (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            marginTop: '6px',
+                            padding: '2px 2px 0 2px'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchScope('all')}
+                                    style={{
+                                        fontSize: '0.66rem',
+                                        fontWeight: 700,
+                                        padding: '2px 7px',
+                                        borderRadius: '4px',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        background: searchScope === 'all' ? '#0284C7' : '#F1F5F9',
+                                        color: searchScope === 'all' ? '#FFFFFF' : '#475569'
+                                    }}
+                                >
+                                    🌐 Todos ({searchedChats.length})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchScope('tab')}
+                                    style={{
+                                        fontSize: '0.66rem',
+                                        fontWeight: 700,
+                                        padding: '2px 7px',
+                                        borderRadius: '4px',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        background: searchScope === 'tab' ? '#0284C7' : '#F1F5F9',
+                                        color: searchScope === 'tab' ? '#FFFFFF' : '#475569'
+                                    }}
+                                >
+                                    📂 En esta pestaña ({filteredChats.length})
+                                </button>
+                            </div>
+                            <span style={{ fontSize: '0.66rem', color: '#0284C7', fontWeight: 700 }}>
+                                {filteredChats.length} {filteredChats.length === 1 ? 'coincidencia' : 'coincidencias'}
+                            </span>
+                        </div>
+                    )}
+                </div>
+
                 {/* Pestañas de Filtros Superiores AsisteClick */}
-                <div style={{ display: 'flex', gap: '4px', padding: '10px 8px', borderBottom: '1px solid #F1F5F9', overflowX: 'auto', background: '#FAFAFA' }}>
+                <div style={{ display: 'flex', gap: '4px', padding: '8px 8px', borderBottom: '1px solid #F1F5F9', overflowX: 'auto', background: '#FAFAFA' }}>
                     <button 
                         onClick={() => {
                             setFilterTab('sin_asignar');
@@ -1135,158 +1438,268 @@ export default function ContactCenterChatConsole({
                     </button>
                 </div>
 
-                {/* Buscador de chat */}
-                <div style={{ padding: '8px 12px', borderBottom: '1px solid #F1F5F9' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '6px 10px' }}>
-                        <Search size={14} color="#94A3B8" />
-                        <input 
-                            type="text"
-                            placeholder="Buscar por paciente, teléfono o DNI..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '0.78rem', color: '#1E293B', width: '100%' }}
-                        />
-                    </div>
-                </div>
-
                 {/* Lista de Chats con Tags de Asignación y Último en Responder */}
                 <div style={{ flex: 1, overflowY: 'auto' }}>
-                    {filteredChats.map(chat => {
-                        const isSelected = chat.id === selectedChat.id;
-                        const assignedAgent = chat.assignedTo ? getAgentById(chat.assignedTo) : null;
-                        const chatIsLocked = isChatLockedForUser(chat, activeAgent.id, currentUser);
-                        const chatIsMine = chat.assignedTo && chat.assignedTo.toLowerCase() === activeAgent.id.toLowerCase();
+                    {filteredChats.length === 0 ? (
+                        <div style={{ padding: '36px 16px', textAlign: 'center', color: '#64748B' }}>
+                            {isSearching ? (
+                                <>
+                                    <Search size={28} color="#94A3B8" style={{ margin: '0 auto 8px', opacity: 0.6 }} />
+                                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1E293B', marginBottom: '4px' }}>
+                                        Sin resultados para "{searchTerm}"
+                                    </div>
+                                    <div style={{ fontSize: '0.72rem', color: '#64748B', lineHeight: '1.4', maxWidth: '240px', margin: '0 auto 12px' }}>
+                                        Verifica el DNI, apellido del paciente o busca palabras clave dentro de los mensajes.
+                                    </div>
+                                    {searchScope === 'tab' && searchedChats.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setSearchScope('all')}
+                                            style={{
+                                                fontSize: '0.72rem', fontWeight: 700, padding: '5px 12px',
+                                                background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE',
+                                                borderRadius: '6px', cursor: 'pointer', marginBottom: '8px'
+                                            }}
+                                        >
+                                            Ver {searchedChats.length} coincidencias en otras carpetas
+                                        </button>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => setSearchTerm('')}
+                                        style={{
+                                            display: 'block', margin: '6px auto 0',
+                                            fontSize: '0.72rem', color: '#0284C7', background: 'transparent',
+                                            border: 'none', cursor: 'pointer', textDecoration: 'underline'
+                                        }}
+                                    >
+                                        Limpiar búsqueda
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <MessageSquare size={24} color="#CBD5E1" style={{ margin: '0 auto 8px' }} />
+                                    <div style={{ fontSize: '0.78rem', fontWeight: 600 }}>No hay conversaciones en esta carpeta</div>
+                                </>
+                            )}
+                        </div>
+                    ) : (
+                        filteredChats.map(chat => {
+                            const isSelected = chat.id === selectedChat.id;
+                            const assignedAgent = chat.assignedTo ? getAgentById(chat.assignedTo) : null;
+                            const chatIsLocked = isChatLockedForUser(chat, activeAgent.id, currentUser);
+                            const chatIsMine = chat.assignedTo && chat.assignedTo.toLowerCase() === activeAgent.id.toLowerCase();
 
-                        return (
-                            <div 
-                                key={chat.id}
-                                onClick={() => onSelectChat(chat.id)}
-                                style={{
-                                    padding: '12px 14px',
-                                    borderBottom: '1px solid #F1F5F9',
-                                    cursor: 'pointer',
-                                    background: isSelected ? '#EFF6FF' : '#FFFFFF',
-                                    borderLeft: isSelected ? '4px solid #1E40AF' : '4px solid transparent',
-                                    transition: 'background 0.15s',
-                                    position: 'relative'
-                                }}
-                            >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <div style={{
-                                            width: '28px', height: '28px', borderRadius: '50%',
-                                            background: chat.avatarColor || '#1E40AF', color: '#FFF',
-                                            fontSize: '0.7rem', fontWeight: 800, display: 'flex',
-                                            alignItems: 'center', justifyContent: 'center'
-                                        }}>
-                                            {getChatAvatarInitials(chat)}
-                                        </div>
-                                        <div>
-                                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: isSelected ? '#1E40AF' : '#0F172A' }}>
-                                                {getCleanChatName(chat)}
-                                            </span>
-                                            <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
-                                                +{chat.phone}
+                            return (
+                                <div 
+                                    key={chat.id}
+                                    onClick={() => onSelectChat(chat.id)}
+                                    style={{
+                                        padding: '12px 14px',
+                                        borderBottom: '1px solid #F1F5F9',
+                                        cursor: 'pointer',
+                                        background: isSelected ? '#EFF6FF' : '#FFFFFF',
+                                        borderLeft: isSelected ? '4px solid #1E40AF' : '4px solid transparent',
+                                        transition: 'background 0.15s',
+                                        position: 'relative'
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <div style={{
+                                                width: '28px', height: '28px', borderRadius: '50%',
+                                                background: chat.avatarColor || '#1E40AF', color: '#FFF',
+                                                fontSize: '0.7rem', fontWeight: 800, display: 'flex',
+                                                alignItems: 'center', justifyContent: 'center'
+                                            }}>
+                                                {getChatAvatarInitials(chat)}
+                                            </div>
+                                            <div>
+                                                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: isSelected ? '#1E40AF' : '#0F172A' }}>
+                                                    {getCleanChatName(chat)}
+                                                </span>
+                                                <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                                    +{chat.phone}
+                                                </div>
                                             </div>
                                         </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                                            <span style={{ fontSize: '0.68rem', color: '#94A3B8' }}>
+                                                {chat.timeAgo}
+                                            </span>
+                                            {isSearching && searchScope === 'all' && (
+                                                <span style={{
+                                                    fontSize: '0.6rem',
+                                                    fontWeight: 700,
+                                                    padding: '1px 5px',
+                                                    borderRadius: '4px',
+                                                    background: isClosedOrArchived(chat.status) ? '#ECFDF5' : '#F1F5F9',
+                                                    color: isClosedOrArchived(chat.status) ? '#047857' : '#475569',
+                                                    border: `1px solid ${isClosedOrArchived(chat.status) ? '#A7F3D0' : '#E2E8F0'}`
+                                                }}>
+                                                    {isClosedOrArchived(chat.status) ? '📁 Finalizado' : (chat.assignedToName ? `👤 ${chat.assignedToName}` : '⚠️ Sin asignar')}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
-                                    <span style={{ fontSize: '0.68rem', color: '#94A3B8' }}>
-                                        {chat.timeAgo}
-                                    </span>
-                                </div>
 
-                                {/* TAGS DE TRAZABILIDAD: ASIGNADO Y LOCK */}
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', margin: '6px 0 4px' }}>
-                                    {isClosedOrArchived(chat.status) ? (
-                                        <span style={{
-                                            fontSize: '0.66rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
-                                            background: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0',
-                                            display: 'flex', alignItems: 'center', gap: '3px'
-                                        }}>
-                                            <CheckCircle2 size={10} color="#047857" /> Finalizado {chat.resolutionReason ? `• ${chat.resolutionReason}` : ''}
-                                        </span>
-                                    ) : assignedAgent ? (
-                                        <span style={{
-                                            fontSize: '0.66rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
-                                            background: chatIsMine ? '#DCFCE7' : '#F1F5F9',
-                                            color: chatIsMine ? '#15803D' : '#334155',
-                                            border: `1px solid ${chatIsMine ? '#86EFAC' : '#CBD5E1'}`,
-                                            display: 'flex', alignItems: 'center', gap: '3px'
-                                        }}>
-                                            <User size={10} />
-                                            {assignedAgent.name} {chatIsMine ? '(Tú)' : ''}
-                                        </span>
-                                    ) : (
-                                        <span style={{
-                                            fontSize: '0.66rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
-                                            background: '#FEF3C7', color: '#B45309', border: '1px solid #FCD34D'
-                                        }}>
-                                            ⚠️ Sin asignar
-                                        </span>
-                                    )}
-
-                                    {/* Tag de Bloqueo Exclusivo */}
-                                    {chatIsLocked && !isClosedOrArchived(chat.status) && (
-                                        <span style={{
-                                            fontSize: '0.64rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
-                                            background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5',
-                                            display: 'flex', alignItems: 'center', gap: '2px'
-                                        }}>
-                                            <Lock size={9} /> Bloqueada
-                                        </span>
-                                    )}
-
-                                    {/* Tag: Último en responder */}
-                                    {chat.lastResponder && (
-                                        <span style={{
-                                            fontSize: '0.64rem', fontWeight: 700, padding: '1px 6px', borderRadius: '6px',
-                                            background: chat.lastResponderRole === 'agent' ? '#EFF6FF' : '#FFF1F2',
-                                            color: chat.lastResponderRole === 'agent' ? '#1E40AF' : '#E11D48',
-                                            border: '1px solid #E2E8F0',
-                                            display: 'flex', alignItems: 'center', gap: '3px'
-                                        }}>
-                                            {chat.lastResponderRole === 'agent' ? 'Resp: ' + chat.lastResponder : '🔴 Escribió Paciente'}
-                                        </span>
-                                    )}
-
-                                    {/* Tag: Tiempo de Espera sin Respuesta */}
-                                    {!isClosedOrArchived(chat.status) && (
-                                        chat.isWaitingResponse ? (
-                                            <span 
-                                                title={`Lleva ${chat.waitingTimeText || 'un tiempo'} esperando respuesta`}
-                                                style={{
-                                                    fontSize: '0.64rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
-                                                    background: chat.waitingMinutes >= 30 ? '#FEF2F2' : (chat.waitingMinutes >= 10 ? '#FFFBEB' : '#F0FDF4'),
-                                                    color: chat.waitingMinutes >= 30 ? '#DC2626' : (chat.waitingMinutes >= 10 ? '#D97706' : '#15803D'),
-                                                    border: `1px solid ${chat.waitingMinutes >= 30 ? '#FECACA' : (chat.waitingMinutes >= 10 ? '#FDE68A' : '#BBF7D0')}`,
-                                                    display: 'flex', alignItems: 'center', gap: '3px'
-                                                }}
-                                            >
-                                                <Clock size={9} />
-                                                {chat.waitingMinutes >= 30 ? '🚨 ' : (chat.waitingMinutes >= 10 ? '⚠️ ' : '⏳ ')}
-                                                {chat.waitingTimeText || 'Sin responder'}
+                                    {/* TAGS DE TRAZABILIDAD: ASIGNADO Y LOCK */}
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', margin: '6px 0 4px' }}>
+                                        {isClosedOrArchived(chat.status) ? (
+                                            <span style={{
+                                                fontSize: '0.66rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
+                                                background: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0',
+                                                display: 'flex', alignItems: 'center', gap: '3px'
+                                            }}>
+                                                <CheckCircle2 size={10} color="#047857" /> Finalizado {chat.resolutionReason ? `• ${chat.resolutionReason}` : ''}
+                                            </span>
+                                        ) : assignedAgent ? (
+                                            <span style={{
+                                                fontSize: '0.66rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
+                                                background: chatIsMine ? '#DCFCE7' : '#F1F5F9',
+                                                color: chatIsMine ? '#15803D' : '#334155',
+                                                border: `1px solid ${chatIsMine ? '#86EFAC' : '#CBD5E1'}`,
+                                                display: 'flex', alignItems: 'center', gap: '3px'
+                                            }}>
+                                                <User size={10} />
+                                                {assignedAgent.name} {chatIsMine ? '(Tú)' : ''}
                                             </span>
                                         ) : (
-                                            <span 
-                                                title="Esta conversación ya fue respondida por un operador"
-                                                style={{
-                                                    fontSize: '0.64rem', fontWeight: 700, padding: '1px 6px', borderRadius: '6px',
-                                                    background: '#F8FAFC', color: '#15803D', border: '1px solid #DCFCE7',
-                                                    display: 'flex', alignItems: 'center', gap: '2px'
-                                                }}
-                                            >
-                                                <Check size={9} color="#16A34A" /> Respondido
+                                            <span style={{
+                                                fontSize: '0.66rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
+                                                background: '#FEF3C7', color: '#B45309', border: '1px solid #FCD34D'
+                                            }}>
+                                                ⚠️ Sin asignar
                                             </span>
-                                        )
-                                    )}
-                                </div>
+                                        )}
 
-                                <div style={{ fontSize: '0.76rem', color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {chat.lastMessage}
+                                        {/* Tag de Bloqueo Exclusivo */}
+                                        {chatIsLocked && !isClosedOrArchived(chat.status) && (
+                                            <span style={{
+                                                fontSize: '0.64rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
+                                                background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5',
+                                                display: 'flex', alignItems: 'center', gap: '2px'
+                                            }}>
+                                                <Lock size={9} /> Bloqueada
+                                            </span>
+                                        )}
+
+                                        {/* Tag: Último en responder */}
+                                        {chat.lastResponder && (
+                                            <span style={{
+                                                fontSize: '0.64rem', fontWeight: 700, padding: '1px 6px', borderRadius: '6px',
+                                                background: chat.lastResponderRole === 'agent' ? '#EFF6FF' : '#FFF1F2',
+                                                color: chat.lastResponderRole === 'agent' ? '#1E40AF' : '#E11D48',
+                                                border: '1px solid #E2E8F0',
+                                                display: 'flex', alignItems: 'center', gap: '3px'
+                                            }}>
+                                                {chat.lastResponderRole === 'agent' ? 'Resp: ' + chat.lastResponder : '🔴 Escribió Paciente'}
+                                            </span>
+                                        )}
+
+                                        {/* Tag: Tiempo de Espera sin Respuesta */}
+                                        {!isClosedOrArchived(chat.status) && (
+                                            chat.isWaitingResponse ? (
+                                                <span 
+                                                    title={`Lleva ${chat.waitingTimeText || 'un tiempo'} esperando respuesta`}
+                                                    style={{
+                                                        fontSize: '0.64rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
+                                                        background: chat.waitingMinutes >= 30 ? '#FEF2F2' : (chat.waitingMinutes >= 10 ? '#FFFBEB' : '#F0FDF4'),
+                                                        color: chat.waitingMinutes >= 30 ? '#DC2626' : (chat.waitingMinutes >= 10 ? '#D97706' : '#15803D'),
+                                                        border: `1px solid ${chat.waitingMinutes >= 30 ? '#FECACA' : (chat.waitingMinutes >= 10 ? '#FDE68A' : '#BBF7D0')}`,
+                                                        display: 'flex', alignItems: 'center', gap: '3px'
+                                                    }}
+                                                >
+                                                    <Clock size={9} />
+                                                    {chat.waitingMinutes >= 30 ? '🚨 ' : (chat.waitingMinutes >= 10 ? '⚠️ ' : '⏳ ')}
+                                                    {chat.waitingTimeText || 'Sin responder'}
+                                                </span>
+                                            ) : (
+                                                <span 
+                                                    title="Esta conversación ya fue respondida por un operador"
+                                                    style={{
+                                                        fontSize: '0.64rem', fontWeight: 700, padding: '1px 6px', borderRadius: '6px',
+                                                        background: '#F8FAFC', color: '#15803D', border: '1px solid #DCFCE7',
+                                                        display: 'flex', alignItems: 'center', gap: '2px'
+                                                    }}
+                                                >
+                                                    <Check size={9} color="#16A34A" /> Respondido
+                                                </span>
+                                            )
+                                        )}
+                                    </div>
+
+                                    {/* Snippet de Coincidencia de Búsqueda */}
+                                    {chat._searchMatch && chat._searchMatch.matchType === 'mensaje' && chat._searchMatch.snippet && (
+                                        <div style={{
+                                            margin: '5px 0 3px 0',
+                                            padding: '4px 7px',
+                                            background: '#FFFBEB',
+                                            border: '1px solid #FDE68A',
+                                            borderRadius: '5px',
+                                            fontSize: '0.68rem',
+                                            color: '#92400E',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '5px',
+                                            overflow: 'hidden'
+                                        }}>
+                                            <MessageSquare size={11} style={{ flexShrink: 0, color: '#D97706' }} />
+                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                Coincidencia en mensaje: <strong>"{chat._searchMatch.snippet}"</strong>
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {chat._searchMatch && (chat._searchMatch.matchType === 'dni' || chat._searchMatch.matchType === 'dni_en_mensaje') && (
+                                        <div style={{
+                                            margin: '5px 0 3px 0',
+                                            padding: '4px 7px',
+                                            background: '#EFF6FF',
+                                            border: '1px solid #BFDBFE',
+                                            borderRadius: '5px',
+                                            fontSize: '0.68rem',
+                                            color: '#1E40AF',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '5px',
+                                            overflow: 'hidden'
+                                        }}>
+                                            <FileText size={11} style={{ flexShrink: 0, color: '#2563EB' }} />
+                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                Coincidencia DNI: <strong>{chat._searchMatch.matchText || chat._searchMatch.snippet}</strong>
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {chat._searchMatch && chat._searchMatch.matchType === 'orden_medica' && (
+                                        <div style={{
+                                            margin: '5px 0 3px 0',
+                                            padding: '4px 7px',
+                                            background: '#F5F3FF',
+                                            border: '1px solid #DDD6FE',
+                                            borderRadius: '5px',
+                                            fontSize: '0.68rem',
+                                            color: '#6D28D9',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '5px',
+                                            overflow: 'hidden'
+                                        }}>
+                                            <Sparkles size={11} style={{ flexShrink: 0, color: '#7C3AED' }} />
+                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {chat._searchMatch.snippet}
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    <div style={{ fontSize: '0.76rem', color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {chat.lastMessage}
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })
+                    )}
                 </div>
             </div>
 
