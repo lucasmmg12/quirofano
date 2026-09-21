@@ -2247,24 +2247,10 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             </div>
 
 
-                            {/* CABECERA DE LA FICHA DEL PACIENTE: DATOS EXCLUSIVOS SALUS */}
+                            {/* CABECERA DE LA FICHA DEL PACIENTE */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                     Datos del Paciente
-                                </span>
-                                <span style={{
-                                    fontSize: '0.66rem',
-                                    fontWeight: 700,
-                                    color: '#0369A1',
-                                    background: '#F0F9FF',
-                                    border: '1px solid #BAE6FD',
-                                    padding: '3px 8px',
-                                    borderRadius: '6px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                }}>
-                                    <Lock size={11} color="#0284C7" /> Exclusivo SALUS
                                 </span>
                             </div>
 
