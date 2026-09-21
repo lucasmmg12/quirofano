@@ -639,12 +639,28 @@ interface IntentDetectionResult {
         | 'telefonos_sedes'
         | 'reclamos_calidad'
         | 'fundacion'
-        | 'derivacion_agente'
+        | 'confirmar_turno_online'
+        | 'cancelar_turno_online'
+        | 'reprogramar_turno_online'
+        | 'agradecimiento_cierre'
+        | 'seguimiento_asesor'
         | 'general';
     doctorCandidate: string | null;
     doctorRecord: any | null;
     isExplicitNumberOption: string | null;
     sectorKey?: string | null;
+}
+
+interface ConversationContext {
+    history?: any[];
+    lastBotMessage?: any;
+    lastAgentMessage?: any;
+    hasAgentIntervened?: boolean;
+    agentName?: string | null;
+    turnoOnlineProximo?: any;
+    patientName?: string | null;
+    resolvedDni?: string | null;
+    previousResolutionReason?: string | null;
 }
 
 const STOPWORDS_MEDICOS = new Set([
@@ -697,10 +713,41 @@ function getAgentHandoffNotice(): string {
     }
 }
 
-async function detectIntentAndEntities(supabase: any, text: string): Promise<IntentDetectionResult> {
+async function detectIntentAndEntities(supabase: any, text: string, context?: ConversationContext): Promise<IntentDetectionResult> {
     const clean = text.toLowerCase().trim();
 
-    // 0. DETECCIÓN POR OPCIÓN DIRECTA DEL MENÚ HISTÓRICO (LETRAS A..M o NÚMEROS 1..4)
+    // 0.1 CORTESÍA / AGRADECIMIENTO EN BASE AL CONTEXTO PREVIO
+    const isGratitude = /^(muchas\s+gracias|gracias|much[ií]simas\s+gracias|dale\s+gracias|perfecto\s+gracias|genial\s+gracias|buen[ií]simo|ok\s+gracias|chau|listo\s+gracias|muy\s+amable|graciass)[!.\s]*$/i.test(clean);
+    if (isGratitude && context?.history && context.history.length > 0) {
+        return { intent: 'agradecimiento_cierre', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    // 0.2 ACCIÓN DIRECTA SOBRE TURNO ONLINE (SI EL BOT O ASESOR PREGUNTÓ O EXISTE TURNO)
+    const lastBotContent = (context?.lastBotMessage?.content || '').toLowerCase();
+    const isBotAskingAboutTurnoOnline = lastBotContent.includes('turno online agendado') || lastBotContent.includes('deseás confirmar') || /albacar/i.test(lastBotContent);
+
+    if (isBotAskingAboutTurnoOnline || context?.turnoOnlineProximo) {
+        if (/^(si|sí|confirmar|confirmo|si\s*confirmo|por\s+favor\s+confirmo|dale\s+confirmo|voy\s+a\s+ir|confirmamelo|ok\s+confirmo|si\s+voy|confirmado)[!.\s]*$/i.test(clean)) {
+            return { intent: 'confirmar_turno_online', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+        }
+        if (/\b(cancelar|cancelo|no\s+voy\s+a\s+poder|anular|dar\s+de\s+baja|no\s+puedo\s+ir|cancela\s+el\s+turno)\b/i.test(clean)) {
+            return { intent: 'cancelar_turno_online', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+        }
+        if (/\b(reprogramar|cambiar|otro\s+dia|otro\s+horario|otra\s+fecha|reprogramamelo)\b/i.test(clean)) {
+            return { intent: 'reprogramar_turno_online', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+        }
+    }
+
+    // 0.3 SEGUIMIENTO DE CASO CON ASESOR HUMANO (SI EL ASESOR PIDIÓ DOCUMENTACIÓN O PREGUNTÓ ALGO)
+    if (context?.hasAgentIntervened && context?.lastAgentMessage) {
+        const lastAgentText = (context.lastAgentMessage.content || '').toLowerCase();
+        if ((lastAgentText.includes('orden') || lastAgentText.includes('foto') || lastAgentText.includes('estudio') || lastAgentText.includes('dni')) &&
+            /\b(te\s+mando|te\s+paso|aca\s+esta|adjunto|foto|orden|comprobante|mando|paso)\b/i.test(clean)) {
+            return { intent: 'seguimiento_asesor', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+        }
+    }
+
+    // 0.4 DETECCIÓN POR OPCIÓN DIRECTA DEL MENÚ HISTÓRICO (LETRAS A..M o NÚMEROS 1..4)
     if (/^[a|a️⃣]$/i.test(clean) || /^opci[oó]n\s*a$/i.test(clean)) {
         return { intent: 'informes_general', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'A' };
     }
@@ -904,6 +951,22 @@ async function detectIntentAndEntities(supabase: any, text: string): Promise<Int
         }
     }
 
+    // Si no se detectó doctor en el mensaje actual, buscar si se mencionó en el contexto reciente (Bot o Asesor)
+    if (!doctorCandidate && context?.history && context.history.length > 0) {
+        const lastBotText = (context.lastBotMessage?.content || '').toLowerCase();
+        const lastAgentText = (context.lastAgentMessage?.content || '').toLowerCase();
+        for (const reg of docRegexes) {
+            const m = lastBotText.match(reg) || lastAgentText.match(reg);
+            if (m && m[1]) {
+                const word = m[1].toLowerCase().trim();
+                if (!STOPWORDS_MEDICOS.has(word) && word.length >= 3) {
+                    doctorCandidate = word;
+                    break;
+                }
+            }
+        }
+    }
+
     let intent: IntentDetectionResult['intent'] = 'general';
     if (isTurno || doctorRecord) {
         intent = 'turno';
@@ -911,6 +974,77 @@ async function detectIntentAndEntities(supabase: any, text: string): Promise<Int
         intent = 'autorizacion';
     } else if (isInfo) {
         intent = 'info';
+    }
+
+    // Si aún no se determinó la intención y hay historial conversacional, usar OpenAI con contexto
+    if (intent === 'general' && context?.history && context.history.length > 0) {
+        const openAiKey = Deno.env.get('OPENAI_API_KEY');
+        if (openAiKey) {
+            try {
+                const thread = context.history.slice(-6).map((m: any) => {
+                    const role = m.direction === 'incoming' 
+                        ? (context.patientName || 'Paciente') 
+                        : (m.sender_name === 'Bot Sanatorio' || m.raw_payload?.bot ? 'Bot' : `Asesor_Humano (${m.sender_name || 'Agente'})`);
+                    return `${role}: ${m.content}`;
+                }).join('\n');
+
+                const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${openAiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: 'gpt-4o-mini',
+                        response_format: { type: 'json_object' },
+                        messages: [
+                            {
+                                role: 'system',
+                                content: `Eres el clasificador contextual del Contact Center de Sanatorio Argentino.
+Analiza la intención del último mensaje del paciente considerando el hilo de la conversación previa con el Bot o con el Asesor Humano.
+Intenciones posibles:
+- "turno": solicitud o consulta sobre turnos médicos
+- "confirmar_turno_online": el paciente confirma su turno
+- "cancelar_turno_online": el paciente cancela su turno
+- "reprogramar_turno_online": el paciente pide cambiar fecha/horario de su turno
+- "autorizacion": orden médica, autorización o coseguro
+- "guardia": consulta sobre guardias o urgencias
+- "chequeo": circuito de chequeo preventivo
+- "informes_laboratorio": ver o consultar análisis clínicos
+- "informes_imagenes": estudios de imágenes
+- "seguimiento_asesor": responde a lo acordado con el asesor humano
+- "agradecimiento_cierre": agradece o se despide
+- "general": si no encaja en ninguna
+Devuelve un JSON con:
+{
+  "intent": string,
+  "doctor": string o null
+}`
+                            },
+                            {
+                                role: 'user',
+                                content: `Historial reciente:\n${thread}\n\nÚltimo mensaje del paciente:\n"${text}"`
+                            }
+                        ],
+                        temperature: 0.1,
+                        max_tokens: 150
+                    })
+                });
+
+                if (aiRes.ok) {
+                    const aiData = await aiRes.json();
+                    const parsed = JSON.parse(aiData.choices?.[0]?.message?.content || '{}');
+                    if (parsed.intent && parsed.intent !== 'general') {
+                        intent = parsed.intent as any;
+                    }
+                    if (parsed.doctor && !doctorCandidate) {
+                        doctorCandidate = parsed.doctor.toLowerCase().trim();
+                    }
+                }
+            } catch (err) {
+                console.warn('[intent-detector] Fallback OpenAI contextual error:', err);
+            }
+        }
     }
 
     return {
@@ -1139,9 +1273,47 @@ async function handleChatbotTriage(
         }
     }
 
-    // 3. DETECTAR INTENCIÓN Y ENTIDADES (MÉDICO, DOCTOR, ESTUDIO)
-    const analysis = await detectIntentAndEntities(supabase, cleanText);
-    console.log(`[triage-bot] Análisis de intención para "${cleanText}":`, analysis);
+    // 2.1 RECUPERAR HISTORIAL RECIENTE PARA BRINDAR CONTEXTO CONVERSACIONAL (BOT Y ASESORES HUMANOS)
+    const { data: rawHistory } = await supabase
+        .from('whatsapp_messages')
+        .select('id, direction, sender_name, content, created_at, raw_payload')
+        .eq('phone', phone)
+        .order('created_at', { ascending: false })
+        .limit(15);
+
+    const recentHistory = (rawHistory || []).reverse();
+
+    // Detectar si un asesor humano intervino previamente en el chat
+    const agentInterventions = recentHistory.filter((m: any) => 
+        m.direction === 'outgoing' && 
+        m.sender_name !== 'Bot Sanatorio' && 
+        !m.raw_payload?.bot
+    );
+    const hasAgentIntervened = agentInterventions.length > 0;
+    const lastAgentMessage = hasAgentIntervened ? agentInterventions[agentInterventions.length - 1] : null;
+
+    // Detectar último mensaje del bot
+    const botMessages = recentHistory.filter((m: any) => 
+        m.direction === 'outgoing' && 
+        (m.sender_name === 'Bot Sanatorio' || m.raw_payload?.bot)
+    );
+    const lastBotMessage = botMessages.length > 0 ? botMessages[botMessages.length - 1] : null;
+
+    // 3. DETECTAR INTENCIÓN Y ENTIDADES (CON MEMORIA CONVERSACIONAL Y SEGUIMIENTO DE ASESORES)
+    const conversationContext: ConversationContext = {
+        history: recentHistory,
+        lastBotMessage,
+        lastAgentMessage,
+        hasAgentIntervened,
+        agentName: lastAgentMessage?.sender_name || conv?.closed_by_agent_name || null,
+        turnoOnlineProximo,
+        patientName: fullName,
+        resolvedDni,
+        previousResolutionReason: wasClosed ? conv?.resolution_reason : null
+    };
+
+    const analysis = await detectIntentAndEntities(supabase, cleanText, conversationContext);
+    console.log(`[triage-bot] Análisis contextual para "${cleanText}":`, analysis);
 
     // Construir etiqueta de doctor SOLO si fue verificado en base de datos o venía con Dr./Dra. explícito y no es stopword
     let rawDocName = analysis.doctorRecord?.profesional_nombre || null;
@@ -1505,6 +1677,59 @@ async function handleChatbotTriage(
             `🗓️ *Conocer actividades:* https://fundacion.sanatorioargentino.com.ar\n` +
             `📲 *WhatsApp directo con un asistente de la Fundación:* https://wa.me/5492644867318\n\n` +
             `🌐 Para más información visitá: https://www.sanatorioargentino.com.ar/`;
+        nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: CONFIRMACIÓN DE TURNO ONLINE (CONTEXTUAL)
+    // =============================================
+    else if (analysis.intent === 'confirmar_turno_online') {
+        const doc = turnoOnlineProximo?.profesional || 'tu profesional';
+        const f = turnoOnlineProximo?.fecha || '';
+        const h = turnoOnlineProximo?.hora ? ` a las ${turnoOnlineProximo.hora} hs` : '';
+        replyText = `¡Muchas gracias *${fullName}*! ✅ Registramos tu confirmación del turno con ${doc}${f ? ` para el ${f}${h}` : ''}.\n\n${getAgentHandoffNotice()}`;
+        updates.motivo_consulta = `Confirmación Turno Online: ${doc}`;
+        updates.status = 'sin_asignar';
+        updates.bot_active = false;
+        nextStage = 'esperando_agente';
+    }
+    // =============================================
+    // FLUJO: CANCELACIÓN DE TURNO ONLINE (CONTEXTUAL)
+    // =============================================
+    else if (analysis.intent === 'cancelar_turno_online') {
+        const doc = turnoOnlineProximo?.profesional || 'tu profesional';
+        const f = turnoOnlineProximo?.fecha || '';
+        replyText = `Registramos tu solicitud para *cancelar* el turno con ${doc}${f ? ` del ${f}` : ''}. Un asesor gestionará la baja en el sistema.\n\n${getAgentHandoffNotice()}`;
+        updates.motivo_consulta = `Solicita Cancelar Turno Online: ${doc}`;
+        updates.status = 'sin_asignar';
+        updates.bot_active = false;
+        nextStage = 'esperando_agente';
+    }
+    // =============================================
+    // FLUJO: REPROGRAMACIÓN DE TURNO ONLINE (CONTEXTUAL)
+    // =============================================
+    else if (analysis.intent === 'reprogramar_turno_online') {
+        const doc = turnoOnlineProximo?.profesional || 'tu profesional';
+        replyText = `Te ayudamos a *reprogramar* tu turno con ${doc}.\nPor favor indícanos qué día o preferencia horaria te quedaría mejor.\n\n${getAgentHandoffNotice()}`;
+        updates.motivo_consulta = `Solicita Reprogramar Turno Online: ${doc}`;
+        updates.status = 'sin_asignar';
+        updates.bot_active = false;
+        nextStage = 'esperando_agente';
+    }
+    // =============================================
+    // FLUJO: SEGUIMIENTO DE CASO CON ASESOR HUMANO (CONTEXTUAL)
+    // =============================================
+    else if (analysis.intent === 'seguimiento_asesor') {
+        replyText = `¡Muchas gracias *${fullName}*! Registramos tu respuesta en el chat para que el equipo continúe tu atención.\n\n${getAgentHandoffNotice()}`;
+        updates.motivo_consulta = `Seguimiento de conversación con asesor`;
+        updates.status = 'sin_asignar';
+        updates.bot_active = false;
+        nextStage = 'esperando_agente';
+    }
+    // =============================================
+    // FLUJO: AGRADECIMIENTO O CIERRE CORDIAL (CONTEXTUAL)
+    // =============================================
+    else if (analysis.intent === 'agradecimiento_cierre') {
+        replyText = `¡De nada *${fullName}*! Que tengas un excelente día. Estamos a tu entera disposición ante cualquier otra consulta. 🏥`;
         nextStage = 'informacion_respondida';
     }
     // =============================================
