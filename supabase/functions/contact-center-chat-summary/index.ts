@@ -73,16 +73,42 @@ Deno.serve(async (req) => {
             }
         }
 
-        // 2. Obtener los mensajes más RECIENTES del chat (orden descendente para tomar los últimos, luego revertir para OpenAI)
+        // 2. Obtener los mensajes más RECIENTES del chat (orden descendente para tomar los últimos)
         const { data: rawMessages } = await supabase
             .from('whatsapp_messages')
             .select('*')
             .eq('phone', phone)
             .order('created_at', { ascending: false })
-            .limit(40);
+            .limit(50);
+
+        // Delimitar la sesión activa actual:
+        // No incluir mensajes de conversaciones o consultas finalizadas semanas o meses atrás.
+        const sessionMsgs: any[] = [];
+        for (const msg of (rawMessages || [])) {
+            const content = (msg.content || '').toLowerCase();
+            // Si ya recolectamos mensajes de la sesión actual y topamos con un mensaje de cierre previo del sanatorio, cortamos
+            if (sessionMsgs.length > 0 && (
+                content.includes('damos por finalizada esta conversación') ||
+                content.includes('nos sumarías un montón dejándonos 5 estrellas') ||
+                content.includes('finalizar atención') ||
+                content.includes('cualquier otra consulta estamos a tu disposición') ||
+                content.includes('encuesta de satisfacción')
+            )) {
+                break;
+            }
+            // Si hay un salto temporal mayor a 4 días con respecto al mensaje más reciente recolectado, es una sesión anterior
+            if (sessionMsgs.length > 0) {
+                const newestDate = new Date(sessionMsgs[0].created_at).getTime();
+                const msgDate = new Date(msg.created_at).getTime();
+                if (!isNaN(newestDate) && !isNaN(msgDate) && (newestDate - msgDate) > 4 * 24 * 60 * 60 * 1000) {
+                    break;
+                }
+            }
+            sessionMsgs.push(msg);
+        }
 
         // Invertir para presentar la conversación en orden cronológico real a OpenAI
-        const messages = (rawMessages || []).reverse();
+        const messages = sessionMsgs.reverse();
 
         if (messages.length === 0 && !conv) {
             return new Response(JSON.stringify({ error: 'No messages or conversation found for this phone' }), {
@@ -103,12 +129,13 @@ Deno.serve(async (req) => {
         }).join('\n\n');
 
         // 3. Ejecutar análisis con OpenAI GPT-4o
-        console.log(`[chat-summary] Analizando conversación para ${phone} con los ${messages.length} mensajes más recientes...`);
+        console.log(`[chat-summary] Analizando conversación para ${phone} con los ${messages.length} mensajes de la sesión activa...`);
 
         const prompt = `Eres el Asistente Clínico y Administrativo de Inteligencia Artificial del Contact Center de Sanatorio Argentino en San Juan, Argentina.
-Tu misión es asistir al OPERADOR humano (las agentes de atención) resumiendo de forma exacta qué necesita el paciente, qué datos aportó y qué médico o prestador está involucrado.
+Tu misión es asistir al OPERADOR humano (las agentes de atención) resumiendo de forma EXACTA y FIEL qué necesita el paciente en su consulta ACTUAL, qué datos aportó y qué médico o estudio solicita.
 
-IMPORTANTE: El paciente NO verá este texto; es exclusivamente para la pantalla de la operadora. Prioriza los mensajes más recientes para entender la solicitud actual del paciente.
+IMPORTANTE: El paciente NO verá este texto; es exclusivamente para la pantalla de la operadora.
+Prioriza ESTRICTAMENTE los mensajes de la consulta actual. NUNCA inventes necesidades ni asumas trámites que el paciente no solicitó en esta conversación.
 
 Analiza el siguiente historial de conversación y los datos del paciente:
 
@@ -122,26 +149,28 @@ DATOS ACTUALES REGISTRADOS EN FICHA:
 - TURNOS ONLINE AGENDADOS EN EL SISTEMA:
 ${turnosOnlineInfo}
 
-HISTORIAL DE CHAT RECIENTE (Cronológico):
+HISTORIAL DE LA CONSULTA ACTUAL (Cronológico):
 ${chatTranscript || 'Sin mensajes de texto todavía.'}
 
 REGLAS CRÍTICAS DE EXTRACCIÓN:
 1. NUNCA interpretes verbos, pronombres ni palabras comunes como doctores (ej: 'hacerme', 'hacer', 'sacarme', 'sacar', 'pedirme', 'pedir', 'verme', 'ver', 'atenderme').
-2. Si el paciente menciona "chequeo", "chequeo preventivo", "chequeo de salud" o "circuito preventivo":
+2. NUNCA fuerces "Chequeo Preventivo de Salud" a menos que el paciente lo pida con esas palabras exactas ("chequeo preventivo", "circuito preventivo", "chequeo de salud"). Si el paciente solicita un turno médico para una especialidad o profesional, o si solo saluda y aporta datos para un turno sin nombrar el circuito de chequeo, clasifícalo como "Turno nuevo".
+3. Si el paciente pide un turno pero aún no especificó especialidad ni médico, descríbelo con fidelidad: ej. "El paciente solicita un turno médico pero aún no especificó especialidad o profesional."
+4. Si el paciente menciona explícitamente "chequeo preventivo" o "circuito preventivo":
    - "tipo_tramite": "Chequeo Preventivo de Salud"
-   - "doctor_detectado.nombre_aproximado": null (el chequeo preventivo es un circuito multidisciplinario coordinado por el Contact Center, no un médico particular)
+   - "doctor_detectado.nombre_aproximado": null
    - "doctor_detectado.estudio_solicitado": "Chequeo Preventivo de Salud"
    - "resumen_solicitud": "El paciente solicita coordinar turno para el Circuito de Chequeo Preventivo de Salud."
-3. Si el paciente menciona "prevenir", "programa prevenir", "turno para prevenir", "para el prevenir" o similar:
+5. Si el paciente menciona "prevenir", "programa prevenir", "turno para prevenir":
    - "tipo_tramite": "Programa Prevenir (OSP)"
-   - "doctor_detectado.nombre_aproximado": null (el Programa Prevenir es un circuito integrado de ginecología y mamografía para afiliadas de OSP, no un médico particular)
+   - "doctor_detectado.nombre_aproximado": null
    - "doctor_detectado.estudio_solicitado": "Programa Prevenir (Ginecología + Mamografía OSP)"
    - "resumen_solicitud": "El paciente solicita coordinar turno para el Programa Prevenir de Obra Social Provincia (OSP)."
 
 Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura exacta:
 {
-  "resumen_solicitud": "Resumen conciso y directo en 1 o 2 oraciones de qué necesita el paciente y qué trámite está solicitando",
-  "tipo_tramite": "Programa Prevenir (OSP) | Chequeo Preventivo de Salud | Turno nuevo | Reprogramación de turno | Autorización de estudio | Consulta por guardia | Información general | Otro",
+  "resumen_solicitud": "Resumen conciso, fiel y directo en 1 o 2 oraciones de qué necesita el paciente en esta consulta actual y qué trámite está solicitando",
+  "tipo_tramite": "Turno nuevo | Reprogramación de turno | Autorización de estudio | Chequeo Preventivo de Salud | Programa Prevenir (OSP) | Consulta por guardia | Información general | Otro",
   "datos_paciente": {
     "nombre_completo": "Nombre y apellido del paciente detectado o null",
     "dni": "DNI del paciente (solo números) o null",
