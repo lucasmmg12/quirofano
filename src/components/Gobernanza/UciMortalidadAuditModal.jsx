@@ -1406,15 +1406,18 @@ export default function UciMortalidadAuditModal({
             backgroundColor: 'rgba(15, 23, 42, 0.65)',
             backdropFilter: 'blur(4px)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '20px'
+            padding: '16px',
+            overflowY: 'auto'
         }}>
             <div style={{
                 background: '#FFFFFF',
                 borderRadius: '16px',
                 width: '100%',
                 maxWidth: '1240px',
-                maxHeight: '94vh',
                 height: '92vh',
+                maxHeight: 'calc(100vh - 32px)',
+                minHeight: 0,
+                margin: 'auto',
                 display: 'flex',
                 flexDirection: 'column',
                 boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
@@ -1535,7 +1538,17 @@ export default function UciMortalidadAuditModal({
                     /* ═══════════════════════════════════════════════════════════ */
                     /* MODO PACIENTE INDIVIDUAL: DOSSIER CLÍNICO PROFUNDO (SIN KPIS) */
                     /* ═══════════════════════════════════════════════════════════ */
-                    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '18px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div style={{ 
+                        flex: 1, 
+                        minHeight: 0, 
+                        overflowY: 'auto', 
+                        padding: '18px 24px', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        gap: '14px',
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: '#94A3B8 #F1F5F9'
+                    }}>
                         {/* 1. Tarjeta Principal del Paciente */}
                         <div style={{
                             background: '#FFFFFF',
@@ -1547,7 +1560,8 @@ export default function UciMortalidadAuditModal({
                             justifyContent: 'space-between',
                             alignItems: 'center',
                             flexWrap: 'wrap',
-                            gap: '12px'
+                            gap: '12px',
+                            flexShrink: 0
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                                 <div style={{
@@ -1596,7 +1610,8 @@ export default function UciMortalidadAuditModal({
                         <div style={{
                             display: 'grid',
                             gridTemplateColumns: 'repeat(4, 1fr)',
-                            gap: '12px'
+                            gap: '12px',
+                            flexShrink: 0
                         }}>
                             <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '12px 14px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#1E40AF', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase' }}>
@@ -1653,7 +1668,7 @@ export default function UciMortalidadAuditModal({
                             border: '1px solid #E2E8F0',
                             borderRadius: '12px',
                             boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-                            overflow: 'hidden'
+                            position: 'relative'
                         }}>
                             <div style={{
                                 display: 'flex',
@@ -1661,7 +1676,11 @@ export default function UciMortalidadAuditModal({
                                 justifyContent: 'space-between',
                                 padding: '10px 16px',
                                 borderBottom: '1px solid #E2E8F0',
-                                background: '#F8FAFC'
+                                background: '#F8FAFC',
+                                position: 'sticky',
+                                top: 0,
+                                zIndex: 10,
+                                borderRadius: '12px 12px 0 0'
                             }}>
                                 <div style={{ display: 'flex', gap: '8px' }}>
                                     <button
@@ -1979,7 +1998,8 @@ export default function UciMortalidadAuditModal({
                             borderBottom: '1px solid #E2E8F0',
                             display: 'grid',
                             gridTemplateColumns: 'repeat(5, 1fr)',
-                            gap: '12px'
+                            gap: '12px',
+                            flexShrink: 0
                         }}>
                             {/* KPI 1: Defunciones Totales */}
                             <div style={{
@@ -2075,7 +2095,8 @@ export default function UciMortalidadAuditModal({
                             alignItems: 'center',
                             justifyContent: 'space-between',
                             gap: '16px',
-                            background: '#FFFFFF'
+                            background: '#FFFFFF',
+                            flexShrink: 0
                         }}>
                             {/* Pestañas de filtrado temporal */}
                             <div style={{ display: 'flex', gap: '6px' }}>
@@ -2156,7 +2177,14 @@ export default function UciMortalidadAuditModal({
                         </div>
 
                         {/* ─── TABLA DE PACIENTES FALLECIDOS ─── */}
-                        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 24px 20px 24px' }}>
+                        <div style={{ 
+                            flex: 1, 
+                            minHeight: 0, 
+                            overflowY: 'auto', 
+                            padding: '0 24px 20px 24px',
+                            scrollbarWidth: 'thin',
+                            scrollbarColor: '#94A3B8 #F1F5F9'
+                        }}>
                             {loadingClinical && (
                                 <div style={{ padding: '8px 12px', background: '#F0FDF4', color: '#166534', fontSize: '0.75rem', borderRadius: '6px', margin: '12px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <Activity size={14} className="animate-spin" />
