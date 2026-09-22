@@ -996,7 +996,6 @@ export async function saveCrmPatientCard({ phone, dni, nombreCompleto, obraSocia
         .from('contact_center_conversations')
         .upsert({
             phone: norm,
-            contact_name: updatePayload.nombre_completo || 'Paciente',
             ...updatePayload
         }, { onConflict: 'phone' });
 
