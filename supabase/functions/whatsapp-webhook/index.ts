@@ -1493,6 +1493,20 @@ async function handleChatbotTriage(
     // FLUJO 1: PACIENTE RESPONDIENDO DNI O DATOS DESDE NÚMERO NUEVO/NO REGISTRADO
     // =============================================
     else if (currentStage === 'esperando_dni' || currentStage === 'esperando_datos_nuevo') {
+        // ¿El DNI provisto coincide con un paciente existente en SALUS?
+        if (candidateDni && (!paciente || String(paciente.dni) !== String(candidateDni))) {
+            const { data: pFound } = await supabase
+                .from('hospital_pacientes')
+                .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
+                .eq('dni', candidateDni)
+                .limit(1)
+                .maybeSingle();
+            if (pFound) {
+                paciente = pFound;
+                console.log(`[triage-bot] Paciente encontrado en SALUS por DNI provisto: ${paciente.nombre}`);
+            }
+        }
+
         if (paciente) {
             updates = {
                 ...updates,
@@ -1508,28 +1522,23 @@ async function handleChatbotTriage(
                 bot_active: false
             };
             nextStage = 'esperando_agente';
+            updates.ai_summary = buildTriageSummary(updates, analysis.intent, analysis.doctorRecord, true, paciente.edad);
 
-            replyText = `¡Muchas gracias *${paciente.nombre}*! ✅\n\n${getAgentHandoffNotice()}`;
-        } 
-        else if (candidateDni || cleanText.length > 5) {
-            const extracted = await extractPatientVariables(cleanText, candidateDni);
-            const resolvedName = extracted.nombre_completo || fullName || 'Paciente';
-            updates = {
-                ...updates,
-                ...extracted,
-                dni: candidateDni || extracted.dni || null,
-                nombre_completo: resolvedName,
-                status: 'sin_asignar',
-                bot_active: false,
-                es_paciente_existente: false
-            };
-            nextStage = 'esperando_agente';
-
-            replyText = `¡Muchas gracias *${resolvedName}*! ✅\n\n${getAgentHandoffNotice()}`;
-        } 
-        else {
-            replyText = `Para poder encontrar tu historia clínica o darte de alta, necesitamos tu número de *DNI* (sin puntos ni letras) y tu *Nombre Completo*.`;
-            nextStage = 'esperando_dni';
+            replyText = `¡Muchas gracias *${paciente.nombre}*! ✅ Encontramos tu historia clínica en Sanatorio Argentino.\n\n${getAgentHandoffNotice()}`;
+        } else {
+            // Paciente no registrado en SALUS -> Onboarding express de los 6 datos obligatorios
+            const res = await handleNewPatientIntake(
+                cleanText,
+                candidateDni,
+                conv,
+                phone,
+                updates,
+                analysis.intent,
+                analysis.doctorRecord,
+                doctorDisplay
+            );
+            nextStage = res.nextStage;
+            replyText = res.replyText;
         }
     } 
     // =============================================
@@ -1565,11 +1574,21 @@ async function handleChatbotTriage(
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
+            updates.ai_summary = buildTriageSummary(updates, 'chequeo', analysis.doctorRecord, true, paciente?.edad);
         } else {
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n${infoChequeo}\n\nPara abrir tu ficha y coordinar la fecha del circuito, por favor indícanos en un solo mensaje:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n• *Sede de preferencia* (Sede Santa Fe o Sede San Luis)\n\nEl bot quedará en pausa una vez recibidos tus datos.`;
-            updates.bot_stage = 'esperando_datos_nuevo';
-            updates.bot_active = true;
-            nextStage = 'esperando_datos_nuevo';
+            const res = await handleNewPatientIntake(
+                cleanText,
+                candidateDni,
+                conv,
+                phone,
+                updates,
+                'chequeo',
+                analysis.doctorRecord,
+                doctorDisplay,
+                infoChequeo
+            );
+            nextStage = res.nextStage;
+            replyText = res.replyText;
         }
     }
     // =============================================
@@ -1591,11 +1610,21 @@ async function handleChatbotTriage(
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
+            updates.ai_summary = buildTriageSummary(updates, 'prevenir', analysis.doctorRecord, true, paciente?.edad);
         } else {
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n${infoPrevenir}\n\nPara abrir tu ficha y coordinar tu turno en un solo mensaje, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Confirmación de Obra Social Provincia (OSP)* u otra cobertura\n\nEl bot quedará en pausa una vez recibidos tus datos.`;
-            updates.bot_stage = 'esperando_datos_nuevo';
-            updates.bot_active = true;
-            nextStage = 'esperando_datos_nuevo';
+            const res = await handleNewPatientIntake(
+                cleanText,
+                candidateDni,
+                conv,
+                phone,
+                updates,
+                'prevenir',
+                analysis.doctorRecord,
+                doctorDisplay,
+                infoPrevenir
+            );
+            nextStage = res.nextStage;
+            replyText = res.replyText;
         }
     }
     // =============================================
@@ -1920,6 +1949,7 @@ async function handleChatbotTriage(
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
+            updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, isExistingPatient, paciente?.edad);
         } else if (turnoOnlineProximo) {
             replyText = `¡Hola *${fullName}*! 🏥\n\n` +
                 `📅 *Tenés un turno online agendado:*\n` +
@@ -1932,32 +1962,37 @@ async function handleChatbotTriage(
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
+            updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, true, paciente?.edad);
         } else if (isExistingPatient) {
             const hasOrderImageMsg = patientSentImageRecently ? '\n\n✅ *Ya recibimos la foto de tu orden médica.*' : '';
+            const otherFams = (familiaresDetectados || []).filter(f => String(f.dni) !== String(paciente?.dni)).map(f => (f.nombre || '').split(',')[0].trim());
+            const famNote = otherFams.length > 0 ? ` (o para ${otherFams.join(', ')})` : '';
+
             replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos a coordinar tu turno${doctorNoteMsg}.${hasOrderImageMsg}\n\n` +
                 `Por favor indícanos:\n` +
-                `• ¿El turno es para vos (*${fullName}*), o estás gestionando para otro paciente / familiar?\n` +
+                `• ¿El turno es para vos (*${fullName}*), o estás gestionando para otro paciente / familiar${famNote}?\n` +
                 `• Si es para vos: indícanos preferencia de día/horario y si es primera consulta o control.\n` +
                 `• Si es para otra persona: indícanos el *DNI* (sin puntos) y *Nombre Completo* del paciente que se va a atender.\n\n` +
                 `${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
+            updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, true, paciente?.edad);
         } else {
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n` +
-                `Con gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.\n\n` +
-                `Por favor indícanos en un solo mensaje:\n` +
-                `1. ¿Sos paciente de Sanatorio Argentino o es tu primera consulta?\n` +
-                `2. ¿El turno es para vos o para otra persona (hijo/a, familiar)?\n\n` +
-                `• *Nombre y Apellido completo del paciente a atender*\n` +
-                `• *Número de DNI* (sin puntos)\n` +
-                `• *Obra Social o Prepaga*\n` +
-                `• *Preferencia de día y horario* (mañana o tarde)\n\n` +
-                `El bot quedará en pausa una vez recibidos tus datos.\n\n` +
-                `🌐 Más información en: https://www.sanatorioargentino.com.ar/`;
-            updates.bot_stage = 'esperando_datos_nuevo';
-            updates.bot_active = true;
-            nextStage = 'esperando_datos_nuevo';
+            const intro = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\nCon gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.`;
+            const res = await handleNewPatientIntake(
+                cleanText,
+                candidateDni,
+                conv,
+                phone,
+                updates,
+                'turno',
+                analysis.doctorRecord,
+                doctorDisplay,
+                intro
+            );
+            nextStage = res.nextStage;
+            replyText = res.replyText;
         }
     }
     // =============================================
@@ -1973,6 +2008,7 @@ async function handleChatbotTriage(
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
+            updates.ai_summary = buildTriageSummary(updates, 'autorizacion', analysis.doctorRecord, isExistingPatient, paciente?.edad);
         } else if (isExistingPatient) {
             const hasOrderImageMsg = patientSentImageRecently 
                 ? '✅ *Ya recibimos la foto de tu orden médica.*' 
@@ -1986,20 +2022,22 @@ async function handleChatbotTriage(
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
+            updates.ai_summary = buildTriageSummary(updates, 'autorizacion', analysis.doctorRecord, true, paciente?.edad);
         } else {
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n` +
-                `Con gusto te ayudamos con tu trámite de *autorización*.\n\n` +
-                `Por favor envíanos en un solo mensaje:\n` +
-                `1. ¿Sos paciente de Sanatorio Argentino o primera consulta?\n` +
-                `2. ¿La autorización es para vos o para otra persona (hijo/a, familiar)?\n\n` +
-                `• *DNI y Nombre Completo del paciente titular de la orden*\n` +
-                `• *Obra Social o Prepaga*\n` +
-                `• 📸 *Foto clara de la Orden Médica*\n\n` +
-                `El bot quedará en pausa una vez recibidos tus datos.\n\n` +
-                `🌐 Más info: https://www.sanatorioargentino.com.ar/`;
-            updates.bot_stage = 'esperando_datos_nuevo';
-            updates.bot_active = true;
-            nextStage = 'esperando_datos_nuevo';
+            const intro = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\nCon gusto te ayudamos con tu trámite de *autorización de orden médica*.`;
+            const res = await handleNewPatientIntake(
+                cleanText,
+                candidateDni,
+                conv,
+                phone,
+                updates,
+                'autorizacion',
+                analysis.doctorRecord,
+                doctorDisplay,
+                intro
+            );
+            nextStage = res.nextStage;
+            replyText = res.replyText;
         }
     }
     // =============================================
@@ -2012,11 +2050,22 @@ async function handleChatbotTriage(
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
+            updates.ai_summary = buildTriageSummary(updates, 'derivacion_agente', analysis.doctorRecord, true, paciente?.edad);
         } else {
-            replyText = `¡Hola! 👋 Te comunicamos con el equipo de atención.\n\nPara que podamos ayudarte en un solo mensaje, por favor indícanos:\n• *Nombre y Apellido completo*\n• *Número de DNI* (sin puntos)\n• *Obra Social o Prepaga*\n\n${getAgentHandoffNotice()}`;
-            updates.bot_stage = 'esperando_datos_nuevo';
-            updates.bot_active = true;
-            nextStage = 'esperando_datos_nuevo';
+            const intro = `¡Hola! 👋 Te comunicamos con el equipo de atención de *Sanatorio Argentino*.`;
+            const res = await handleNewPatientIntake(
+                cleanText,
+                candidateDni,
+                conv,
+                phone,
+                updates,
+                'derivacion_agente',
+                analysis.doctorRecord,
+                doctorDisplay,
+                intro
+            );
+            nextStage = res.nextStage;
+            replyText = res.replyText;
         }
     }
     // =============================================
@@ -2044,16 +2093,20 @@ async function handleChatbotTriage(
             updates.bot_active = true;
             nextStage = 'menu_opciones';
         } else {
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n` +
-                `Para coordinar tu atención con precisión, por favor indícanos:\n\n` +
-                `1️⃣ ¿Sos paciente de Sanatorio Argentino o es tu primera consulta?\n` +
-                `2️⃣ ¿El turno o autorización es para vos, o estás gestionando para otra persona (hijo/a, familiar)?\n\n` +
-                `• Si el trámite es para vos: envíanos tu *DNI* (sin puntos), *Nombre Completo* y *Obra Social*.\n` +
-                `• Si gestionás para otro paciente: envíanos el *DNI* y *Nombre Completo del paciente que se va a atender*, más tu nombre de contacto.\n\n` +
-                `🌐 Para conocer más ingresá a: https://www.sanatorioargentino.com.ar/`;
-            updates.bot_stage = 'esperando_dni';
-            updates.bot_active = true;
-            nextStage = 'esperando_dni';
+            const intro = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.`;
+            const res = await handleNewPatientIntake(
+                cleanText,
+                candidateDni,
+                conv,
+                phone,
+                updates,
+                'inicio',
+                analysis.doctorRecord,
+                doctorDisplay,
+                intro
+            );
+            nextStage = res.nextStage;
+            replyText = res.replyText;
         }
     }
 
@@ -2098,6 +2151,253 @@ async function handleChatbotTriage(
 }
 
 /**
+ * Calcula la edad en años a partir de una fecha de nacimiento (DD/MM/AAAA o AAAA-MM-DD)
+ */
+function calculateAgeFromBirthDate(birthDateStr: string | null): number | null {
+    if (!birthDateStr) return null;
+    try {
+        const parts = birthDateStr.split(/[\/\-]/);
+        let day = 1, month = 1, year = 1990;
+        if (parts[0].length === 4) {
+            year = parseInt(parts[0], 10);
+            month = parseInt(parts[1], 10);
+            day = parseInt(parts[2], 10);
+        } else if (parts.length === 3) {
+            day = parseInt(parts[0], 10);
+            month = parseInt(parts[1], 10);
+            year = parseInt(parts[2], 10);
+            if (year < 100) year += year > 26 ? 1900 : 2000;
+        } else {
+            return null;
+        }
+        if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+        const today = new Date();
+        let age = today.getFullYear() - year;
+        const m = (today.getMonth() + 1) - month;
+        if (m < 0 || (m === 0 && today.getDate() < day)) {
+            age--;
+        }
+        return (age >= 0 && age <= 120) ? age : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Determina cuáles de los 6 datos obligatorios están pendientes para admisión de un nuevo paciente
+ */
+function getMissingPatientFields(data: Record<string, any>): string[] {
+    const missing: string[] = [];
+
+    // 1. Nombre completo (al menos 3 caracteres y letras reales)
+    const name = (data.nombre_completo || '').trim();
+    const GENERIC_NAMES = ['paciente', 'usuario', 'hola', 'doctor', 'doctora', 'buenas', 'sanatorio'];
+    if (!name || name.length < 3 || GENERIC_NAMES.some(g => name.toLowerCase() === g) || !/[a-zA-ZáéíóúÁÉÍÓÚñÑ]/.test(name)) {
+        missing.push('nombre_completo');
+    }
+
+    // 2. DNI (7 u 8 dígitos numéricos)
+    const dni = String(data.dni || '').replace(/\D/g, '');
+    if (!dni || dni.length < 7 || dni.length > 8) {
+        missing.push('dni');
+    }
+
+    // 3. Fecha de nacimiento o Edad
+    const fn = (data.fecha_nacimiento || '').trim();
+    const ed = data.edad;
+    if (!fn && (!ed || isNaN(Number(ed)))) {
+        missing.push('fecha_nacimiento_edad');
+    }
+
+    // 4. Obra Social o Cobertura
+    const os = (data.obra_social || '').trim();
+    const GENERIC_OS = ['particular / a confirmar', 'a confirmar', 'a consultar', 'no informada', 'no informado'];
+    if (!os || GENERIC_OS.some(g => os.toLowerCase().includes(g))) {
+        missing.push('obra_social');
+    }
+
+    // 5. Departamento de residencia en San Juan
+    const dep = (data.departamento || '').trim();
+    const GENERIC_DEP = ['san juan', 'no informado', 'no informada', 'a confirmar'];
+    if (!dep || GENERIC_DEP.some(g => dep.toLowerCase() === g)) {
+        missing.push('departamento');
+    }
+
+    return missing;
+}
+
+/**
+ * Genera el mensaje amigable de repregunta solicitando ÚNICAMENTE los campos que faltan
+ */
+function buildMissingFieldsPrompt(patientName: string | null, missing: string[], currentData: Record<string, any>): string {
+    const labelsMap: Record<string, string> = {
+        nombre_completo: '• *Nombre y Apellido completo*',
+        dni: '• *Número de DNI* (sin puntos ni letras)',
+        fecha_nacimiento_edad: '• *Fecha de Nacimiento* (DD/MM/AAAA) o *Edad*',
+        obra_social: '• *Obra Social o Prepaga* (si no posees cobertura, indicanos "Particular")',
+        departamento: '• *Departamento de residencia* (ej: Capital, Rivadavia, Rawson, Santa Lucía, Chimbas, Pocito, Caucete, etc.)'
+    };
+
+    let intro = '';
+    const cleanName = (patientName && !patientName.toLowerCase().startsWith('paciente')) ? patientName : null;
+
+    if (cleanName) {
+        intro = `¡Muchas gracias *${cleanName}*! 🏥\n\n`;
+    } else if (currentData.dni) {
+        intro = `¡Muchas gracias! 🏥 Registramos tu DNI (${currentData.dni}).\n\n`;
+    } else {
+        intro = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n`;
+    }
+
+    intro += `Para poder abrir tu ficha digital de admisión y que el asesor cuente con toda tu información, por favor indícanos:\n\n`;
+
+    const bulletList = missing.map(m => labelsMap[m] || `• *${m}*`).join('\n');
+    const footer = `\n\nPodés responder con los datos en un solo mensaje. Una vez recibidos, te comunicaremos de inmediato con el equipo de atención.`;
+
+    return intro + bulletList + footer;
+}
+
+/**
+ * Construye la Ficha Resumen de Triage que se guarda en conv.ai_summary para el Cockpit del operador
+ */
+function buildTriageSummary(
+    data: Record<string, any>,
+    intent: string,
+    doctorRecord: any,
+    isExisting: boolean,
+    calculatedAge?: number | null
+): Record<string, any> {
+    const intentMap: Record<string, string> = {
+        turno: 'Solicitud de Turno',
+        autorizacion: 'Autorización de Estudio / Cobertura',
+        chequeo: 'Chequeo Preventivo de Salud',
+        prevenir: 'Programa Prevenir (OSP)',
+        guardia: 'Consulta por Guardia 24hs',
+        informes_laboratorio: 'Resultados de Laboratorio',
+        informes_imagenes: 'Informes de Diagnóstico por Imágenes',
+        derivacion_agente: 'Solicitud de Asesor Humano'
+    };
+
+    const tramite = intentMap[intent] || 'Consulta General de Atención';
+    const age = calculatedAge || (data.fecha_nacimiento ? calculateAgeFromBirthDate(data.fecha_nacimiento) : data.edad) || null;
+
+    let docName = doctorRecord?.profesional_nombre || data.medico_o_especialidad || null;
+    if (docName && docName.includes('(')) docName = docName.split('(')[0].trim();
+
+    return {
+        resumen_solicitud: data.motivo_consulta || `Gestión de ${tramite.toLowerCase()} para ${data.nombre_completo || 'el paciente'}.`,
+        tipo_tramite: tramite,
+        datos_paciente: {
+            nombre_completo: data.nombre_completo || null,
+            dni: data.dni || null,
+            obra_social: data.obra_social || 'Particular',
+            fecha_nacimiento: data.fecha_nacimiento || null,
+            edad: age,
+            departamento: data.departamento || 'San Juan',
+            telefono: data.telefono_contacto || data.phone || null,
+            nhc: data.nhc || null,
+            es_paciente_existente: isExisting
+        },
+        doctor_detectado: {
+            nombre_aproximado: docName,
+            especialidad_mencionada: doctorRecord?.especialidad || null,
+            estudio_solicitado: null
+        },
+        prestador_matched: doctorRecord ? {
+            profesional_nombre: doctorRecord.profesional_nombre,
+            especialidad: doctorRecord.especialidad,
+            consultorio_actual: doctorRecord.consultorio_actual,
+            condiciones_consulta: doctorRecord.condiciones_consulta
+        } : null,
+        generated_at: new Date().toISOString()
+    };
+}
+
+/**
+ * Procesa el onboarding express para pacientes no registrados en SALUS
+ */
+async function handleNewPatientIntake(
+    cleanText: string,
+    candidateDni: string | null,
+    conv: any,
+    phone: string,
+    updates: Record<string, any>,
+    intent: string,
+    doctorRecord: any,
+    doctorDisplay: string | null,
+    intentPromptPrefix?: string
+): Promise<{ nextStage: string; replyText: string }> {
+    const extracted = await extractPatientVariables(cleanText, candidateDni);
+
+    const mergedPatientData: Record<string, any> = {
+        dni: candidateDni || extracted.dni || conv?.dni || null,
+        nombre_completo: extracted.nombre_completo || (conv?.nombre_completo && !conv?.nombre_completo.startsWith('Paciente') ? conv.nombre_completo : null),
+        obra_social: extracted.obra_social || (conv?.obra_social && conv?.obra_social !== 'Particular / A confirmar' && conv?.obra_social !== 'A consultar' ? conv.obra_social : null),
+        fecha_nacimiento: extracted.fecha_nacimiento || conv?.fecha_nacimiento || null,
+        edad: extracted.edad || (conv?.fecha_nacimiento ? calculateAgeFromBirthDate(conv.fecha_nacimiento) : null),
+        departamento: extracted.departamento || (conv?.departamento && conv?.departamento !== 'San Juan' ? conv.departamento : null),
+        telefono_contacto: extracted.telefono_contacto || conv?.telefono_contacto || phone,
+        motivo_consulta: extracted.motivo_consulta || updates.motivo_consulta || conv?.motivo_consulta || null,
+        medico_o_especialidad: extracted.medico_o_especialidad || updates.medico_o_especialidad || conv?.medico_o_especialidad || null
+    };
+
+    if (mergedPatientData.fecha_nacimiento && !mergedPatientData.edad) {
+        mergedPatientData.edad = calculateAgeFromBirthDate(mergedPatientData.fecha_nacimiento);
+    }
+
+    if (mergedPatientData.dni) updates.dni = mergedPatientData.dni;
+    if (mergedPatientData.nombre_completo) updates.nombre_completo = mergedPatientData.nombre_completo;
+    if (mergedPatientData.obra_social) updates.obra_social = mergedPatientData.obra_social;
+    if (mergedPatientData.fecha_nacimiento) updates.fecha_nacimiento = mergedPatientData.fecha_nacimiento;
+    if (mergedPatientData.departamento) updates.departamento = mergedPatientData.departamento;
+    if (mergedPatientData.telefono_contacto) updates.telefono_contacto = mergedPatientData.telefono_contacto;
+    if (mergedPatientData.motivo_consulta) updates.motivo_consulta = mergedPatientData.motivo_consulta;
+    if (mergedPatientData.medico_o_especialidad) updates.medico_o_especialidad = mergedPatientData.medico_o_especialidad;
+
+    const missing = getMissingPatientFields(mergedPatientData);
+
+    if (missing.length > 0) {
+        updates.bot_stage = 'esperando_datos_nuevo';
+        updates.bot_active = true;
+        const nextStage = 'esperando_datos_nuevo';
+        let reply = buildMissingFieldsPrompt(mergedPatientData.nombre_completo, missing, mergedPatientData);
+        if (intentPromptPrefix) {
+            reply = intentPromptPrefix + '\n\n' + reply;
+        }
+        return { nextStage, replyText: reply };
+    } else {
+        const resolvedName = mergedPatientData.nombre_completo || 'Paciente';
+        updates.dni = mergedPatientData.dni;
+        updates.nombre_completo = resolvedName;
+        updates.obra_social = mergedPatientData.obra_social || 'Particular';
+        updates.fecha_nacimiento = mergedPatientData.fecha_nacimiento;
+        updates.departamento = mergedPatientData.departamento;
+        updates.telefono_contacto = mergedPatientData.telefono_contacto || phone;
+        updates.es_paciente_existente = false;
+        updates.status = 'sin_asignar';
+        updates.bot_active = false;
+        updates.bot_stage = 'esperando_agente';
+        const nextStage = 'esperando_agente';
+
+        updates.ai_summary = buildTriageSummary(updates, intent, doctorRecord, false, mergedPatientData.edad);
+
+        const ageNote = mergedPatientData.edad ? ` (${mergedPatientData.edad} años)` : '';
+        const docNote = doctorDisplay ? `\n• *Profesional solicitado:* ${doctorDisplay}` : '';
+        const reply = `¡Excelente *${resolvedName}*! ✅ Registramos todos tus datos de admisión:\n\n` +
+            `📋 *Ficha de Admisión Digital:*\n` +
+            `• *DNI:* ${updates.dni}\n` +
+            `• *Obra Social / Prepaga:* ${updates.obra_social}\n` +
+            `• *Nacimiento:* ${updates.fecha_nacimiento || '—'}${ageNote}\n` +
+            `• *Departamento:* ${updates.departamento}\n` +
+            `• *Contacto:* ${updates.telefono_contacto}${docNote}\n\n` +
+            `Tu ficha ya está disponible en la pantalla del equipo de atención. Un asesor tomará tu conversación a la brevedad para coordinar tu trámite.\n\n` +
+            `${getAgentHandoffNotice()}`;
+
+        return { nextStage, replyText: reply };
+    }
+}
+
+/**
  * Extrae variables estructuradas del paciente nuevo
  */
 async function extractPatientVariables(text: string, fallbackDni: string | null) {
@@ -2112,7 +2412,20 @@ async function extractPatientVariables(text: string, fallbackDni: string | null)
     if (emailMatch) vars.email = emailMatch[0];
 
     const fnMatch = text.match(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/);
-    if (fnMatch) vars.fecha_nacimiento = fnMatch[0];
+    if (fnMatch) {
+        vars.fecha_nacimiento = fnMatch[0];
+        const age = calculateAgeFromBirthDate(fnMatch[0]);
+        if (age !== null) vars.edad = age;
+    }
+
+    // Extracción de edad explícita (ej: "tengo 32 años", "edad: 4 años", "28 años")
+    const ageMatch = text.match(/\b(?:tengo|edad|de)\s*[:\s]*(\d{1,2})\s*(?:años)?\b/i) || text.match(/\b(\d{1,2})\s*años\b/i);
+    if (ageMatch && !vars.edad) {
+        const parsedAge = parseInt(ageMatch[1], 10);
+        if (parsedAge >= 0 && parsedAge <= 115) {
+            vars.edad = parsedAge;
+        }
+    }
 
     // Localidades de San Juan
     const dptos = [
@@ -2123,6 +2436,18 @@ async function extractPatientVariables(text: string, fallbackDni: string | null)
     for (const d of dptos) {
         if (new RegExp(`\\b${d}\\b`, 'i').test(text)) {
             vars.departamento = d;
+            break;
+        }
+    }
+
+    // Obras Sociales frecuentes en San Juan
+    const commonOs = [
+        'OSP', 'Obra Social Provincia', 'OSDE', 'Swiss Medical', 'DAMSUP', 'PAMI',
+        'Medifé', 'Galeno', 'Sancor Salud', 'OMINT', 'Jerárquicos', 'Particular'
+    ];
+    for (const o of commonOs) {
+        if (new RegExp(`\\b${o}\\b`, 'i').test(text)) {
+            vars.obra_social = o === 'Obra Social Provincia' ? 'OSP' : o;
             break;
         }
     }
@@ -2149,14 +2474,18 @@ async function extractPatientVariables(text: string, fallbackDni: string | null)
                     messages: [
                         {
                             role: 'system',
-                            content: `Eres el extractor de datos del Contact Center de Sanatorio Argentino. Extrae del mensaje del paciente un JSON con:
-                            - nombre_completo (string o null)
-                            - obra_social (string o null, ej: OSDE, OSP, Swiss Medical, Particular)
-                            - fecha_nacimiento (string o null, DD/MM/AAAA)
-                            - email (string o null)
-                            - telefono_contacto (string o null)
-                            - departamento (string o null, ej: Rivadavia, Capital, Rawson)
-                            Si un dato no fue provisto, indícalo como null.`
+                            content: `Eres el extractor clínico y administrativo del Contact Center de Sanatorio Argentino en San Juan, Argentina.
+Extrae del mensaje del paciente un JSON con los siguientes campos:
+- nombre_completo: Nombre y apellido del paciente a atender (string o null). No incluyas palabras como "Hola", "Doctor", "Turno", etc.
+- dni: Número de DNI (solo 7 u 8 dígitos numéricos) o null.
+- fecha_nacimiento: Fecha de nacimiento en formato DD/MM/AAAA o null.
+- edad: Edad del paciente en años como número entero o null. Si menciona fecha de nacimiento, calcula también la edad actual.
+- obra_social: Nombre de la obra social, prepaga o si es Particular (ej: OSP, OSDE, Swiss Medical, DAMSUP, Particular) o null.
+- departamento: Localidad o departamento de San Juan donde reside (ej: Capital, Rawson, Rivadavia, Santa Lucía, Chimbas, Pocito, Caucete, etc.) o null.
+- telefono_contacto: Número de teléfono alternativo o null.
+- motivo_consulta: Breve síntesis de lo que necesita o null.
+- medico_o_especialidad: Profesional o especialidad requerida o null.
+Si un dato no fue aportado en el texto, indícalo como null.`
                         },
                         {
                             role: 'user',
@@ -2171,21 +2500,30 @@ async function extractPatientVariables(text: string, fallbackDni: string | null)
                 const aiData = await aiRes.json();
                 const parsed = JSON.parse(aiData.choices?.[0]?.message?.content || '{}');
                 if (parsed.nombre_completo && !vars.nombre_completo) vars.nombre_completo = parsed.nombre_completo;
-                if (parsed.obra_social) vars.obra_social = parsed.obra_social;
+                if (parsed.dni && !vars.dni) vars.dni = parsed.dni;
+                if (parsed.obra_social && !vars.obra_social) vars.obra_social = parsed.obra_social;
                 if (parsed.fecha_nacimiento && !vars.fecha_nacimiento) vars.fecha_nacimiento = parsed.fecha_nacimiento;
+                if (parsed.edad !== undefined && parsed.edad !== null && !vars.edad) vars.edad = parsed.edad;
                 if (parsed.email && !vars.email) vars.email = parsed.email;
                 if (parsed.telefono_contacto && !vars.telefono_contacto) vars.telefono_contacto = parsed.telefono_contacto;
                 if (parsed.departamento && !vars.departamento) vars.departamento = parsed.departamento;
+                if (parsed.motivo_consulta && !vars.motivo_consulta) vars.motivo_consulta = parsed.motivo_consulta;
+                if (parsed.medico_o_especialidad && !vars.medico_o_especialidad) vars.medico_o_especialidad = parsed.medico_o_especialidad;
             }
         } catch (aiErr) {
             console.warn('[triage-bot] Fallback IA:', aiErr);
         }
     }
 
+    // Si tiene fecha de nacimiento y no tiene edad, calcularla
+    if (vars.fecha_nacimiento && !vars.edad) {
+        vars.edad = calculateAgeFromBirthDate(vars.fecha_nacimiento);
+    }
+
     // Fallback de nombre si no se obtuvo
     if (!vars.nombre_completo) {
         const lines = text.split(/[\r\n,]+/).map(l => l.trim()).filter(Boolean);
-        if (lines.length > 0 && lines[0].length < 40 && !/\d/.test(lines[0])) {
+        if (lines.length > 0 && lines[0].length < 40 && !/\d/.test(lines[0]) && !/^(hola|buenas|buen dia|turno|consulta)/i.test(lines[0])) {
             vars.nombre_completo = lines[0];
         }
     }
