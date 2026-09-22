@@ -8,7 +8,7 @@ export default function SystemAlertsAdmin({ addToast, currentUser }) {
     const [loading, setLoading] = useState(true);
     const [isEditing, setIsEditing] = useState(false);
     
-    const isLMarinero = currentUser?.usuario === 'lmarinero@sanatorioargentino.com.ar' || currentUser?.usuario === 'lmarinero';
+    const isLMarinero = ['lmarinero@sanatorioargentino.com.ar', 'lmarinero', 'admin', 'mrodriguez', 'dsantaella'].includes(currentUser?.usuario);
     
     const [formData, setFormData] = useState({
         message: '',

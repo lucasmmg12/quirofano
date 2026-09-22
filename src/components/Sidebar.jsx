@@ -7,7 +7,7 @@ import {
     Headphones, AlertTriangle, MessageSquare, CalendarCheck, PlusCircle
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { canUserAccessContactCenter } from '../services/contactCenterService';
+import { canUserAccessContactCenter, MASTER_ADMINS } from '../services/contactCenterService';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '', onOpenBeto, currentUser, selectedModules }) {
     const isFrojo = currentUser?.usuario === 'frojo';
@@ -21,6 +21,9 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             // Strictly Contact Center and Simon IA chat only
             return ['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'beto', 'simon'].includes(id);
         }
+
+        // Master Admins can see everything
+        if (MASTER_ADMINS.includes(username)) return true;
 
         // Contact Center items are visible for any authorized user (lmarinero, supervisor, CC agents)
         const CC_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'];
@@ -36,16 +39,16 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             return id === 'activos';
         }
         
-        // Manual and actividad_usuarios (lmarinero only)
+        // Manual and actividad_usuarios
         if (id === 'manual') return true;
-        if (id === 'actividad_usuarios') return currentUser?.usuario === 'lmarinero';
+        if (id === 'actividad_usuarios') return MASTER_ADMINS.includes(username);
 
         // Simon IA / Beto chat
         if (id === 'beto' || id === 'simon') {
             return selectedModules.includes('beto');
         }
         if (id === 'beto_rules' || id === 'beto_analytics') {
-            return currentUser?.usuario === 'lmarinero' || selectedModules.includes(id);
+            return MASTER_ADMINS.includes(username) || selectedModules.includes(id);
         }
 
         // Gobernanza
@@ -503,8 +506,8 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
 
                 {/* ─── Items finales ─── */}
                 {[
-                    ...(['lmarinero', 'soribarale'].includes(currentUser?.usuario) ? [{ id: 'activos', label: 'Gestión de Activos', icon: Wrench }] : []),
-                    ...(currentUser?.usuario === 'lmarinero' ? [{ id: 'actividad_usuarios', label: 'Actividad Usuarios', icon: Activity }] : []),
+                    ...(['soribarale', ...MASTER_ADMINS].includes(username) ? [{ id: 'activos', label: 'Gestión de Activos', icon: Wrench }] : []),
+                    ...(MASTER_ADMINS.includes(username) ? [{ id: 'actividad_usuarios', label: 'Actividad Usuarios', icon: Activity }] : []),
                     { id: 'manual', label: 'Manual del Sistema', icon: BookMarked },
                     { id: 'config', label: 'Configuración', icon: Settings },
                 ].filter(item => isModuleVisible(item.id)).map(item => {

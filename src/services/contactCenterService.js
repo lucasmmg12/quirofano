@@ -17,7 +17,7 @@ const STORAGE_ALLOWED_USERS_KEY = 'sa_contact_center_allowed_users';
 const CONFIG_KEY = 'contact_center_allowed_users';
 
 // Administradores con acceso maestro permanente
-export const MASTER_ADMINS = ['lmarinero', 'admin'];
+export const MASTER_ADMINS = ['lmarinero', 'admin', 'mrodriguez', 'dsantaella'];
 
 // 4 Agentes canónicas del Contact Center de Sanatorio Argentino + Supervisor Lucas Marinero
 export const CONTACT_CENTER_AGENTS = [
@@ -29,7 +29,7 @@ export const CONTACT_CENTER_AGENTS = [
 ];
 
 export const CONTACT_CENTER_AUTHORIZED_USERNAMES = [
-    'lmarinero', 'admin',
+    'lmarinero', 'admin', 'mrodriguez', 'dsantaella',
     'daguilera', 'daniela',
     'solivier', 'sofia',
     'vjacques', 'virginia',
@@ -202,6 +202,9 @@ export const INITIAL_CHATS = [];
 
 export const SYSTEM_KNOWN_USERS = [
     { usuario: 'lmarinero', nombre: 'Lucas Marinero', rol: 'Supervisor General / Sistemas', avatar: 'LM' },
+    { usuario: 'admin', nombre: 'Administrador', rol: 'Administrador General', avatar: 'AD' },
+    { usuario: 'mrodriguez', nombre: 'M. Rodriguez', rol: 'Administrador General', avatar: 'MR' },
+    { usuario: 'dsantaella', nombre: 'D. Santaella', rol: 'Administrador General', avatar: 'DS' },
     { usuario: 'daniela', nombre: 'Daniela Aguilera', rol: 'Atención al Paciente / Contact Center', avatar: 'DA' },
     { usuario: 'sofia', nombre: 'Sofia Olivieri', rol: 'Atención al Paciente / Contact Center', avatar: 'SO' },
     { usuario: 'virginia', nombre: 'Virginia Jacques', rol: 'Atención al Paciente / Contact Center', avatar: 'VJ' },

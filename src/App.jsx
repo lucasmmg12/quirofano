@@ -64,7 +64,7 @@ import BetoGuidePopup from './components/Gobernanza/BetoGuidePopup.jsx';
 import LiquidacionesPanel from './components/LiquidacionesPanel.jsx';
 import PublicRecordView from './components/PublicShare/PublicRecordView.jsx';
 import ContactCenterPanel from './components/ContactCenter/ContactCenterPanel.jsx';
-import { canUserAccessContactCenter } from './services/contactCenterService';
+import { canUserAccessContactCenter, MASTER_ADMINS } from './services/contactCenterService';
 import { startSession, endSession, trackModuleChange } from './lib/activityTracker';
 import { supabase } from './lib/supabase';
 import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -293,6 +293,11 @@ function App({ currentUser, onLogout }) {
             return;
         }
 
+        // Master Admins have full access to all views
+        if (MASTER_ADMINS.includes(username)) {
+            return;
+        }
+
         if (!selectedModules || selectedModules.length === 0) return;
         const ALWAYS_VISIBLE = ['inicio', 'config'];
         let isVisible = true;
@@ -302,15 +307,15 @@ function App({ currentUser, onLogout }) {
         } else {
             if (CC_ALL_VIEWS.includes(activeView)) isVisible = canUserAccessContactCenter(currentUser);
             else if (['config', 'manual'].includes(activeView)) isVisible = true;
-            else if (activeView === 'actividad_usuarios') isVisible = currentUser?.usuario === 'lmarinero';
+            else if (activeView === 'actividad_usuarios') isVisible = MASTER_ADMINS.includes(username);
             else if (['beto', 'simon'].includes(activeView)) isVisible = selectedModules.includes('beto');
-            else if (['beto_rules', 'beto_analytics'].includes(activeView)) isVisible = currentUser?.usuario === 'lmarinero' || selectedModules.includes(activeView);
+            else if (['beto_rules', 'beto_analytics'].includes(activeView)) isVisible = MASTER_ADMINS.includes(username) || selectedModules.includes(activeView);
             else if (['gobernanza', 'gobernanza_indicadores'].includes(activeView)) isVisible = selectedModules.includes('gobernanza') || selectedModules.includes('gobernanza_indicadores');
             else if (ALWAYS_VISIBLE.includes(activeView)) isVisible = true;
             else isVisible = selectedModules.includes(activeView);
         }
 
-        if (activeView === 'activos' && !['lmarinero', 'soribarale'].includes(currentUser?.usuario)) {
+        if (activeView === 'activos' && !['soribarale', ...MASTER_ADMINS].includes(username)) {
             isVisible = false;
         }
 
