@@ -662,6 +662,8 @@ interface IntentDetectionResult {
     intent: 
         | 'turno' 
         | 'autorizacion' 
+        | 'gestion_familiar'
+        | 'gestion_propia'
         | 'info' 
         | 'chequeo' 
         | 'prevenir' 
@@ -701,6 +703,7 @@ interface ConversationContext {
     patientName?: string | null;
     resolvedDni?: string | null;
     previousResolutionReason?: string | null;
+    botStage?: string | null;
 }
 
 const STOPWORDS_MEDICOS = new Set([
@@ -825,11 +828,23 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'L' };
     }
     const isLastBotImageMenu = lastBotContent.includes('recibimos tu imagen') || lastBotContent.includes('presupuesto o aranceles particulares');
+    const isLastBotGreetingMenu = 
+        context?.botStage === 'menu_opciones' ||
+        lastBotContent.includes('otro paciente / familiar') || 
+        lastBotContent.includes('el turno o autorización es para mí') ||
+        lastBotContent.includes('¿el trámite es para vos') ||
+        lastBotContent.includes('estás gestionando para otro paciente');
 
     if (/^[1|1️⃣]$/.test(clean) || /^opci[oó]n\s*1$/i.test(clean)) {
+        if (isLastBotGreetingMenu) {
+            return { intent: 'gestion_propia', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
+        }
         return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
     }
     if (/^[2|2️⃣]$/.test(clean) || /^opci[oó]n\s*2$/i.test(clean)) {
+        if (isLastBotGreetingMenu) {
+            return { intent: 'gestion_familiar', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
+        }
         return { intent: 'autorizacion', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
     }
     if (/^[3|3️⃣]$/.test(clean) || /^opci[oó]n\s*3$/i.test(clean)) {
@@ -1018,11 +1033,18 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         }
     }
 
+    const isGestionFamiliar = /\b(otro\s+paciente|otra\s+persona|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+bebe|mi\s+mam[aá]|mi\s+pap[aá]|mi\s+espos[oa]|mi\s+marido|mi\s+se[nñ]ora|para\s+alguien\s+mas)\b/i.test(clean);
+    const isGestionPropia = /\b(para\s+m[ií]|es\s+para\s+m[ií]|tr[aá]mite\s+para\s+m[ií]|a\s+mi\s+nombre|para\s+mi\s+persona)\b/i.test(clean);
+
     let intent: IntentDetectionResult['intent'] = 'general';
     if (isTurno || doctorRecord) {
         intent = 'turno';
     } else if (isAutoriz) {
         intent = 'autorizacion';
+    } else if (isGestionFamiliar) {
+        intent = 'gestion_familiar';
+    } else if (isGestionPropia) {
+        intent = 'gestion_propia';
     } else if (isInfo) {
         intent = 'info';
     }
@@ -1059,6 +1081,8 @@ Intenciones posibles:
 - "cancelar_turno_online": el paciente cancela su turno
 - "reprogramar_turno_online": el paciente pide cambiar fecha/horario de su turno
 - "autorizacion": orden médica, autorización o coseguro
+- "gestion_familiar": el paciente indica que gestiona para otro paciente o familiar (hijo, cónyuge, etc.)
+- "gestion_propia": el paciente indica que el trámite es para sí mismo
 - "guardia": consulta sobre guardias o urgencias
 - "chequeo": circuito de chequeo preventivo
 - "informes_laboratorio": ver o consultar análisis clínicos
@@ -1439,7 +1463,8 @@ async function handleChatbotTriage(
         turnoOnlineProximo,
         patientName: fullName,
         resolvedDni,
-        previousResolutionReason: wasClosed ? conv?.resolution_reason : null
+        previousResolutionReason: wasClosed ? conv?.resolution_reason : null,
+        botStage: conv?.bot_stage || null
     };
 
     const analysis = await detectIntentAndEntities(supabase, cleanText, conversationContext);
@@ -2041,6 +2066,50 @@ async function handleChatbotTriage(
         }
     }
     // =============================================
+    // FLUJO: GESTIÓN PARA OTRO PACIENTE / FAMILIAR (TURNO O AUTORIZACIÓN)
+    // =============================================
+    else if (analysis.intent === 'gestion_familiar') {
+        updates.motivo_consulta = 'Gestión para Tercero / Familiar (Turno o Autorización)';
+        
+        const otherFams = (familiaresDetectados || []).filter(f => String(f.dni) !== String(paciente?.dni)).map(f => `${f.nombre} (DNI ${f.dni})`);
+        const famSuggesMsg = otherFams.length > 0 
+            ? `\n\n👥 *Familiares vinculados a tu línea:*\n${otherFams.map(f => `• ${f}`).join('\n')}\n*(Podés escribir directamente el nombre o DNI de la persona a atender)*` 
+            : '';
+
+        replyText = `¡Entendido *${fullName}*! 🏥 Te ayudamos a gestionar el *turno o autorización* para tu familiar u otro paciente.\n\n` +
+            `Por favor indícanos en un solo mensaje:\n` +
+            `• *¿Qué trámite necesitás?* (Solicitar un *turno médico* o *autorizar una orden médica*)\n` +
+            `• *DNI* (sin puntos) y *Nombre Completo* del paciente que se atenderá.\n` +
+            `• *Obra Social o Prepaga* (o si es Particular).\n` +
+            `• Si es turno: médico, especialidad o estudio requerido, y preferencia horaria.\n` +
+            `• Si es autorización: envíanos la *foto clara de la orden médica*.${famSuggesMsg}\n\n` +
+            `*(Si el paciente ya está registrado en Sanatorio Argentino, con su DNI lo localizamos de inmediato)*.\n\n` +
+            `${getAgentHandoffNotice()}`;
+
+        updates.status = 'sin_asignar';
+        updates.bot_active = false;
+        nextStage = 'esperando_agente';
+        updates.ai_summary = buildTriageSummary(updates, 'gestion_familiar', analysis.doctorRecord, isExistingPatient, paciente?.edad);
+    }
+    // =============================================
+    // FLUJO: GESTIÓN PROPIA (TURNO O AUTORIZACIÓN A NOMBRE DEL TITULAR)
+    // =============================================
+    else if (analysis.intent === 'gestion_propia') {
+        updates.motivo_consulta = 'Gestión Propia (Turno o Autorización)';
+        
+        replyText = `¡Excelente *${fullName}*! 🏥 Te ayudamos a coordinar tu trámite.\n\n` +
+            `Por favor indícanos:\n` +
+            `• *¿Qué trámite necesitás realizar?* (Solicitar un *turno médico* o *autorizar una orden médica*)\n` +
+            `• Si es turno: especialidad, práctica o profesional de tu preferencia, y preferencia de horario (mañana o tarde).\n` +
+            `• Si es autorización: envíanos una *foto clara de tu orden médica*.\n\n` +
+            `${getAgentHandoffNotice()}`;
+
+        updates.status = 'sin_asignar';
+        updates.bot_active = false;
+        nextStage = 'esperando_agente';
+        updates.ai_summary = buildTriageSummary(updates, 'gestion_propia', analysis.doctorRecord, isExistingPatient, paciente?.edad);
+    }
+    // =============================================
     // FLUJO: DERIVACIÓN DIRECTA A AGENTE HUMANO
     // =============================================
     else if (analysis.intent === 'derivacion_agente') {
@@ -2275,7 +2344,9 @@ function buildTriageSummary(
         guardia: 'Consulta por Guardia 24hs',
         informes_laboratorio: 'Resultados de Laboratorio',
         informes_imagenes: 'Informes de Diagnóstico por Imágenes',
-        derivacion_agente: 'Solicitud de Asesor Humano'
+        derivacion_agente: 'Solicitud de Asesor Humano',
+        gestion_familiar: 'Gestión para Tercero / Familiar (Turno o Autorización)',
+        gestion_propia: 'Gestión Propia (Turno o Autorización)'
     };
 
     const tramite = intentMap[intent] || 'Consulta General de Atención';
