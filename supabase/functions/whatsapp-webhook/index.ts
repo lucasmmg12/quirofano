@@ -756,6 +756,38 @@ function getAgentHandoffNotice(): string {
     }
 }
 
+/**
+ * Analiza la obra social registrada en Salus o ficha previa del paciente
+ * y determina si es una cobertura real activa o un genérico/particular
+ */
+function getRegisteredOsInfo(osRaw?: string | null): { hasRegisteredOs: boolean; cleanOsName: string } {
+    if (!osRaw) return { hasRegisteredOs: false, cleanOsName: '' };
+    const trimmed = osRaw.trim();
+    const lower = trimmed.toLowerCase();
+
+    if (
+        !trimmed ||
+        lower === 'particular' ||
+        lower === 'particular / a confirmar' ||
+        lower === 'a confirmar' ||
+        lower === 'a consultar' ||
+        lower === 'sin obra social' ||
+        lower === 'no informada' ||
+        lower === 'no informado' ||
+        lower === 'no' ||
+        lower === 'ninguna'
+    ) {
+        return { hasRegisteredOs: false, cleanOsName: '' };
+    }
+
+    let clean = trimmed.replace(/^\d+\s*[-–]\s*/, '').trim();
+    if (clean.toUpperCase() === 'PROVINCIA') {
+        clean = 'Obra Social Provincia (OSP)';
+    }
+
+    return { hasRegisteredOs: true, cleanOsName: clean };
+}
+
 async function detectIntentAndEntities(supabase: any, text: string, context?: ConversationContext): Promise<IntentDetectionResult> {
     const clean = text.toLowerCase().trim();
 
@@ -1993,11 +2025,17 @@ async function handleChatbotTriage(
             const otherFams = (familiaresDetectados || []).filter(f => String(f.dni) !== String(paciente?.dni)).map(f => (f.nombre || '').split(',')[0].trim());
             const famNote = otherFams.length > 0 ? ` (o para ${otherFams.join(', ')})` : '';
 
+            const osTurnoInfo = getRegisteredOsInfo(paciente?.coseguro || conv?.obra_social);
+            const osTurnoBullet = osTurnoInfo.hasRegisteredOs
+                ? `• *Obra Social y Plan:* En tu ficha figura *${osTurnoInfo.cleanOsName}*. Confirmános si seguís teniendo cobertura allí y qué *plan* tenés (o si es otra/particular).`
+                : `• *Obra Social y Plan:* ¿Con qué obra social o prepaga te atendés (y qué plan posees), o es Particular?`;
+
             replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos a coordinar tu turno${doctorNoteMsg}.${hasOrderImageMsg}\n\n` +
                 `Por favor indícanos:\n` +
                 `• ¿El turno es para vos (*${fullName}*), o estás gestionando para otro paciente / familiar${famNote}?\n` +
                 `• Si es para vos: indícanos preferencia de día/horario y si es primera consulta o control.\n` +
-                `• Si es para otra persona: indícanos el *DNI* (sin puntos) y *Nombre Completo* del paciente que se va a atender.\n\n` +
+                `• Si es para otra persona: indícanos el *DNI* (sin puntos) y *Nombre Completo* del paciente que se va a atender.\n` +
+                `${osTurnoBullet}\n\n` +
                 `${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
@@ -2080,7 +2118,7 @@ async function handleChatbotTriage(
             `Por favor indícanos en un solo mensaje:\n` +
             `• *¿Qué trámite necesitás?* (Solicitar un *turno médico* o *autorizar una orden médica*)\n` +
             `• *DNI* (sin puntos) y *Nombre Completo* del paciente que se atenderá.\n` +
-            `• *Obra Social o Prepaga* (o si es Particular).\n` +
+            `• *Obra Social o Prepaga* y qué *plan* posee (o si es Particular).\n` +
             `• Si es turno: médico, especialidad o estudio requerido, y preferencia horaria.\n` +
             `• Si es autorización: envíanos la *foto clara de la orden médica*.${famSuggesMsg}\n\n` +
             `*(Si el paciente ya está registrado en Sanatorio Argentino, con su DNI lo localizamos de inmediato)*.\n\n` +
@@ -2097,11 +2135,19 @@ async function handleChatbotTriage(
     else if (analysis.intent === 'gestion_propia') {
         updates.motivo_consulta = 'Gestión Propia (Turno o Autorización)';
         
+        const osCandidate = paciente?.coseguro || conv?.obra_social || null;
+        const osInfo = getRegisteredOsInfo(osCandidate);
+
+        const osBullet = osInfo.hasRegisteredOs
+            ? `• *Obra Social y Plan:* Tenemos registrada tu cobertura en *${osInfo.cleanOsName}*. ¿Seguís teniendo cobertura con esta obra social? De ser así, ¿qué *plan* tenés? (o avísanos si contás con otra cobertura o te atendés de forma *Particular*).`
+            : `• *Obra Social y Plan:* Por favor indícanos qué *obra social o prepaga* tenés y qué *plan* posees (o si tu atención será de forma *Particular*).`;
+
         replyText = `¡Excelente *${fullName}*! 🏥 Te ayudamos a coordinar tu trámite.\n\n` +
             `Por favor indícanos:\n` +
             `• *¿Qué trámite necesitás realizar?* (Solicitar un *turno médico* o *autorizar una orden médica*)\n` +
             `• Si es turno: especialidad, práctica o profesional de tu preferencia, y preferencia de horario (mañana o tarde).\n` +
-            `• Si es autorización: envíanos una *foto clara de tu orden médica*.\n\n` +
+            `• Si es autorización: envíanos una *foto clara de tu orden médica*.\n` +
+            `${osBullet}\n\n` +
             `${getAgentHandoffNotice()}`;
 
         updates.status = 'sin_asignar';

@@ -166,6 +166,7 @@ REGLAS CRÍTICAS DE EXTRACCIÓN:
    - "doctor_detectado.nombre_aproximado": null
    - "doctor_detectado.estudio_solicitado": "Programa Prevenir (Ginecología + Mamografía OSP)"
    - "resumen_solicitud": "El paciente solicita coordinar turno para el Programa Prevenir de Obra Social Provincia (OSP)."
+6. Si el paciente confirma o informa su obra social o prepaga y su plan (ej: "sigo con sancor salud plan 1500" o "tengo osde 210"), extrae la entidad en "obra_social" y el plan específico en "plan_obra_social".
 
 Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura exacta:
 {
@@ -174,7 +175,8 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
   "datos_paciente": {
     "nombre_completo": "Nombre y apellido del paciente detectado o null",
     "dni": "DNI del paciente (solo números) o null",
-    "obra_social": "Obra Social o Prepaga (ej: OSP, DAMSUP, OSDE, Particular) o null",
+    "obra_social": "Obra Social o Prepaga (ej: OSP, DAMSUP, OSDE, Sancor Salud, Particular) o null",
+    "plan_obra_social": "Plan informado por el paciente (ej: 'Plan 1500', '210', 'Plata', etc.) o null",
     "fecha_nacimiento": "DD/MM/AAAA o null",
     "telefono": "${phone}",
     "departamento": "Departamento de San Juan (ej: Capital, Rawson, Rivadavia, etc.) o null",
@@ -344,8 +346,9 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
         if (parsed.datos_paciente?.dni && (!conv?.dni || conv?.dni === 'A verificar')) {
             updates.dni = parsed.datos_paciente.dni;
         }
-        if (parsed.datos_paciente?.obra_social && (!conv?.obra_social || conv?.obra_social === 'A consultar')) {
-            updates.obra_social = parsed.datos_paciente.obra_social;
+        if (parsed.datos_paciente?.obra_social && (!conv?.obra_social || conv?.obra_social === 'A consultar' || conv?.obra_social.toLowerCase().includes('particular'))) {
+            const planSuffix = parsed.datos_paciente.plan_obra_social ? ` (${parsed.datos_paciente.plan_obra_social})` : '';
+            updates.obra_social = `${parsed.datos_paciente.obra_social}${planSuffix}`.trim();
         }
         if (parsed.datos_paciente?.fecha_nacimiento && (!conv?.fecha_nacimiento || conv?.fecha_nacimiento === 'No informada')) {
             updates.fecha_nacimiento = parsed.datos_paciente.fecha_nacimiento;

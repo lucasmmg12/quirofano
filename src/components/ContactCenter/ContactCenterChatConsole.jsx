@@ -2886,7 +2886,10 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                     </div>
                                                     <div>
                                                         <span style={{ color: '#64748B', fontSize: '0.68rem', display: 'block' }}>Obra Social</span>
-                                                        <strong>{aiSummaryData.datos_paciente.obra_social || '—'}</strong>
+                                                        <strong>
+                                                            {aiSummaryData.datos_paciente.obra_social || '—'}
+                                                            {aiSummaryData.datos_paciente.plan_obra_social && !aiSummaryData.datos_paciente.obra_social?.includes(aiSummaryData.datos_paciente.plan_obra_social) ? ` (${aiSummaryData.datos_paciente.plan_obra_social})` : ''}
+                                                        </strong>
                                                     </div>
                                                     <div>
                                                         <span style={{ color: '#64748B', fontSize: '0.68rem', display: 'block' }}>Nacimiento</span>
