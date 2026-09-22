@@ -405,22 +405,7 @@ export default function ContactCenterChatConsole({
             if (selectedChat.phone) {
                 fetchFamilyMembersByPhone(selectedChat.phone).then(fams => {
                     if (Array.isArray(fams) && fams.length > 0) {
-                        if (fams.length > 1) {
-                            setFamilyMembers(fams);
-                        } else {
-                            setFamilyMembers([]);
-                        }
-
-                        // Auto-asignación inteligente: Si el chat actual no tiene paciente o está asignado a un menor (<18),
-                        // y existe un adulto en el grupo familiar (madre/padre/titular), auto-conmutar al adulto prioritario
-                        const firstAdult = fams.find(f => (f.edad || 0) >= 18);
-                        const currentDni = selectedChat.customFields?.dni;
-                        const isCurrentMinor = fams.some(f => String(f.dni) === String(currentDni) && (f.edad || 0) < 18);
-                        const hasNoDni = !currentDni || currentDni === 'A verificar';
-
-                        if (firstAdult && (hasNoDni || isCurrentMinor)) {
-                            handleSelectFamilyMember(firstAdult);
-                        }
+                        setFamilyMembers(fams);
                     } else {
                         setFamilyMembers([]);
                     }
@@ -429,30 +414,29 @@ export default function ContactCenterChatConsole({
                 setFamilyMembers([]);
             }
 
-            // Si no tiene DNI mapeado o faltan datos esenciales (fecha de nacimiento, email), resolver en background con SALUS
+            // Si ya tiene un DNI específico pero faltan datos esenciales (fecha de nacimiento, email), resolver en background con SALUS
             const currentFechaNac = selectedChat.customFields?.fechaNacimiento;
             const currentEmail = selectedChat.customFields?.email;
-            const needsLookup = !initialDni || !currentFechaNac || currentFechaNac === 'No informada' || !currentEmail || currentEmail === 'No informado';
+            const needsLookup = initialDni && (!currentFechaNac || currentFechaNac === 'No informada' || !currentEmail || currentEmail === 'No informado');
 
-            if (needsLookup && (initialDni || selectedChat.phone)) {
-                lookupPatientFromSalus(initialDni || selectedChat.phone).then(found => {
-                    if (found) {
+            if (needsLookup) {
+                lookupPatientFromSalus(initialDni).then(found => {
+                    if (found && String(found.dni) === String(initialDni)) {
                         const birth = found.fecha_nacimiento || '';
                         const formattedBirth = birth.includes('/') ? birth : (birth.includes('-') ? `${birth.split('-')[2]}/${birth.split('-')[1]}/${birth.split('-')[0]}` : birth);
 
-                        setCrmForm(prev => ({
-                            ...prev,
-                            dni: prev.dni || found.dni || '',
-                            pacienteNombre: prev.pacienteNombre && prev.pacienteNombre !== 'Paciente' ? prev.pacienteNombre : found.nombre,
-                            obraSocial: prev.obraSocial && prev.obraSocial !== 'A consultar' ? prev.obraSocial : (found.coseguro || ''),
-                            fechaNacimiento: prev.fechaNacimiento && prev.fechaNacimiento !== 'No informada' ? prev.fechaNacimiento : formattedBirth,
-                            email: prev.email && prev.email !== 'No informado' ? prev.email : (found.email || ''),
-                            departamento: prev.departamento || found.centro || 'San Juan'
-                        }));
-                        if (selectedChat.customFields) {
-                            if (found.dni) selectedChat.customFields.dni = found.dni;
+                        setCrmForm(prev => {
+                            if (String(prev.dni) !== String(initialDni)) return prev;
+                            return {
+                                ...prev,
+                                obraSocial: prev.obraSocial && prev.obraSocial !== 'A consultar' ? prev.obraSocial : (found.coseguro || ''),
+                                fechaNacimiento: prev.fechaNacimiento && prev.fechaNacimiento !== 'No informada' ? prev.fechaNacimiento : formattedBirth,
+                                email: prev.email && prev.email !== 'No informado' ? prev.email : (found.email || ''),
+                                departamento: prev.departamento || found.centro || 'San Juan'
+                            };
+                        });
+                        if (selectedChat.customFields && String(selectedChat.customFields.dni) === String(initialDni)) {
                             if (found.nhc) selectedChat.customFields.nhc = found.nhc;
-                            if (found.nombre) selectedChat.customFields.pacienteNombre = found.nombre;
                             if (found.coseguro) selectedChat.customFields.obraSocial = found.coseguro;
                             if (formattedBirth) selectedChat.customFields.fechaNacimiento = formattedBirth;
                             if (found.email) selectedChat.customFields.email = found.email;
@@ -3149,8 +3133,8 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                 <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                     👨‍👩‍👧 GRUPO FAMILIAR ({familyMembers.length})
                                                 </span>
-                                                <span style={{ fontSize: '0.62rem', color: '#0284C7', fontWeight: 700 }}>
-                                                    Prioridad: Mayor Edad (Madre)
+                                                <span style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 600 }}>
+                                                    Selecciona para conmutar ficha
                                                 </span>
                                             </div>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
