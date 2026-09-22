@@ -94,9 +94,11 @@ export default function ContactCenterMetricsTab({ addToast }) {
         dailyTrend: [],
         monthlyComparison: [],
         firstResponseTimeAvgMin: 0,
+        agentFirstResponseAvgMin: 0,
         resolutionTimeAvgMin: 0,
         dayOfWeekDelays: [],
-        highestDelayDay: null
+        highestDelayDay: null,
+        highestDelayValue: 0
     });
 
     // Carga y cómputo de métricas desde Supabase
@@ -280,47 +282,96 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 }
             });
 
+            // Helper para identificar mensajes automáticos del Bot
+            const isBotMsg = (msg) => {
+                if (!msg) return false;
+                const s = (msg.sender_name || '').toLowerCase();
+                const r = (msg.raw_payload?.agent || '').toLowerCase();
+                return !!(
+                    msg.raw_payload?.bot || 
+                    msg.raw_payload?.source === 'bot_triage' || 
+                    s.includes('bot') || 
+                    s.includes('sistema adm-qui')
+                );
+            };
+
             // ── B. Cálculo de Tiempos de Demora y Respuestas por Conversación ──
+            const allHumanResponseTimes = [];
+
             Object.values(msgsByPhone).forEach(pMsgs => {
                 // pMsgs ya viene ordenado cronológicamente (ascending: true)
                 for (let i = 0; i < pMsgs.length; i++) {
                     const m = pMsgs[i];
                     if (m.direction === 'incoming') {
                         const inDate = new Date(m.created_at);
-                        // Buscar la respuesta saliente inmediata posterior
-                        const nextOut = pMsgs.slice(i + 1).find(x => x.direction === 'outgoing');
-                        if (nextOut) {
-                            const outDate = new Date(nextOut.created_at);
-                            const diffMin = Math.round((outDate - inDate) / 60000);
-                            if (diffMin >= 0 && diffMin < 2880) { // filtrar outliers mayores a 48hs
-                                allFirstResponseTimes.push(diffMin);
-                                responseTimesByDay[inDate.getDay()].push(diffMin);
+                        const subsequentOuts = pMsgs.slice(i + 1).filter(x => x.direction === 'outgoing');
 
-                                // Si la respuesta fue de una agente humana, acumular a sus estadísticas
-                                const sender = (nextOut.sender_name || '').toLowerCase();
-                                const rawAgent = (nextOut.raw_payload?.agent || '').toLowerCase();
+                        // 1. Primera respuesta humana (asesora)
+                        const nextHumanOut = subsequentOuts.find(x => !isBotMsg(x));
+                        if (nextHumanOut) {
+                            const outDate = new Date(nextHumanOut.created_at);
+                            const diffMin = (outDate - inDate) / 60000;
+                            if (diffMin >= 0 && diffMin < 2880) { // filtrar outliers mayores a 48hs
+                                const valMin = Number(diffMin.toFixed(1));
+                                allHumanResponseTimes.push(valMin);
+                                responseTimesByDay[inDate.getDay()].push(valMin);
+
+                                // Atribuir a la asesora correspondiente
+                                const sender = (nextHumanOut.sender_name || '').toLowerCase();
+                                const rawAgent = (nextHumanOut.raw_payload?.agent || '').toLowerCase();
+                                let matched = false;
                                 for (const ag of ALL_AGENTS_METRICS) {
-                                    if (rawAgent === ag.id || sender.includes(ag.id) || sender.includes((ag.name || '').toLowerCase())) {
-                                        agentDataMap[ag.id].responseTimesMin.push(diffMin);
+                                    if (
+                                        rawAgent === ag.id || 
+                                        rawAgent === (ag.username || '').toLowerCase() ||
+                                        (ag.legacyId && rawAgent === ag.legacyId) ||
+                                        sender.includes(ag.id) ||
+                                        (ag.legacyId && sender.includes(ag.legacyId)) ||
+                                        sender.includes((ag.name || '').toLowerCase())
+                                    ) {
+                                        agentDataMap[ag.id].responseTimesMin.push(valMin);
+                                        matched = true;
                                         break;
                                     }
                                 }
+                                if (!matched) {
+                                    agentDataMap['otros_operadores'].responseTimesMin.push(valMin);
+                                }
                             }
                         }
-                        break; // Solo contabilizar la primera respuesta de la conversación
+
+                        // 2. Primera respuesta general (Bot o Humana)
+                        const nextAnyOut = subsequentOuts[0];
+                        if (nextAnyOut) {
+                            const outDate = new Date(nextAnyOut.created_at);
+                            const diffMin = Math.max(0, (outDate - inDate) / 60000);
+                            if (diffMin < 2880) {
+                                const valMin = Number(diffMin.toFixed(1));
+                                allFirstResponseTimes.push(valMin);
+                                // Si en este día NO hubo respuesta humana aún, registrar la muestra del bot
+                                if (!nextHumanOut) {
+                                    responseTimesByDay[inDate.getDay()].push(valMin);
+                                }
+                            }
+                        }
+
+                        break; // Solo contabilizar el primer ciclo de respuesta de la conversación
                     }
                 }
             });
 
             // ── C. Demora por Día de la Semana y Detección del Día Crítico ──
-            let maxDelayDayName = 'No determinado';
-            let maxDelayValue = -1;
+            let maxDelayDayName = null;
+            let maxDelayValue = 0;
 
             const dayOfWeekDelays = DIAS_SEMANA_NOMBRES.map((name, dayIdx) => {
                 const times = responseTimesByDay[dayIdx];
-                const avgMin = times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0;
+                const avgMin = times.length > 0 
+                    ? Number((times.reduce((a, b) => a + b, 0) / times.length).toFixed(1)) 
+                    : 0;
                 
-                if (times.length > 0 && avgMin > maxDelayValue) {
+                // Solo si la demora promedio es al menos de 1 minuto se considera cuello de botella
+                if (times.length > 0 && avgMin >= 1 && avgMin > maxDelayValue) {
                     maxDelayValue = avgMin;
                     maxDelayDayName = name;
                 }
@@ -468,7 +519,11 @@ export default function ContactCenterMetricsTab({ addToast }) {
 
             // Promedios generales
             const firstResponseAvg = allFirstResponseTimes.length > 0 
-                ? Math.round(allFirstResponseTimes.reduce((a, b) => a + b, 0) / allFirstResponseTimes.length) 
+                ? Number((allFirstResponseTimes.reduce((a, b) => a + b, 0) / allFirstResponseTimes.length).toFixed(1)) 
+                : 0;
+
+            const agentFirstResponseAvg = allHumanResponseTimes.length > 0
+                ? Number((allHumanResponseTimes.reduce((a, b) => a + b, 0) / allHumanResponseTimes.length).toFixed(1))
                 : 0;
 
             const resolutionAvg = allResolutionTimes.length > 0 
@@ -479,7 +534,7 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 .filter(a => a.id !== 'otros_operadores' || a.count > 0)
                 .map(a => {
                     const avgTime = a.responseTimesMin.length > 0
-                        ? Math.round(a.responseTimesMin.reduce((x, y) => x + y, 0) / a.responseTimesMin.length)
+                        ? Number((a.responseTimesMin.reduce((x, y) => x + y, 0) / a.responseTimesMin.length).toFixed(1))
                         : 0;
                     // Encontrar su horario pico
                     let maxH = 0;
@@ -513,9 +568,11 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 dailyTrend: dailyTrendData,
                 monthlyComparison: monthlyComparisonData,
                 firstResponseTimeAvgMin: firstResponseAvg,
+                agentFirstResponseAvgMin: agentFirstResponseAvg,
                 resolutionTimeAvgMin: resolutionAvg,
                 dayOfWeekDelays,
-                highestDelayDay: maxDelayDayName
+                highestDelayDay: maxDelayDayName,
+                highestDelayValue: maxDelayValue
             });
 
         } catch (err) {
@@ -772,7 +829,7 @@ export default function ContactCenterMetricsTab({ addToast }) {
                                 1ra Respuesta Promedio
                             </span>
                             <div style={{ fontSize: '2rem', fontWeight: 900, color: '#0284C7', marginTop: '4px' }}>
-                                {loading ? '...' : `${metrics.firstResponseTimeAvgMin} min`}
+                                {loading ? '...' : (metrics.firstResponseTimeAvgMin === 0 ? '< 1 min' : `${metrics.firstResponseTimeAvgMin} min`)}
                             </div>
                         </div>
                         <div style={{
@@ -783,7 +840,9 @@ export default function ContactCenterMetricsTab({ addToast }) {
                         </div>
                     </div>
                     <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '10px' }}>
-                        Tiempo hasta primer contacto (Bot o Agente)
+                        {metrics.agentFirstResponseAvgMin > 0 
+                            ? `👩‍⚕️ Asesoras: ${metrics.agentFirstResponseAvgMin} min • 🤖 Bot: < 5 seg`
+                            : 'Tiempo hasta primer contacto (Inmediato por Bot)'}
                     </div>
                 </div>
 
@@ -795,22 +854,41 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#DC2626', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                                Día de Mayor Demora
+                            <span style={{ 
+                                fontSize: '0.72rem', 
+                                fontWeight: 800, 
+                                color: metrics.highestDelayDay ? '#DC2626' : '#059669', 
+                                textTransform: 'uppercase', 
+                                letterSpacing: '0.4px' 
+                            }}>
+                                {metrics.highestDelayDay ? 'Día de Mayor Demora' : 'Demora Semanal'}
                             </span>
-                            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#DC2626', marginTop: '4px' }}>
-                                {loading ? '...' : (metrics.highestDelayDay || 'Sin datos')}
+                            <div style={{ 
+                                fontSize: metrics.highestDelayDay ? '1.5rem' : '1.35rem', 
+                                fontWeight: 900, 
+                                color: metrics.highestDelayDay ? '#DC2626' : '#059669', 
+                                marginTop: '4px' 
+                            }}>
+                                {loading ? '...' : (
+                                    metrics.highestDelayDay 
+                                        ? `${metrics.highestDelayDay} (${metrics.highestDelayValue || 0}m)` 
+                                        : 'Óptima (< 1 min)'
+                                )}
                             </div>
                         </div>
                         <div style={{
-                            width: '36px', height: '36px', borderRadius: '10px', background: '#FEF2F2',
-                            color: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            width: '36px', height: '36px', borderRadius: '10px', 
+                            background: metrics.highestDelayDay ? '#FEF2F2' : '#ECFDF5',
+                            color: metrics.highestDelayDay ? '#DC2626' : '#059669', 
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
                         }}>
-                            <AlertTriangle size={18} />
+                            {metrics.highestDelayDay ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}
                         </div>
                     </div>
                     <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '10px' }}>
-                        Cuello de botella semanal a reforzar
+                        {metrics.highestDelayDay 
+                            ? 'Cuello de botella semanal a reforzar' 
+                            : 'Sin cuellos de botella detectados en la semana'}
                     </div>
                 </div>
 
@@ -974,7 +1052,12 @@ export default function ContactCenterMetricsTab({ addToast }) {
             }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#FEF2F2', color: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ 
+                            width: '32px', height: '32px', borderRadius: '8px', 
+                            background: metrics.highestDelayDay ? '#FEF2F2' : '#EFF6FF', 
+                            color: metrics.highestDelayDay ? '#DC2626' : '#0284C7', 
+                            display: 'flex', alignItems: 'center', justifyContent: 'center' 
+                        }}>
                             <TrendingUp size={16} />
                         </div>
                         <div>
@@ -987,14 +1070,24 @@ export default function ContactCenterMetricsTab({ addToast }) {
                         </div>
                     </div>
 
-                    {metrics.highestDelayDay && (
+                    {metrics.highestDelayDay ? (
                         <div style={{
                             padding: '6px 14px', borderRadius: '8px', background: '#FEF2F2',
                             border: '1px solid #FECACA', display: 'flex', alignItems: 'center', gap: '6px'
                         }}>
                             <AlertTriangle size={14} color="#DC2626" />
                             <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#991B1B' }}>
-                                Día Crítico: {metrics.highestDelayDay}
+                                Día Crítico: {metrics.highestDelayDay} ({metrics.highestDelayValue || 0} min)
+                            </span>
+                        </div>
+                    ) : (
+                        <div style={{
+                            padding: '6px 14px', borderRadius: '8px', background: '#ECFDF5',
+                            border: '1px solid #A7F3D0', display: 'flex', alignItems: 'center', gap: '6px'
+                        }}>
+                            <CheckCircle2 size={14} color="#059669" />
+                            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#065F46' }}>
+                                Flujo Fluido: Sin demoras críticas
                             </span>
                         </div>
                     )}
@@ -1005,16 +1098,26 @@ export default function ContactCenterMetricsTab({ addToast }) {
                         <BarChart data={metrics.dayOfWeekDelays} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                             <XAxis dataKey="dia" tick={{ fontSize: 11, fill: '#64748B' }} />
-                            <YAxis tick={{ fontSize: 10, fill: '#64748B' }} unit="m" />
+                            <YAxis tick={{ fontSize: 10, fill: '#64748B' }} unit="m" domain={[0, 'auto']} />
                             <Tooltip 
-                                contentStyle={{ background: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.75rem' }}
-                                formatter={(val) => [`${val} minutos promedio`, 'Demora']}
+                                cursor={{ fill: 'rgba(2, 132, 199, 0.06)', radius: 6 }}
+                                contentStyle={{ background: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.75rem', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }}
+                                formatter={(val) => {
+                                    const num = Number(val) || 0;
+                                    if (num === 0) return ['Respuesta inmediata (< 1 min)', 'Demora Promedio'];
+                                    if (num < 1) return [`${Math.round(num * 60)} segundos`, 'Demora Promedio'];
+                                    return [`${num} minutos promedio`, 'Demora Promedio'];
+                                }}
+                                labelFormatter={(label, payload) => {
+                                    const m = payload?.[0]?.payload?.muestras || 0;
+                                    return `${label} (${m} ${m === 1 ? 'consulta analizada' : 'consultas analizadas'})`;
+                                }}
                             />
-                            <Bar dataKey="demoraPromedioMin" name="Minutos de Demora" radius={[6, 6, 0, 0]}>
+                            <Bar dataKey="demoraPromedioMin" name="Minutos de Demora" radius={[6, 6, 0, 0]} minPointSize={6}>
                                 {metrics.dayOfWeekDelays.map((entry, index) => (
                                     <Cell 
                                         key={`cell-${index}`} 
-                                        fill={entry.dia === metrics.highestDelayDay ? '#DC2626' : '#0284C7'} 
+                                        fill={entry.dia === metrics.highestDelayDay && metrics.highestDelayDay ? '#DC2626' : (entry.muestras > 0 ? '#0284C7' : '#E2E8F0')} 
                                     />
                                 ))}
                             </Bar>
