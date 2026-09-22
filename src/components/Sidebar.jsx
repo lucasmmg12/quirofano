@@ -7,19 +7,22 @@ import {
     Headphones, AlertTriangle, MessageSquare, CalendarCheck, PlusCircle
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { canUserAccessContactCenter, MASTER_ADMINS } from '../services/contactCenterService';
+import { canUserAccessContactCenter, isContactCenterExclusiveAgent, MASTER_ADMINS } from '../services/contactCenterService';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '', onOpenBeto, currentUser, selectedModules }) {
     const isFrojo = currentUser?.usuario === 'frojo';
     const username = (currentUser?.usuario || '').toLowerCase().trim();
-    const isContactCenterOnly = ['daguilera', 'vjacques', 'solivier', 'eleal', 'daniela', 'sofia', 'virginia', 'erica'].includes(username);
+    const isContactCenterOnly = isContactCenterExclusiveAgent(currentUser);
 
     // Module visibility: null/empty = show all, array = only show listed + always-visible
     const ALWAYS_VISIBLE = ['inicio', 'config'];
     const isModuleVisible = (id) => {
         if (isContactCenterOnly) {
-            // Strictly Contact Center and Simon IA chat only
-            return ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'beto', 'simon'].includes(id);
+            // Estricto: Únicamente Contact Center y el módulo Simon IA ENTERO (Chat, Documentos, Reglas, Analytics)
+            return [
+                'contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas',
+                'beto', 'simon', 'beto_rules', 'beto_analytics'
+            ].includes(id);
         }
 
         // Master Admins can see everything

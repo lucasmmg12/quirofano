@@ -50,6 +50,11 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         const saved = localStorage.getItem('sa_cc_sound_enabled');
         return saved === null ? true : saved === 'true';
     });
+    const soundEnabledRef = React.useRef(soundEnabled);
+    useEffect(() => {
+        soundEnabledRef.current = soundEnabled;
+    }, [soundEnabled]);
+
     const [lastLivePing, setLastLivePing] = useState(new Date());
 
     const toggleSound = () => {
@@ -137,17 +142,27 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
         reloadChats();
 
-        // Heartbeat de sincronización continua (cada 15 segundos) como resguardo si el socket parpadea;
-        // los eventos de mensaje entran en tiempo real por el canal Supabase Realtime
+        // Heartbeat adaptativo: cada 45 segundos para verificar consistencia si la pestaña está visible.
+        // Pausado automáticamente si el operador minimiza o cambia de pestaña para no saturar memoria RAM.
+        let lastFetchTime = Date.now();
         const heartbeatInterval = setInterval(() => {
+            if (document.hidden) return; // Suspender en segundo plano para proteger la RAM del equipo
             reloadChats(true);
-        }, 15000);
+            lastFetchTime = Date.now();
+        }, 45000);
+
+        const handleVisibilityChange = () => {
+            if (!document.hidden && Date.now() - lastFetchTime > 30000) {
+                reloadChats(true);
+                lastFetchTime = Date.now();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
 
         // 2. Suscripción OnLive en Tiempo Real (Exclusivo Línea Contact Center y Conversaciones)
         const unsubscribe = subscribeToContactCenterRealtime({
             onNewMessage: (newMsg, eventType) => {
                 if (!newMsg) return;
-                console.log('[contact-center] ⚡ Evento Realtime entrante (OnLive):', newMsg, eventType);
                 setLastLivePing(new Date());
 
                 const normPhone = normalizeArgentinePhone(newMsg.phone);
@@ -177,9 +192,9 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     return;
                 }
 
-                // Reproducir sonido y notificación si es entrante
+                // Reproducir sonido y notificación si es entrante (usa soundEnabledRef para no recrear sockets)
                 if (isIncoming) {
-                    if (soundEnabled) {
+                    if (soundEnabledRef.current) {
                         playContactCenterChime();
                     }
                     if (addToast) {
@@ -188,6 +203,15 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         addToast(`💬 ${senderDisplay}: ${preview || 'Archivo multimedia adjunto'}`, 'info');
                     }
                 }
+
+                // Sanitizar payload para que no retenga binarios pesados en memoria
+                const sanitizedRaw = newMsg.raw_payload ? {
+                    order_analysis: newMsg.raw_payload.order_analysis,
+                    audio_transcription: newMsg.raw_payload.audio_transcription || newMsg.raw_payload.transcription,
+                    audio_understanding: newMsg.raw_payload.audio_understanding,
+                    agent: newMsg.raw_payload.agent,
+                    bot: newMsg.raw_payload.bot
+                } : null;
 
                 // Inserción optimista sin esperar el re-fetch completo
                 setChats(prevChats => {
@@ -204,7 +228,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         text: newMsg.content || '',
                         mediaUrl: newMsg.media_url || null,
                         orderAnalysis: newMsg.raw_payload?.order_analysis || null,
-                        rawPayload: newMsg.raw_payload || null,
+                        rawPayload: sanitizedRaw,
                         timestamp: timeStr
                     };
 
@@ -213,9 +237,12 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         const alreadyHasMsg = (existingChat.messages || []).some(m => 
                             m.id === formattedMsg.id || (m.text === formattedMsg.text && m.timestamp === formattedMsg.timestamp)
                         );
-                        const updatedMessages = alreadyHasMsg 
+                        const nextMsgs = alreadyHasMsg 
                             ? existingChat.messages 
                             : [...(existingChat.messages || []), formattedMsg];
+                        
+                        // Capping en memoria activa: mantener máximo 80 mensajes por chat
+                        const updatedMessages = nextMsgs.length > 80 ? nextMsgs.slice(-80) : nextMsgs;
 
                         const updatedChat = {
                             ...existingChat,
@@ -276,8 +303,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     }
                 });
 
-                // Sincronización de fondo
-                reloadChats();
+                // NO disparamos reloadChats() aquí: la inserción optimista ya actualizó la interfaz de forma inmediata y ligera.
             },
             onConversationChange: (conv) => {
                 console.log('[contact-center] ⚡ Evento Realtime Conversación cambiada:', conv);
@@ -314,9 +340,10 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
         return () => {
             clearInterval(heartbeatInterval);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
             if (unsubscribe) unsubscribe();
         };
-    }, [soundEnabled]);
+    }, []);
 
     // Manejar envío de mensaje en la consola de chat
     const handleSendMessage = async (chatId, text, isNote = false) => {

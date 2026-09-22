@@ -149,6 +149,40 @@ export function canUserAccessContactCenter(user, allowedUsersList = null) {
 }
 
 /**
+ * Determina si el usuario logueado es una de las 4 agentes exclusivas del Contact Center
+ * (Sofia, Daniela, Erica, Virginia).
+ * Estas agentes tienen la vista restringida exclusivamente a:
+ * 1. Módulo Contact Center (Consola y Chats, Nueva Conversación, Turnos, Métricas)
+ * 2. Módulo Simon IA ENTERO (Chat, Documentos, Gestión de Reglas, Simon Analytics)
+ * Ningún otro módulo de la clínica debe estar disponible ni cargarse en memoria para ellas.
+ */
+export function isContactCenterExclusiveAgent(user) {
+    if (!user) return false;
+    const username = (user.usuario || user.email || '').toLowerCase().trim().split('@')[0];
+    const nombre = (user.nombre || '').toLowerCase().trim();
+
+    // Master admins and supervisors are NEVER restricted
+    if (MASTER_ADMINS.includes(username) || username.includes('marinero') || username === 'admin' || username === 'lmarinero') {
+        return false;
+    }
+
+    const ccUsernames = ['daguilera', 'vjacques', 'solivier', 'eleal', 'daniela', 'sofia', 'virginia', 'erica'];
+    if (ccUsernames.includes(username)) return true;
+
+    // Coincidencias por nombre y alias de agente
+    if (
+        nombre.includes('sofia') || username.includes('sofia') || username.includes('olivier') ||
+        nombre.includes('daniela') || username.includes('daniela') || username.includes('aguilera') ||
+        nombre.includes('virginia') || username.includes('virginia') || username.includes('jacques') ||
+        nombre.includes('erica') || username.includes('erica') || username.includes('leal')
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+/**
  * Obtiene la lista de usuarios autorizados desde Supabase app_config
  */
 export async function fetchAllowedUsers() {
@@ -414,9 +448,13 @@ export function transferChatToAgent(chat, fromAgent, toAgent, currentUser) {
 export async function fetchLiveAndDemoChats() {
     try {
         // 1. Traer conversaciones estructuradas de contact_center_conversations
+        // Optimización Alto Tráfico (190k msgs/mes): Traemos las 250 conversaciones más activas y recientes
+        // ordenadas por updated_at desc para no sobrecargar el heap ni la red en PCs de baja RAM
         const { data: convData, error: convError } = await supabase
             .from('contact_center_conversations')
-            .select('*');
+            .select('*')
+            .order('updated_at', { ascending: false })
+            .limit(250);
 
         const convByPhone = {};
         if (convData && !convError) {
@@ -426,12 +464,13 @@ export async function fetchLiveAndDemoChats() {
         }
 
         // 2. Traer mensajes EXCLUSIVOS de la línea de Contact Center
+        // Para cuidar RAM y evitar congelamientos: limitamos a 600 mensajes y proyectamos solo columnas requeridas
         const { data: rawMessages, error } = await supabase
             .from('whatsapp_messages')
-            .select('*')
+            .select('id, phone, content, direction, sender_name, media_url, media_type, created_at, line_id, raw_payload')
             .eq('line_id', 'contact_center')
             .order('created_at', { ascending: false })
-            .limit(1000);
+            .limit(600);
 
         if (error) {
             console.warn('[contact-center] Error consultando mensajes:', error);
@@ -575,10 +614,23 @@ export async function fetchLiveAndDemoChats() {
 
             const waitingInfo = calculateWaitingTime(messages, conv, lastDateMs);
 
-            const formattedMessages = chronological.map(m => {
+            // Optimización de Memoria: Limitar a los 60 mensajes más recientes por chat en memoria activa
+            // para garantizar máxima fluidez y evitar fugas de memoria en PCs de 4GB/8GB RAM
+            const recentMsgs = chronological.slice(-60);
+
+            const formattedMessages = recentMsgs.map(m => {
                 const isAudio = m.media_type === 'audio' || m.media_type === 'voice' || (m.media_url && /\.(mp3|ogg|oga|opus|wav|m4a|aac|webm)($|\?)/i.test(m.media_url));
                 const audioTrans = m.raw_payload?.audio_transcription || m.raw_payload?.transcription || (isAudio && m.content && !m.content.startsWith('[') && !m.content.startsWith('_event_') ? m.content.replace(/^🎤\s*"?/, '').replace(/"?$/, '') : null);
                 const audioUnder = m.raw_payload?.audio_understanding || null;
+
+                // Extraer únicamente los campos funcionales de raw_payload, desechando payloads pesados o binarios
+                const sanitizedRaw = m.raw_payload ? {
+                    order_analysis: m.raw_payload.order_analysis,
+                    audio_transcription: audioTrans,
+                    audio_understanding: audioUnder,
+                    agent: m.raw_payload.agent,
+                    bot: m.raw_payload.bot || m.raw_payload.is_bot
+                } : null;
 
                 return {
                     id: 'real_' + m.id,
@@ -594,7 +646,7 @@ export async function fetchLiveAndDemoChats() {
                     orderAnalysis: m.raw_payload?.order_analysis || null,
                     audioTranscription: audioTrans,
                     audioUnderstanding: audioUnder,
-                    rawPayload: m.raw_payload || null,
+                    rawPayload: sanitizedRaw,
                     isNote: m.direction === 'note',
                     timestamp: new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
                 };

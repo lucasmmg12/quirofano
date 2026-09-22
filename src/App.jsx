@@ -64,7 +64,7 @@ import BetoGuidePopup from './components/Gobernanza/BetoGuidePopup.jsx';
 import LiquidacionesPanel from './components/LiquidacionesPanel.jsx';
 import PublicRecordView from './components/PublicShare/PublicRecordView.jsx';
 import ContactCenterPanel from './components/ContactCenter/ContactCenterPanel.jsx';
-import { canUserAccessContactCenter, MASTER_ADMINS } from './services/contactCenterService';
+import { canUserAccessContactCenter, isContactCenterExclusiveAgent, MASTER_ADMINS } from './services/contactCenterService';
 import { startSession, endSession, trackModuleChange } from './lib/activityTracker';
 import { supabase } from './lib/supabase';
 import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -217,8 +217,7 @@ function App({ currentUser, onLogout }) {
     // Start activity tracking + fetch module preferences on mount
     useEffect(() => {
         if (currentUser) {
-            const username = (currentUser?.usuario || '').toLowerCase().trim();
-            const isContactCenterOnly = ['daguilera', 'vjacques', 'solivier', 'eleal', 'daniela', 'sofia', 'virginia', 'erica'].includes(username);
+            const isContactCenterOnly = isContactCenterExclusiveAgent(currentUser);
 
             const initActivity = async () => {
                 await startSession(currentUser);
@@ -229,11 +228,15 @@ function App({ currentUser, onLogout }) {
             initActivity();
             
             if (isContactCenterOnly) {
-                setSelectedModules(['contact_center', 'turnos_online', 'beto']);
+                // Módulo Contact Center y módulo Simon IA ENTERO (Chat, Reglas, Analytics)
+                setSelectedModules(['contact_center', 'turnos_online', 'beto', 'beto_rules', 'beto_analytics']);
                 setNeedsModuleOnboarding(false);
                 setShowModuleOnboarding(false);
-                const CC_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'beto', 'simon'];
-                if (activeView === 'inicio' || !CC_VIEWS.includes(activeView)) {
+                const CC_AND_SIMON_VIEWS = [
+                    'contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas',
+                    'beto', 'simon', 'beto_rules', 'beto_analytics'
+                ];
+                if (activeView === 'inicio' || !CC_AND_SIMON_VIEWS.includes(activeView)) {
                     navigate('/contact_center', { replace: true });
                 }
                 return;
@@ -281,11 +284,12 @@ function App({ currentUser, onLogout }) {
     // Enforce module access control on activeView
     useEffect(() => {
         const username = (currentUser?.usuario || '').toLowerCase().trim();
-        const isContactCenterOnly = ['daguilera', 'vjacques', 'solivier', 'eleal', 'daniela', 'sofia', 'virginia', 'erica'].includes(username);
+        const isContactCenterOnly = isContactCenterExclusiveAgent(currentUser);
         const CC_ALL_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'];
 
         if (isContactCenterOnly) {
-            const ALLOWED_VIEWS = [...CC_ALL_VIEWS, 'beto', 'simon'];
+            // Estricto: Contact Center y Simon IA ENTERO
+            const ALLOWED_VIEWS = [...CC_ALL_VIEWS, 'beto', 'simon', 'beto_rules', 'beto_analytics'];
             if (!ALLOWED_VIEWS.includes(activeView)) {
                 setActiveView('contact_center');
             }

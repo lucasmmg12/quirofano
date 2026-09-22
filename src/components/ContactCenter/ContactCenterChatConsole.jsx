@@ -233,9 +233,15 @@ export default function ContactCenterChatConsole({
     const [messageSortOrder, setMessageSortOrder] = useState(() => {
         return localStorage.getItem('cc_message_sort_order') || 'chronological';
     }); // 'chronological' (estándar WhatsApp/AsisteClick) o 'newest_first'
+    // Optimización RAM: Renderizar inicialmente 50 mensajes en el thread para computadoras de bajo rendimiento
+    const [visibleMessageCount, setVisibleMessageCount] = useState(50);
     const messagesEndRef = useRef(null);
     const messagesContainerRef = useRef(null);
     const inputRef = useRef(null);
+
+    useEffect(() => {
+        setVisibleMessageCount(50);
+    }, [activeChatId]);
 
     // Estado del Visor Profesional de Documentos y Órdenes Médicas
     const [viewerImage, setViewerImage] = useState(null); 
@@ -2488,11 +2494,45 @@ export default function ContactCenterChatConsole({
 
                     {(() => {
                         const rawMsgs = selectedChat.messages || [];
-                        const renderedMessages = messageSortOrder === 'newest_first'
+                        const hasMore = rawMsgs.length > visibleMessageCount;
+                        const remainingCount = rawMsgs.length - visibleMessageCount;
+
+                        const ordered = messageSortOrder === 'newest_first'
                             ? [...rawMsgs].reverse()
                             : rawMsgs;
 
-                        return renderedMessages.map(msg => {
+                        const visibleMsgs = messageSortOrder === 'newest_first'
+                            ? ordered.slice(0, visibleMessageCount)
+                            : ordered.slice(Math.max(0, ordered.length - visibleMessageCount));
+
+                        return (
+                            <>
+                                {hasMore && messageSortOrder === 'chronological' && (
+                                    <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 14px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setVisibleMessageCount(c => c + 50)}
+                                            style={{
+                                                background: '#F8FAFC',
+                                                border: '1px solid #CBD5E1',
+                                                color: '#334155',
+                                                borderRadius: '20px',
+                                                padding: '6px 16px',
+                                                fontSize: '0.72rem',
+                                                fontWeight: 700,
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                                            }}
+                                        >
+                                            <Clock size={12} color="#64748B" />
+                                            Cargar mensajes anteriores ({remainingCount} más)
+                                        </button>
+                                    </div>
+                                )}
+                                {visibleMsgs.map(msg => {
                         if (msg.sender === 'system') {
                             return (
                                 <div key={msg.id} style={{ display: 'flex', justifyContent: 'center', margin: '4px 0' }}>
@@ -3118,7 +3158,34 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 </div>
                             </div>
                         );
-                    });
+                    })}
+                                {hasMore && messageSortOrder === 'newest_first' && (
+                                    <div style={{ display: 'flex', justifyContent: 'center', margin: '14px 0 8px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setVisibleMessageCount(c => c + 50)}
+                                            style={{
+                                                background: '#F8FAFC',
+                                                border: '1px solid #CBD5E1',
+                                                color: '#334155',
+                                                borderRadius: '20px',
+                                                padding: '6px 16px',
+                                                fontSize: '0.72rem',
+                                                fontWeight: 700,
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                                            }}
+                                        >
+                                            <Clock size={12} color="#64748B" />
+                                            Cargar mensajes anteriores ({remainingCount} más)
+                                        </button>
+                                    </div>
+                                )}
+                            </>
+                        );
                 })()}
                     <div ref={messagesEndRef} />
                 </div>

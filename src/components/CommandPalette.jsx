@@ -11,6 +11,7 @@ import {
     Sparkles, Command, FileText, PackageCheck, Microscope,
     Zap, TrendingUp, Clock, Headphones
 } from 'lucide-react';
+import { isContactCenterExclusiveAgent } from '../services/contactCenterService';
 
 const MODULE_ITEMS = [
     { id: 'inicio', label: 'Inicio', icon: Home, keywords: ['home', 'inicio', 'principal'] },
@@ -29,7 +30,9 @@ const MODULE_ITEMS = [
     { id: 'documentos', label: 'Documentos', icon: FileText, keywords: ['documento', 'archivo', 'pdf', 'excel', 'categoria'] },
     { id: 'consultas', label: 'Consultas de Guardia', icon: ClipboardCheck, keywords: ['consulta', 'guardia', 'urgencia', 'emergencia'] },
     { id: 'liquidaciones', label: 'Liquidaciones Médicas (Excel ➔ PDF)', icon: FileText, keywords: ['liquidacion', 'excel', 'guardia', 'instrumentador', 'pdf', 'honorarios'] },
-    { id: 'beto', label: 'Beto IA (Simón)', icon: Brain, keywords: ['beto', 'simon', 'ia', 'documento', 'chat'] },
+    { id: 'beto', label: 'Simón IA (Chat & Documentos)', icon: Brain, keywords: ['beto', 'simon', 'ia', 'documento', 'chat'] },
+    { id: 'beto_rules', label: 'Simón Reglas', icon: Brain, keywords: ['reglas', 'simon', 'protocolos', 'normas'] },
+    { id: 'beto_analytics', label: 'Simón Analytics', icon: BarChart3, keywords: ['simon', 'analytics', 'estadisticas', 'kpi'] },
     { id: 'config', label: 'Configuración', icon: Settings, keywords: ['config', 'ajuste', 'usuario'] },
 ];
 
@@ -45,8 +48,7 @@ export default function CommandPalette({ isOpen, onClose, onNavigate, onBetoQuer
     const [selectedIndex, setSelectedIndex] = useState(0);
     const inputRef = useRef(null);
 
-    const username = (currentUser?.usuario || '').toLowerCase().trim();
-    const isContactCenterOnly = ['daguilera', 'vjacques', 'solivier', 'eleal', 'daniela', 'sofia', 'virginia', 'erica'].includes(username);
+    const isContactCenterOnly = isContactCenterExclusiveAgent(currentUser);
 
     useEffect(() => {
         if (isOpen) {
@@ -57,7 +59,7 @@ export default function CommandPalette({ isOpen, onClose, onNavigate, onBetoQuer
     }, [isOpen]);
 
     const allowedModules = isContactCenterOnly
-        ? MODULE_ITEMS.filter(m => ['contact_center', 'turnos_online', 'beto'].includes(m.id))
+        ? MODULE_ITEMS.filter(m => ['contact_center', 'turnos_online', 'beto', 'beto_rules', 'beto_analytics'].includes(m.id))
         : MODULE_ITEMS;
 
     const filteredModules = allowedModules.filter(item =>
