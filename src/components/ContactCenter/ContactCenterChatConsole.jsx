@@ -21,7 +21,8 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
     const cleanCaption = String(caption || '').trim();
     const cleanText = String(text || '').trim();
     
-    const isImage = explicitType === 'image' || /\.(jpe?g|png|webp|gif|bmp|svg)($|\?)/i.test(cleanUrl);
+    const isAudio = explicitType === 'audio' || explicitType === 'voice' || /\.(jpe?g|png|webp|gif|bmp|svg)/i.test(cleanUrl) ? false : (/\.(mp3|ogg|oga|opus|wav|m4a|aac|webm)($|\?)/i.test(cleanUrl) || cleanUrl.includes('/audio') || cleanUrl.includes('audio_'));
+    const isImage = !isAudio && (explicitType === 'image' || /\.(jpe?g|png|webp|gif|bmp|svg)($|\?)/i.test(cleanUrl));
     const isPdf = cleanUrl.includes('.pdf') || explicitType === 'pdf' || cleanCaption.toLowerCase().endsWith('.pdf') || cleanText.toLowerCase().endsWith('.pdf');
     const isWord = cleanUrl.includes('.docx') || cleanUrl.includes('.doc') || explicitType === 'word' || cleanCaption.toLowerCase().includes('.doc') || cleanText.toLowerCase().includes('.doc');
     const isExcel = cleanUrl.includes('.xlsx') || cleanUrl.includes('.xls') || cleanUrl.includes('.csv') || explicitType === 'excel' || cleanCaption.toLowerCase().includes('.xls') || cleanText.toLowerCase().includes('.xls') || cleanCaption.toLowerCase().includes('.csv');
@@ -33,7 +34,14 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
     let borderColor = '#BFDBFE';
     let ext = 'DOC';
     
-    if (isImage) {
+    if (isAudio) {
+        fileType = 'audio';
+        label = 'Audio / Mensaje de Voz';
+        color = '#7C3AED';
+        bgColor = '#FAF5FF';
+        borderColor = '#DDD6FE';
+        ext = 'AUDIO';
+    } else if (isImage) {
         fileType = 'image';
         label = 'Imagen Médica / Orden';
         color = '#0284C7';
@@ -96,7 +104,8 @@ import {
     saveCrmPatientCard, lookupPatientFromSalus, resetBotWorkflow,
     analyzeMedicalOrderImage, generateChatAiSummary,
     FINAL_ATTENTION_MESSAGE, isClosedOrArchived, fetchFamilyMembersByPhone,
-    isUserAuthorizedForContactCenter, subscribeToChatPresence
+    isUserAuthorizedForContactCenter, subscribeToChatPresence,
+    transcribeAudioMessage
 } from '../../services/contactCenterService';
 import { normalizeArgentinePhone } from '../../services/builderbotApi';
 import { fetchPacienteDetalle } from '../../services/pacienteUnificadoService';
@@ -211,6 +220,9 @@ export default function ContactCenterChatConsole({
     const [doctorResults, setDoctorResults] = useState([]);
     const [isSearchingDoctor, setIsSearchingDoctor] = useState(false);
     const [analyzingMsgId, setAnalyzingMsgId] = useState(null);
+    const [transcribingMsgId, setTranscribingMsgId] = useState(null);
+    const [copiedAudioMsgId, setCopiedAudioMsgId] = useState(null);
+    const [, setForceUpdate] = useState(0);
     const [messageSortOrder, setMessageSortOrder] = useState(() => {
         return localStorage.getItem('cc_message_sort_order') || 'chronological';
     }); // 'chronological' (estándar WhatsApp/AsisteClick) o 'newest_first'
@@ -2359,8 +2371,262 @@ export default function ContactCenterChatConsole({
                                             const docMeta = getDocumentMeta(msg.mediaUrl, msg.type, msg.caption, msg.text);
                                             return (
                                                 <>
+                                                    {/* TARJETA DE AUDIO / NOTA DE VOZ CON TRANSCRIPCIÓN IA WHISPER */}
+                                                    {(msg.type === 'audio' || msg.type === 'voice' || (docMeta && docMeta.fileType === 'audio') || msg.audioTranscription) && (
+                                                        <div style={{
+                                                            marginBottom: '10px',
+                                                            maxWidth: '420px',
+                                                            borderRadius: '12px',
+                                                            border: '1.5px solid #DDD6FE',
+                                                            backgroundColor: '#FAF5FF',
+                                                            padding: '12px 14px',
+                                                            boxShadow: '0 2px 8px rgba(124, 58, 237, 0.08)',
+                                                            textAlign: 'left'
+                                                        }}>
+                                                            {/* Cabecera del Audio */}
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    <div style={{
+                                                                        width: '32px',
+                                                                        height: '32px',
+                                                                        borderRadius: '50%',
+                                                                        backgroundColor: '#7C3AED',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        color: '#FFFFFF',
+                                                                        flexShrink: 0,
+                                                                        boxShadow: '0 2px 4px rgba(124, 58, 237, 0.25)'
+                                                                    }}>
+                                                                        <Volume2 size={17} />
+                                                                    </div>
+                                                                    <div>
+                                                                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#4C1D95', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                            Mensaje de Voz
+                                                                        </span>
+                                                                        <span style={{ fontSize: '0.68rem', color: '#6B21A8' }}>
+                                                                            Audio WhatsApp {msg.timestamp ? `• ${msg.timestamp}` : ''}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Descarga de audio */}
+                                                                {msg.mediaUrl && (
+                                                                    <a
+                                                                        href={msg.mediaUrl}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        download={docMeta?.filename || 'audio.ogg'}
+                                                                        style={{
+                                                                            padding: '4px 8px',
+                                                                            borderRadius: '6px',
+                                                                            backgroundColor: '#FFFFFF',
+                                                                            border: '1px solid #DDD6FE',
+                                                                            color: '#6D28D9',
+                                                                            fontSize: '0.72rem',
+                                                                            fontWeight: 600,
+                                                                            textDecoration: 'none',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '4px'
+                                                                        }}
+                                                                        title="Descargar audio original"
+                                                                    >
+                                                                        <Download size={13} />
+                                                                    </a>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Reproductor de Audio HTML5 */}
+                                                            {msg.mediaUrl && (
+                                                                <div style={{ marginBottom: '10px' }}>
+                                                                    <audio
+                                                                        controls
+                                                                        preload="metadata"
+                                                                        src={msg.mediaUrl}
+                                                                        style={{
+                                                                            width: '100%',
+                                                                            height: '38px',
+                                                                            borderRadius: '20px',
+                                                                            outline: 'none'
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            )}
+
+                                                            {/* SECCIÓN DE TRANSCRIPCIÓN IA */}
+                                                            {msg.audioTranscription ? (
+                                                                <div style={{
+                                                                    backgroundColor: '#FFFFFF',
+                                                                    borderRadius: '8px',
+                                                                    border: '1px solid #E9D5FF',
+                                                                    padding: '10px 12px',
+                                                                    marginTop: '6px'
+                                                                }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', borderBottom: '1px solid #F3E8FF', paddingBottom: '5px' }}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.74rem', fontWeight: 800, color: '#6D28D9' }}>
+                                                                            <Sparkles size={14} color="#7C3AED" />
+                                                                            <span>TRANSCRIPCIÓN ASISTIDA (IA)</span>
+                                                                        </div>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                navigator.clipboard.writeText(msg.audioTranscription);
+                                                                                setCopiedAudioMsgId(msg.id);
+                                                                                setTimeout(() => setCopiedAudioMsgId(null), 2000);
+                                                                            }}
+                                                                            style={{
+                                                                                display: 'inline-flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '4px',
+                                                                                background: copiedAudioMsgId === msg.id ? '#DCFCE7' : '#F5F3FF',
+                                                                                border: `1px solid ${copiedAudioMsgId === msg.id ? '#86EFAC' : '#DDD6FE'}`,
+                                                                                borderRadius: '4px',
+                                                                                padding: '2px 8px',
+                                                                                fontSize: '0.68rem',
+                                                                                fontWeight: 700,
+                                                                                color: copiedAudioMsgId === msg.id ? '#15803D' : '#6D28D9',
+                                                                                cursor: 'pointer'
+                                                                            }}
+                                                                        >
+                                                                            {copiedAudioMsgId === msg.id ? <Check size={12} /> : <Copy size={12} />}
+                                                                            {copiedAudioMsgId === msg.id ? 'Copiado' : 'Copiar'}
+                                                                        </button>
+                                                                    </div>
+
+                                                                    {/* Texto de la transcripción */}
+                                                                    <p style={{
+                                                                        fontSize: '0.85rem',
+                                                                        color: '#1E1B4B',
+                                                                        lineHeight: '1.45',
+                                                                        margin: '0 0 6px 0',
+                                                                        fontStyle: 'normal',
+                                                                        fontWeight: 500
+                                                                    }}>
+                                                                        "{msg.audioTranscription}"
+                                                                    </p>
+
+                                                                    {/* Comprensión Clínica Extraída */}
+                                                                    {msg.audioUnderstanding && (
+                                                                        <div style={{
+                                                                            marginTop: '8px',
+                                                                            paddingTop: '6px',
+                                                                            borderTop: '1px dashed #E9D5FF',
+                                                                            display: 'flex',
+                                                                            flexWrap: 'wrap',
+                                                                            gap: '6px',
+                                                                            alignItems: 'center'
+                                                                        }}>
+                                                                            {msg.audioUnderstanding.intent && (
+                                                                                <span style={{
+                                                                                    fontSize: '0.68rem',
+                                                                                    fontWeight: 700,
+                                                                                    backgroundColor: '#EDE9FE',
+                                                                                    color: '#5B21B6',
+                                                                                    padding: '2px 7px',
+                                                                                    borderRadius: '4px'
+                                                                                }}>
+                                                                                    🎯 {msg.audioUnderstanding.intent}
+                                                                                </span>
+                                                                            )}
+                                                                            {msg.audioUnderstanding.doctor && (
+                                                                                <span style={{
+                                                                                    fontSize: '0.68rem',
+                                                                                    fontWeight: 700,
+                                                                                    backgroundColor: '#E0E7FF',
+                                                                                    color: '#3730A3',
+                                                                                    padding: '2px 7px',
+                                                                                    borderRadius: '4px'
+                                                                                }}>
+                                                                                    👨‍⚕️ Dr/a: {msg.audioUnderstanding.doctor}
+                                                                                </span>
+                                                                            )}
+                                                                            {msg.audioUnderstanding.healthInsurance && (
+                                                                                <span style={{
+                                                                                    fontSize: '0.68rem',
+                                                                                    fontWeight: 700,
+                                                                                    backgroundColor: '#FEF3C7',
+                                                                                    color: '#92400E',
+                                                                                    padding: '2px 7px',
+                                                                                    borderRadius: '4px'
+                                                                                }}>
+                                                                                    🏥 O.S: {msg.audioUnderstanding.healthInsurance}
+                                                                                </span>
+                                                                            )}
+                                                                            {msg.audioUnderstanding.urgency && msg.audioUnderstanding.urgency !== 'baja' && msg.audioUnderstanding.urgency !== 'normal' && (
+                                                                                <span style={{
+                                                                                    fontSize: '0.68rem',
+                                                                                    fontWeight: 700,
+                                                                                    backgroundColor: '#FEE2E2',
+                                                                                    color: '#991B1B',
+                                                                                    padding: '2px 7px',
+                                                                                    borderRadius: '4px'
+                                                                                }}>
+                                                                                    ⚠️ Urgencia {msg.audioUnderstanding.urgency.toUpperCase()}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                /* Botón para solicitar Transcripción con IA a demanda */
+                                                                <div style={{ marginTop: '8px' }}>
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={transcribingMsgId === msg.id || !msg.mediaUrl}
+                                                                        onClick={async (e) => {
+                                                                            e.stopPropagation();
+                                                                            try {
+                                                                                setTranscribingMsgId(msg.id);
+                                                                                const result = await transcribeAudioMessage(msg.mediaUrl, msg.realId || msg.id, selectedChat?.phone);
+                                                                                if (result && result.transcription) {
+                                                                                    msg.audioTranscription = result.transcription;
+                                                                                    msg.audioUnderstanding = result.understanding;
+                                                                                    setForceUpdate(k => k + 1);
+                                                                                }
+                                                                            } catch (err) {
+                                                                                alert('No se pudo transcribir el audio: ' + (err.message || 'Error'));
+                                                                            } finally {
+                                                                                setTranscribingMsgId(null);
+                                                                            }
+                                                                        }}
+                                                                        style={{
+                                                                            width: '100%',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            justifyContent: 'center',
+                                                                            gap: '6px',
+                                                                            padding: '6px 12px',
+                                                                            borderRadius: '6px',
+                                                                            backgroundColor: '#7C3AED',
+                                                                            color: '#FFFFFF',
+                                                                            border: 'none',
+                                                                            fontSize: '0.74rem',
+                                                                            fontWeight: 700,
+                                                                            cursor: transcribingMsgId === msg.id ? 'wait' : 'pointer',
+                                                                            boxShadow: '0 1px 3px rgba(124,58,237,0.2)'
+                                                                        }}
+                                                                    >
+                                                                        {transcribingMsgId === msg.id ? (
+                                                                            <>
+                                                                                <RefreshCw size={13} className="animate-spin" />
+                                                                                <span>Transcribiendo audio con IA...</span>
+                                                                            </>
+                                                                        ) : (
+                                                                            <>
+                                                                                <Sparkles size={13} />
+                                                                                <span>Transcribir y entender audio con IA</span>
+                                                                            </>
+                                                                        )}
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+
                                                     {/* TARJETA DE DOCUMENTO ADJUNTO (PDF, WORD, EXCEL, ETC.) */}
-                                                    {docMeta && docMeta.fileType !== 'image' && msg.mediaUrl && (
+                                                    {docMeta && docMeta.fileType !== 'image' && docMeta.fileType !== 'audio' && msg.mediaUrl && (
                                                         <div style={{
                                                             marginBottom: '10px',
                                                             maxWidth: '380px',
@@ -2632,7 +2898,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             );
                                         })()}
 
-                                        {msg.text && !msg.text.startsWith('[') && (
+                                        {msg.text && !msg.text.startsWith('[') && msg.text !== msg.audioTranscription && (
                                             <div style={{ whiteSpace: 'pre-line' }}>
                                                 {msg.text}
                                             </div>

@@ -575,22 +575,30 @@ export async function fetchLiveAndDemoChats() {
 
             const waitingInfo = calculateWaitingTime(messages, conv, lastDateMs);
 
-            const formattedMessages = chronological.map(m => ({
-                id: 'real_' + m.id,
-                realId: m.id,
-                sender: m.direction === 'incoming' ? 'patient' : (m.direction === 'note' ? 'note' : 'agent'),
-                senderName: m.direction === 'incoming' ? (m.sender_name || 'Paciente') : (m.sender_name || 'Sanatorio Argentino'),
-                senderAgentId: m.raw_payload?.agent || (m.sender_name ? m.sender_name.toLowerCase() : null),
-                agentRole: m.direction === 'incoming' ? null : 'Atención al Paciente',
-                tagColor: m.direction === 'incoming' ? null : (getAgentById(m.sender_name)?.color || '#0284C7'),
-                type: m.media_type || 'text',
-                text: m.content || '',
-                mediaUrl: m.media_url || null,
-                orderAnalysis: m.raw_payload?.order_analysis || null,
-                rawPayload: m.raw_payload || null,
-                isNote: m.direction === 'note',
-                timestamp: new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
-            }));
+            const formattedMessages = chronological.map(m => {
+                const isAudio = m.media_type === 'audio' || m.media_type === 'voice' || (m.media_url && /\.(mp3|ogg|oga|opus|wav|m4a|aac|webm)($|\?)/i.test(m.media_url));
+                const audioTrans = m.raw_payload?.audio_transcription || m.raw_payload?.transcription || (isAudio && m.content && !m.content.startsWith('[') && !m.content.startsWith('_event_') ? m.content.replace(/^🎤\s*"?/, '').replace(/"?$/, '') : null);
+                const audioUnder = m.raw_payload?.audio_understanding || null;
+
+                return {
+                    id: 'real_' + m.id,
+                    realId: m.id,
+                    sender: m.direction === 'incoming' ? 'patient' : (m.direction === 'note' ? 'note' : 'agent'),
+                    senderName: m.direction === 'incoming' ? (m.sender_name || 'Paciente') : (m.sender_name || 'Sanatorio Argentino'),
+                    senderAgentId: m.raw_payload?.agent || (m.sender_name ? m.sender_name.toLowerCase() : null),
+                    agentRole: m.direction === 'incoming' ? null : 'Atención al Paciente',
+                    tagColor: m.direction === 'incoming' ? null : (getAgentById(m.sender_name)?.color || '#0284C7'),
+                    type: isAudio ? 'audio' : (m.media_type || 'text'),
+                    text: m.content || '',
+                    mediaUrl: m.media_url || null,
+                    orderAnalysis: m.raw_payload?.order_analysis || null,
+                    audioTranscription: audioTrans,
+                    audioUnderstanding: audioUnder,
+                    rawPayload: m.raw_payload || null,
+                    isNote: m.direction === 'note',
+                    timestamp: new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+                };
+            });
 
             const formatBirthDate = (val) => {
                 if (!val || val === 'No informada') return 'No informada';
@@ -1455,6 +1463,26 @@ export async function generateChatAiSummary(phone) {
         return data?.summary || null;
     } catch (err) {
         console.error('[contactCenterService] Error invocando contact-center-chat-summary:', err);
+        throw err;
+    }
+}
+
+/**
+ * Invoca la Edge Function transcribe-audio para transcribir y entender con IA (Whisper) un audio de paciente
+ */
+export async function transcribeAudioMessage(audioUrl, messageId = null, phone = null) {
+    if (!audioUrl) return null;
+    try {
+        const { data, error } = await supabase.functions.invoke('transcribe-audio', {
+            body: { audioUrl, messageId, phone }
+        });
+        if (error) {
+            console.error('[contactCenterService] Error en transcribeAudioMessage:', error);
+            throw error;
+        }
+        return data || null;
+    } catch (err) {
+        console.error('[contactCenterService] Error invocando transcribe-audio:', err);
         throw err;
     }
 }

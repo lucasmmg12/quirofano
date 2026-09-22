@@ -290,6 +290,28 @@ Deno.serve(async (req) => {
         }
 
         // =============================================
+        // TRANSCRIPCIÓN Y ENTENDIMIENTO DE AUDIO CON IA (OPENAI WHISPER)
+        // Si el paciente envía un audio/nota de voz, transcribir y analizar en background
+        // para que la agente pueda leer el contenido inmediatamente en la consola
+        // =============================================
+        if (direction === 'incoming' && mediaUrl && (finalMediaType === 'audio' || finalMediaType === 'voice')) {
+            const insertedId = insertedData?.id;
+            console.log(`[webhook] 🎙️ Disparando transcribe-audio para msg ${insertedId}...`);
+            fetch(`${SUPABASE_URL}/functions/v1/transcribe-audio`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                },
+                body: JSON.stringify({
+                    audioUrl: mediaUrl,
+                    messageId: insertedId,
+                    phone: phone,
+                }),
+            }).catch(audioErr => console.error('[webhook] Error triggering transcribe-audio:', audioErr));
+        }
+
+        // =============================================
         // AUTO-ASIGNAR LÍNEA AL CONTACTO (CRM)
         // Cuando un paciente escribe por una línea, guardar esa línea
         // en crm_contacts.assigned_line_id para no perder la referencia
