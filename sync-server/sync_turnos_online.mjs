@@ -242,6 +242,7 @@ export function setGestionTurnoOnline({ key, estado, agenteId, agenteNombre, not
 
 /**
  * Sincroniza los turnos online duplicados detectados en SALUS directamente a Supabase
+ * con reconciliación activa (elimina o actualiza registros que ya no tienen conflicto en SALUS)
  */
 export async function syncTurnosOnlineToSupabase(poolOrOptions, maybeOptions = {}) {
     let sqlPool = poolOrOptions;
@@ -257,6 +258,109 @@ export async function syncTurnosOnlineToSupabase(poolOrOptions, maybeOptions = {
     const result = await getTurnosOnlineDuplicados(sqlPool, { days, targetDate });
     if (!result || !result.casos || !supabaseClient) return result;
 
+    // ── PASO 1: Reconciliación con registros preexistentes en Supabase ──
+    // Buscamos todos los registros en contact_center_turnos_online en el rango analizado
+    try {
+        let sbQuery = supabaseClient
+            .from('contact_center_turnos_online')
+            .select('*');
+
+        if (targetDate) {
+            sbQuery = sbQuery.eq('fecha_creacion', targetDate);
+        } else if (days && Number(days) > 0) {
+            const d = new Date();
+            d.setDate(d.getDate() - Number(days));
+            const minDate = d.toISOString().split('T')[0];
+            sbQuery = sbQuery.gte('fecha_creacion', minDate);
+        }
+
+        const { data: existingRows, error: fetchErr } = await sbQuery;
+
+        if (!fetchErr && Array.isArray(existingRows) && existingRows.length > 0) {
+            // Extraer todos los idVisita de los turnos guardados en Supabase
+            const allSavedVisitIds = new Set();
+            for (const row of existingRows) {
+                if (Array.isArray(row.turnos)) {
+                    for (const t of row.turnos) {
+                        if (t?.idVisita) allSavedVisitIds.add(t.idVisita);
+                    }
+                }
+            }
+
+            // Consultar en SALUS cuáles de esos idVisita siguen existiendo en la tabla Visitas
+            const activeSalusVisitIds = new Set();
+            if (allSavedVisitIds.size > 0 && sqlPool) {
+                const visitIdList = Array.from(allSavedVisitIds);
+                const BATCH_SIZE = 500;
+                for (let i = 0; i < visitIdList.length; i += BATCH_SIZE) {
+                    const batch = visitIdList.slice(i, i + BATCH_SIZE);
+                    const checkRes = await sqlPool.request().query(`
+                        SELECT id FROM Visitas WHERE id IN (${batch.join(',')})
+                    `);
+                    if (checkRes.recordset) {
+                        for (const r of checkRes.recordset) {
+                            activeSalusVisitIds.add(r.id);
+                        }
+                    }
+                }
+            }
+
+            // Evaluar cada registro preexistente
+            const toDeleteIds = [];
+            const toUpdateCases = [];
+
+            for (const row of existingRows) {
+                const rowTurnos = Array.isArray(row.turnos) ? row.turnos : [];
+                const validTurnos = rowTurnos.filter(t => activeSalusVisitIds.has(t.idVisita));
+
+                if (validTurnos.length < 2) {
+                    // Ya no tiene duplicados (se eliminaron todos o quedó solo 1 turno en SALUS)
+                    // Opción A: eliminar el registro obsoleto de la tabla
+                    toDeleteIds.push(row.id);
+                } else if (validTurnos.length !== rowTurnos.length) {
+                    // Tenía por ej. 5 turnos y borraron 2 en SALUS (quedan 3) -> actualizar array con turnos sobrevivientes
+                    toUpdateCases.push({
+                        id: row.id,
+                        turnos: validTurnos,
+                        total_turnos: validTurnos.length,
+                        fechas_resumen: [...new Set(validTurnos.map(t => t.fechaTurno))].join(', '),
+                        updated_at: new Date().toISOString()
+                    });
+                }
+            }
+
+            // Ejecutar eliminaciones de registros obsoletos
+            if (toDeleteIds.length > 0) {
+                console.log(`[turnos-online] 🗑️ Eliminando ${toDeleteIds.length} casos obsoletos/resueltos en SALUS de Supabase:`, toDeleteIds);
+                const { error: delErr } = await supabaseClient
+                    .from('contact_center_turnos_online')
+                    .delete()
+                    .in('id', toDeleteIds);
+                if (delErr) {
+                    console.error('[turnos-online] Error eliminando casos obsoletos:', delErr.message);
+                } else {
+                    console.log(`[turnos-online] ✅ ${toDeleteIds.length} casos obsoletos purgados exitosamente.`);
+                }
+            }
+
+            // Ejecutar actualizaciones parciales
+            for (const upd of toUpdateCases) {
+                await supabaseClient
+                    .from('contact_center_turnos_online')
+                    .update({
+                        turnos: upd.turnos,
+                        total_turnos: upd.total_turnos,
+                        fechas_resumen: upd.fechas_resumen,
+                        updated_at: upd.updated_at
+                    })
+                    .eq('id', upd.id);
+            }
+        }
+    } catch (reconcileErr) {
+        console.warn('[turnos-online] ⚠️ Error durante la reconciliación con SALUS:', reconcileErr.message);
+    }
+
+    // ── PASO 2: Upsert de los casos duplicados actuales y activos ──
     const ids = result.casos.map(c => c.key);
     let existingMap = {};
     if (ids.length > 0) {

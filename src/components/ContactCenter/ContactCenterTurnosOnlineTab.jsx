@@ -37,29 +37,40 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
     const [savingKey, setSavingKey] = useState(null);
 
     // 1. Cargar turnos desde SALUS
-    const loadData = async (days = filtroDias, customDate = fechaCustom) => {
+    const [syncStatus, setSyncStatus] = useState(null); // 'idle', 'syncing', 'success', 'error'
+
+    const loadData = async (days = filtroDias, customDate = fechaCustom, forceSync = false) => {
         setLoading(true);
+        if (forceSync) setSyncStatus('syncing');
         try {
             const res = await fetchTurnosOnlineDuplicados({
                 days,
-                date: customDate || null
+                date: customDate || null,
+                forceSync
             });
 
             if (res && (res.success || Array.isArray(res.casos))) {
                 setStats(res.stats || { totalPacientesConDuplicados: 0, totalTurnosEnConflicto: 0, totalPendientes: 0, totalContactados: 0, totalResueltos: 0 });
                 setCasos(res.casos || []);
+                if (forceSync) {
+                    setSyncStatus('success');
+                    if (addToast) addToast('Sincronizado y reconciliado con SALUS', 'success');
+                }
                 // Si había uno expandido que ya no existe, limpiamos
                 if (expandedKey && !res.casos?.some(c => c.key === expandedKey)) {
                     setExpandedKey(null);
                 }
             } else {
                 if (addToast) addToast(res?.error || 'Error al consultar turnos online', 'error');
+                if (forceSync) setSyncStatus('error');
             }
         } catch (err) {
             console.error('Error cargando turnos online:', err);
             if (addToast) addToast('No se pudo conectar con el servidor de sincronización SALUS', 'error');
+            if (forceSync) setSyncStatus('error');
         } finally {
             setLoading(false);
+            if (forceSync) setTimeout(() => setSyncStatus(null), 3000);
         }
     };
 
@@ -316,19 +327,22 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                     </div>
 
                     <button
-                        onClick={() => loadData(filtroDias, fechaCustom)}
+                        onClick={() => loadData(filtroDias, fechaCustom, true)}
                         disabled={loading}
                         style={{
                             display: 'flex', alignItems: 'center', gap: '8px',
                             padding: '8px 16px', borderRadius: '10px',
-                            background: '#0F2942', color: '#FFFFFF',
+                            background: syncStatus === 'success' ? '#059669' : '#0F2942',
+                            color: '#FFFFFF',
                             border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
                             fontSize: '0.84rem', fontWeight: 700,
-                            boxShadow: '0 2px 8px rgba(15, 41, 66, 0.2)'
+                            boxShadow: '0 2px 8px rgba(15, 41, 66, 0.2)',
+                            transition: 'all 0.2s ease'
                         }}
+                        title="Sincronizar y reconciliar en tiempo real contra la base de datos de SALUS"
                     >
                         <RefreshCw size={15} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
-                        {loading ? 'Consultando...' : 'Actualizar'}
+                        {loading ? 'Sincronizando SALUS...' : syncStatus === 'success' ? 'Sincronizado' : 'Sincronizar SALUS'}
                     </button>
                 </div>
             </div>

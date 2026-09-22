@@ -38,9 +38,40 @@ export const PLANTILLAS_TURNOS_ONLINE = [
 ];
 
 /**
- * Consulta los turnos online duplicados desde Supabase (100% HTTPS, sin errores de Mixed Content)
+ * Sincroniza y reconcilia los turnos online directamente contra SALUS en tiempo real.
+ * Ejecuta la comprobación activa de visitas existentes en el SQL Server de SALUS,
+ * purga registros obsoletos/eliminados de Supabase y retorna la lista reconciliada.
  */
-export async function fetchTurnosOnlineDuplicados({ days = 1, date = null } = {}) {
+export async function syncTurnosOnlineWithSalus({ days = 1, date = null } = {}) {
+    const SYNC_URL = import.meta.env.VITE_SALUS_SYNC_URL || 'http://127.0.0.1:3456/api/salus';
+    let url = `${SYNC_URL}/turnos-online/duplicados?days=${days}`;
+    if (date) url += `&date=${encodeURIComponent(date)}`;
+
+    try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+        if (response.ok) {
+            const data = await response.json();
+            if (data && (data.success || Array.isArray(data.casos))) {
+                console.log(`[turnosOnlineService] ✅ Sincronización en vivo con SALUS completada (${data.casos?.length || 0} casos).`);
+                return { success: true, ...data };
+            }
+        }
+    } catch (e) {
+        console.warn('[turnosOnlineService] No se pudo conectar al sync-server de SALUS, usando datos de Supabase:', e.message);
+    }
+    // Fallback a consulta directa en Supabase
+    return fetchTurnosOnlineDuplicados({ days, date, forceSync: false });
+}
+
+/**
+ * Consulta los turnos online duplicados desde Supabase (100% HTTPS, sin errores de Mixed Content)
+ * Si forceSync es true, intenta primero reconciliar en tiempo real con el servidor SALUS.
+ */
+export async function fetchTurnosOnlineDuplicados({ days = 1, date = null, forceSync = false } = {}) {
+    if (forceSync) {
+        return syncTurnosOnlineWithSalus({ days, date });
+    }
+
     try {
         let query = supabase
             .from('contact_center_turnos_online')
@@ -122,7 +153,7 @@ export async function fetchTurnosOnlineDuplicados({ days = 1, date = null } = {}
         try {
             let url = `http://127.0.0.1:3456/api/salus/turnos-online/duplicados?days=${days}`;
             if (date) url += `&date=${encodeURIComponent(date)}`;
-            const response = await fetch(url);
+            const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
             if (response.ok) return await response.json();
         } catch (e) {
             console.warn('Sync server local no respondió:', e.message);
