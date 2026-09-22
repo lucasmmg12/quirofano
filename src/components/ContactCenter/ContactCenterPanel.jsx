@@ -4,7 +4,6 @@ import {
     Headphones, RefreshCw, Layers, CheckCircle2, Lock, Sparkles,
     User, ChevronDown, AlertTriangle, BarChart3, Volume2, VolumeX, Radio
 } from 'lucide-react';
-import ContactCenterMiSemana from './ContactCenterMiSemana';
 import ContactCenterChatConsole from './ContactCenterChatConsole';
 import ContactCenterNuevaConversacion from './ContactCenterNuevaConversacion';
 import ContactCenterPermisosTab from './ContactCenterPermisosTab';
@@ -23,11 +22,13 @@ import { normalizeArgentinePhone } from '../../services/builderbotApi';
 import { supabase } from '../../lib/supabase';
 
 export default function ContactCenterPanel({ currentUser, addToast, initialTab = 'conversaciones', onTabChange }) {
-    const [activeSubTab, setActiveSubTab] = useState(initialTab);
+    const sanitizedInitialTab = initialTab === 'mi_semana' ? 'conversaciones' : initialTab;
+    const [activeSubTab, setActiveSubTab] = useState(sanitizedInitialTab);
 
     useEffect(() => {
-        if (initialTab && initialTab !== activeSubTab) {
-            setActiveSubTab(initialTab);
+        const next = initialTab === 'mi_semana' ? 'conversaciones' : initialTab;
+        if (next && next !== activeSubTab) {
+            setActiveSubTab(next);
         }
     }, [initialTab]);
 
@@ -520,21 +521,6 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         </button>
 
                         <button
-                            onClick={() => handleNavigateTab('mi_semana')}
-                            style={{
-                                padding: '6px 12px', borderRadius: '6px', border: 'none',
-                                fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', gap: '5px',
-                                background: activeSubTab === 'mi_semana' ? '#0F2942' : 'transparent',
-                                color: activeSubTab === 'mi_semana' ? '#FFFFFF' : '#64748B',
-                                transition: 'all 0.15s'
-                            }}
-                        >
-                            <CalendarCheck size={14} />
-                            Mi Semana
-                        </button>
-
-                        <button
                             onClick={() => handleNavigateTab('nueva_conversacion')}
                             style={{
                                 padding: '6px 12px', borderRadius: '6px', border: 'none',
@@ -700,15 +686,6 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     onReloadChats={reloadChats}
                     loadingLive={loadingLive}
                     isLMarinero={isLMarinero}
-                />
-            )}
-
-            {activeSubTab === 'mi_semana' && (
-                <ContactCenterMiSemana 
-                    chats={chats}
-                    activeAgent={activeAgent}
-                    onSelectChat={handleSelectChatFromSummary}
-                    onNavigateTab={handleNavigateTab}
                 />
             )}
 

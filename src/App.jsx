@@ -171,7 +171,6 @@ const VIEW_LABELS = {
     liquidaciones: 'Liquidaciones Médicas',
     contact_center: 'Contact Center',
     contact_center_chats: 'Contact Center - Chats',
-    contact_center_semana: 'Contact Center - Mi Semana',
     contact_center_nueva: 'Contact Center - Nueva Conversación',
     turnos_online: 'Turnos Online Duplicados',
     contact_center_metricas: 'Contact Center - Métricas y Costos',
@@ -233,7 +232,7 @@ function App({ currentUser, onLogout }) {
                 setSelectedModules(['contact_center', 'turnos_online', 'beto']);
                 setNeedsModuleOnboarding(false);
                 setShowModuleOnboarding(false);
-                const CC_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'beto', 'simon'];
+                const CC_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'beto', 'simon'];
                 if (activeView === 'inicio' || !CC_VIEWS.includes(activeView)) {
                     navigate('/contact_center', { replace: true });
                 }
@@ -283,7 +282,7 @@ function App({ currentUser, onLogout }) {
     useEffect(() => {
         const username = (currentUser?.usuario || '').toLowerCase().trim();
         const isContactCenterOnly = ['daguilera', 'vjacques', 'solivier', 'eleal', 'daniela', 'sofia', 'virginia', 'erica'].includes(username);
-        const CC_ALL_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'];
+        const CC_ALL_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'];
 
         if (isContactCenterOnly) {
             const ALLOWED_VIEWS = [...CC_ALL_VIEWS, 'beto', 'simon'];
@@ -849,12 +848,11 @@ function App({ currentUser, onLogout }) {
                     <ActivosPanel currentUser={currentUser} addToast={addToast} />
                 )}
 
-                {['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'].includes(activeView) && canUserAccessContactCenter(currentUser) && (
+                {['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'].includes(activeView) && canUserAccessContactCenter(currentUser) && (
                     <ContactCenterPanel 
                         currentUser={currentUser} 
                         addToast={addToast} 
                         initialTab={
-                            activeView === 'contact_center_semana' ? 'mi_semana' :
                             activeView === 'contact_center_nueva' ? 'nueva_conversacion' :
                             activeView === 'turnos_online' ? 'turnos_online' :
                             activeView === 'contact_center_metricas' ? 'metricas' :
@@ -863,7 +861,6 @@ function App({ currentUser, onLogout }) {
                         onTabChange={(tab) => {
                             const tabToView = {
                                 conversaciones: 'contact_center_chats',
-                                mi_semana: 'contact_center_semana',
                                 nueva_conversacion: 'contact_center_nueva',
                                 turnos_online: 'turnos_online',
                                 metricas: 'contact_center_metricas',

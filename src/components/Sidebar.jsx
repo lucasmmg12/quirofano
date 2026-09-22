@@ -19,14 +19,14 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const isModuleVisible = (id) => {
         if (isContactCenterOnly) {
             // Strictly Contact Center and Simon IA chat only
-            return ['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'beto', 'simon'].includes(id);
+            return ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'beto', 'simon'].includes(id);
         }
 
         // Master Admins can see everything
         if (MASTER_ADMINS.includes(username)) return true;
 
         // Contact Center items are visible for any authorized user (lmarinero, supervisor, CC agents)
-        const CC_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'];
+        const CC_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'];
         if (CC_VIEWS.includes(id)) {
             return canUserAccessContactCenter(currentUser);
         }
@@ -65,7 +65,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const [simonOpen, setSimonOpen] = useState(false);
     const [gobernanzaOpen, setGobernanzaOpen] = useState(false);
     const [contactCenterOpen, setContactCenterOpen] = useState(() => 
-        ['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'].includes(activeView) || isContactCenterOnly
+        ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'].includes(activeView) || isContactCenterOnly
     );
 
     // Sub-items dentro de "Gobernanza"
@@ -122,7 +122,6 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             icon: Headphones,
             subChildren: [
                 { id: 'contact_center_chats', label: 'Chats', icon: MessageSquare },
-                { id: 'contact_center_semana', label: 'Semana', icon: CalendarCheck },
                 { id: 'contact_center_nueva', label: '+ Nueva Conv.', icon: PlusCircle },
                 { id: 'turnos_online', label: 'Turnos', icon: AlertTriangle, badge: 'Alertas' },
                 { id: 'contact_center_metricas', label: 'Métricas', icon: BarChart3 },
@@ -136,7 +135,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const isAltasActive = altasSubItems.some(i => activeView === i.id);
     const isCirugiasActive = cirugiasSubItems.some(i => activeView === i.id);
     const isSimonActive = simonSubItems.some(i => activeView === i.id);
-    const isContactCenterActive = ['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'].includes(activeView);
+    const isContactCenterActive = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'].includes(activeView);
 
     useEffect(() => {
         if (isContactCenterActive) {
