@@ -294,13 +294,17 @@ function App({ currentUser, onLogout }) {
         }
 
         if (!selectedModules || selectedModules.length === 0) return;
-        const ALWAYS_VISIBLE = ['inicio'];
+        const ALWAYS_VISIBLE = ['inicio', 'config'];
         let isVisible = true;
 
-        if (selectedModules.length === 1 && selectedModules[0] !== 'config') {
-            isVisible = selectedModules.includes(activeView);
+        if (selectedModules.length === 1 && selectedModules[0] === 'activos') {
+            isVisible = activeView === 'activos';
         } else {
-            if (['config', 'manual', 'actividad_usuarios', ...CC_ALL_VIEWS, 'beto', 'simon', 'beto_rules', 'beto_analytics', 'gobernanza', 'gobernanza_indicadores'].includes(activeView)) isVisible = true;
+            if (['config', 'manual'].includes(activeView)) isVisible = true;
+            else if (activeView === 'actividad_usuarios') isVisible = currentUser?.usuario === 'lmarinero';
+            else if (['beto', 'simon'].includes(activeView)) isVisible = selectedModules.includes('beto');
+            else if (['beto_rules', 'beto_analytics'].includes(activeView)) isVisible = currentUser?.usuario === 'lmarinero' || selectedModules.includes(activeView);
+            else if (['gobernanza', 'gobernanza_indicadores'].includes(activeView)) isVisible = selectedModules.includes('gobernanza') || selectedModules.includes('gobernanza_indicadores');
             else if (ALWAYS_VISIBLE.includes(activeView)) isVisible = true;
             else isVisible = selectedModules.includes(activeView);
         }

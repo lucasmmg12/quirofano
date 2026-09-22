@@ -15,7 +15,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const isContactCenterOnly = ['daguilera', 'vjacques', 'solivier', 'eleal', 'daniela', 'sofia', 'virginia', 'erica'].includes(username);
 
     // Module visibility: null/empty = show all, array = only show listed + always-visible
-    const ALWAYS_VISIBLE = ['inicio'];
+    const ALWAYS_VISIBLE = ['inicio', 'config'];
     const isModuleVisible = (id) => {
         if (isContactCenterOnly) {
             // Strictly Contact Center and Simon IA chat only
@@ -26,13 +26,27 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         if (ALWAYS_VISIBLE.includes(id)) return true;
         
         // Hide config and manual for users strictly limited to a single specific module (e.g., Soraya with 'activos')
-        if (selectedModules.length === 1 && selectedModules[0] !== 'config') {
-            return selectedModules.includes(id);
+        if (selectedModules.length === 1 && selectedModules[0] === 'activos') {
+            return id === 'activos';
         }
         
-        // Normal users always see config, manual, actividad_usuarios, Simon IA, Gobernanza and Contact Center if permitted
-        if (['config', 'manual', 'actividad_usuarios', 'contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'beto', 'beto_rules', 'beto_analytics', 'simon', 'gobernanza', 'gobernanza_indicadores'].includes(id)) return true;
-        
+        // Manual and actividad_usuarios (lmarinero only)
+        if (id === 'manual') return true;
+        if (id === 'actividad_usuarios') return currentUser?.usuario === 'lmarinero';
+
+        // Simon IA / Beto chat
+        if (id === 'beto' || id === 'simon') {
+            return selectedModules.includes('beto');
+        }
+        if (id === 'beto_rules' || id === 'beto_analytics') {
+            return currentUser?.usuario === 'lmarinero' || selectedModules.includes(id);
+        }
+
+        // Gobernanza
+        if (id === 'gobernanza' || id === 'gobernanza_indicadores') {
+            return selectedModules.includes('gobernanza') || selectedModules.includes('gobernanza_indicadores');
+        }
+
         return selectedModules.includes(id);
     };
     const [pedidosOpen, setPedidosOpen] = useState(false);
