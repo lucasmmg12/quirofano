@@ -1619,69 +1619,117 @@ async function handleChatbotTriage(
     // FLUJO: CHEQUEO PREVENTIVO DE SALUD
     // =============================================
     else if (analysis.intent === 'chequeo') {
-        updates.motivo_consulta = 'Chequeo Preventivo de Salud';
-        updates.medico_o_especialidad = 'Circuito Chequeo Preventivo';
+        const isBookingChequeo = /\b(quiero\s+(?:un\s+)?turno|sacar\s+turno|coordinar\s+turno|pedir\s+turno|agendar|anotame|dame\s+turno|solicitar\s+turno|turno\s+para\s+el\s+chequeo|coordinar\s+fecha)\b/i.test(cleanText);
 
-        const infoChequeo = `El *Chequeo Preventivo de Salud* te permite realizar todos tus estudios de rutina en una sola mañana (laboratorio, imágenes, cardiología y clínica) sin traslados.\n\n` +
-            `👉 Más detalles: https://www.sanatorioargentino.com.ar/chequeo-preventivo-de-salud.html\n\n` +
-            `Nuestro equipo coordina todos los especialistas por vos.`;
+        if (!isBookingChequeo) {
+            // CONSULTA INFORMATIVA: El paciente consulta información, días, horarios o cómo funciona el circuito.
+            // NO se envía a los agentes humanos; el bot permanece ACTIVO.
+            updates.motivo_consulta = 'Información: Chequeo Preventivo de Salud';
+            replyText = `¡Hola *${fullName}*! 🏥 Te contamos en detalle cómo funciona el *Circuito de Chequeo Preventivo de Salud*:\n\n` +
+                `🕒 *¿Cuándo y cómo se realiza?*\n` +
+                `• Se realiza de *lunes a viernes por la mañana* (ingreso a partir de las 7:30 hs en ayunas).\n` +
+                `• Es un circuito completo y coordinado en una sola jornada (aproximadamente 4 horas de duración, sin traslados ni demoras).\n\n` +
+                `🏢 *Sedes disponibles:*\n` +
+                `• *Sede Santa Fe* (Santa Fe 263 Este)\n` +
+                `• *Sede San Luis* (San Luis 432 Oeste)\n\n` +
+                `🩺 *¿Qué estudios incluye?*\n` +
+                `• Análisis de laboratorio completos (sangre y orina)\n` +
+                `• Evaluación cardiológica con Electrocardiograma (ECG)\n` +
+                `• Radiografía de tórax y ecografías de control\n` +
+                `• Estudios complementarios según edad y perfil (mamografía, etc.)\n` +
+                `• Consulta médica clínica integral de apertura y cierre\n\n` +
+                `🌐 Más detalles: https://www.sanatorioargentino.com.ar/chequeo-preventivo-de-salud.html\n\n` +
+                `💬 *¿Deseas coordinar un turno para realizarte el circuito?*\n` +
+                `Escribinos *'Quiero coordinar turno'* indicando tu sede de preferencia (*Santa Fe* o *San Luis*).`;
 
-        if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥\n\n${infoChequeo}\n\n${getAgentHandoffNotice()}`;
-            updates.status = 'sin_asignar';
-            updates.bot_active = false;
-            nextStage = 'esperando_agente';
-            updates.ai_summary = buildTriageSummary(updates, 'chequeo', analysis.doctorRecord, true, paciente?.edad);
+            updates.bot_active = true;
+            nextStage = 'informacion_respondida';
         } else {
-            const res = await handleNewPatientIntake(
-                cleanText,
-                candidateDni,
-                conv,
-                phone,
-                updates,
-                'chequeo',
-                analysis.doctorRecord,
-                doctorDisplay,
-                infoChequeo
-            );
-            nextStage = res.nextStage;
-            replyText = res.replyText;
+            // SOLICITUD DE TURNO / COORDINACIÓN: El paciente desea agendar efectivamente
+            updates.motivo_consulta = 'Chequeo Preventivo de Salud (Coordinación)';
+            updates.medico_o_especialidad = 'Circuito Chequeo Preventivo';
+
+            const infoChequeoTurno = `¡Excelente *${fullName}*! 🏥 Te ayudamos a coordinar tu fecha para el *Circuito de Chequeo Preventivo de Salud*.\n\n` +
+                `Por favor indícanos:\n` +
+                `• *Sede de preferencia:* Sede Santa Fe (Santa Fe 263 Este) o Sede San Luis (San Luis 432 Oeste).\n` +
+                `• *Preferencia de fecha o día de la semana* (de lunes a viernes por la mañana).\n\n` +
+                `${getAgentHandoffNotice()}`;
+
+            if (isExistingPatient) {
+                replyText = infoChequeoTurno;
+                updates.status = 'sin_asignar';
+                updates.bot_active = false;
+                nextStage = 'esperando_agente';
+                updates.ai_summary = buildTriageSummary(updates, 'chequeo', analysis.doctorRecord, true, paciente?.edad);
+            } else {
+                const res = await handleNewPatientIntake(
+                    cleanText,
+                    candidateDni,
+                    conv,
+                    phone,
+                    updates,
+                    'chequeo',
+                    analysis.doctorRecord,
+                    doctorDisplay,
+                    infoChequeoTurno
+                );
+                nextStage = res.nextStage;
+                replyText = res.replyText;
+            }
         }
     }
     // =============================================
     // FLUJO: PROGRAMA PREVENIR (OSP)
     // =============================================
     else if (analysis.intent === 'prevenir') {
-        updates.motivo_consulta = 'Programa Prevenir (OSP)';
-        updates.medico_o_especialidad = 'Programa Prevenir';
+        const isBookingPrevenir = /\b(quiero\s+(?:un\s+)?turno|sacar\s+turno|coordinar\s+turno|pedir\s+turno|agendar|anotame|dame\s+turno|solicitar\s+turno)\b/i.test(cleanText);
 
-        const infoPrevenir = `El *Programa Prevenir* de Sanatorio Argentino, a través del convenio con *Obra Social Provincia (OSP)*, tiene como finalidad la *detección precoz del cáncer de mama y cáncer de cuello uterino*.\n\n` +
-            `🩺 *¿Qué incluye el programa?*\n` +
-            `• Coordinación integrada de consulta ginecológica y mamografía\n` +
-            `• Controles periódicos en *Sede Santa Fe* (Santa Fe 263 Este)\n\n` +
-            `👉 Más info: https://www.sanatorioargentino.com.ar/especialidades-medicas/programa-prevenir.html\n\n` +
-            `Nuestro equipo coordina los turnos del programa por vos.`;
+        if (!isBookingPrevenir) {
+            // CONSULTA INFORMATIVA: No se envía a los agentes humanos; el bot permanece ACTIVO
+            updates.motivo_consulta = 'Información: Programa Prevenir (OSP)';
+            replyText = `¡Hola *${fullName}*! 🏥 Te brindamos información sobre el *Programa Prevenir* de Obra Social Provincia (OSP):\n\n` +
+                `🩺 *¿De qué se trata?*\n` +
+                `Es un circuito coordinado para la detección precoz del cáncer de mama y cuello uterino destinado a afiliadas de OSP.\n\n` +
+                `📋 *¿Qué incluye?*\n` +
+                `• Consulta con especialista en Ginecología\n` +
+                `• Mamografía digital bilateral\n` +
+                `• Se realiza de manera integrada en *Sede Santa Fe* (Santa Fe 263 Este).\n\n` +
+                `👉 Más información: https://www.sanatorioargentino.com.ar/especialidades-medicas/programa-prevenir.html\n\n` +
+                `💬 *¿Deseas solicitar turno para el Programa Prevenir?*\n` +
+                `Escribinos *'Quiero turno para Prevenir'* para que una asesora te coordine la fecha.`;
 
-        if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥\n\n${infoPrevenir}\n\n${getAgentHandoffNotice()}`;
-            updates.status = 'sin_asignar';
-            updates.bot_active = false;
-            nextStage = 'esperando_agente';
-            updates.ai_summary = buildTriageSummary(updates, 'prevenir', analysis.doctorRecord, true, paciente?.edad);
+            updates.bot_active = true;
+            nextStage = 'informacion_respondida';
         } else {
-            const res = await handleNewPatientIntake(
-                cleanText,
-                candidateDni,
-                conv,
-                phone,
-                updates,
-                'prevenir',
-                analysis.doctorRecord,
-                doctorDisplay,
-                infoPrevenir
-            );
-            nextStage = res.nextStage;
-            replyText = res.replyText;
+            // SOLICITUD DE TURNO / COORDINACIÓN
+            updates.motivo_consulta = 'Programa Prevenir (OSP) (Coordinación)';
+            updates.medico_o_especialidad = 'Programa Prevenir';
+
+            const infoPrevenirTurno = `¡Excelente *${fullName}*! 🏥 Te ayudamos a coordinar tu turno para el *Programa Prevenir (OSP)* en Sede Santa Fe.\n\n` +
+                `Por favor indícanos tu preferencia de día y horario (mañana o tarde).\n\n` +
+                `${getAgentHandoffNotice()}`;
+
+            if (isExistingPatient) {
+                replyText = infoPrevenirTurno;
+                updates.status = 'sin_asignar';
+                updates.bot_active = false;
+                nextStage = 'esperando_agente';
+                updates.ai_summary = buildTriageSummary(updates, 'prevenir', analysis.doctorRecord, true, paciente?.edad);
+            } else {
+                const res = await handleNewPatientIntake(
+                    cleanText,
+                    candidateDni,
+                    conv,
+                    phone,
+                    updates,
+                    'prevenir',
+                    analysis.doctorRecord,
+                    doctorDisplay,
+                    infoPrevenirTurno
+                );
+                nextStage = res.nextStage;
+                replyText = res.replyText;
+            }
         }
     }
     // =============================================
