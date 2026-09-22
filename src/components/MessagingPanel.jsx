@@ -318,7 +318,7 @@ export default function MessagingPanel({ addToast, currentUser }) {
             el.removeEventListener('wheel', handleWheel);
             observer.disconnect();
         };
-    }, [checkPillsScroll, filterCounts, sidebarWidth]);
+    }, [checkPillsScroll, sidebarWidth]);
 
     const scrollFilters = (offset) => {
         if (filtersBarRef.current) {
@@ -1315,6 +1315,10 @@ export default function MessagingPanel({ addToast, currentUser }) {
             debtCount
         };
     }, [conversations, surgeriesMap, debtsMap]);
+
+    useEffect(() => {
+        checkPillsScroll();
+    }, [checkPillsScroll, filterCounts]);
 
     // === DATE & STATUS HELPER FOR CARDS ===
     const getDateInfo = (phone) => {
