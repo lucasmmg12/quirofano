@@ -90,7 +90,26 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         if (!isSilent) setLoadingLive(true);
         try {
             const loaded = await fetchLiveAndDemoChats();
-            setChats(loaded);
+            setChats(prevChats => {
+                // Si la cantidad de chats y propiedades clave son idénticas, preservar la referencia previa para evitar re-renderizados
+                if (isSilent && Array.isArray(prevChats) && prevChats.length === loaded.length) {
+                    const hasChange = loaded.some((newChat, idx) => {
+                        const oldChat = prevChats[idx];
+                        if (!oldChat || oldChat.id !== newChat.id) return true;
+                        if (oldChat.messages?.length !== newChat.messages?.length) return true;
+                        if (oldChat.status !== newChat.status) return true;
+                        if (oldChat.unreadCount !== newChat.unreadCount) return true;
+                        if (oldChat.assignedTo !== newChat.assignedTo) return true;
+                        if (oldChat.botActive !== newChat.botActive) return true;
+                        if (oldChat.lastMessageAt !== newChat.lastMessageAt) return true;
+                        if (oldChat.customFields?.dni !== newChat.customFields?.dni) return true;
+                        if (oldChat.customFields?.pacienteNombre !== newChat.customFields?.pacienteNombre) return true;
+                        return false;
+                    });
+                    if (!hasChange) return prevChats;
+                }
+                return loaded;
+            });
             
             // Mantener el chat actualmente seleccionado por el operador, o seleccionar el primer chat activo
             setActiveChatId(currentId => {
@@ -116,11 +135,11 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
         reloadChats();
 
-        // Heartbeat de sincronización continua (cada 3 segundos) para garantizar que si el socket parpadea,
-        // la consola siempre esté 100% al día sin que el usuario deba tocar F5
+        // Heartbeat de sincronización continua (cada 15 segundos) como resguardo si el socket parpadea;
+        // los eventos de mensaje entran en tiempo real por el canal Supabase Realtime
         const heartbeatInterval = setInterval(() => {
             reloadChats(true);
-        }, 3000);
+        }, 15000);
 
         // 2. Suscripción OnLive en Tiempo Real (Exclusivo Línea Contact Center y Conversaciones)
         const unsubscribe = subscribeToContactCenterRealtime({

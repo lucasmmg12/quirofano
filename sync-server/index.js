@@ -133,8 +133,11 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
     if (!resolvedNhc && (resolvedDni || cleanTel)) {
         try {
             let pWhere = [];
-            if (resolvedDni && resolvedDni.length >= 6) pWhere.push(`NIF = '${resolvedDni}'`);
-            if (cleanTel && cleanTel.length >= 6) pWhere.push(`telefono1 LIKE '%${cleanTel}%'`, `telefono2 LIKE '%${cleanTel}%'`);
+            if (resolvedDni && resolvedDni.length >= 6) {
+                pWhere.push(`NIF = '${resolvedDni}'`);
+            } else if (cleanTel && cleanTel.length >= 6) {
+                pWhere.push(`telefono1 LIKE '%${cleanTel}%'`, `telefono2 LIKE '%${cleanTel}%'`);
+            }
 
             if (pWhere.length > 0) {
                 const pacRes = await pool.request().query(`
