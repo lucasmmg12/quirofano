@@ -71,12 +71,22 @@ export async function fetchPacientes({ page = 0, pageSize = 50, search = '' } = 
     return { data: data || [], count: count || 0 };
 }
 
+function getNameTokens(str) {
+    if (!str || typeof str !== 'string') return [];
+    return str
+        .replace(/[,.\-_/]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .split(' ')
+        .filter(t => t.length >= 3);
+}
+
 // ─── Detalle 360° de un paciente ───
 export async function fetchPacienteDetalle(paciente) {
     let { id_paciente, dni, nombre, nhc, telefono } = paciente;
 
-    // Si no tenemos DNI o NHC pero tenemos teléfono, resolver primero con el padrón maestro
-    if ((!dni || !nhc) && telefono) {
+    // Si no tenemos NI DNI NI NHC pero tenemos teléfono, resolver primero con el padrón maestro
+    if (!dni && !nhc && telefono) {
         try {
             const { data: rpcPac } = await supabase.rpc('buscar_paciente_por_telefono', { p_telefono: String(telefono) });
             if (rpcPac && rpcPac.length > 0) {
@@ -94,27 +104,32 @@ export async function fetchPacienteDetalle(paciente) {
     // Queries paralelas a todas las tablas relacionadas
     const queries = [];
 
-    // 1. Cirugías — por DNI o nombre
+    // 1. Cirugías — por DNI estricto; si NO hay DNI, buscar por coincidencia de todos los tokens del nombre
     queries.push(
         (async () => {
             let data = [];
-            if (dni) {
+            const cleanDni = dni ? String(dni).replace(/\D/g, '') : '';
+            if (cleanDni.length >= 6) {
                 const { data: byDni } = await supabase
                     .from('surgeries')
                     .select('id, nombre, dni, telefono, obra_social, fecha_cirugia, medico, modulo, status, notas, created_at')
-                    .eq('dni', dni)
+                    .eq('dni', cleanDni)
                     .order('fecha_cirugia', { ascending: false })
                     .limit(50);
                 data = byDni || [];
-            }
-            if (data.length === 0 && nombre) {
-                const { data: byName } = await supabase
-                    .from('surgeries')
-                    .select('id, nombre, dni, telefono, obra_social, fecha_cirugia, medico, modulo, status, notas, created_at')
-                    .ilike('nombre', `%${nombre.split(' ').slice(0, 2).join('%')}%`)
-                    .order('fecha_cirugia', { ascending: false })
-                    .limit(50);
-                data = byName || [];
+            } else if (nombre) {
+                // Solo si NO se cuenta con DNI, buscar requiriendo todos los tokens del nombre completo
+                const tokens = getNameTokens(nombre);
+                if (tokens.length >= 2) {
+                    let q = supabase
+                        .from('surgeries')
+                        .select('id, nombre, dni, telefono, obra_social, fecha_cirugia, medico, modulo, status, notas, created_at');
+                    tokens.forEach(tok => {
+                        q = q.ilike('nombre', `%${tok}%`);
+                    });
+                    const { data: byName } = await q.order('fecha_cirugia', { ascending: false }).limit(50);
+                    data = byName || [];
+                }
             }
             return { key: 'cirugias', data };
         })()
@@ -128,19 +143,23 @@ export async function fetchPacienteDetalle(paciente) {
                 const { data: byNhc } = await supabase
                     .from('deudas_pacientes')
                     .select('id, nhc, nombre, telefono, categoria, deuda_total, cantidad_facturas, notas, ultimo_contacto_at, created_at')
-                    .eq('nhc', nhc)
+                    .eq('nhc', String(nhc).trim())
                     .maybeSingle();
                 data = byNhc;
             }
-            // Si no hay NHC, intentar buscar por nombre
-            if (!data && nombre) {
-                const { data: byName } = await supabase
-                    .from('deudas_pacientes')
-                    .select('id, nhc, nombre, telefono, categoria, deuda_total, cantidad_facturas, notas, ultimo_contacto_at, created_at')
-                    .ilike('nombre', `%${nombre.split(' ').slice(0, 2).join('%')}%`)
-                    .limit(1)
-                    .maybeSingle();
-                data = byName;
+            // Si no hay NHC ni DNI, buscar por tokens estrictos de nombre
+            if (!data && !dni && !nhc && nombre) {
+                const tokens = getNameTokens(nombre);
+                if (tokens.length >= 2) {
+                    let q = supabase
+                        .from('deudas_pacientes')
+                        .select('id, nhc, nombre, telefono, categoria, deuda_total, cantidad_facturas, notas, ultimo_contacto_at, created_at');
+                    tokens.forEach(tok => {
+                        q = q.ilike('nombre', `%${tok}%`);
+                    });
+                    const { data: byName } = await q.limit(1).maybeSingle();
+                    data = byName;
+                }
             }
             // Fetch facturas if we have a deudas_paciente
             let facturas = [];
@@ -157,7 +176,7 @@ export async function fetchPacienteDetalle(paciente) {
         })()
     );
 
-    // 3. Altas administrativas — por id_paciente o nombre
+    // 3. Altas administrativas / Internaciones — por id_paciente o tokens completos de nombre
     queries.push(
         (async () => {
             let data = [];
@@ -171,13 +190,17 @@ export async function fetchPacienteDetalle(paciente) {
                 data = byId || [];
             }
             if (data.length === 0 && nombre) {
-                const { data: byName } = await supabase
-                    .from('altas_administrativas')
-                    .select('id, numero_admision, paciente, cliente, especialidad, doctor, fecha_ingreso, fecha_alta, estado, motivo_alta')
-                    .ilike('paciente', `%${nombre.split(' ').slice(0, 2).join('%')}%`)
-                    .order('fecha_ingreso', { ascending: false })
-                    .limit(20);
-                data = byName || [];
+                const tokens = getNameTokens(nombre);
+                if (tokens.length >= 2) {
+                    let q = supabase
+                        .from('altas_administrativas')
+                        .select('id, numero_admision, paciente, cliente, especialidad, doctor, fecha_ingreso, fecha_alta, estado, motivo_alta');
+                    tokens.forEach(tok => {
+                        q = q.ilike('paciente', `%${tok}%`);
+                    });
+                    const { data: byName } = await q.order('fecha_ingreso', { ascending: false }).limit(20);
+                    data = byName || [];
+                }
             }
             return { key: 'altas', data };
         })()
@@ -236,14 +259,18 @@ export async function fetchPacienteDetalle(paciente) {
                         .limit(30);
                     consultasData = byDni || [];
                 }
-                if (consultasData.length === 0 && nombre) {
-                    const { data: byNom } = await supabase
-                        .from('consultas_guardia')
-                        .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif')
-                        .ilike('paciente', `%${nombre.split(' ').slice(0, 2).join('%')}%`)
-                        .order('fecha_visita', { ascending: false })
-                        .limit(30);
-                    consultasData = byNom || [];
+                if (consultasData.length === 0 && !dni && !nhc && nombre) {
+                    const tokens = getNameTokens(nombre);
+                    if (tokens.length >= 2) {
+                        let q = supabase
+                            .from('consultas_guardia')
+                            .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif');
+                        tokens.forEach(tok => {
+                            q = q.ilike('paciente', `%${tok}%`);
+                        });
+                        const { data: byNom } = await q.order('fecha_visita', { ascending: false }).limit(30);
+                        consultasData = byNom || [];
+                    }
                 }
 
                 // Cruzar con diagnósticos, síntomas y formularios médicos de calidad_pacientes_diagnosticos
@@ -392,14 +419,16 @@ export async function fetchPacienteDetalle(paciente) {
                     .order('created_at', { ascending: false });
                 data = byNhc || [];
             }
-            if (data.length === 0 && nombre) {
-                const nombreStr = String(nombre);
-                const { data: byName } = await supabase
-                    .from('libre_de_deuda_certificados')
-                    .select('*')
-                    .ilike('paciente_nombre', `%${nombreStr.split(' ').slice(0, 2).join('%')}%`)
-                    .order('created_at', { ascending: false });
-                data = byName || [];
+            if (data.length === 0 && !dni && !nhc && nombre) {
+                const tokens = getNameTokens(nombre);
+                if (tokens.length >= 2) {
+                    let q = supabase.from('libre_de_deuda_certificados').select('*');
+                    tokens.forEach(tok => {
+                        q = q.ilike('paciente_nombre', `%${tok}%`);
+                    });
+                    const { data: byName } = await q.order('created_at', { ascending: false });
+                    data = byName || [];
+                }
             }
             return { key: 'certificadosLibreDeuda', data };
         })()

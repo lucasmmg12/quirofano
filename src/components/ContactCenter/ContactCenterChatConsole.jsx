@@ -456,6 +456,8 @@ export default function ContactCenterChatConsole({
     // Conmutar ficha activa a otro miembro del grupo familiar
     const handleSelectFamilyMember = async (fam) => {
         if (!fam) return;
+        if (fam.nhc) delete patientHistoryCache.current[`nhc_${fam.nhc}`];
+        if (fam.dni) delete patientHistoryCache.current[`dni_${fam.dni}`];
         setActiveFamilyMember(fam);
         if (selectedChat) {
             selectedChat.activeFamilyMember = fam;
