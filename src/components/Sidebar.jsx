@@ -22,6 +22,12 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             return ['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'beto', 'simon'].includes(id);
         }
 
+        // Contact Center items are visible for any authorized user (lmarinero, supervisor, CC agents)
+        const CC_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_semana', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'];
+        if (CC_VIEWS.includes(id)) {
+            return canUserAccessContactCenter(currentUser);
+        }
+
         if (!selectedModules || selectedModules.length === 0) return true;
         if (ALWAYS_VISIBLE.includes(id)) return true;
         

@@ -300,7 +300,8 @@ function App({ currentUser, onLogout }) {
         if (selectedModules.length === 1 && selectedModules[0] === 'activos') {
             isVisible = activeView === 'activos';
         } else {
-            if (['config', 'manual'].includes(activeView)) isVisible = true;
+            if (CC_ALL_VIEWS.includes(activeView)) isVisible = canUserAccessContactCenter(currentUser);
+            else if (['config', 'manual'].includes(activeView)) isVisible = true;
             else if (activeView === 'actividad_usuarios') isVisible = currentUser?.usuario === 'lmarinero';
             else if (['beto', 'simon'].includes(activeView)) isVisible = selectedModules.includes('beto');
             else if (['beto_rules', 'beto_analytics'].includes(activeView)) isVisible = currentUser?.usuario === 'lmarinero' || selectedModules.includes(activeView);
