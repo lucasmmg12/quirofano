@@ -72,6 +72,7 @@ export default function RAGRules() {
     const [editMedico, setEditMedico] = useState('')
     const [editCategory, setEditCategory] = useState('obra_social')
     const [isSavingEdit, setIsSavingEdit] = useState(false)
+    const [approvingRuleId, setApprovingRuleId] = useState(null)
 
     // Delete confirmation
     const [deletingRuleId, setDeletingRuleId] = useState(null)
@@ -214,26 +215,70 @@ export default function RAGRules() {
         }
     }
 
-    async function handleApproveRule(ruleId) {
+    async function handleApproveRule(ruleId, editData = null) {
+        setApprovingRuleId(ruleId)
+        setError(null)
+        setSuccess(null)
         try {
-            const ruleToApprove = inboxRules.find(r => r.id === ruleId)
-            let newText = ruleToApprove ? ruleToApprove.original_text : ''
-            if (newText.includes('[ESTADO: pendiente]')) {
-                newText = newText.replace('[ESTADO: pendiente]', '').replace('[AUTOR: Ingestión Automática (Melissa)]', '').trim()
+            const ruleToApprove = rules.find(r => r.id === ruleId)
+            
+            // Text to sanitize and save:
+            let rawText = editData?.text || ruleToApprove?.original_text || ruleToApprove?.processed_text || ruleToApprove?.text || ''
+            
+            // Clean out pending brackets and auto-ingest tags
+            let cleanText = rawText
+                .replace(/\[ESTADO:\s*pendiente\]/gi, '')
+                .replace(/\[AUTOR:\s*Ingestión Automática.*?\]/gi, '')
+                .trim()
+
+            // If empty or less than 5 characters, ensure valid minimum length
+            if (!cleanText || cleanText.length < 5) {
+                cleanText = (ruleToApprove?.title || 'Normativa de Correo Electrónico') + ': ' + (cleanText || 'Contenido autorizado.')
+            }
+
+            const payload = {
+                text: cleanText,
+                category: editData?.category || ruleToApprove?.category || 'general',
+                obra_social: editData?.obra_social || ruleToApprove?.obra_social || 'General / Sin Obra Social Especifica',
+                medico: editData?.medico || ruleToApprove?.medico || 'General / Todos los Médicos',
+                is_active: true,
+                status: 'active'
             }
 
             const resp = await fetch(`${RAG_API_BASE}/rules/${ruleId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: newText, is_active: true, status: 'active' })
+                body: JSON.stringify(payload)
             })
-            if (resp.ok) {
-                setSuccess('✅ Regla aprobada e integrada a Simon IA')
-                setTimeout(() => setSuccess(null), 3500)
-                loadRules()
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}))
+                throw new Error(err.detail || err.message || `Error del servidor (${resp.status}) al aprobar`)
             }
+
+            const updated = await resp.json().catch(() => null)
+            setSuccess(`✅ Correo aprobado e integrado a las reglas de Simon IA${updated?.title ? `: "${updated.title}"` : ''}`)
+            setEditingRuleId(null)
+            setEditText('')
+
+            // Actualización optimista de estado local
+            setRules(prev => prev.map(r => r.id === ruleId ? {
+                ...r,
+                ...payload,
+                original_text: cleanText,
+                processed_text: updated?.processed_text || cleanText,
+                is_active: true,
+                status: 'active'
+            } : r))
+
+            setTimeout(() => setSuccess(null), 4000)
+            await loadRules()
         } catch (e) {
-            setError('Error al aprobar la regla')
+            console.error('Error al aprobar regla:', e)
+            setError(`No se pudo aprobar el correo: ${e.message}`)
+        } finally {
+            setApprovingRuleId(null)
+            setIsSavingEdit(false)
         }
     }
 
@@ -257,10 +302,16 @@ export default function RAGRules() {
 
     function startEditing(rule) {
         setEditingRuleId(rule.id)
-        setEditText(rule.original_text || rule.processed_text || rule.text || '')
+        let raw = rule.original_text || rule.processed_text || rule.text || ''
+        // Limpiar corchetes de metadatos para edición limpia
+        raw = raw
+            .replace(/\[ESTADO:\s*pendiente\]/gi, '')
+            .replace(/\[AUTOR:\s*Ingestión Automática.*?\]/gi, '')
+            .trim()
+        setEditText(raw)
         setEditOS(rule.obra_social || 'General / Sin Obra Social Especifica')
         setEditMedico(rule.medico || 'General / Todos los Médicos')
-        setEditCategory(rule.category || 'obra_social')
+        setEditCategory(rule.category || 'general')
         setError(null)
     }
 
@@ -377,8 +428,12 @@ export default function RAGRules() {
     }
 
     // Filter & Group Rules
-    const inboxRules = rules.filter(r => (r.original_text || '').includes('[ESTADO: pendiente]'));
-    const generalRules = rules.filter(r => !(r.original_text || '').includes('[ESTADO: pendiente]'));
+    const isPendingRule = (r) => {
+        const raw = `${r.original_text || ''} ${r.processed_text || ''} ${r.text || ''}`;
+        return raw.includes('[ESTADO: pendiente]') || r.status === 'pending_validation';
+    };
+    const inboxRules = rules.filter(isPendingRule);
+    const generalRules = rules.filter(r => !isPendingRule(r));
 
     const filteredRules = generalRules.filter(r => {
         if (!searchFilter.trim()) return true;
@@ -658,7 +713,7 @@ export default function RAGRules() {
                                         {groupItems.map(rule => {
                                             const catStyle = getCategoryStyle(rule.category)
                                             const isEditing = editingRuleId === rule.id
-                                            const isPending = (rule.original_text || '').includes('[ESTADO: pendiente]')
+                                            const isPending = isPendingRule(rule)
 
                                             return (
                                                 <div key={rule.id} style={{ background: '#f8fafc', border: isPending ? '1.5px solid #f59e0b' : '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -871,11 +926,20 @@ export default function RAGRules() {
                                         </div>
 
                                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                                            <button onClick={() => { handleSaveEdit(rule.id); setTimeout(() => handleApproveRule(rule.id), 500); }} disabled={isSavingEdit} style={{ background: '#10b981', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 4px rgba(16,185,129,0.3)' }}>
-                                                {isSavingEdit ? <Loader2 size={16} className="rag-spin" /> : <CheckCircle size={16} />} 
+                                            <button 
+                                                onClick={() => handleApproveRule(rule.id, { 
+                                                    text: editText.trim(), 
+                                                    obra_social: editOS, 
+                                                    medico: editMedico, 
+                                                    category: editCategory 
+                                                })} 
+                                                disabled={approvingRuleId === rule.id || isSavingEdit} 
+                                                style={{ background: '#10b981', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 4px rgba(16,185,129,0.3)' }}
+                                            >
+                                                {approvingRuleId === rule.id || isSavingEdit ? <Loader2 size={16} className="rag-spin" /> : <CheckCircle size={16} />} 
                                                 Aprobar e Integrar
                                             </button>
-                                            <button onClick={cancelEditing} style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
+                                            <button onClick={cancelEditing} disabled={approvingRuleId === rule.id} style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
                                                 Cancelar
                                             </button>
                                         </div>
@@ -886,11 +950,27 @@ export default function RAGRules() {
                                             {rule.processed_text || rule.text || rule.original_text}
                                         </div>
                                         
-                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '20px', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
-                                            <button onClick={() => startEditing(rule)} style={{ background: '#2563eb', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <Pencil size={15} /> Revisar y Aprobar
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '20px', paddingTop: '20px', borderTop: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
+                                            <button 
+                                                onClick={() => handleApproveRule(rule.id)} 
+                                                disabled={approvingRuleId === rule.id}
+                                                style={{ background: '#10b981', color: 'white', border: 'none', padding: '10px 22px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 2px 6px rgba(16,185,129,0.25)' }}
+                                            >
+                                                {approvingRuleId === rule.id ? <Loader2 size={16} className="rag-spin" /> : <CheckCircle size={16} />} 
+                                                Aprobar Directo
                                             </button>
-                                            <button onClick={() => handleDeleteRule(rule.id)} style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <button 
+                                                onClick={() => startEditing(rule)} 
+                                                disabled={approvingRuleId === rule.id}
+                                                style={{ background: '#2563eb', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                            >
+                                                <Pencil size={15} /> Editar antes de Aprobar
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDeleteRule(rule.id)} 
+                                                disabled={approvingRuleId === rule.id}
+                                                style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                            >
                                                 <Trash2 size={15} /> Descartar Correo
                                             </button>
                                         </div>

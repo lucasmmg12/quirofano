@@ -1005,15 +1005,19 @@ export async function saveCrmPatientCard({ phone, dni, nombreCompleto, obraSocia
     };
 
     // 1. Persistir en contact_center_conversations
-    const { error: convErr } = await supabase
+    let { error: convErr } = await supabase
         .from('contact_center_conversations')
-        .upsert({
-            phone: norm,
-            ...updatePayload
-        }, { onConflict: 'phone' });
+        .update(updatePayload)
+        .eq('phone', norm);
 
     if (convErr) {
-        console.error('Error actualizando contact_center_conversations:', convErr);
+        // Fallback: si aún no existe el registro, insertar
+        const { error: insErr } = await supabase
+            .from('contact_center_conversations')
+            .insert({ phone: norm, ...updatePayload });
+        if (insErr) {
+            console.warn('[contact-center] Error guardando ficha en contact_center_conversations:', insErr.message);
+        }
     }
 
     // 2. Persistir en crm_contacts para sincronización global (Admisiones, Cirugías, etc.)
