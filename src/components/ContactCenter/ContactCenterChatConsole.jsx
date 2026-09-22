@@ -128,6 +128,7 @@ export default function ContactCenterChatConsole({
     onUnassignChat,
     onTransferChat,
     onCloseChat,
+    onBulkCloseChats,
     activeSubTab = 'conversaciones',
     onNavigateTab,
     onSwitchAgent,
@@ -137,6 +138,12 @@ export default function ContactCenterChatConsole({
     loadingLive = false,
     isLMarinero = false
 }) {
+    // Selección múltiple y cierre masivo silencioso
+    const [selectedChatIds, setSelectedChatIds] = useState(new Set());
+    const [bulkCloseModalOpen, setBulkCloseModalOpen] = useState(false);
+    const [bulkResolutionReason, setBulkResolutionReason] = useState('Cierre masivo de cola');
+    const [isBulkClosing, setIsBulkClosing] = useState(false);
+
     // Panel de Información Resizable (con límites min 260px, max 550px)
     const consoleContainerRef = useRef(null);
     const [rightPanelWidth, setRightPanelWidth] = useState(() => {
@@ -1179,6 +1186,59 @@ export default function ContactCenterChatConsole({
         }).sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
     }, [chats, isSearching, searchScope, searchedChats, filterTab, myAliases, activeAgent.name]);
 
+    // Conversaciones seleccionables para cierre masivo (excluye las ya finalizadas)
+    const selectableChats = useMemo(() => {
+        return filteredChats.filter(c => !isClosedOrArchived(c.status));
+    }, [filteredChats]);
+
+    const toggleSelectChat = (chatId) => {
+        setSelectedChatIds(prev => {
+            const next = new Set(prev);
+            if (next.has(chatId)) {
+                next.delete(chatId);
+            } else {
+                next.add(chatId);
+            }
+            return next;
+        });
+    };
+
+    const handleSelectAllVisible = () => {
+        if (!selectableChats.length) return;
+        const allSelected = selectableChats.every(c => selectedChatIds.has(c.id));
+        if (allSelected) {
+            setSelectedChatIds(prev => {
+                const next = new Set(prev);
+                selectableChats.forEach(c => next.delete(c.id));
+                return next;
+            });
+        } else {
+            setSelectedChatIds(prev => {
+                const next = new Set(prev);
+                selectableChats.forEach(c => next.add(c.id));
+                return next;
+            });
+        }
+    };
+
+    const handleClearSelection = () => {
+        setSelectedChatIds(new Set());
+    };
+
+    const handleConfirmBulkClose = async () => {
+        if (!selectedChatIds.size || !onBulkCloseChats) return;
+        setIsBulkClosing(true);
+        try {
+            await onBulkCloseChats(Array.from(selectedChatIds), bulkResolutionReason);
+            setSelectedChatIds(new Set());
+            setBulkCloseModalOpen(false);
+        } catch (err) {
+            console.error('Error cerrando masivamente:', err);
+        } finally {
+            setIsBulkClosing(false);
+        }
+    };
+
     const sendDirectMessage = (text, isNote = false) => {
         if (!text || !text.trim()) return;
         if (!isAuthorized) {
@@ -1588,6 +1648,81 @@ export default function ContactCenterChatConsole({
                     </button>
                 </div>
 
+                {/* BARRA DE SELECCIÓN Y CIERRE MASIVO SILENCIOSO */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    background: selectedChatIds.size > 0 ? '#EFF6FF' : '#F8FAFC',
+                    borderBottom: '1px solid #E2E8F0',
+                    transition: 'background 0.15s ease',
+                    fontSize: '0.74rem'
+                }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 700, color: '#334155', userSelect: 'none' }}>
+                        <input
+                            type="checkbox"
+                            checked={selectableChats.length > 0 && selectableChats.every(c => selectedChatIds.has(c.id))}
+                            onChange={handleSelectAllVisible}
+                            disabled={selectableChats.length === 0}
+                            style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#2563EB' }}
+                        />
+                        <span>
+                            {selectedChatIds.size > 0 
+                                ? `${selectedChatIds.size} seleccionados` 
+                                : `Seleccionar todos (${selectableChats.length})`}
+                        </span>
+                    </label>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {selectedChatIds.size > 0 ? (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={handleClearSelection}
+                                    style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: '#64748B',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        padding: '3px 6px'
+                                    }}
+                                >
+                                    Deseleccionar
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setBulkCloseModalOpen(true)}
+                                    style={{
+                                        background: '#DC2626',
+                                        color: '#FFFFFF',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '4px 10px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        boxShadow: '0 2px 4px rgba(220, 38, 38, 0.25)'
+                                    }}
+                                    title="Finalizar todas las conversaciones seleccionadas sin enviar mensajes"
+                                >
+                                    <CheckCircle2 size={13} />
+                                    Finalizar ({selectedChatIds.size})
+                                </button>
+                            </>
+                        ) : (
+                            <span style={{ fontSize: '0.68rem', color: '#94A3B8' }}>
+                                {filteredChats.length} {filteredChats.length === 1 ? 'chat' : 'chats'}
+                            </span>
+                        )}
+                    </div>
+                </div>
+
                 {/* Lista de Chats con Tags de Asignación y Último en Responder */}
                 <div style={{ flex: 1, overflowY: 'auto' }}>
                     {filteredChats.length === 0 ? (
@@ -1636,6 +1771,8 @@ export default function ContactCenterChatConsole({
                     ) : (
                         filteredChats.map(chat => {
                             const isSelected = chat.id === selectedChat.id;
+                            const isChecked = selectedChatIds.has(chat.id);
+                            const isClosed = isClosedOrArchived(chat.status);
                             const assignedAgent = chat.assignedTo ? getAgentById(chat.assignedTo) : null;
                             const chatIsLocked = isChatLockedForUser(chat, activeAgent.id, currentUser);
                             const chatIsMine = chat.assignedTo && chat.assignedTo.toLowerCase() === activeAgent.id.toLowerCase();
@@ -1648,14 +1785,42 @@ export default function ContactCenterChatConsole({
                                         padding: '12px 14px',
                                         borderBottom: '1px solid #F1F5F9',
                                         cursor: 'pointer',
-                                        background: isSelected ? '#EFF6FF' : '#FFFFFF',
-                                        borderLeft: isSelected ? '4px solid #1E40AF' : '4px solid transparent',
+                                        background: isSelected 
+                                            ? '#EFF6FF' 
+                                            : isChecked 
+                                                ? '#F0FDF4' 
+                                                : '#FFFFFF',
+                                        borderLeft: isSelected 
+                                            ? '4px solid #1E40AF' 
+                                            : isChecked 
+                                                ? '4px solid #16A34A' 
+                                                : '4px solid transparent',
                                         transition: 'background 0.15s',
                                         position: 'relative'
                                     }}
                                 >
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            {/* Checkbox de selección para finalización masiva */}
+                                            {!isClosed && (
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isChecked}
+                                                    onChange={(e) => {
+                                                        e.stopPropagation();
+                                                        toggleSelectChat(chat.id);
+                                                    }}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    style={{
+                                                        cursor: 'pointer',
+                                                        width: '16px',
+                                                        height: '16px',
+                                                        accentColor: '#16A34A',
+                                                        flexShrink: 0
+                                                    }}
+                                                    title="Seleccionar para finalizar masivamente"
+                                                />
+                                            )}
                                             <div style={{
                                                 width: '28px', height: '28px', borderRadius: '50%',
                                                 background: chat.avatarColor || '#1E40AF', color: '#FFF',
@@ -4297,6 +4462,132 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 }}
                             >
                                 <CheckCircle2 size={15} /> {isClosingChat ? 'Finalizando y enviando...' : 'Finalizar y Enviar Cierre'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL PARA FINALIZACIÓN MASIVA SILENCIOSA (SIN MENSAJES DE WHATSAPP) */}
+            {bulkCloseModalOpen && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(3px)',
+                    zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
+                }}>
+                    <div style={{
+                        background: '#FFFFFF', borderRadius: '16px', maxWidth: '480px', width: '100%',
+                        padding: '24px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.25)', border: '1px solid #E2E8F0'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800, fontSize: '1.05rem', color: '#0F172A' }}>
+                                <CheckCircle2 size={20} color="#DC2626" />
+                                Finalizar {selectedChatIds.size} {selectedChatIds.size === 1 ? 'Conversación' : 'Conversaciones'}
+                            </div>
+                            <button 
+                                onClick={() => setBulkCloseModalOpen(false)}
+                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* AVISO IMPORTANTE: REGLA DE NO ENVÍO DE MENSAJES */}
+                        <div style={{
+                            background: '#FEF2F2',
+                            border: '1.5px solid #FCA5A5',
+                            borderRadius: '10px',
+                            padding: '12px 14px',
+                            marginBottom: '16px',
+                            display: 'flex',
+                            gap: '10px',
+                            alignItems: 'flex-start'
+                        }}>
+                            <AlertTriangle size={20} color="#DC2626" style={{ flexShrink: 0, marginTop: '2px' }} />
+                            <div>
+                                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#991B1B', marginBottom: '3px' }}>
+                                    FINALIZACIÓN SILENCIOSA (SIN MENSAJES)
+                                </div>
+                                <div style={{ fontSize: '0.74rem', color: '#7F1D1D', lineHeight: 1.45 }}>
+                                    Al finalizar de a muchos, <strong>NO se enviará ningún mensaje de WhatsApp a los pacientes</strong>. Las conversaciones pasarán directamente a <strong>Finalizados</strong> y el bot automático quedará reactivado para futuras consultas.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
+                            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>MOTIVO DE RESOLUCIÓN</label>
+                            <select
+                                value={bulkResolutionReason}
+                                onChange={(e) => setBulkResolutionReason(e.target.value)}
+                                style={{
+                                    padding: '9px 12px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                    fontSize: '0.84rem', outline: 'none', background: '#FFFFFF', color: '#0F172A'
+                                }}
+                            >
+                                <option value="Cierre masivo de cola">🧹 Cierre masivo de cola general</option>
+                                <option value="Consulta Informativa Resuelta">ℹ️ Consulta Informativa Resuelta</option>
+                                <option value="Paciente No Responde">⏳ Paciente No Responde</option>
+                                <option value="Turno Coordinado">✅ Turno Coordinado / Otorgado</option>
+                                <option value="Derivado a Guardia / Sector">🏥 Derivado a Guardia / Sector Específico</option>
+                                <option value="Cancelación / Reprogramación Confirmada">🗓️ Cancelación / Reprogramación Confirmada</option>
+                                <option value="Otro / Trámite Administrativo">📝 Otro / Ver Notas Internas</option>
+                            </select>
+                        </div>
+
+                        {/* LISTADO DE CHATS SELECCIONADOS */}
+                        <div style={{ marginBottom: '18px' }}>
+                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B', marginBottom: '6px' }}>
+                                PACIENTES A FINALIZAR ({selectedChatIds.size}):
+                            </div>
+                            <div style={{
+                                maxHeight: '130px',
+                                overflowY: 'auto',
+                                border: '1px solid #E2E8F0',
+                                borderRadius: '8px',
+                                padding: '6px 10px',
+                                background: '#F8FAFC',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '6px'
+                            }}>
+                                {Array.from(selectedChatIds).map(id => {
+                                    const c = chats.find(item => item.id === id);
+                                    if (!c) return null;
+                                    return (
+                                        <div key={id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.74rem' }}>
+                                            <span style={{ fontWeight: 700, color: '#1E293B' }}>{getCleanChatName(c)}</span>
+                                            <span style={{ color: '#64748B', fontSize: '0.7rem' }}>+{c.phone}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                            <button
+                                type="button"
+                                onClick={() => setBulkCloseModalOpen(false)}
+                                disabled={isBulkClosing}
+                                style={{
+                                    padding: '8px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                    background: '#FFFFFF', color: '#64748B', fontSize: '0.82rem', fontWeight: 600,
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmBulkClose}
+                                disabled={isBulkClosing}
+                                style={{
+                                    padding: '8px 18px', borderRadius: '8px', border: 'none',
+                                    background: '#DC2626', color: '#FFFFFF', fontSize: '0.82rem', fontWeight: 700,
+                                    cursor: isBulkClosing ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+                                }}
+                            >
+                                <CheckCircle2 size={15} />
+                                {isBulkClosing ? 'Finalizando silenciosamente...' : `Confirmar y Finalizar (${selectedChatIds.size})`}
                             </button>
                         </div>
                     </div>

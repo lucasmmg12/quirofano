@@ -15,6 +15,7 @@ import {
     CONTACT_CENTER_AGENTS, getAgentById, fetchLiveAndDemoChats,
     sendContactCenterMessage, assignChatExclusively, unassignChat,
     transferChatToAgent, closeConversationWithResolution,
+    bulkCloseConversationsSilent,
     subscribeToContactCenterRealtime, playContactCenterChime,
     isClosedOrArchived
 } from '../../services/contactCenterService';
@@ -427,6 +428,34 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         }
     };
 
+    // Finalización masiva de chats (SILENCIOSA: sin envío de ningún mensaje de WhatsApp)
+    const handleBulkCloseChats = async (chatIds, resolutionReason = 'Cierre masivo de cola') => {
+        if (!chatIds || !chatIds.length) return;
+        const targetChats = chats.filter(c => chatIds.includes(c.id));
+        if (!targetChats.length) return;
+
+        try {
+            const updatedList = await bulkCloseConversationsSilent({
+                targetChats,
+                resolutionReason,
+                activeAgent,
+                currentUser
+            });
+
+            const updatedMap = new Map(updatedList.map(u => [u.id, u]));
+            setChats(prev => prev.map(c => updatedMap.get(c.id) || c));
+
+            if (addToast) {
+                addToast(`Se finalizaron ${updatedList.length} conversaciones masivamente (sin enviar mensajes)`, 'success');
+            }
+            return updatedList;
+        } catch (err) {
+            console.error('Error en cierre masivo:', err);
+            if (addToast) addToast(err.message || 'Error al finalizar conversaciones masivamente', 'error');
+            throw err;
+        }
+    };
+
     // Cambiar permisos de un usuario (solo lmarinero)
     const handleToggleUser = async (username) => {
         if (!isLMarinero) return;
@@ -678,6 +707,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     onUnassignChat={handleUnassignChat}
                     onTransferChat={handleTransferChat}
                     onCloseChat={handleCloseChat}
+                    onBulkCloseChats={handleBulkCloseChats}
                     activeSubTab={activeSubTab}
                     onNavigateTab={handleNavigateTab}
                     onSwitchAgent={setActiveAgent}

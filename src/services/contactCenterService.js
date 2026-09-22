@@ -1333,6 +1333,74 @@ export async function closeConversationWithResolution({ chat, resolutionReason, 
 }
 
 /**
+ * Finaliza o archiva múltiples conversaciones de forma MASIVA Y SILENCIOSA.
+ * REGLA ESTRICTA: NO se envía ningún mensaje de WhatsApp a los pacientes.
+ * Actualiza contact_center_conversations en Supabase con status: 'archivado',
+ * resetea el agente asignado y reactiva el bot para futuros contactos.
+ */
+export async function bulkCloseConversationsSilent({ targetChats, resolutionReason = 'Cierre masivo de cola', activeAgent, currentUser }) {
+    if (!targetChats || !targetChats.length) return [];
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+
+    const upsertRows = [];
+    const updatedChats = [];
+
+    for (const chat of targetChats) {
+        if (!chat?.phone) continue;
+        const norm = normalizeArgentinePhone(chat.phone);
+        if (!norm) continue;
+
+        upsertRows.push({
+            phone: norm,
+            status: 'archivado',
+            resolution_reason: resolutionReason,
+            closed_at: now.toISOString(),
+            closed_by_agent_id: activeAgent?.id || null,
+            closed_by_agent_name: activeAgent?.name || null,
+            assigned_agent_id: null,
+            assigned_agent_name: null,
+            bot_active: true,
+            bot_stage: 'inicio',
+            updated_at: now.toISOString()
+        });
+
+        const sysMsg = {
+            id: 'sys_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+            sender: 'system',
+            text: `${activeAgent?.name || 'Operador'} finalizó masivamente la conversación (${resolutionReason}). Cierre silencioso: sin envío de mensaje al paciente. Bot reactivado.`,
+            timestamp: timeStr
+        };
+
+        updatedChats.push({
+            ...chat,
+            status: 'archivado',
+            assignedTo: null,
+            assignedToName: null,
+            botActive: true,
+            resolutionReason,
+            messages: [
+                ...(chat.messages || []),
+                sysMsg
+            ]
+        });
+    }
+
+    if (upsertRows.length > 0) {
+        const { error } = await supabase
+            .from('contact_center_conversations')
+            .upsert(upsertRows, { onConflict: 'phone' });
+
+        if (error) {
+            console.error('Error al finalizar conversaciones masivamente en Supabase:', error);
+            throw error;
+        }
+    }
+
+    return updatedChats;
+}
+
+/**
  * Sonido de notificación característico para nuevos mensajes entrantes (tipo WhatsApp Web)
  * Sintetizado con Web Audio API (no requiere archivos externos)
  */
