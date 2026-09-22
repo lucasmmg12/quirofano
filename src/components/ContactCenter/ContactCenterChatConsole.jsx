@@ -436,16 +436,26 @@ export default function ContactCenterChatConsole({
     // Sincronizar formulario CRM, familiares y Resumen IA cuando cambia el chat activo
     useEffect(() => {
         if (selectedChat) {
-            // Preservar miembro familiar si ya estaba seleccionado en este chat
-            setActiveFamilyMember(selectedChat.activeFamilyMember || null);
+            const normPhone = selectedChat.phone ? normalizeArgentinePhone(selectedChat.phone) : '';
+            // Recuperar miembro familiar en memoria persistente (localStorage o selectedChat)
+            let persistedFam = selectedChat.activeFamilyMember || null;
+            if (!persistedFam && normPhone) {
+                try {
+                    const saved = localStorage.getItem('cc_active_family_member_' + normPhone);
+                    if (saved) persistedFam = JSON.parse(saved);
+                } catch (_) {}
+            }
+            setActiveFamilyMember(persistedFam);
 
-            const initialDni = selectedChat.customFields?.dni && selectedChat.customFields?.dni !== 'A verificar' ? selectedChat.customFields?.dni : '';
+            const initialDni = persistedFam?.dni || (selectedChat.customFields?.dni && selectedChat.customFields?.dni !== 'A verificar' ? selectedChat.customFields?.dni : '');
+            const initialNombre = persistedFam?.nombre || selectedChat.customFields?.pacienteNombre || selectedChat.contactName || '';
+
             setCrmForm({
                 dni: initialDni,
-                pacienteNombre: selectedChat.customFields?.pacienteNombre || selectedChat.contactName || '',
-                obraSocial: selectedChat.customFields?.obraSocial && selectedChat.customFields?.obraSocial !== 'A consultar' ? selectedChat.customFields?.obraSocial : '',
+                pacienteNombre: initialNombre,
+                obraSocial: persistedFam?.coseguro || (selectedChat.customFields?.obraSocial && selectedChat.customFields?.obraSocial !== 'A consultar' ? selectedChat.customFields?.obraSocial : ''),
                 fechaNacimiento: selectedChat.customFields?.fechaNacimiento && selectedChat.customFields?.fechaNacimiento !== 'No informada' ? selectedChat.customFields?.fechaNacimiento : '',
-                email: selectedChat.customFields?.email && selectedChat.customFields?.email !== 'No informado' ? selectedChat.customFields?.email : '',
+                email: persistedFam?.email || (selectedChat.customFields?.email && selectedChat.customFields?.email !== 'No informado' ? selectedChat.customFields?.email : ''),
                 departamento: selectedChat.customFields?.departamento || 'San Juan',
                 motivoConsulta: selectedChat.customFields?.motivoConsulta || selectedChat.customFields?.turnosDiaHora || '',
                 notas: selectedChat.customFields?.notas || ''
@@ -458,6 +468,24 @@ export default function ContactCenterChatConsole({
                 fetchFamilyMembersByPhone(selectedChat.phone).then(fams => {
                     if (Array.isArray(fams) && fams.length > 0) {
                         setFamilyMembers(fams);
+                        // Reconectar miembro fijado si coincide con algún familiar del listado
+                        const currentDni = persistedFam?.dni || selectedChat.customFields?.dni;
+                        const matchedFam = fams.find(f => String(f.dni) === String(currentDni) || (persistedFam?.nhc && String(f.nhc) === String(persistedFam.nhc)));
+                        if (matchedFam) {
+                            setActiveFamilyMember(matchedFam);
+                            selectedChat.activeFamilyMember = matchedFam;
+                            const birth = matchedFam.fecha_nacimiento || '';
+                            const formattedBirth = birth.includes('/') ? birth : (birth.includes('-') ? `${birth.split('-')[2]}/${birth.split('-')[1]}/${birth.split('-')[0]}` : birth);
+                            setCrmForm(prev => ({
+                                ...prev,
+                                dni: matchedFam.dni || prev.dni,
+                                pacienteNombre: matchedFam.nombre || prev.pacienteNombre,
+                                obraSocial: matchedFam.coseguro || prev.obraSocial,
+                                fechaNacimiento: formattedBirth || prev.fechaNacimiento,
+                                email: matchedFam.email || prev.email,
+                                departamento: matchedFam.centro || prev.departamento
+                            }));
+                        }
                     } else {
                         setFamilyMembers([]);
                     }
@@ -509,14 +537,22 @@ export default function ContactCenterChatConsole({
         }
     }, [selectedChat?.id, selectedChat?.phone]);
 
-    // Conmutar ficha activa a otro miembro del grupo familiar
+    // Conmutar ficha activa a otro miembro del grupo familiar (Fijación permanente en memoria y base de datos)
     const handleSelectFamilyMember = async (fam) => {
         if (!fam) return;
         if (fam.nhc) delete patientHistoryCache.current[`nhc_${fam.nhc}`];
         if (fam.dni) delete patientHistoryCache.current[`dni_${fam.dni}`];
+        
         setActiveFamilyMember(fam);
         if (selectedChat) {
             selectedChat.activeFamilyMember = fam;
+        }
+
+        const normPhone = selectedChat?.phone ? normalizeArgentinePhone(selectedChat.phone) : '';
+        if (normPhone) {
+            try {
+                localStorage.setItem('cc_active_family_member_' + normPhone, JSON.stringify(fam));
+            } catch (_) {}
         }
 
         const birth = fam.fecha_nacimiento || '';
@@ -533,7 +569,7 @@ export default function ContactCenterChatConsole({
 
         setCrmForm(prev => ({ ...prev, ...updated }));
 
-        if (selectedChat.customFields) {
+        if (selectedChat?.customFields) {
             selectedChat.customFields.dni = fam.dni;
             selectedChat.customFields.nhc = fam.nhc;
             selectedChat.customFields.pacienteNombre = fam.nombre;
@@ -542,11 +578,14 @@ export default function ContactCenterChatConsole({
             selectedChat.customFields.email = fam.email || selectedChat.customFields.email;
             selectedChat.customFields.esPacienteExistente = true;
         }
-        selectedChat.contactName = fam.nombre;
+        if (selectedChat) {
+            selectedChat.contactName = fam.nombre;
+        }
+        setForceUpdate(n => n + 1);
 
         try {
             await saveCrmPatientCard({
-                phone: selectedChat.phone,
+                phone: selectedChat?.phone,
                 dni: fam.dni,
                 nombreCompleto: fam.nombre,
                 obraSocial: fam.coseguro,
@@ -555,7 +594,7 @@ export default function ContactCenterChatConsole({
                 departamento: fam.centro || 'San Juan',
                 motivoConsulta: crmForm.motivoConsulta
             });
-            showToast(`Ficha vinculada a ${fam.nombre}`, 'success');
+            showToast(`Ficha fijada: ${fam.nombre}`, 'success');
         } catch (err) {
             console.warn('Error guardando conmutación de ficha familiar:', err);
         }

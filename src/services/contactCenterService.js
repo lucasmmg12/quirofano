@@ -992,7 +992,7 @@ export async function saveCrmPatientCard({ phone, dni, nombreCompleto, obraSocia
     if (!phone) throw new Error('Teléfono requerido');
     const norm = normalizeArgentinePhone(phone);
 
-    const updatePayload = {
+    const convPayload = {
         dni: dni ? String(dni).trim() : null,
         nombre_completo: nombreCompleto ? String(nombreCompleto).trim() : null,
         obra_social: obraSocial ? String(obraSocial).trim() : null,
@@ -1000,24 +1000,19 @@ export async function saveCrmPatientCard({ phone, dni, nombreCompleto, obraSocia
         email: email ? String(email).trim() : null,
         departamento: departamento ? String(departamento).trim() : null,
         motivo_consulta: motivoConsulta ? String(motivoConsulta).trim() : null,
-        notas: notas !== undefined ? notas : null,
         updated_at: new Date().toISOString()
     };
 
     // 1. Persistir en contact_center_conversations
-    let { error: convErr } = await supabase
+    const { error: convErr } = await supabase
         .from('contact_center_conversations')
-        .update(updatePayload)
-        .eq('phone', norm);
+        .upsert({
+            phone: norm,
+            ...convPayload
+        }, { onConflict: 'phone' });
 
     if (convErr) {
-        // Fallback: si aún no existe el registro, insertar
-        const { error: insErr } = await supabase
-            .from('contact_center_conversations')
-            .insert({ phone: norm, ...updatePayload });
-        if (insErr) {
-            console.warn('[contact-center] Error guardando ficha en contact_center_conversations:', insErr.message);
-        }
+        console.error('Error guardando en contact_center_conversations:', convErr);
     }
 
     // 2. Persistir en crm_contacts para sincronización global (Admisiones, Cirugías, etc.)
@@ -1026,16 +1021,16 @@ export async function saveCrmPatientCard({ phone, dni, nombreCompleto, obraSocia
             .from('crm_contacts')
             .upsert({
                 phone: norm,
-                nombre: updatePayload.nombre_completo || 'Paciente',
-                dni: updatePayload.dni,
-                notas: updatePayload.notas,
+                nombre: convPayload.nombre_completo || 'Paciente',
+                dni: convPayload.dni,
+                notas: notas !== undefined ? notas : null,
                 updated_at: new Date().toISOString()
             }, { onConflict: 'phone' });
     } catch (crmErr) {
         console.warn('Advertencia actualizando crm_contacts:', crmErr);
     }
 
-    return updatePayload;
+    return { ...convPayload, notas };
 }
 
 /**
