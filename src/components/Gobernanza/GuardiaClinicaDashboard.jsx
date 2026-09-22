@@ -1,10 +1,30 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Activity, Clock, CheckCircle2, RotateCcw, AlertTriangle, 
-    Layers, PieChart, Bed, FileText, Calendar, RefreshCw, 
+    Layers, PieChart as PieChartIcon, Bed, FileText, Calendar, RefreshCw, 
     BookOpen, Sparkles, TrendingUp, ArrowUpRight, ArrowDownRight, 
-    Check, Copy, ShieldCheck, ChevronRight, HelpCircle, Scissors, Users
+    Check, Copy, ShieldCheck, ChevronRight, HelpCircle, Scissors, Users,
+    BarChart3, Eye, BarChart2
 } from 'lucide-react';
+import {
+    ResponsiveContainer,
+    ComposedChart,
+    BarChart,
+    Bar,
+    LineChart,
+    Line,
+    AreaChart,
+    Area,
+    PieChart,
+    Pie,
+    Cell,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip as RechartsTooltip,
+    Legend,
+    ReferenceLine
+} from 'recharts';
 import { supabase } from '../../lib/supabase';
 import { INDICADORES_GUARDIA_CATALOGO } from './telarConfig';
 import GuardiaConversionTimelineModal from './GuardiaConversionTimelineModal';
@@ -38,9 +58,10 @@ export default function GuardiaClinicaDashboard({
             if (error) throw error;
             if (data && data.length > 0) {
                 setHistorialResumen(data);
-                // Si el período seleccionado no está en la lista, usar el primero disponible
+                // Si el período seleccionado no está en la lista, usar el mes más reciente (excluyendo ANUAL como default)
                 if (!data.some(d => d.periodo === selectedPeriodo)) {
-                    setSelectedPeriodo(data[0].periodo);
+                    const latestMonth = data.find(d => !d.periodo.includes('ANUAL'));
+                    setSelectedPeriodo(latestMonth ? latestMonth.periodo : data[0].periodo);
                 }
             }
         } catch (err) {
@@ -51,23 +72,110 @@ export default function GuardiaClinicaDashboard({
         }
     };
 
+    // Separar registros mensuales del consolidado anual
+    const monthlyPeriods = useMemo(() => {
+        return historialResumen.filter(h => !h.periodo.includes('ANUAL'));
+    }, [historialResumen]);
+
+    const annualPeriod = useMemo(() => {
+        return historialResumen.find(h => h.periodo.includes('ANUAL'));
+    }, [historialResumen]);
+
     // Registro del período actualmente seleccionado
     const currentData = useMemo(() => {
         if (!historialResumen.length) return null;
         return historialResumen.find(r => r.periodo === selectedPeriodo) || historialResumen[0];
     }, [historialResumen, selectedPeriodo]);
 
-    // Formateador de nombres de meses en español
+    // Formateador de nombres de períodos (corrige 'ANUAL' para no producir 'undefined 2026')
     const formatPeriodoLabel = (periodoStr) => {
         if (!periodoStr) return '';
+        if (periodoStr.includes('ANUAL')) {
+            const year = periodoStr.split('-')[0] || '2026';
+            return `Acumulado ${year}`;
+        }
         const [year, month] = periodoStr.split('-');
         const meses = [
             'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
             'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
         ];
         const mIdx = parseInt(month, 10) - 1;
+        if (isNaN(mIdx) || mIdx < 0 || mIdx > 11) return periodoStr;
         return `${meses[mIdx]} ${year}`;
     };
+
+    // Formateador abreviado para ejes de gráficos
+    const formatMesCorto = (periodoStr) => {
+        if (!periodoStr) return '';
+        if (periodoStr.includes('ANUAL')) return 'Anual';
+        const [, month] = periodoStr.split('-');
+        const mesesCortos = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        const mIdx = parseInt(month, 10) - 1;
+        return (mIdx >= 0 && mIdx < 12) ? mesesCortos[mIdx] : periodoStr;
+    };
+
+    // Serie temporal cronológica (Ene -> Sep 2026) para los gráficos de evolución continua
+    const evolutionChartData = useMemo(() => {
+        return [...historialResumen]
+            .filter(r => !r.periodo.includes('ANUAL'))
+            .sort((a, b) => a.periodo.localeCompare(b.periodo))
+            .map(r => {
+                const mesAbrev = formatMesCorto(r.periodo);
+                return {
+                    periodo: r.periodo,
+                    mes: mesAbrev,
+                    mesFull: formatPeriodoLabel(r.periodo),
+                    consultas: r.total_consultas || 0,
+                    cirugias: r.cantidad_pases_cirugia || 0,
+                    conversionPct: Number(r.conversion_cirugia_pct) || 0,
+                    esperaMin: Number(r.espera_medico_min_promedio) || 0,
+                    permanenciaMin: Number(r.permanencia_guardia_min_promedio) || 0,
+                    reconsultaPct: Number(r.reconsulta_72h_pct) || 0,
+                    reinternacionPct: Number(r.reinternacion_72h_pct) || 0,
+                    mujeresPct: Number(r.mujeres_pct) || 0,
+                    hombresPct: Number(r.hombres_pct) || 0,
+                    isSelected: r.periodo === selectedPeriodo
+                };
+            });
+    }, [historialResumen, selectedPeriodo]);
+
+    // Datos estructurados para el Donut de Triage del período activo
+    const triageChartData = useMemo(() => {
+        if (!currentData?.triage_distribucion || !Array.isArray(currentData.triage_distribucion)) return [];
+        return currentData.triage_distribucion.map(t => {
+            let color = '#2563EB';
+            let labelCorto = t.nivel;
+            if (t.nivel?.includes('N1')) {
+                color = '#DC2626';
+                labelCorto = 'N1 Emergencia';
+            } else if (t.nivel?.includes('N2')) {
+                color = '#F59E0B';
+                labelCorto = 'N2 Urgencia';
+            } else if (t.nivel?.includes('N3')) {
+                color = '#2563EB';
+                labelCorto = 'N3 Urg. Menor';
+            }
+            return {
+                name: labelCorto,
+                fullName: t.nivel,
+                value: t.cantidad,
+                pct: t.porcentaje,
+                color
+            };
+        });
+    }, [currentData]);
+
+    // Datos estructurados para Destinos Post-Guardia
+    const destinosChartData = useMemo(() => {
+        if (!currentData?.destinos_distribucion || !Array.isArray(currentData.destinos_distribucion)) return [];
+        return [...currentData.destinos_distribucion]
+            .map(d => ({
+                name: d.destino,
+                cantidad: d.cantidad,
+                pct: d.porcentaje
+            }))
+            .sort((a, b) => b.cantidad - a.cantidad);
+    }, [currentData]);
 
     // Copiar query al portapapeles
     const handleCopySql = (sql) => {
@@ -167,7 +275,8 @@ export default function GuardiaClinicaDashboard({
                         border: '1px solid #CBD5E1',
                         gap: '2px'
                     }}>
-                        {historialResumen.slice(0, 4).map(h => {
+                        {/* Últimos 4 meses cronológicos */}
+                        {monthlyPeriods.slice(0, 4).map(h => {
                             const isSel = selectedPeriodo === h.periodo;
                             return (
                                 <button
@@ -190,10 +299,33 @@ export default function GuardiaClinicaDashboard({
                                 </button>
                             );
                         })}
+
+                        {/* Botón rápido para Acumulado Anual */}
+                        {annualPeriod && (
+                            <button
+                                key={annualPeriod.periodo}
+                                type="button"
+                                onClick={() => setSelectedPeriodo(annualPeriod.periodo)}
+                                title="Ver consolidado acumulado de todo el año 2026"
+                                style={{
+                                    background: selectedPeriodo === annualPeriod.periodo ? '#1E40AF' : 'transparent',
+                                    color: selectedPeriodo === annualPeriod.periodo ? '#FFFFFF' : '#1E40AF',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '5px 10px',
+                                    fontSize: '0.76rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                📊 {formatPeriodoLabel(annualPeriod.periodo)}
+                            </button>
+                        )}
                     </div>
 
                     {/* Dropdown con todos los períodos históricos */}
-                    {historialResumen.length > 4 && (
+                    {historialResumen.length > 0 && (
                         <select
                             value={selectedPeriodo}
                             onChange={(e) => setSelectedPeriodo(e.target.value)}
@@ -208,11 +340,18 @@ export default function GuardiaClinicaDashboard({
                                 cursor: 'pointer'
                             }}
                         >
-                            {historialResumen.map(h => (
-                                <option key={h.periodo} value={h.periodo}>
-                                    {formatPeriodoLabel(h.periodo)} ({h.total_consultas} consult.)
+                            {annualPeriod && (
+                                <option value={annualPeriod.periodo}>
+                                    📊 {formatPeriodoLabel(annualPeriod.periodo)} ({annualPeriod.total_consultas?.toLocaleString()} consult.)
                                 </option>
-                            ))}
+                            )}
+                            <optgroup label="Meses 2026">
+                                {monthlyPeriods.map(h => (
+                                    <option key={h.periodo} value={h.periodo}>
+                                        {formatPeriodoLabel(h.periodo)} ({h.total_consultas?.toLocaleString()} consult.)
+                                    </option>
+                                ))}
+                            </optgroup>
                         </select>
                     )}
 
@@ -428,7 +567,291 @@ export default function GuardiaClinicaDashboard({
 
             </div>
 
-            {/* ─── DESGLOSE DE TRIAGE Y DESTINOS ─── */}
+            {/* ─── CENTRO DE ANALÍTICA VISUAL & GRÁFICOS (RECHARTS) ─── */}
+            <div style={{
+                background: '#FFFFFF',
+                borderRadius: '12px',
+                border: '1px solid #E2E8F0',
+                padding: '20px 22px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '20px'
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                            width: '38px',
+                            height: '38px',
+                            borderRadius: '8px',
+                            background: '#EFF6FF',
+                            border: '1px solid #BFDBFE',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#1E40AF'
+                        }}>
+                            <BarChart3 size={20} />
+                        </div>
+                        <div>
+                            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
+                                Curvas de Tendencia y Comportamiento Clínico (Serie 2026)
+                            </h3>
+                            <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                                Evolución temporal mes a mes de demanda asistencial, oportunidad médica y resolutividad
+                            </span>
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', background: '#F8FAFC', padding: '5px 12px', borderRadius: '6px', border: '1px solid #E2E8F0', color: '#475569', fontWeight: 600 }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2563EB' }} />
+                        Período activo: <strong style={{ color: '#1E40AF' }}>{formatPeriodoLabel(currentData.periodo)}</strong>
+                    </div>
+                </div>
+
+                {/* Grilla de los 2 Gráficos de Tendencia Histórica Principal */}
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))',
+                    gap: '20px'
+                }}>
+                    {/* Gráfico 1: Demanda Mensual vs. Conversión a Cirugía (≤ 48h) */}
+                    <div style={{
+                        background: '#F8FAFC',
+                        borderRadius: '10px',
+                        border: '1px solid #E2E8F0',
+                        padding: '16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div>
+                                <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#1E293B' }}>
+                                    Volumen de Consultas vs. Conversión Quirúrgica (≤ 48 hs)
+                                </h4>
+                                <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                    Cruce con Quirófano (Meta normada: 8% - 12%)
+                                </span>
+                            </div>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#DCFCE7', color: '#166534', padding: '2px 7px', borderRadius: '6px' }}>
+                                Barras + % Conv.
+                            </span>
+                        </div>
+
+                        <div style={{ height: '260px', width: '100%' }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                                <ComposedChart data={evolutionChartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                                    <XAxis 
+                                        dataKey="mes" 
+                                        stroke="#64748B" 
+                                        fontSize={11} 
+                                        tickLine={false} 
+                                    />
+                                    <YAxis 
+                                        yAxisId="left" 
+                                        stroke="#2563EB" 
+                                        fontSize={11} 
+                                        tickLine={false}
+                                        domain={[0, 'auto']}
+                                    />
+                                    <YAxis 
+                                        yAxisId="right" 
+                                        orientation="right" 
+                                        stroke="#10B981" 
+                                        fontSize={11} 
+                                        tickLine={false}
+                                        unit="%"
+                                        domain={[0, 15]}
+                                    />
+                                    <RechartsTooltip content={<CustomEvolutionTooltip />} />
+                                    <Legend 
+                                        wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} 
+                                    />
+                                    <Bar 
+                                        yAxisId="left" 
+                                        dataKey="consultas" 
+                                        name="Consultas Urgencia" 
+                                        fill="#3B82F6" 
+                                        radius={[4, 4, 0, 0]} 
+                                        maxBarSize={34} 
+                                    >
+                                        {evolutionChartData.map((entry, index) => (
+                                            <Cell 
+                                                key={`cell-${index}`} 
+                                                fill={entry.periodo === selectedPeriodo ? '#1E40AF' : '#3B82F6'} 
+                                            />
+                                        ))}
+                                    </Bar>
+                                    <Line 
+                                        yAxisId="right" 
+                                        type="monotone" 
+                                        dataKey="conversionPct" 
+                                        name="% Conv. Quirúrgica" 
+                                        stroke="#10B981" 
+                                        strokeWidth={2.5} 
+                                        dot={{ r: 4, fill: '#10B981' }} 
+                                        activeDot={{ r: 6 }} 
+                                    />
+                                    {/* Rango de Benchmark 8% - 12% */}
+                                    <ReferenceLine yAxisId="right" y={8} stroke="#10B981" strokeDasharray="3 3" />
+                                    <ReferenceLine yAxisId="right" y={12} stroke="#10B981" strokeDasharray="3 3" />
+                                </ComposedChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+
+                    {/* Gráfico 2: Curva de Oportunidad (Espera Médica vs Permanencia) con Meta 30 min */}
+                    <div style={{
+                        background: '#F8FAFC',
+                        borderRadius: '10px',
+                        border: '1px solid #E2E8F0',
+                        padding: '16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div>
+                                <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#1E293B' }}>
+                                    Curva de Tiempos de Oportunidad y Permanencia
+                                </h4>
+                                <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                    Espera al Médico (min) vs. Permanencia Total en Guardia
+                                </span>
+                            </div>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: '6px' }}>
+                                Meta Oportunidad: &lt; 30 min
+                            </span>
+                        </div>
+
+                        <div style={{ height: '260px', width: '100%' }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={evolutionChartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                                    <defs>
+                                        <linearGradient id="colorPermanencia" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#6366F1" stopOpacity={0.25} />
+                                            <stop offset="95%" stopColor="#6366F1" stopOpacity={0.02} />
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                                    <XAxis 
+                                        dataKey="mes" 
+                                        stroke="#64748B" 
+                                        fontSize={11} 
+                                        tickLine={false} 
+                                    />
+                                    <YAxis 
+                                        stroke="#64748B" 
+                                        fontSize={11} 
+                                        tickLine={false} 
+                                        unit="m" 
+                                        domain={[0, 'auto']}
+                                    />
+                                    <RechartsTooltip content={<CustomTimesTooltip />} />
+                                    <Legend 
+                                        wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} 
+                                    />
+                                    <ReferenceLine 
+                                        y={30} 
+                                        stroke="#DC2626" 
+                                        strokeDasharray="4 4" 
+                                        strokeWidth={1.5} 
+                                        label={{ 
+                                            value: 'Meta: 30 min', 
+                                            fill: '#DC2626', 
+                                            fontSize: 10, 
+                                            fontWeight: 700, 
+                                            position: 'insideTopRight' 
+                                        }} 
+                                    />
+                                    <Area 
+                                        type="monotone" 
+                                        dataKey="permanenciaMin" 
+                                        name="Permanencia Total (min)" 
+                                        stroke="#6366F1" 
+                                        strokeWidth={2} 
+                                        fill="url(#colorPermanencia)" 
+                                    />
+                                    <Line 
+                                        type="monotone" 
+                                        dataKey="esperaMin" 
+                                        name="Espera al Médico (min)" 
+                                        stroke="#F59E0B" 
+                                        strokeWidth={2.5} 
+                                        dot={{ r: 4, fill: '#F59E0B' }} 
+                                        activeDot={{ r: 6 }} 
+                                    />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Gráfico 3: Comparativa de Indicadores de Calidad Hospitalaria (Reconsulta 72h y Reinternación) */}
+                <div style={{
+                    background: '#F8FAFC',
+                    borderRadius: '10px',
+                    border: '1px solid #E2E8F0',
+                    padding: '16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
+                }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+                        <div>
+                            <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#1E293B' }}>
+                                Indicadores de Calidad y Seguridad Clínica (Serie Temporal 72 horas)
+                            </h4>
+                            <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                Tasa de Reconsulta a Guardia (Meta: &lt; 7%) y Tasa de Reinternación Inesperada (Meta: &lt; 5%)
+                            </span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#DCFCE7', color: '#166534', padding: '2px 7px', borderRadius: '6px' }}>
+                                Meta Reconsulta &lt; 7%
+                            </span>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#EFF6FF', color: '#1E40AF', padding: '2px 7px', borderRadius: '6px' }}>
+                                Meta Reinternación &lt; 5%
+                            </span>
+                        </div>
+                    </div>
+
+                    <div style={{ height: '190px', width: '100%' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={evolutionChartData} margin={{ top: 10, right: 15, left: -10, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                                <XAxis dataKey="mes" stroke="#64748B" fontSize={11} tickLine={false} />
+                                <YAxis stroke="#64748B" fontSize={11} tickLine={false} unit="%" domain={[0, 10]} />
+                                <RechartsTooltip content={<CustomQualityTooltip />} />
+                                <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
+                                <ReferenceLine y={7} stroke="#D97706" strokeDasharray="3 3" label={{ value: 'Meta Reconsulta (7%)', fill: '#D97706', fontSize: 10 }} />
+                                <ReferenceLine y={5} stroke="#2563EB" strokeDasharray="3 3" label={{ value: 'Meta Reinternación (5%)', fill: '#2563EB', fontSize: 10 }} />
+                                <Line 
+                                    type="monotone" 
+                                    dataKey="reconsultaPct" 
+                                    name="% Reconsulta (72 hs)" 
+                                    stroke="#D97706" 
+                                    strokeWidth={2.5} 
+                                    dot={{ r: 4, fill: '#D97706' }} 
+                                    activeDot={{ r: 6 }} 
+                                />
+                                <Line 
+                                    type="monotone" 
+                                    dataKey="reinternacionPct" 
+                                    name="% Reinternación (72 hs)" 
+                                    stroke="#2563EB" 
+                                    strokeWidth={2.5} 
+                                    dot={{ r: 4, fill: '#2563EB' }} 
+                                    activeDot={{ r: 6 }} 
+                                />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            </div>
+
+            {/* ─── DESGLOSE DE TRIAGE Y DESTINOS CON VISUALIZADORES INTERACTIVOS ─── */}
             <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
@@ -440,9 +863,11 @@ export default function GuardiaClinicaDashboard({
                     borderRadius: '12px',
                     border: '1px solid #E2E8F0',
                     padding: '18px 20px',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                    display: 'flex',
+                    flexDirection: 'column'
                 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <CheckCircle2 size={18} color="#2563EB" />
                             <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#1E293B' }}>
@@ -453,6 +878,48 @@ export default function GuardiaClinicaDashboard({
                             Total: {currentData.consultas_con_triage} clasificados
                         </span>
                     </div>
+
+                    {/* Gráfico Donut de Triage */}
+                    {triageChartData.length > 0 && (
+                        <div style={{ height: '175px', width: '100%', position: 'relative', margin: '0 0 10px 0' }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={triageChartData}
+                                        dataKey="value"
+                                        nameKey="name"
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={48}
+                                        outerRadius={72}
+                                        paddingAngle={3}
+                                    >
+                                        {triageChartData.map((entry, index) => (
+                                            <Cell key={`triage-cell-${index}`} fill={entry.color} />
+                                        ))}
+                                    </Pie>
+                                    <RechartsTooltip 
+                                        formatter={(val, name, item) => [`${val.toLocaleString()} pac. (${item.payload.pct}%)`, item.payload.fullName]}
+                                    />
+                                </PieChart>
+                            </ResponsiveContainer>
+                            <div style={{
+                                position: 'absolute',
+                                top: '50%',
+                                left: '50%',
+                                transform: 'translate(-50%, -50%)',
+                                textAlign: 'center',
+                                pointerEvents: 'none'
+                            }}>
+                                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0F172A', lineHeight: 1.1 }}>
+                                    {currentData.cobertura_triage_pct}%
+                                </div>
+                                <div style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 700 }}>
+                                    Cobertura
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {currentData.triage_distribucion && currentData.triage_distribucion.length > 0 ? (
@@ -496,11 +963,13 @@ export default function GuardiaClinicaDashboard({
                     borderRadius: '12px',
                     border: '1px solid #E2E8F0',
                     padding: '18px 20px',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                    display: 'flex',
+                    flexDirection: 'column'
                 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <PieChart size={18} color="#0D9488" />
+                            <PieChartIcon size={18} color="#0D9488" />
                             <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#1E293B' }}>
                                 Destinos Post-Guardia Efectivos
                             </h4>
@@ -509,6 +978,40 @@ export default function GuardiaClinicaDashboard({
                             Flujo ambulatorio e internación
                         </span>
                     </div>
+
+                    {/* Gráfico de Barras Horizontal de Destinos */}
+                    {destinosChartData.length > 0 && (
+                        <div style={{ height: '175px', width: '100%', margin: '0 0 10px 0' }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart
+                                    layout="vertical"
+                                    data={destinosChartData.slice(0, 5)}
+                                    margin={{ top: 5, right: 25, left: 10, bottom: 5 }}
+                                >
+                                    <XAxis type="number" hide />
+                                    <YAxis 
+                                        type="category" 
+                                        dataKey="name" 
+                                        width={125} 
+                                        fontSize={10} 
+                                        tickLine={false} 
+                                        stroke="#475569" 
+                                    />
+                                    <RechartsTooltip 
+                                        formatter={(val, name, item) => [`${val.toLocaleString()} pac. (${item.payload.pct}%)`, 'Cantidad']}
+                                    />
+                                    <Bar dataKey="cantidad" fill="#0D9488" radius={[0, 4, 4, 0]} barSize={13}>
+                                        {destinosChartData.map((entry, index) => (
+                                            <Cell 
+                                                key={`dest-cell-${index}`} 
+                                                fill={entry.name.includes('Quirófano') ? '#2563EB' : entry.name.includes('Alta') ? '#0D9488' : '#6366F1'} 
+                                            />
+                                        ))}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    )}
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {currentData.destinos_distribucion && currentData.destinos_distribucion.length > 0 ? (
@@ -1138,4 +1641,98 @@ WHERE a.Procedencia = 'Derivado desde Urgencias'
         default:
             return `-- Consulte sql/indicadores_guardia_clinica_salus.sql para la query completa.`;
     }
+}
+
+// ─── TOOLTIPS PERSONALIZADOS PARA GRÁFICOS (ESTILO CLÍNICO SANATORIO ARGENTINO) ───
+function CustomEvolutionTooltip({ active, payload, label }) {
+    if (!active || !payload || !payload.length) return null;
+    return (
+        <div style={{
+            background: '#FFFFFF',
+            border: '1px solid #CBD5E1',
+            borderRadius: '8px',
+            padding: '10px 14px',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.1)',
+            fontSize: '0.75rem',
+            minWidth: '180px'
+        }}>
+            <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: '6px', borderBottom: '1px solid #F1F5F9', paddingBottom: '4px' }}>
+                Período: {label}
+            </div>
+            {payload.map((entry, index) => (
+                <div key={index} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', margin: '4px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: entry.color }} />
+                        <span style={{ color: '#475569', fontWeight: 600 }}>{entry.name}:</span>
+                    </div>
+                    <strong style={{ color: '#0F172A' }}>
+                        {entry.name.includes('%') ? `${entry.value}%` : `${entry.value.toLocaleString()} pac.`}
+                    </strong>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function CustomTimesTooltip({ active, payload, label }) {
+    if (!active || !payload || !payload.length) return null;
+    return (
+        <div style={{
+            background: '#FFFFFF',
+            border: '1px solid #CBD5E1',
+            borderRadius: '8px',
+            padding: '10px 14px',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.1)',
+            fontSize: '0.75rem',
+            minWidth: '190px'
+        }}>
+            <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: '6px', borderBottom: '1px solid #F1F5F9', paddingBottom: '4px' }}>
+                Período: {label}
+            </div>
+            {payload.map((entry, index) => (
+                <div key={index} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', margin: '4px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: entry.color }} />
+                        <span style={{ color: '#475569', fontWeight: 600 }}>{entry.name}:</span>
+                    </div>
+                    <strong style={{ color: '#0F172A' }}>
+                        {entry.value} min
+                    </strong>
+                </div>
+            ))}
+            <div style={{ borderTop: '1px dashed #E2E8F0', marginTop: '6px', paddingTop: '4px', color: '#DC2626', fontSize: '0.68rem', fontWeight: 700 }}>
+                Meta Oportunidad: &lt; 30 min
+            </div>
+        </div>
+    );
+}
+
+function CustomQualityTooltip({ active, payload, label }) {
+    if (!active || !payload || !payload.length) return null;
+    return (
+        <div style={{
+            background: '#FFFFFF',
+            border: '1px solid #CBD5E1',
+            borderRadius: '8px',
+            padding: '10px 14px',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.1)',
+            fontSize: '0.75rem',
+            minWidth: '190px'
+        }}>
+            <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: '6px', borderBottom: '1px solid #F1F5F9', paddingBottom: '4px' }}>
+                Período: {label}
+            </div>
+            {payload.map((entry, index) => (
+                <div key={index} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', margin: '4px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: entry.color }} />
+                        <span style={{ color: '#475569', fontWeight: 600 }}>{entry.name}:</span>
+                    </div>
+                    <strong style={{ color: '#0F172A' }}>
+                        {entry.value}%
+                    </strong>
+                </div>
+            ))}
+        </div>
+    );
 }
