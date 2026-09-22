@@ -1977,12 +1977,57 @@
 /* ── Left Sidebar: Conversation List ── */
 .msg-panel__sidebar {
     width: 440px;
-    min-width: 380px;
-    max-width: 480px;
+    min-width: 320px;
+    max-width: 750px;
     background: var(--neutral-0);
     border-right: 1px solid var(--neutral-200);
     display: flex;
     flex-direction: column;
+    flex-shrink: 0;
+    position: relative;
+}
+
+/* ── Resizer Splitter Bar ── */
+.msg-panel__resizer {
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    background: #F1F5F9;
+    border-left: 1px solid #E2E8F0;
+    border-right: 1px solid #E2E8F0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    transition: background 0.15s ease;
+    z-index: 10;
+    flex-shrink: 0;
+}
+
+.msg-panel__resizer:hover,
+.msg-panel__resizer--dragging {
+    background: #0284C7 !important;
+}
+
+.msg-panel__resizer:hover > div,
+.msg-panel__resizer--dragging > div {
+    background: #FFFFFF !important;
+}
+
+/* ── Thin modern scrollbar for quick filter pills ── */
+.msg-panel__quick-filters::-webkit-scrollbar {
+    height: 5px;
+}
+.msg-panel__quick-filters::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: 4px;
+}
+.msg-panel__quick-filters::-webkit-scrollbar-thumb {
+    background: #CBD5E1;
+    border-radius: 4px;
+}
+.msg-panel__quick-filters::-webkit-scrollbar-thumb:hover {
+    background: #94A3B8;
 }
 
 .msg-panel__sidebar-header {

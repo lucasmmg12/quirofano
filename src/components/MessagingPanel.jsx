@@ -11,7 +11,7 @@ import {
     ArrowLeft, Smile, Image as ImageIcon, Mic, Square, Loader,
     RefreshCw, Play, Pause, Volume2, Download, Paperclip, Zap, Copy,
     Settings, CheckCheck, Check, Calendar, Shield, DollarSign,
-    ChevronDown, ChevronUp, Stethoscope, FileText, AlertTriangle, CheckCircle,
+    ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Stethoscope, FileText, AlertTriangle, CheckCircle,
 } from 'lucide-react';
 import {
     fetchConversations, fetchMessages, saveOutgoingMessage,
@@ -239,6 +239,123 @@ export default function MessagingPanel({ addToast, currentUser }) {
     const [metaTemplateVars, setMetaTemplateVars] = useState([]);
     const autoSendPendingRef = useRef(false);
 
+    // Panel de Conversaciones Resizable (Ancho ajustable 320px - 750px)
+    const panelContainerRef = useRef(null);
+    const [sidebarWidth, setSidebarWidth] = useState(() => {
+        const saved = localStorage.getItem('msg_panel_sidebar_width');
+        const parsed = saved ? parseInt(saved, 10) : 440;
+        return isNaN(parsed) ? 440 : Math.min(Math.max(parsed, 320), 750);
+    });
+    const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
+
+    const handleMouseDownResizer = (e) => {
+        e.preventDefault();
+        setIsDraggingSidebar(true);
+    };
+
+    useEffect(() => {
+        if (!isDraggingSidebar) return;
+
+        const handleMouseMove = (e) => {
+            if (panelContainerRef.current) {
+                const rect = panelContainerRef.current.getBoundingClientRect();
+                const calculatedWidth = e.clientX - rect.left;
+                const boundedWidth = Math.min(Math.max(calculatedWidth, 320), 750);
+                setSidebarWidth(boundedWidth);
+            }
+        };
+
+        const handleMouseUp = () => {
+            setIsDraggingSidebar(false);
+            setSidebarWidth(current => {
+                localStorage.setItem('msg_panel_sidebar_width', current.toString());
+                return current;
+            });
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isDraggingSidebar]);
+
+    // Desplazamiento horizontal de burbujas/filtros rápidos
+    const filtersBarRef = useRef(null);
+    const [canScrollLeft, setCanScrollLeft] = useState(false);
+    const [canScrollRight, setCanScrollRight] = useState(false);
+    const [isPillsDragging, setIsPillsDragging] = useState(false);
+    const pillsDragState = useRef({ startX: 0, scrollLeft: 0, hasMoved: false });
+
+    const checkPillsScroll = useCallback(() => {
+        const el = filtersBarRef.current;
+        if (!el) return;
+        setCanScrollLeft(el.scrollLeft > 4);
+        setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+    }, []);
+
+    useEffect(() => {
+        const el = filtersBarRef.current;
+        if (!el) return;
+
+        // Desplazamiento con rueda del ratón (wheel -> scroll horizontal)
+        const handleWheel = (e) => {
+            if (e.deltaY !== 0) {
+                e.preventDefault();
+                el.scrollLeft += e.deltaY;
+                checkPillsScroll();
+            }
+        };
+
+        el.addEventListener('wheel', handleWheel, { passive: false });
+        checkPillsScroll();
+
+        const observer = new ResizeObserver(() => checkPillsScroll());
+        observer.observe(el);
+
+        return () => {
+            el.removeEventListener('wheel', handleWheel);
+            observer.disconnect();
+        };
+    }, [checkPillsScroll, filterCounts, sidebarWidth]);
+
+    const scrollFilters = (offset) => {
+        if (filtersBarRef.current) {
+            filtersBarRef.current.scrollBy({ left: offset, behavior: 'smooth' });
+            setTimeout(checkPillsScroll, 200);
+        }
+    };
+
+    const handlePillsMouseDown = (e) => {
+        if (!filtersBarRef.current) return;
+        setIsPillsDragging(true);
+        pillsDragState.current = {
+            startX: e.pageX - filtersBarRef.current.offsetLeft,
+            scrollLeft: filtersBarRef.current.scrollLeft,
+            hasMoved: false
+        };
+    };
+
+    const handlePillsMouseMove = (e) => {
+        if (!isPillsDragging || !filtersBarRef.current) return;
+        const x = e.pageX - filtersBarRef.current.offsetLeft;
+        const walk = (x - pillsDragState.current.startX) * 1.2;
+        if (Math.abs(walk) > 3) {
+            pillsDragState.current.hasMoved = true;
+        }
+        filtersBarRef.current.scrollLeft = pillsDragState.current.scrollLeft - walk;
+        checkPillsScroll();
+    };
+
+    const handlePillsMouseUp = () => {
+        setIsPillsDragging(false);
+    };
+
+    const handlePillClick = (action) => {
+        if (pillsDragState.current?.hasMoved) return;
+        action();
+    };
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
@@ -1474,9 +1591,9 @@ export default function MessagingPanel({ addToast, currentUser }) {
     //  RENDER
     // ===========================
     return (
-        <div className="msg-panel">
+        <div className="msg-panel" ref={panelContainerRef} style={{ userSelect: isDraggingSidebar ? 'none' : 'auto' }}>
             {/* ========== LEFT: Conversation List ========== */}
-            <div className="msg-panel__sidebar">
+            <div className="msg-panel__sidebar" style={{ width: `${sidebarWidth}px`, minWidth: '320px', maxWidth: '750px' }}>
                 <div className="msg-panel__sidebar-header">
                     <h3 className="msg-panel__sidebar-title">
                         <MessageSquare size={18} />
@@ -1521,135 +1638,215 @@ export default function MessagingPanel({ addToast, currentUser }) {
                     />
                 </div>
 
-                {/* ── Quick Operational Filters Bar ── */}
-                <div style={{
-                    display: 'flex', gap: '6px', padding: '4px 16px 8px',
-                    overflowX: 'auto', flexShrink: 0,
-                    scrollbarWidth: 'none'
-                }}>
-                    <button
-                        onClick={() => { setQuickFilter('all'); setDebtFilter('all'); }}
+                {/* ── Quick Operational Filters Bar (Desplazable con rueda, arrastre o flechas) ── */}
+                <div style={{ position: 'relative', flexShrink: 0, padding: '2px 8px 6px' }}>
+                    {canScrollLeft && (
+                        <button
+                            type="button"
+                            onClick={() => scrollFilters(-140)}
+                            style={{
+                                position: 'absolute',
+                                left: '2px',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                zIndex: 6,
+                                width: '24px',
+                                height: '24px',
+                                borderRadius: '50%',
+                                background: '#FFFFFF',
+                                border: '1px solid #CBD5E1',
+                                boxShadow: '0 2px 5px rgba(0,0,0,0.12)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                color: '#1E293B',
+                                padding: 0
+                            }}
+                            title="Ver filtros anteriores"
+                        >
+                            <ChevronLeft size={14} />
+                        </button>
+                    )}
+
+                    {canScrollRight && (
+                        <button
+                            type="button"
+                            onClick={() => scrollFilters(140)}
+                            style={{
+                                position: 'absolute',
+                                right: '2px',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                zIndex: 6,
+                                width: '24px',
+                                height: '24px',
+                                borderRadius: '50%',
+                                background: '#FFFFFF',
+                                border: '1px solid #CBD5E1',
+                                boxShadow: '0 2px 5px rgba(0,0,0,0.12)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                color: '#1E293B',
+                                padding: 0
+                            }}
+                            title="Ver más filtros"
+                        >
+                            <ChevronRight size={14} />
+                        </button>
+                    )}
+
+                    <div
+                        ref={filtersBarRef}
+                        onScroll={checkPillsScroll}
+                        onMouseDown={handlePillsMouseDown}
+                        onMouseMove={handlePillsMouseMove}
+                        onMouseUp={handlePillsMouseUp}
+                        onMouseLeave={handlePillsMouseUp}
+                        className="msg-panel__quick-filters"
                         style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '5px',
-                            padding: '4px 10px', borderRadius: '16px', border: '1px solid',
-                            fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-                            background: quickFilter === 'all' && debtFilter === 'all' ? '#1E293B' : '#FFFFFF',
-                            borderColor: quickFilter === 'all' && debtFilter === 'all' ? '#1E293B' : '#E2E8F0',
-                            color: quickFilter === 'all' && debtFilter === 'all' ? '#FFFFFF' : '#475569',
-                            boxShadow: quickFilter === 'all' && debtFilter === 'all' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
-                            transition: 'all 0.15s'
+                            display: 'flex', gap: '6px', padding: '2px 8px 6px',
+                            overflowX: 'auto',
+                            scrollbarWidth: 'thin',
+                            scrollbarColor: '#CBD5E1 transparent',
+                            cursor: isPillsDragging ? 'grabbing' : 'grab',
+                            userSelect: isPillsDragging ? 'none' : 'auto',
+                            scrollBehavior: 'smooth'
                         }}
                     >
-                        Todos <span style={{ opacity: 0.75, fontSize: '0.66rem' }}>({conversations.length})</span>
-                    </button>
-
-                    {filterCounts.todayCount > 0 && (
                         <button
-                            onClick={() => { setQuickFilter(quickFilter === 'today' ? 'all' : 'today'); setDebtFilter('all'); }}
+                            onClick={() => handlePillClick(() => { setQuickFilter('all'); setDebtFilter('all'); })}
                             style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                display: 'inline-flex', alignItems: 'center', gap: '5px',
                                 padding: '4px 10px', borderRadius: '16px', border: '1px solid',
                                 fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-                                background: quickFilter === 'today' ? '#DC2626' : '#FEF2F2',
-                                borderColor: quickFilter === 'today' ? '#DC2626' : '#FCA5A5',
-                                color: quickFilter === 'today' ? '#FFFFFF' : '#B91C1C',
-                                boxShadow: quickFilter === 'today' ? '0 2px 6px rgba(220,38,38,0.25)' : 'none',
-                                transition: 'all 0.15s'
+                                background: quickFilter === 'all' && debtFilter === 'all' ? '#1E293B' : '#FFFFFF',
+                                borderColor: quickFilter === 'all' && debtFilter === 'all' ? '#1E293B' : '#E2E8F0',
+                                color: quickFilter === 'all' && debtFilter === 'all' ? '#FFFFFF' : '#475569',
+                                boxShadow: quickFilter === 'all' && debtFilter === 'all' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                                transition: 'all 0.15s',
+                                flexShrink: 0
                             }}
                         >
-                            🔴 Turnos Hoy <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.todayCount})</span>
+                            Todos <span style={{ opacity: 0.75, fontSize: '0.66rem' }}>({conversations.length})</span>
                         </button>
-                    )}
 
-                    {filterCounts.weekCount > 0 && (
-                        <button
-                            onClick={() => { setQuickFilter(quickFilter === 'week' ? 'all' : 'week'); setDebtFilter('all'); }}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                padding: '4px 10px', borderRadius: '16px', border: '1px solid',
-                                fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-                                background: quickFilter === 'week' ? '#2563EB' : '#EFF6FF',
-                                borderColor: quickFilter === 'week' ? '#2563EB' : '#BFDBFE',
-                                color: quickFilter === 'week' ? '#FFFFFF' : '#1D4ED8',
-                                boxShadow: quickFilter === 'week' ? '0 2px 6px rgba(37,99,235,0.25)' : 'none',
-                                transition: 'all 0.15s'
-                            }}
-                        >
-                            📅 Esta Semana <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.weekCount})</span>
-                        </button>
-                    )}
+                        {filterCounts.todayCount > 0 && (
+                            <button
+                                onClick={() => handlePillClick(() => { setQuickFilter(quickFilter === 'today' ? 'all' : 'today'); setDebtFilter('all'); })}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                    padding: '4px 10px', borderRadius: '16px', border: '1px solid',
+                                    fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                                    background: quickFilter === 'today' ? '#DC2626' : '#FEF2F2',
+                                    borderColor: quickFilter === 'today' ? '#DC2626' : '#FCA5A5',
+                                    color: quickFilter === 'today' ? '#FFFFFF' : '#B91C1C',
+                                    boxShadow: quickFilter === 'today' ? '0 2px 6px rgba(220,38,38,0.25)' : 'none',
+                                    transition: 'all 0.15s',
+                                    flexShrink: 0
+                                }}
+                            >
+                                🔴 Turnos Hoy <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.todayCount})</span>
+                            </button>
+                        )}
 
-                    {filterCounts.revisionCount > 0 && (
-                        <button
-                            onClick={() => { setQuickFilter(quickFilter === 'revision' ? 'all' : 'revision'); setDebtFilter('all'); }}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                padding: '4px 10px', borderRadius: '16px', border: '1px solid',
-                                fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-                                background: quickFilter === 'revision' ? '#BE185D' : '#FDF2F8',
-                                borderColor: quickFilter === 'revision' ? '#BE185D' : '#F472B6',
-                                color: quickFilter === 'revision' ? '#FFFFFF' : '#BE185D',
-                                boxShadow: quickFilter === 'revision' ? '0 2px 6px rgba(190,24,93,0.25)' : 'none',
-                                transition: 'all 0.15s'
-                            }}
-                        >
-                            🌸 En Revisión <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.revisionCount})</span>
-                        </button>
-                    )}
+                        {filterCounts.weekCount > 0 && (
+                            <button
+                                onClick={() => handlePillClick(() => { setQuickFilter(quickFilter === 'week' ? 'all' : 'week'); setDebtFilter('all'); })}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                    padding: '4px 10px', borderRadius: '16px', border: '1px solid',
+                                    fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                                    background: quickFilter === 'week' ? '#2563EB' : '#EFF6FF',
+                                    borderColor: quickFilter === 'week' ? '#2563EB' : '#BFDBFE',
+                                    color: quickFilter === 'week' ? '#FFFFFF' : '#1D4ED8',
+                                    boxShadow: quickFilter === 'week' ? '0 2px 6px rgba(37,99,235,0.25)' : 'none',
+                                    transition: 'all 0.15s',
+                                    flexShrink: 0
+                                }}
+                            >
+                                📅 Esta Semana <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.weekCount})</span>
+                            </button>
+                        )}
 
-                    {filterCounts.autorizadoCount > 0 && (
-                        <button
-                            onClick={() => { setQuickFilter(quickFilter === 'autorizado' ? 'all' : 'autorizado'); setDebtFilter('all'); }}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                padding: '4px 10px', borderRadius: '16px', border: '1px solid',
-                                fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-                                background: quickFilter === 'autorizado' ? '#15803D' : '#F0FDF4',
-                                borderColor: quickFilter === 'autorizado' ? '#15803D' : '#86EFAC',
-                                color: quickFilter === 'autorizado' ? '#FFFFFF' : '#15803D',
-                                boxShadow: quickFilter === 'autorizado' ? '0 2px 6px rgba(21,128,61,0.25)' : 'none',
-                                transition: 'all 0.15s'
-                            }}
-                        >
-                            🟢 Autorizados <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.autorizadoCount})</span>
-                        </button>
-                    )}
+                        {filterCounts.revisionCount > 0 && (
+                            <button
+                                onClick={() => handlePillClick(() => { setQuickFilter(quickFilter === 'revision' ? 'all' : 'revision'); setDebtFilter('all'); })}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                    padding: '4px 10px', borderRadius: '16px', border: '1px solid',
+                                    fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                                    background: quickFilter === 'revision' ? '#BE185D' : '#FDF2F8',
+                                    borderColor: quickFilter === 'revision' ? '#BE185D' : '#F472B6',
+                                    color: quickFilter === 'revision' ? '#FFFFFF' : '#BE185D',
+                                    boxShadow: quickFilter === 'revision' ? '0 2px 6px rgba(190,24,93,0.25)' : 'none',
+                                    transition: 'all 0.15s',
+                                    flexShrink: 0
+                                }}
+                            >
+                                🌸 En Revisión <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.revisionCount})</span>
+                            </button>
+                        )}
 
-                    {filterCounts.unreadCount > 0 && (
-                        <button
-                            onClick={() => { setQuickFilter(quickFilter === 'unread' ? 'all' : 'unread'); setDebtFilter('all'); }}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                padding: '4px 10px', borderRadius: '16px', border: '1px solid',
-                                fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-                                background: quickFilter === 'unread' ? '#2563EB' : '#EFF6FF',
-                                borderColor: quickFilter === 'unread' ? '#2563EB' : '#93C5FD',
-                                color: quickFilter === 'unread' ? '#FFFFFF' : '#1D4ED8',
-                                boxShadow: quickFilter === 'unread' ? '0 2px 6px rgba(37,99,235,0.25)' : 'none',
-                                transition: 'all 0.15s'
-                            }}
-                        >
-                            📬 Sin Leer <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.unreadCount})</span>
-                        </button>
-                    )}
+                        {filterCounts.autorizadoCount > 0 && (
+                            <button
+                                onClick={() => handlePillClick(() => { setQuickFilter(quickFilter === 'autorizado' ? 'all' : 'autorizado'); setDebtFilter('all'); })}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                    padding: '4px 10px', borderRadius: '16px', border: '1px solid',
+                                    fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                                    background: quickFilter === 'autorizado' ? '#15803D' : '#F0FDF4',
+                                    borderColor: quickFilter === 'autorizado' ? '#15803D' : '#86EFAC',
+                                    color: quickFilter === 'autorizado' ? '#FFFFFF' : '#15803D',
+                                    boxShadow: quickFilter === 'autorizado' ? '0 2px 6px rgba(21,128,61,0.25)' : 'none',
+                                    transition: 'all 0.15s',
+                                    flexShrink: 0
+                                }}
+                            >
+                                🟢 Autorizados <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.autorizadoCount})</span>
+                            </button>
+                        )}
 
-                    {filterCounts.debtCount > 0 && (
-                        <button
-                            onClick={() => { setQuickFilter(quickFilter === 'con_deuda' ? 'all' : 'con_deuda'); setDebtFilter(quickFilter === 'con_deuda' ? 'all' : 'con_deuda'); }}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                padding: '4px 10px', borderRadius: '16px', border: '1px solid',
-                                fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-                                background: quickFilter === 'con_deuda' ? '#DC2626' : '#FEF2F2',
-                                borderColor: quickFilter === 'con_deuda' ? '#DC2626' : '#FECACA',
-                                color: quickFilter === 'con_deuda' ? '#FFFFFF' : '#DC2626',
-                                boxShadow: quickFilter === 'con_deuda' ? '0 2px 6px rgba(220,38,38,0.25)' : 'none',
-                                transition: 'all 0.15s'
-                            }}
-                        >
-                            💰 Con Deuda <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.debtCount})</span>
-                        </button>
-                    )}
+                        {filterCounts.unreadCount > 0 && (
+                            <button
+                                onClick={() => handlePillClick(() => { setQuickFilter(quickFilter === 'unread' ? 'all' : 'unread'); setDebtFilter('all'); })}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                    padding: '4px 10px', borderRadius: '16px', border: '1px solid',
+                                    fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                                    background: quickFilter === 'unread' ? '#2563EB' : '#EFF6FF',
+                                    borderColor: quickFilter === 'unread' ? '#2563EB' : '#93C5FD',
+                                    color: quickFilter === 'unread' ? '#FFFFFF' : '#1D4ED8',
+                                    boxShadow: quickFilter === 'unread' ? '0 2px 6px rgba(37,99,235,0.25)' : 'none',
+                                    transition: 'all 0.15s',
+                                    flexShrink: 0
+                                }}
+                            >
+                                📬 Sin Leer <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.unreadCount})</span>
+                            </button>
+                        )}
+
+                        {filterCounts.debtCount > 0 && (
+                            <button
+                                onClick={() => handlePillClick(() => { setQuickFilter(quickFilter === 'con_deuda' ? 'all' : 'con_deuda'); setDebtFilter(quickFilter === 'con_deuda' ? 'all' : 'con_deuda'); })}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                    padding: '4px 10px', borderRadius: '16px', border: '1px solid',
+                                    fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                                    background: quickFilter === 'con_deuda' ? '#DC2626' : '#FEF2F2',
+                                    borderColor: quickFilter === 'con_deuda' ? '#DC2626' : '#FECACA',
+                                    color: quickFilter === 'con_deuda' ? '#FFFFFF' : '#DC2626',
+                                    boxShadow: quickFilter === 'con_deuda' ? '0 2px 6px rgba(220,38,38,0.25)' : 'none',
+                                    transition: 'all 0.15s',
+                                    flexShrink: 0
+                                }}
+                            >
+                                💰 Con Deuda <span style={{ fontSize: '0.68rem', fontWeight: 800 }}>({filterCounts.debtCount})</span>
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 {/* New Chat Form */}
@@ -1904,6 +2101,24 @@ export default function MessagingPanel({ addToast, currentUser }) {
                         {conversations.length} conversación{conversations.length !== 1 ? 'es' : ''}
                     </span>
                 </div>
+            </div>
+
+            {/* ── Resizer Splitter Bar (Ancho ajustable 320px - 750px) ── */}
+            <div
+                className={`msg-panel__resizer ${isDraggingSidebar ? 'msg-panel__resizer--dragging' : ''}`}
+                onMouseDown={handleMouseDownResizer}
+                onDoubleClick={() => {
+                    setSidebarWidth(440);
+                    localStorage.setItem('msg_panel_sidebar_width', '440');
+                }}
+                title="Arrastrar para ajustar el ancho de la lista de conversaciones (320px - 750px) • Doble clic para restablecer (440px)"
+            >
+                <div style={{
+                    width: '2px',
+                    height: '32px',
+                    borderRadius: '2px',
+                    background: isDraggingSidebar ? '#FFFFFF' : '#CBD5E1'
+                }} />
             </div>
 
             {/* ========== RIGHT: Chat View ========== */}
