@@ -17,7 +17,7 @@ const STORAGE_ALLOWED_USERS_KEY = 'sa_contact_center_allowed_users';
 const CONFIG_KEY = 'contact_center_allowed_users';
 
 // Administradores con acceso maestro permanente
-export const MASTER_ADMINS = ['lmarinero', 'admin', 'mrodriguez', 'dsantaella'];
+export const MASTER_ADMINS = ['lmarinero', 'admin', 'mrodriguez', 'dsantaella', 'jcorrea'];
 
 // 4 Agentes canónicas del Contact Center de Sanatorio Argentino + Supervisor Lucas Marinero
 export const CONTACT_CENTER_AGENTS = [
@@ -29,7 +29,7 @@ export const CONTACT_CENTER_AGENTS = [
 ];
 
 export const CONTACT_CENTER_AUTHORIZED_USERNAMES = [
-    'lmarinero', 'admin', 'mrodriguez', 'dsantaella',
+    'lmarinero', 'admin', 'mrodriguez', 'dsantaella', 'jcorrea',
     'daguilera', 'daniela',
     'solivier', 'sofia',
     'vjacques', 'virginia',
