@@ -321,13 +321,14 @@ export function unassignChat(chat, currentAgent, currentUser) {
     // Persistir liberación en Supabase
     if (chat.phone) {
         const norm = normalizeArgentinePhone(chat.phone);
-        supabase.from('contact_center_conversations').update({
+        supabase.from('contact_center_conversations').upsert({
+            phone: norm,
             status: 'sin_asignar',
             assigned_agent_id: null,
             assigned_agent_name: null,
             assigned_at: null,
             updated_at: now.toISOString()
-        }).eq('phone', norm).then(({ error }) => {
+        }, { onConflict: 'phone' }).then(({ error }) => {
             if (error) console.warn('[contact-center] Error liberando chat:', error.message);
         });
     }
@@ -367,14 +368,15 @@ export function transferChatToAgent(chat, fromAgent, toAgent, currentUser) {
 
     if (chat.phone) {
         const norm = normalizeArgentinePhone(chat.phone);
-        supabase.from('contact_center_conversations').update({
+        supabase.from('contact_center_conversations').upsert({
+            phone: norm,
             status: 'abierto',
             assigned_agent_id: toAgent.id,
             assigned_agent_name: toAgent.name,
             assigned_at: now.toISOString(),
             bot_active: false,
             updated_at: now.toISOString()
-        }).eq('phone', norm).then(({ error }) => {
+        }, { onConflict: 'phone' }).then(({ error }) => {
             if (error) console.warn('[contact-center] Error transfiriendo chat:', error.message);
         });
     }
@@ -1455,4 +1457,220 @@ export async function generateChatAiSummary(phone) {
         console.error('[contactCenterService] Error invocando contact-center-chat-summary:', err);
         throw err;
     }
+}
+
+/**
+ * =========================================================================
+ * PRESENCIA EN TIEMPO REAL (QUIÉN ESTÁ VIENDO LA CONVERSACIÓN - "EL OJITO")
+ * =========================================================================
+ * Permite saber en vivo qué agentes tienen abierta y están leyendo una conversación.
+ * Combina Supabase Realtime Channel Presence (cross-dispositivo) con BroadcastChannel
+ * para sincronización inmediata entre pestañas en la misma máquina.
+ */
+const TAB_SESSION_ID = typeof window !== 'undefined' 
+    ? (window.__cc_tab_id || (window.__cc_tab_id = Math.random().toString(36).substring(2, 9)))
+    : 'srv';
+
+export function subscribeToChatPresence({ activeAgent, currentUser, onPresenceChange }) {
+    if (typeof window === 'undefined') {
+        return { trackChat: () => {}, untrackChat: () => {}, cleanup: () => {} };
+    }
+
+    const myAgentId = (activeAgent?.id || activeAgent?.username || currentUser?.usuario || 'anon').toLowerCase();
+    const myAgentName = activeAgent?.name || currentUser?.nombre || activeAgent?.fullName || 'Agente';
+    const myAgentColor = activeAgent?.color || '#0284C7';
+    const myAgentAvatar = activeAgent?.avatar || 'AG';
+    const mySessionKey = `${myAgentId}_${TAB_SESSION_ID}`;
+
+    const localPresences = new Map();
+    let currentTrackedChat = { chatId: null, phone: null };
+
+    const notify = () => {
+        if (!onPresenceChange) return;
+        const now = Date.now();
+        // Filtrar entradas inactivas o sin chat asociado
+        const activeList = Array.from(localPresences.values()).filter(p => {
+            if (!p.chatId && !p.phone) return false;
+            if (p.updatedAt && (now - p.updatedAt > 45000)) return false;
+            return true;
+        });
+        onPresenceChange(activeList);
+    };
+
+    let broadcastCh = null;
+    try {
+        if ('BroadcastChannel' in window) {
+            broadcastCh = new BroadcastChannel('cc_agent_presence_sync_hub');
+            broadcastCh.onmessage = (event) => {
+                const data = event.data;
+                if (!data) return;
+                if (data.type === 'TRACK') {
+                    localPresences.set(data.sessionKey, { ...data.payload, updatedAt: Date.now() });
+                    notify();
+                } else if (data.type === 'UNTRACK') {
+                    localPresences.delete(data.sessionKey);
+                    notify();
+                } else if (data.type === 'QUERY') {
+                    if (currentTrackedChat.chatId || currentTrackedChat.phone) {
+                        broadcastCh.postMessage({
+                            type: 'TRACK',
+                            sessionKey: mySessionKey,
+                            payload: {
+                                sessionKey: mySessionKey,
+                                agentId: myAgentId,
+                                agentName: myAgentName,
+                                agentColor: myAgentColor,
+                                agentAvatar: myAgentAvatar,
+                                chatId: currentTrackedChat.chatId,
+                                phone: currentTrackedChat.phone
+                            }
+                        });
+                    }
+                }
+            };
+            broadcastCh.postMessage({ type: 'QUERY' });
+        }
+    } catch (e) {
+        console.warn('[presence] BroadcastChannel error:', e);
+    }
+
+    let realtimeChannel = null;
+    try {
+        realtimeChannel = supabase.channel('contact-center-presence-hub', {
+            config: {
+                presence: {
+                    key: mySessionKey
+                }
+            }
+        });
+
+        const syncFromSupabase = () => {
+            const state = realtimeChannel.presenceState();
+            Object.entries(state).forEach(([key, presences]) => {
+                if (Array.isArray(presences) && presences.length > 0) {
+                    const latest = presences[presences.length - 1];
+                    if (latest && (latest.chatId || latest.phone)) {
+                        localPresences.set(key, { ...latest, updatedAt: Date.now() });
+                    } else {
+                        localPresences.delete(key);
+                    }
+                }
+            });
+            notify();
+        };
+
+        realtimeChannel
+            .on('presence', { event: 'sync' }, syncFromSupabase)
+            .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+                if (newPresences && newPresences.length > 0) {
+                    const latest = newPresences[newPresences.length - 1];
+                    localPresences.set(key, { ...latest, updatedAt: Date.now() });
+                    notify();
+                }
+            })
+            .on('presence', { event: 'leave' }, ({ key }) => {
+                localPresences.delete(key);
+                notify();
+            })
+            .subscribe(async (status) => {
+                if (status === 'SUBSCRIBED' && (currentTrackedChat.chatId || currentTrackedChat.phone)) {
+                    try {
+                        await realtimeChannel.track({
+                            sessionKey: mySessionKey,
+                            agentId: myAgentId,
+                            agentName: myAgentName,
+                            agentColor: myAgentColor,
+                            agentAvatar: myAgentAvatar,
+                            chatId: currentTrackedChat.chatId,
+                            phone: currentTrackedChat.phone
+                        });
+                    } catch {}
+                }
+            });
+    } catch (e) {
+        console.warn('[presence] Supabase Realtime channel error:', e);
+    }
+
+    const trackChat = async (chatId, phone) => {
+        const normPhone = phone ? normalizeArgentinePhone(phone) : null;
+        currentTrackedChat = { chatId: chatId || null, phone: normPhone };
+
+        const payload = {
+            sessionKey: mySessionKey,
+            agentId: myAgentId,
+            agentName: myAgentName,
+            agentColor: myAgentColor,
+            agentAvatar: myAgentAvatar,
+            chatId: chatId || null,
+            phone: normPhone
+        };
+
+        localPresences.set(mySessionKey, { ...payload, updatedAt: Date.now() });
+        notify();
+
+        try {
+            broadcastCh?.postMessage({
+                type: 'TRACK',
+                sessionKey: mySessionKey,
+                payload
+            });
+        } catch {}
+
+        try {
+            if (realtimeChannel && realtimeChannel.state === 'joined') {
+                await realtimeChannel.track(payload);
+            }
+        } catch {}
+    };
+
+    const untrackChat = async () => {
+        currentTrackedChat = { chatId: null, phone: null };
+        localPresences.delete(mySessionKey);
+        notify();
+
+        try {
+            broadcastCh?.postMessage({
+                type: 'UNTRACK',
+                sessionKey: mySessionKey
+            });
+        } catch {}
+
+        try {
+            if (realtimeChannel && realtimeChannel.state === 'joined') {
+                await realtimeChannel.untrack();
+            }
+        } catch {}
+    };
+
+    const intervalId = setInterval(() => {
+        if (currentTrackedChat.chatId || currentTrackedChat.phone) {
+            trackChat(currentTrackedChat.chatId, currentTrackedChat.phone);
+        }
+    }, 20000);
+
+    const onBeforeUnload = () => {
+        try {
+            broadcastCh?.postMessage({
+                type: 'UNTRACK',
+                sessionKey: mySessionKey
+            });
+        } catch {}
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+
+    return {
+        trackChat,
+        untrackChat,
+        cleanup: () => {
+            clearInterval(intervalId);
+            window.removeEventListener('beforeunload', onBeforeUnload);
+            untrackChat();
+            try {
+                if (broadcastCh) broadcastCh.close();
+            } catch {}
+            try {
+                if (realtimeChannel) supabase.removeChannel(realtimeChannel);
+            } catch {}
+        }
+    };
 }

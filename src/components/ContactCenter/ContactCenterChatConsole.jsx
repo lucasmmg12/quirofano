@@ -96,8 +96,9 @@ import {
     saveCrmPatientCard, lookupPatientFromSalus, resetBotWorkflow,
     analyzeMedicalOrderImage, generateChatAiSummary,
     FINAL_ATTENTION_MESSAGE, isClosedOrArchived, fetchFamilyMembersByPhone,
-    isUserAuthorizedForContactCenter
+    isUserAuthorizedForContactCenter, subscribeToChatPresence
 } from '../../services/contactCenterService';
+import { normalizeArgentinePhone } from '../../services/builderbotApi';
 import { fetchPacienteDetalle } from '../../services/pacienteUnificadoService';
 import { 
     getContactCenterQuickReplies, 
@@ -199,6 +200,12 @@ export default function ContactCenterChatConsole({
     const [isPrivateNote, setIsPrivateNote] = useState(false);
     const [activeDetailTab, setActiveDetailTab] = useState('info'); // 'info', 'historial', 'prestadores'
     const [transferMenuOpen, setTransferMenuOpen] = useState(false);
+    const transferMenuRef = useRef(null);
+
+    // Presencia en tiempo real (Quién está leyendo la conversación - "El Ojito")
+    const [activePresences, setActivePresences] = useState([]);
+    const presenceTrackerRef = useRef(null);
+
     const [botActive, setBotActive] = useState(true);
     const [doctorQuery, setDoctorQuery] = useState('');
     const [doctorResults, setDoctorResults] = useState([]);
@@ -270,6 +277,34 @@ export default function ContactCenterChatConsole({
             setIsDownloadingImage(false);
         }
     };
+
+    // Suscripción a la presencia en tiempo real de agentes ("El Ojito")
+    useEffect(() => {
+        const tracker = subscribeToChatPresence({
+            activeAgent,
+            currentUser,
+            onPresenceChange: (presences) => {
+                setActivePresences(presences || []);
+            }
+        });
+        presenceTrackerRef.current = tracker;
+
+        return () => {
+            tracker.cleanup();
+        };
+    }, [activeAgent?.id, activeAgent?.name, currentUser?.usuario]);
+
+    // Cerrar menú de transferencia al hacer click afuera
+    useEffect(() => {
+        if (!transferMenuOpen) return;
+        const handleClickOutside = (e) => {
+            if (transferMenuRef.current && !transferMenuRef.current.contains(e.target)) {
+                setTransferMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [transferMenuOpen]);
 
     // Helper de validación de nombres genéricos que NUNCA deben mostrarse como contacto
     const isGenericName = (name) => {
@@ -452,6 +487,15 @@ export default function ContactCenterChatConsole({
             }
         }
     }, [selectedChat?.id]);
+
+    // Rastrear en tiempo real qué conversación está mirando este agente ("El Ojito")
+    useEffect(() => {
+        if (selectedChat?.id) {
+            presenceTrackerRef.current?.trackChat(selectedChat.id, selectedChat.phone);
+        } else {
+            presenceTrackerRef.current?.untrackChat();
+        }
+    }, [selectedChat?.id, selectedChat?.phone]);
 
     // Conmutar ficha activa a otro miembro del grupo familiar
     const handleSelectFamilyMember = async (fam) => {
@@ -863,6 +907,47 @@ export default function ContactCenterChatConsole({
     const isUnassigned = !selectedChat.assignedTo || selectedChat.status === 'sin_asignar';
     const assignedAgentObj = selectedChat.assignedTo ? getAgentById(selectedChat.assignedTo) : null;
 
+    // Regla estricta: Dos agentes no pueden escribir a la vez. Siempre sí o sí deben asignárselo.
+    const canWriteMessage = isAssignedToMe && !isClosedOrArchived(selectedChat.status);
+
+    // Detección de otros agentes leyendo la conversación actual ("El Ojito")
+    const otherViewersForCurrentChat = useMemo(() => {
+        if (!selectedChat?.id && !selectedChat?.phone) return [];
+        const normSelectedPhone = selectedChat.phone ? normalizeArgentinePhone(selectedChat.phone) : null;
+        const myId = (activeAgent?.id || '').toLowerCase();
+        const myName = (activeAgent?.name || '').toLowerCase();
+
+        return activePresences.filter(p => {
+            const pAgentId = (p.agentId || '').toLowerCase();
+            const pAgentName = (p.agentName || '').toLowerCase();
+            const isMe = pAgentId === myId || (myName && pAgentName.includes(myName));
+            if (isMe) return false;
+
+            const matchId = p.chatId && selectedChat.id && String(p.chatId) === String(selectedChat.id);
+            const matchPhone = p.phone && normSelectedPhone && p.phone === normSelectedPhone;
+            return matchId || matchPhone;
+        });
+    }, [activePresences, selectedChat?.id, selectedChat?.phone, activeAgent?.id, activeAgent?.name]);
+
+    // Helper para detectar qué agentes están leyendo cualquier chat de la lista
+    const getViewersForChat = (chat) => {
+        if (!chat) return [];
+        const normChatPhone = chat.phone ? normalizeArgentinePhone(chat.phone) : null;
+        const myId = (activeAgent?.id || '').toLowerCase();
+        const myName = (activeAgent?.name || '').toLowerCase();
+
+        return activePresences.filter(p => {
+            const pAgentId = (p.agentId || '').toLowerCase();
+            const pAgentName = (p.agentName || '').toLowerCase();
+            const isMe = pAgentId === myId || (myName && pAgentName.includes(myName));
+            if (isMe) return false;
+
+            const matchId = p.chatId && chat.id && String(p.chatId) === String(chat.id);
+            const matchPhone = p.phone && normChatPhone && p.phone === normChatPhone;
+            return matchId || matchPhone;
+        });
+    };
+
     // ── BUSCADOR INTELIGENTE DE CHATS (NOMBRE, DNI, TELÉFONO, MENSAJES Y ANÁLISIS IA) ──
     const normalizeSearch = (s) => {
         if (!s) return '';
@@ -1049,12 +1134,13 @@ export default function ContactCenterChatConsole({
             alert('No tienes autorización para responder en el Contact Center. Solo las 4 agentes asignadas y Lucas Marinero tienen permisos de respuesta.');
             return;
         }
-        if (isLocked) {
-            alert(`Esta conversación está asignada exclusivamente a ${assignedAgentObj?.name || 'otra agente'}.`);
+        if (!canWriteMessage) {
+            alert('Debes asignarte la conversación antes de responder para evitar que dos agentes escriban a la vez.');
             return;
         }
-        if (isUnassigned && !isSupervisor && onAssignChat) {
-            onAssignChat(selectedChat.id, activeAgent.id);
+        if (isLocked) {
+            alert(`Esta conversación está asignada exclusivamente a ${assignedAgentObj?.name || 'otra agente'}. Modo solo lectura.`);
+            return;
         }
         onSendMessage(selectedChat.id, text.trim(), isNote);
         setMessageInput('');
@@ -1064,6 +1150,10 @@ export default function ContactCenterChatConsole({
 
     const handleSend = (e) => {
         e?.preventDefault?.();
+        if (!canWriteMessage) {
+            alert('Debes asignarte la conversación antes de responder para evitar que dos agentes escriban a la vez.');
+            return;
+        }
         if (!messageInput.trim()) return;
 
         let textToSend = messageInput.trim();
@@ -1095,6 +1185,10 @@ export default function ContactCenterChatConsole({
     const handleInputKeyDown = (e) => {
         if (!quickRepliesOpen) {
             if (e.key === 'Enter' && !e.shiftKey) {
+                if (!canWriteMessage) {
+                    e.preventDefault();
+                    return;
+                }
                 handleSend(e);
             }
             return;
@@ -1589,6 +1683,32 @@ export default function ContactCenterChatConsole({
                                             </span>
                                         )}
 
+                                        {/* Tag: Ojito si otro agente está leyendo este chat */}
+                                        {(() => {
+                                            const viewers = getViewersForChat(chat);
+                                            if (!viewers.length) return null;
+                                            return (
+                                                <span 
+                                                    title={`${viewers.map(v => v.agentName).join(', ')} está viendo este chat ahora mismo`}
+                                                    style={{
+                                                        fontSize: '0.64rem',
+                                                        fontWeight: 800,
+                                                        padding: '1px 6px',
+                                                        borderRadius: '6px',
+                                                        background: '#EFF6FF',
+                                                        color: '#1D4ED8',
+                                                        border: '1px solid #93C5FD',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '3px'
+                                                    }}
+                                                >
+                                                    <Eye size={10} color="#2563EB" />
+                                                    {viewers.map(v => v.agentName.split(' ')[0]).join(', ')} viendo
+                                                </span>
+                                            );
+                                        })()}
+
                                         {/* Tag: Último en responder */}
                                         {chat.lastResponder && (
                                             <span style={{
@@ -1754,6 +1874,30 @@ export default function ContactCenterChatConsole({
                                         {selectedChat.lastResponder || 'Paciente'}
                                     </strong>
                                 </span>
+                                {/* Badge de Ojito si otro agente está leyendo este chat */}
+                                {otherViewersForCurrentChat.length > 0 && (
+                                    <>
+                                        <span>•</span>
+                                        <span style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '5px',
+                                            padding: '2px 8px',
+                                            borderRadius: '9999px',
+                                            background: '#EFF6FF',
+                                            border: '1.5px solid #60A5FA',
+                                            color: '#1D4ED8',
+                                            fontSize: '0.71rem',
+                                            fontWeight: 800,
+                                            boxShadow: '0 1px 3px rgba(37, 99, 235, 0.12)'
+                                        }}>
+                                            <Eye size={12} color="#2563EB" />
+                                            <span>
+                                                {otherViewersForCurrentChat.map(v => v.agentName).join(', ')} {otherViewersForCurrentChat.length === 1 ? 'está viendo' : 'están viendo'}
+                                            </span>
+                                        </span>
+                                    </>
+                                )}
                                 {!isClosedOrArchived(selectedChat.status) && (
                                     <>
                                         <span>•</span>
@@ -1955,53 +2099,119 @@ export default function ContactCenterChatConsole({
 
                         {/* Menú de Transferencia entre las 4 agentes */}
                         {transferMenuOpen && (
-                            <div style={{
-                                position: 'absolute', top: '100%', right: 0, marginTop: '6px',
-                                background: '#FFFFFF', borderRadius: '10px', border: '1px solid #CBD5E1',
-                                boxShadow: '0 10px 25px rgba(0,0,0,0.12)', width: '220px', zIndex: 50,
-                                padding: '6px', display: 'flex', flexDirection: 'column', gap: '4px'
-                            }}>
-                                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748B', padding: '6px 8px', textTransform: 'uppercase' }}>
-                                    Transferir conversación a:
-                                </div>
-                                {CONTACT_CENTER_AGENTS.filter(a => a.id !== (selectedChat.assignedTo || '').toLowerCase()).map(targetAgent => (
-                                    <button
-                                        key={targetAgent.id}
-                                        onClick={() => {
-                                            onTransferChat(selectedChat.id, targetAgent.id);
-                                            setTransferMenuOpen(false);
-                                        }}
-                                        style={{
-                                            display: 'flex', alignItems: 'center', gap: '8px',
-                                            padding: '8px 10px', borderRadius: '6px', border: 'none',
-                                            background: 'transparent', cursor: 'pointer', textAlign: 'left',
-                                            width: '100%', transition: 'background 0.15s'
-                                        }}
-                                        onMouseEnter={(e) => e.currentTarget.style.background = '#F1F5F9'}
-                                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                            <div 
+                                ref={transferMenuRef}
+                                style={{
+                                    position: 'absolute', top: '100%', right: 0, marginTop: '6px',
+                                    background: '#FFFFFF', borderRadius: '10px', border: '1px solid #CBD5E1',
+                                    boxShadow: '0 10px 25px rgba(0,0,0,0.15)', width: '250px', zIndex: 60,
+                                    padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px'
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid #F1F5F9' }}>
+                                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
+                                        Transferir conversación a:
+                                    </div>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setTransferMenuOpen(false)}
+                                        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94A3B8' }}
                                     >
-                                        <div style={{
-                                            width: '22px', height: '22px', borderRadius: '50%',
-                                            background: targetAgent.color, color: '#FFF',
-                                            fontSize: '0.68rem', fontWeight: 800, display: 'flex',
-                                            alignItems: 'center', justifyContent: 'center'
-                                        }}>
-                                            {targetAgent.avatar}
-                                        </div>
-                                        <div>
-                                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A' }}>
-                                                {targetAgent.fullName}
-                                            </div>
-                                            <div style={{ fontSize: '0.66rem', color: '#64748B' }}>
-                                                {targetAgent.role}
-                                            </div>
-                                        </div>
+                                        <X size={13} />
                                     </button>
-                                ))}
+                                </div>
+                                {CONTACT_CENTER_AGENTS.filter(a => {
+                                    const assignedId = (selectedChat.assignedTo || '').toLowerCase();
+                                    const myId = (activeAgent?.id || '').toLowerCase();
+                                    const myUser = (activeAgent?.username || '').toLowerCase();
+                                    const aId = a.id.toLowerCase();
+                                    const aUser = (a.username || '').toLowerCase();
+                                    return aId !== assignedId && aUser !== assignedId && aId !== myId && aUser !== myUser;
+                                }).map(targetAgent => {
+                                    const isTargetViewing = otherViewersForCurrentChat.some(v => 
+                                        (v.agentId && v.agentId.toLowerCase() === targetAgent.id.toLowerCase()) ||
+                                        (v.agentName && targetAgent.name && v.agentName.toLowerCase().includes(targetAgent.name.toLowerCase()))
+                                    );
+                                    return (
+                                        <button
+                                            key={targetAgent.id}
+                                            onClick={() => {
+                                                onTransferChat && onTransferChat(selectedChat.id, targetAgent.id);
+                                                setTransferMenuOpen(false);
+                                            }}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                padding: '8px 10px', borderRadius: '6px', border: 'none',
+                                                background: 'transparent', cursor: 'pointer', textAlign: 'left',
+                                                width: '100%', transition: 'background 0.15s'
+                                            }}
+                                            onMouseEnter={(e) => e.currentTarget.style.background = '#F8FAFC'}
+                                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <div style={{
+                                                    width: '24px', height: '24px', borderRadius: '50%',
+                                                    background: targetAgent.color, color: '#FFF',
+                                                    fontSize: '0.7rem', fontWeight: 800, display: 'flex',
+                                                    alignItems: 'center', justifyContent: 'center'
+                                                }}>
+                                                    {targetAgent.avatar}
+                                                </div>
+                                                <div>
+                                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A' }}>
+                                                        {targetAgent.fullName}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.66rem', color: '#64748B' }}>
+                                                        {targetAgent.role}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {isTargetViewing ? (
+                                                <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: '2px', background: '#EFF6FF', padding: '2px 5px', borderRadius: '4px' }}>
+                                                    <Eye size={10} /> Viendo
+                                                </span>
+                                            ) : (
+                                                <ArrowRightLeft size={13} color="#94A3B8" />
+                                            )}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
                 </div>
+
+                {/* Banner de Presencia en Vivo ("El Ojito"): Si otro usuario está viendo esta conversación */}
+                {otherViewersForCurrentChat.length > 0 && (
+                    <div style={{
+                        flexShrink: 0,
+                        padding: '7px 18px',
+                        background: 'linear-gradient(90deg, #EFF6FF 0%, #DBEAFE 100%)',
+                        borderBottom: '1px solid #93C5FD',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: '0.76rem',
+                        color: '#1E40AF',
+                        fontWeight: 700
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{
+                                width: '24px', height: '24px', borderRadius: '50%',
+                                background: '#BFDBFE', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}>
+                                <Eye size={14} color="#1D4ED8" />
+                            </span>
+                            <span>
+                                <strong>{otherViewersForCurrentChat.map(v => v.agentName).join(', ')}</strong> {otherViewersForCurrentChat.length === 1 ? 'está leyendo esta conversación en este momento.' : 'están leyendo esta conversación en este momento.'}
+                            </span>
+                        </div>
+                        <div style={{ fontSize: '0.68rem', color: '#2563EB', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2563EB', display: 'inline-block' }} />
+                            En tiempo real
+                        </div>
+                    </div>
+                )}
 
                 {/* Área de Mensajes con Estilo AsisteClick + Tags de Autoría */}
                 <div 
@@ -2443,71 +2653,100 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                     <div ref={messagesEndRef} />
                 </div>
 
-                {/* COMPOSITOR DE MENSAJE: CON CONTROL DE BLOQUEO (SIEMPRE VISIBLE) */}
-                <div style={{ flexShrink: 0, padding: '12px 18px', background: '#FFFFFF', borderTop: '1px solid #E2E8F0' }}>
-                    {/* Alerta si está bloqueado */}
-                    {isLocked ? (
+                {/* COMPOSITOR DE MENSAJE: CON CONTROL DE ASIGNACIÓN ESTRICTO (DOS AGENTES NO PUEDEN ESCRIBIR A LA VEZ) */}
+                <div style={{ flexShrink: 0, padding: '14px 20px', background: '#FFFFFF', borderTop: '1px solid #E2E8F0' }}>
+                    {/* CASO 1: CHAT CERRADO / ARCHIVADO */}
+                    {isClosedOrArchived(selectedChat.status) ? (
                         <div style={{
                             padding: '12px 16px', borderRadius: '10px',
-                            background: '#FEF2F2', border: '1.5px solid #F87171', color: '#991B1B',
-                            display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.84rem', fontWeight: 600
-                        }}>
-                            <Lock size={18} color="#DC2626" />
-                            <div>
-                                Conversación asignada exclusivamente a <strong>{assignedAgentObj?.name || selectedChat.assignedTo}</strong>.
-                                <div style={{ fontSize: '0.75rem', fontWeight: 400, color: '#B91C1C', marginTop: '2px' }}>
-                                    Mientras ella la tenga asignada, nadie más puede responder ni asociársela para evitar colisiones con el paciente.
-                                </div>
-                            </div>
-                        </div>
-                    ) : isClosedOrArchived(selectedChat.status) ? (
-                        <div style={{
-                            marginBottom: '10px', padding: '8px 14px', borderRadius: '8px',
                             background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857',
                             display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem'
                         }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                                <CheckCircle2 size={15} color="#047857" /> 
-                                Conversación finalizada {selectedChat.resolutionReason ? `• Motivo: ${selectedChat.resolutionReason}` : ''}. Puedes reabrirla para enviar un nuevo mensaje.
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
+                                <CheckCircle2 size={16} color="#047857" /> 
+                                Conversación finalizada {selectedChat.resolutionReason ? `• Motivo: ${selectedChat.resolutionReason}` : ''}. Reabre para continuar la atención.
                             </div>
                             <button
                                 type="button"
                                 onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id)}
                                 style={{
-                                    padding: '4px 10px', borderRadius: '6px', border: 'none',
+                                    padding: '6px 14px', borderRadius: '6px', border: 'none',
                                     background: '#059669', color: '#FFFFFF', fontSize: '0.74rem', fontWeight: 700,
                                     cursor: 'pointer'
                                 }}
                             >
-                                Reabrir chat
+                                Reabrir y Asignarme
                             </button>
                         </div>
-                    ) : isUnassigned ? (
-                        /* Alerta si no está asignado: sugerir asignarse */
+                    ) : isLocked ? (
+                        /* CASO 2: ASIGNADA A OTRA AGENTE -> BLOQUEO ESTRICTO (MODO SOLO LECTURA) */
                         <div style={{
-                            marginBottom: '10px', padding: '8px 12px', borderRadius: '8px',
-                            background: '#FEF3C7', border: '1px solid #FCD34D', color: '#92400E',
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem'
+                            padding: '14px 18px', borderRadius: '10px',
+                            background: '#FEF2F2', border: '1.5px solid #F87171', color: '#991B1B',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px'
                         }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                                <AlertCircle size={15} /> Conversación libre en cola general.
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <Lock size={20} color="#DC2626" />
+                                <div>
+                                    <div style={{ fontSize: '0.84rem', fontWeight: 800 }}>
+                                        Conversación asignada exclusivamente a {assignedAgentObj?.name || selectedChat.assignedTo}
+                                    </div>
+                                    <div style={{ fontSize: '0.74rem', fontWeight: 400, color: '#B91C1C', marginTop: '2px' }}>
+                                        Modo solo lectura. Para evitar colisiones y que dos agentes escriban a la vez al paciente, el teclado está bloqueado.
+                                    </div>
+                                </div>
+                            </div>
+                            {isSupervisor && (
+                                <button
+                                    type="button"
+                                    onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id)}
+                                    style={{
+                                        padding: '6px 14px', borderRadius: '6px', border: '1px solid #DC2626',
+                                        background: '#FFFFFF', color: '#DC2626', fontWeight: 700, fontSize: '0.74rem',
+                                        cursor: 'pointer', whiteSpace: 'nowrap'
+                                    }}
+                                >
+                                    Supervisión: Reasignar a mí
+                                </button>
+                            )}
+                        </div>
+                    ) : isUnassigned ? (
+                        /* CASO 3: SIN ASIGNAR -> BLOQUEO DE TECLADO HASTA ASIGNARSE */
+                        <div style={{
+                            padding: '14px 18px', borderRadius: '10px',
+                            background: '#FFFBEB', border: '1.5px solid #FCD34D', color: '#92400E',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <AlertCircle size={20} color="#D97706" />
+                                <div>
+                                    <div style={{ fontSize: '0.84rem', fontWeight: 800 }}>
+                                        Conversación en cola general (Sin Asignar)
+                                    </div>
+                                    <div style={{ fontSize: '0.74rem', color: '#B45309', marginTop: '2px' }}>
+                                        Para evitar que dos agentes respondan a la vez, debes asignártela antes de poder redactar mensajes.
+                                    </div>
+                                </div>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id)}
                                 style={{
-                                    padding: '4px 10px', borderRadius: '6px', border: 'none',
-                                    background: '#D97706', color: '#FFFFFF', fontSize: '0.74rem', fontWeight: 700,
-                                    cursor: 'pointer'
+                                    padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                    background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                    color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 700,
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)', whiteSpace: 'nowrap'
                                 }}
                             >
-                                Asignarme para responder
+                                <UserCheck size={14} /> Asignarme para responder
                             </button>
                         </div>
                     ) : null}
 
-                    {/* Formulario de redacción de mensaje */}
-                    <form onSubmit={handleSend} style={{ opacity: isLocked ? 0.4 : 1, pointerEvents: isLocked ? 'none' : 'auto' }}>
+                    {/* Formulario de redacción de mensaje: Habilitado ÚNICAMENTE si está asignado a mí */}
+                    {canWriteMessage && (
+                        <form onSubmit={handleSend} style={{ marginTop: '0px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 {/* Selector Segmentado: WhatsApp Público vs Nota Privada */}
@@ -2714,6 +2953,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             </div>
                         </div>
                     </form>
+                )}
                 </div>
             </div>
 
