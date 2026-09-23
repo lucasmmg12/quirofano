@@ -619,7 +619,7 @@ export async function fetchLiveAndDemoChats() {
             const recentMsgs = chronological.slice(-60);
 
             const formattedMessages = recentMsgs.map(m => {
-                const isAudio = m.media_type === 'audio' || m.media_type === 'voice' || (m.media_url && /\.(mp3|ogg|oga|opus|wav|m4a|aac|webm)($|\?)/i.test(m.media_url));
+                const isAudio = m.media_type === 'audio' || m.media_type === 'voice' || (m.content && m.content.startsWith('_event_voice_note_')) || (m.media_url && /\.(mp3|ogg|oga|opus|wav|m4a|aac|webm)($|\?)/i.test(m.media_url));
                 const audioTrans = m.raw_payload?.audio_transcription || m.raw_payload?.transcription || (isAudio && m.content && !m.content.startsWith('[') && !m.content.startsWith('_event_') ? m.content.replace(/^🎤\s*"?/, '').replace(/"?$/, '') : null);
                 const audioUnder = m.raw_payload?.audio_understanding || null;
 
@@ -641,7 +641,7 @@ export async function fetchLiveAndDemoChats() {
                     agentRole: m.direction === 'incoming' ? null : 'Atención al Paciente',
                     tagColor: m.direction === 'incoming' ? null : (getAgentById(m.sender_name)?.color || '#0284C7'),
                     type: isAudio ? 'audio' : (m.media_type || 'text'),
-                    text: m.content || '',
+                    text: (m.content && !m.content.startsWith('_event_')) ? m.content : '',
                     mediaUrl: m.media_url || null,
                     orderAnalysis: m.raw_payload?.order_analysis || null,
                     audioTranscription: audioTrans,

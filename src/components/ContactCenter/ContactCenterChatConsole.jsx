@@ -21,11 +21,12 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
     const cleanCaption = String(caption || '').trim();
     const cleanText = String(text || '').trim();
     
-    const isAudio = explicitType === 'audio' || explicitType === 'voice' || /\.(jpe?g|png|webp|gif|bmp|svg)/i.test(cleanUrl) ? false : (/\.(mp3|ogg|oga|opus|wav|m4a|aac|webm)($|\?)/i.test(cleanUrl) || cleanUrl.includes('/audio') || cleanUrl.includes('audio_'));
+    const isVoiceNoteEvent = cleanText.startsWith('_event_voice_note_') || cleanCaption.startsWith('_event_voice_note_');
+    const isAudio = explicitType === 'audio' || explicitType === 'voice' || isVoiceNoteEvent || /\.(mp3|ogg|oga|opus|wav|m4a|aac|webm)($|\?)/i.test(cleanUrl) || cleanUrl.includes('/audio') || cleanUrl.includes('audio_') || cleanUrl.includes('voice');
     const isImage = !isAudio && (explicitType === 'image' || /\.(jpe?g|png|webp|gif|bmp|svg)($|\?)/i.test(cleanUrl));
-    const isPdf = cleanUrl.includes('.pdf') || explicitType === 'pdf' || cleanCaption.toLowerCase().endsWith('.pdf') || cleanText.toLowerCase().endsWith('.pdf');
-    const isWord = cleanUrl.includes('.docx') || cleanUrl.includes('.doc') || explicitType === 'word' || cleanCaption.toLowerCase().includes('.doc') || cleanText.toLowerCase().includes('.doc');
-    const isExcel = cleanUrl.includes('.xlsx') || cleanUrl.includes('.xls') || cleanUrl.includes('.csv') || explicitType === 'excel' || cleanCaption.toLowerCase().includes('.xls') || cleanText.toLowerCase().includes('.xls') || cleanCaption.toLowerCase().includes('.csv');
+    const isPdf = !isAudio && !isImage && (cleanUrl.includes('.pdf') || explicitType === 'pdf' || cleanCaption.toLowerCase().endsWith('.pdf') || cleanText.toLowerCase().endsWith('.pdf'));
+    const isWord = !isAudio && !isImage && (cleanUrl.includes('.docx') || cleanUrl.includes('.doc') || explicitType === 'word' || cleanCaption.toLowerCase().includes('.doc') || cleanText.toLowerCase().includes('.doc'));
+    const isExcel = !isAudio && !isImage && (cleanUrl.includes('.xlsx') || cleanUrl.includes('.xls') || cleanUrl.includes('.csv') || explicitType === 'excel' || cleanCaption.toLowerCase().includes('.xls') || cleanText.toLowerCase().includes('.xls') || cleanCaption.toLowerCase().includes('.csv'));
     
     let fileType = 'document';
     let label = 'Documento Adjunto';
@@ -71,20 +72,22 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
         ext = 'XLSX';
     }
     
-    let filename = cleanCaption || (cleanText && !cleanText.startsWith('[') && cleanText.length < 80 ? cleanText : '');
+    let filename = cleanCaption || (cleanText && !cleanText.startsWith('[') && !cleanText.startsWith('_event_') && cleanText.length < 80 ? cleanText : '');
     if (!filename && url) {
         try {
             const pathname = new URL(url).pathname;
             const parts = pathname.split('/');
             const lastPart = parts[parts.length - 1];
-            if (lastPart) {
+            if (lastPart && !lastPart.startsWith('_event_')) {
                 filename = decodeURIComponent(lastPart);
             }
         } catch {
             filename = '';
         }
     }
-    if (!filename) {
+    if (isAudio && (!filename || filename.startsWith('_event_'))) {
+        filename = 'audio_whatsapp.ogg';
+    } else if (!filename) {
         filename = `${label}.${ext.toLowerCase()}`;
     }
     
@@ -2894,8 +2897,8 @@ export default function ContactCenterChatConsole({
                                                         </div>
                                                     )}
 
-                                                    {/* TARJETA DE DOCUMENTO ADJUNTO (PDF, WORD, EXCEL, ETC.) */}
-                                                    {docMeta && docMeta.fileType !== 'image' && docMeta.fileType !== 'audio' && msg.mediaUrl && (
+                                                    {/* TARJETA DE DOCUMENTO ADJUNTO (PDF, WORD, EXCEL, ETC.) - EXCLUIR ESTRICTAMENTE AUDIOS */}
+                                                    {docMeta && docMeta.fileType !== 'image' && docMeta.fileType !== 'audio' && msg.type !== 'audio' && msg.type !== 'voice' && !msg.text?.startsWith('_event_voice_note_') && msg.mediaUrl && (
                                                         <div style={{
                                                             marginBottom: '10px',
                                                             maxWidth: '380px',
@@ -3167,7 +3170,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             );
                                         })()}
 
-                                        {msg.text && !msg.text.startsWith('[') && msg.text !== msg.audioTranscription && (
+                                        {msg.text && !msg.text.startsWith('[') && !msg.text.startsWith('_event_') && msg.text !== msg.audioTranscription && (
                                             <div style={{ whiteSpace: 'pre-line' }}>
                                                 {msg.text}
                                             </div>
