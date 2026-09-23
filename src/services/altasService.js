@@ -296,7 +296,7 @@ export const FACTURACION_ESTADOS = {
     'Parcial':      { label: 'Parcial',      color: '#0EA5E9', bg: '#F0F9FF', icon: '✂️' },
     'Facturada':    { label: 'Facturada',    color: '#10B981', bg: '#ECFDF5', icon: '✅' },
     'Devuelta':     { label: 'Devuelta',     color: '#EF4444', bg: '#FEF2F2', icon: '⚠️' },
-    'Suspendida':   { label: 'Suspendida',   color: '#64748B', bg: '#F8FAFC', icon: '🛑' },
+    'Suspendida':   { label: 'Suspendida',   color: '#EF4444', bg: '#FEF2F2', icon: '⛔' },
 };
 
 // ─── Facturación Internada ───

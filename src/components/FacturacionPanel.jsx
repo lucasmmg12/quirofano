@@ -2004,13 +2004,12 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                 <tbody>
                                     {paginatedAltas.map(alta => {
                                         const isExpanded = expandedId === alta.id;
-                                        const estadoFac = alta.estado_fac || 'Pendiente';
+                                        const estadoFac = alta.estado_fac || (alta._isSuspendida ? 'Suspendida' : 'Pendiente');
                                         const estadoConfig = FACTURACION_ESTADOS[estadoFac] || FACTURACION_ESTADOS['Pendiente'];
                                         const isDevuelta = estadoFac === 'Devuelta';
                                         const dias = daysBetween(alta.fecha_ingreso, alta.fecha_alta);
                                         const canSelect = (!alta.en_carrito_devolucion || alta.carrito_devolucion_por === currentUser?.usuario) && !alta.devolucion_id && !alta._isSuspendida;
-                                        // Read-only: fichas suspendidas no se pueden editar (Facturadas y Devueltas sí se pueden editar)
-                                        const isReadOnly = alta._isSuspendida;
+                                        const isReadOnly = false;
                                         const isParticular = alta.cliente === '042 - PARTICULARES';
                                         const rowBg = isParticular ? '#FECACA'
                                             : alta._isSuspendida ? '#FEF2F2'
@@ -2191,16 +2190,15 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                         )}
                                                     </td>
 
-                                                    {/* Responsable FAC — dropdown (read-only if locked) */}
-                                                    <td style={{ ...tdStyle, opacity: isReadOnly ? 0.6 : 1 }} onClick={e => e.stopPropagation()}>
+                                                    {/* Responsable FAC — dropdown */}
+                                                    <td style={{ ...tdStyle }} onClick={e => e.stopPropagation()}>
                                                         <div style={{ position: 'relative' }}>
-                                                            <button onClick={(e) => !isReadOnly && openDropdown(e, alta.id, 'responsable')}
-                                                                disabled={isReadOnly}
+                                                            <button onClick={(e) => openDropdown(e, alta.id, 'responsable')}
                                                                 style={{
                                                                     display: 'flex', alignItems: 'center', gap: '4px',
                                                                     padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem',
                                                                     border: '1px solid var(--neutral-200)', background: 'var(--neutral-50)',
-                                                                    cursor: isReadOnly ? 'not-allowed' : 'pointer',
+                                                                    cursor: 'pointer',
                                                                     color: alta.responsable_fac ? 'var(--neutral-700)' : 'var(--neutral-400)',
                                                                     fontWeight: alta.responsable_fac ? 600 : 400,
                                                                     width: '100%', justifyContent: 'space-between',
@@ -2208,15 +2206,15 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                                     {alta.responsable_fac ? shortName(alta.responsable_fac) : 'Asignar'}
                                                                 </span>
-                                                                {!isReadOnly && <ChevronDown size={12} />}
+                                                                <ChevronDown size={12} />
                                                             </button>
-                                                            {!isReadOnly && responsableDropdownId === alta.id && dropdownAnchor && dropdownAnchor.type === 'responsable' && createPortal(
+                                                            {responsableDropdownId === alta.id && dropdownAnchor && dropdownAnchor.type === 'responsable' && createPortal(
                                                                 <div onClick={e => e.stopPropagation()} style={{
                                                                     position: 'fixed',
                                                                     top: (dropdownAnchor.rect.bottom + 280 > window.innerHeight)
                                                                         ? Math.max(8, dropdownAnchor.rect.top - 280)
                                                                         : dropdownAnchor.rect.bottom + 4,
-                                                                    left: dropdownAnchor.rect.left,
+                                                                    left: Math.max(8, Math.min(dropdownAnchor.rect.left, window.innerWidth - 230)),
                                                                     zIndex: 9999,
                                                                     background: '#fff', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
                                                                     border: '1px solid var(--neutral-200)', minWidth: '220px', maxHeight: '280px', overflow: 'auto',
@@ -2241,56 +2239,44 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                         </div>
                                                     </td>
 
-                                                    {/* Estado FAC — dropdown (read-only if locked) */}
-                                                    <td style={{ ...tdStyle, opacity: isReadOnly ? 0.6 : 1 }} onClick={e => e.stopPropagation()}>
+                                                    {/* Estado FAC — dropdown */}
+                                                    <td style={{ ...tdStyle }} onClick={e => e.stopPropagation()}>
                                                         <div style={{ position: 'relative' }}>
-                                                            {alta._isSuspendida ? (
-                                                                <span style={{
+                                                            <button onClick={(e) => openDropdown(e, alta.id, 'estado')}
+                                                                style={{
                                                                     display: 'inline-flex', alignItems: 'center', gap: '4px',
                                                                     padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem',
-                                                                    border: '1px solid #EF444444', background: '#FEF2F2', color: '#EF4444',
-                                                                    fontWeight: 700, whiteSpace: 'nowrap',
-                                                                }}>⛔ Suspendida</span>
-                                                            ) : (
-                                                                <>
-                                                                    <button onClick={(e) => !isReadOnly && openDropdown(e, alta.id, 'estado')}
-                                                                        disabled={isReadOnly}
-                                                                        style={{
-                                                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                                            padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem',
-                                                                            border: `1px solid ${estadoConfig.color}44`,
-                                                                            background: estadoConfig.bg, color: estadoConfig.color,
-                                                                            fontWeight: 700, cursor: isReadOnly ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
-                                                                        }}>
-                                                                        {estadoConfig.icon} {estadoConfig.label}
-                                                                        {!isReadOnly && <ChevronDown size={11} />}
-                                                                    </button>
-                                                                    {!isReadOnly && estadoDropdownId === alta.id && dropdownAnchor && dropdownAnchor.type === 'estado' && createPortal(
-                                                                        <div onClick={e => e.stopPropagation()} style={{
-                                                                            position: 'fixed',
-                                                                            top: (dropdownAnchor.rect.bottom + 200 > window.innerHeight)
-                                                                                ? Math.max(8, dropdownAnchor.rect.top - 200)
-                                                                                : dropdownAnchor.rect.bottom + 4,
-                                                                            left: Math.min(dropdownAnchor.rect.left, window.innerWidth - 170),
-                                                                            zIndex: 9999,
-                                                                            background: '#fff', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
-                                                                            border: '1px solid var(--neutral-200)', minWidth: '160px', overflow: 'hidden',
-                                                                        }}>
-                                                                            {Object.entries(FACTURACION_ESTADOS).map(([k, v]) => (
-                                                                                <div key={k} onClick={() => handleEstadoChange(alta.id, k)}
-                                                                                    style={{
-                                                                                        ...dropdownItemStyle,
-                                                                                        fontWeight: estadoFac === k ? 700 : 400,
-                                                                                        background: estadoFac === k ? v.bg : 'transparent',
-                                                                                        color: estadoFac === k ? v.color : 'var(--neutral-700)',
-                                                                                    }}>
-                                                                                    <span>{v.icon}</span> {v.label}
-                                                                                </div>
-                                                                            ))}
-                                                                        </div>,
-                                                                        document.body
-                                                                    )}
-                                                                </>
+                                                                    border: `1px solid ${estadoConfig.color}44`,
+                                                                    background: estadoConfig.bg, color: estadoConfig.color,
+                                                                    fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                                                                }}>
+                                                                {estadoConfig.icon} {estadoConfig.label}
+                                                                <ChevronDown size={11} />
+                                                            </button>
+                                                            {estadoDropdownId === alta.id && dropdownAnchor && dropdownAnchor.type === 'estado' && createPortal(
+                                                                <div onClick={e => e.stopPropagation()} style={{
+                                                                    position: 'fixed',
+                                                                    top: (dropdownAnchor.rect.bottom + 280 > window.innerHeight)
+                                                                        ? Math.max(8, dropdownAnchor.rect.top - 280)
+                                                                        : dropdownAnchor.rect.bottom + 4,
+                                                                    left: Math.max(8, Math.min(dropdownAnchor.rect.left, window.innerWidth - 190)),
+                                                                    zIndex: 9999,
+                                                                    background: '#fff', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                                                                    border: '1px solid var(--neutral-200)', minWidth: '180px', maxHeight: '280px', overflow: 'auto',
+                                                                }}>
+                                                                    {Object.entries(FACTURACION_ESTADOS).map(([k, v]) => (
+                                                                        <div key={k} onClick={() => handleEstadoChange(alta.id, k)}
+                                                                            style={{
+                                                                                ...dropdownItemStyle,
+                                                                                fontWeight: estadoFac === k ? 700 : 400,
+                                                                                background: estadoFac === k ? v.bg : 'transparent',
+                                                                                color: estadoFac === k ? v.color : 'var(--neutral-700)',
+                                                                            }}>
+                                                                            <span>{v.icon}</span> {v.label}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>,
+                                                                document.body
                                                             )}
                                                         </div>
                                                     </td>

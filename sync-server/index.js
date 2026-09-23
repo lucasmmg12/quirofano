@@ -27,6 +27,8 @@ import { syncKinesiologiaUci } from './sync_kinesiologia_uci.mjs';
 import { syncPacientes, syncSinglePaciente } from './sync_pacientes.mjs';
 import { getTurnosOnlineDuplicados, setGestionTurnoOnline, syncTurnosOnlineToSupabase, parseOnlineComment } from './sync_turnos_online.mjs';
 import { syncDoctorParameters } from './sync_doctor_parameters.mjs';
+import { syncTurnosActivos } from './sync_turnos_activos.mjs';
+
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -122,6 +124,17 @@ app.post('/api/salus/turnos-online/gestion', async (req, res) => {
         res.json({ success: true, gestion: updated });
     } catch (err) {
         console.error('❌ Error guardando gestión de turno online:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/salus/turnos-activos/sync', async (req, res) => {
+    try {
+        const pool = await getPool();
+        const data = await syncTurnosActivos(pool, supabase);
+        res.json(data);
+    } catch (err) {
+        console.error('❌ Error sincronizando turnos activos:', err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -3564,6 +3577,27 @@ app.listen(PORT, '0.0.0.0', () => {
                 console.warn('⚠️ [Turnos Online Auto] Error en ciclo periódico:', e.message);
             }
         }, 10 * 60 * 1000);
+
+        // 1b. TURNOS ACTIVOS Y PRÓXIMAS VISITAS (Cada 5 min)
+        setTimeout(async () => {
+            try {
+                console.log('⏰ [Turnos Activos Auto] Sincronización inicial de visitas próximas...');
+                const poolInst = await getPool();
+                await syncTurnosActivos(poolInst, supabase);
+            } catch (e) {
+                console.warn('⚠️ [Turnos Activos Auto] Error en sincronización inicial:', e.message);
+            }
+        }, 10000);
+
+        setInterval(async () => {
+            try {
+                console.log('⏰ [Turnos Activos Auto] Sincronización periódica (cada 5 min)...');
+                const poolInst = await getPool();
+                await syncTurnosActivos(poolInst, supabase);
+            } catch (e) {
+                console.warn('⚠️ [Turnos Activos Auto] Error en ciclo periódico:', e.message);
+            }
+        }, 5 * 60 * 1000);
 
         // 2. DIAGNÓSTICOS, SÍNTOMAS Y EVOLUCIÓN (Cada 20 min)
         setTimeout(async () => {
