@@ -214,77 +214,113 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
         `);
     }
 
-    // Query C: Turnos Online (Consultar Supabase contact_center_turnos_online donde ya están indexados por DNI)
+    // Query C: Turnos Online & Próximos (Consultar SALUS en tiempo real + Supabase turnos_activos_pacientes)
     let onlineTurnosList = [];
+    const seenOnlineIds = new Set();
     if (resolvedDni) {
-        try {
-            const { data: turnosOnlineSb } = await supabase
-                .from('contact_center_turnos_online')
-                .select('*')
-                .eq('dni', resolvedDni);
+        // C1. Búsqueda en tiempo real de turnos online en SALUS (v.Internet = 1)
+        if (pool) {
+            try {
+                const liveOnline = await pool.request().query(`
+                    SELECT 
+                        v.id as IdVisita,
+                        v.idAgenda,
+                        a.Nombre as NombreAgenda,
+                        v.idPersonal,
+                        p.Nombre as NombreProfesional,
+                        v.Data as FechaTurno,
+                        v.HoraInici,
+                        v.HoraFi,
+                        v.FechaCreacion,
+                        v.Internet,
+                        vn.Comentarios
+                    FROM Visitas v
+                    INNER JOIN Visitas_ntext vn ON v.id = vn.IdVisita
+                    LEFT JOIN Agendas a ON v.idAgenda = a.id
+                    LEFT JOIN Personal p ON v.idPersonal = p.id
+                    WHERE v.Internet = 1
+                      AND v.Data >= CAST(GETDATE() AS DATE)
+                      AND (vn.Comentarios LIKE '%${resolvedDni}%')
+                    ORDER BY v.Data ASC, v.HoraInici ASC
+                `);
+                if (liveOnline.recordset && liveOnline.recordset.length > 0) {
+                    for (const r of liveOnline.recordset) {
+                        const contact = parseOnlineComment(r.Comentarios);
+                        const cDni = String(contact.dni || '').replace(/\D/g, '');
+                        if (cDni && cDni !== resolvedDni) continue; // Evitar coincidencia parcial si el DNI es subcadena
 
-            if (turnosOnlineSb && turnosOnlineSb.length > 0) {
-                for (const row of turnosOnlineSb) {
-                    if (Array.isArray(row.turnos)) {
-                        for (const t of row.turnos) {
-                            onlineTurnosList.push({
-                                id_visita: t.idVisita,
-                                fecha_visita: t.fechaTurno,
-                                fecha_iso: t.fechaTurno,
-                                hora_visita: t.horaInicio,
-                                agenda: t.agenda || row.agenda_nombre,
-                                medico: row.prestador_nombre || 'Profesional Asignado',
-                                tipo_visita: 'Turno Web Online',
-                                asistencia: 'Reservado Online',
-                                cliente: 'Particular / Prepaga',
-                                paciente: row.paciente_nombre,
-                                dni: row.dni,
-                                telefono: row.telefono,
-                                email: row.email,
-                                motivo: t.motivo || 'Turno Web',
-                                origen: 'online',
-                                tipo: 'online'
-                            });
-                        }
+                        const fStr = r.FechaTurno instanceof Date 
+                            ? r.FechaTurno.toISOString().split('T')[0] 
+                            : String(r.FechaTurno).slice(0, 10);
+                        const hStr = r.HoraInici 
+                            ? (typeof r.HoraInici === 'string' ? r.HoraInici.slice(0, 5) : new Date(r.HoraInici).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })) 
+                            : '09:00';
+
+                        const idKey = `online_${r.IdVisita}`;
+                        seenOnlineIds.add(idKey);
+                        seenOnlineIds.add(String(r.IdVisita));
+
+                        onlineTurnosList.push({
+                            id_visita: r.IdVisita,
+                            fecha_visita: fStr,
+                            fecha_iso: fStr,
+                            hora_visita: hStr,
+                            agenda: r.NombreAgenda || 'Turno Web',
+                            medico: r.NombreProfesional || 'Profesional Asignado',
+                            tipo_visita: 'Turno Web Online',
+                            asistencia: 'Reservado Online',
+                            cliente: contact.mutua || 'Particular / Prepaga',
+                            paciente: contact.nombre || 'Paciente Web',
+                            dni: resolvedDni,
+                            telefono: contact.telefono,
+                            email: contact.email,
+                            motivo: contact.motivo || 'Turno Web Online',
+                            origen: 'online',
+                            tipo: 'online'
+                        });
                     }
                 }
+            } catch (errLive) {
+                console.warn('⚠️ [Historial Clinico] Error buscando turnos online en SALUS:', errLive.message);
+            }
+        }
 
-                // Validación en vivo contra SALUS: si el turno fue borrado en SALUS, eliminarlo de la lista y de Supabase
-                if (onlineTurnosList.length > 0 && pool) {
-                    try {
-                        const idVisitas = onlineTurnosList.map(t => t.id_visita).filter(Boolean);
-                        if (idVisitas.length > 0) {
-                            const checkVisitas = await pool.request().query(`
-                                SELECT id FROM Visitas WHERE id IN (${idVisitas.join(',')})
-                            `);
-                            const existingIds = new Set(checkVisitas.recordset.map(r => r.id));
-                            const invalidIds = idVisitas.filter(id => !existingIds.has(id));
+        // C2. Búsqueda complementaria en Supabase turnos_activos_pacientes
+        try {
+            const todayIso = new Date().toISOString().split('T')[0];
+            const { data: turnosSb } = await supabase
+                .from('turnos_activos_pacientes')
+                .select('*')
+                .eq('dni', resolvedDni)
+                .gte('fecha', todayIso);
 
-                            if (invalidIds.length > 0) {
-                                console.log(`[Historial Clinico] 🗑️ Turnos online eliminados en SALUS detectados: ${invalidIds.join(', ')}. Purgando...`);
-                                onlineTurnosList = onlineTurnosList.filter(t => existingIds.has(t.id_visita));
-                                for (const row of turnosOnlineSb) {
-                                    if (Array.isArray(row.turnos)) {
-                                        const validTurnos = row.turnos.filter(t => existingIds.has(t.idVisita));
-                                        if (validTurnos.length === 0) {
-                                            await supabase.from('contact_center_turnos_online').delete().eq('id', row.id);
-                                        } else if (validTurnos.length !== row.turnos.length) {
-                                            await supabase.from('contact_center_turnos_online').update({
-                                                turnos: validTurnos,
-                                                total_turnos: validTurnos.length
-                                            }).eq('id', row.id);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } catch (errCheck) {
-                        console.warn('⚠️ Error verificando existencia de turnos online en SALUS:', errCheck.message);
-                    }
+            if (turnosSb && turnosSb.length > 0) {
+                for (const t of turnosSb) {
+                    if (seenOnlineIds.has(t.id) || (t.id && seenOnlineIds.has(t.id.replace('online_', '')))) continue;
+                    seenOnlineIds.add(t.id);
+
+                    onlineTurnosList.push({
+                        id_visita: t.id,
+                        fecha_visita: t.fecha,
+                        fecha_iso: t.fecha,
+                        hora_visita: t.hora,
+                        agenda: t.tipo_agenda || t.especialidad || 'Consulta Médica',
+                        medico: t.medico || 'Profesional Asignado',
+                        tipo_visita: t.tipo_visita || (t.origen === 'turno_online' ? 'Turno Web Online' : 'Consulta Médica'),
+                        asistencia: t.asistencia || (t.origen === 'turno_online' ? 'Reservado Online' : 'Programado'),
+                        cliente: t.obra_social || 'Particular / Prepaga',
+                        paciente: t.paciente_nombre,
+                        dni: t.dni,
+                        telefono: t.telefono,
+                        email: t.email,
+                        motivo: t.motivo || 'Turno Próximo',
+                        origen: t.origen === 'turno_online' ? 'online' : 'presencial',
+                        tipo: t.origen === 'turno_online' ? 'online' : 'presencial'
+                    });
                 }
             }
         } catch (e) {
-            console.warn('⚠️ Error consultando turnos online en Supabase:', e.message);
+            console.warn('⚠️ Error consultando turnos_activos_pacientes en Supabase:', e.message);
         }
     }
 
@@ -347,15 +383,41 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
         }
     }
 
-    // Procesar turnos online próximos
+    // Procesar turnos online y activos
     if (onlineTurnosList.length > 0) {
         turnosProximos.push(...onlineTurnosList);
     }
 
+    // Deduplicar turnos próximos por fecha normalizada, hora y médico
+    const uniqueTurnosProximos = [];
+    const seenTurnoKeys = new Set();
+    for (const tp of turnosProximos) {
+        let normDate = tp.fecha_iso || tp.fecha_visita || '';
+        if (normDate.includes('/')) {
+            const [d, m, y] = normDate.split('/');
+            normDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        }
+        const normHora = (tp.hora_visita || '').slice(0, 5).replace(':', '');
+        const normMed = (tp.medico || '').toLowerCase().trim().slice(0, 15);
+        const key = `${normDate}_${normHora}_${normMed}`;
+        if (!seenTurnoKeys.has(key)) {
+            seenTurnoKeys.add(key);
+            uniqueTurnosProximos.push(tp);
+        }
+    }
+
     // Ordenar turnos próximos por fecha ascendente
-    turnosProximos.sort((a, b) => {
-        const da = a.fecha_iso || a.fecha_visita;
-        const db = b.fecha_iso || b.fecha_visita;
+    uniqueTurnosProximos.sort((a, b) => {
+        let da = a.fecha_iso || a.fecha_visita;
+        let db = b.fecha_iso || b.fecha_visita;
+        if (da && da.includes('/')) {
+            const [d, m, y] = da.split('/');
+            da = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        }
+        if (db && db.includes('/')) {
+            const [d, m, y] = db.split('/');
+            db = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        }
         return da > db ? 1 : -1;
     });
 
@@ -364,8 +426,8 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
         nhc: resolvedNhc,
         dni: resolvedDni,
         totalConsultas: consultas.length,
-        totalTurnosProximos: turnosProximos.length,
-        turnosProximos,
+        totalTurnosProximos: uniqueTurnosProximos.length,
+        turnosProximos: uniqueTurnosProximos,
         consultas
     };
 }
@@ -3062,6 +3124,14 @@ app.get('/api/salus/sync-all', async (req, res) => {
         } catch (err) {
             console.error('❌ Error en sincronización de turnos online:', err.message);
             results.turnosOnline = { error: err.message };
+        }
+
+        try {
+            console.log('🔄 [Turnos Activos & Online] Sincronizando todos los turnos próximos y citas online con Supabase...');
+            results.turnosActivos = await syncTurnosActivos(await getDb(), supabase);
+        } catch (err) {
+            console.error('❌ Error en sincronización de turnos activos:', err.message);
+            results.turnosActivos = { error: err.message };
         }
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);

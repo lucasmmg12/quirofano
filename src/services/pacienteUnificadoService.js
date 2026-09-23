@@ -313,39 +313,85 @@ export async function fetchPacienteDetalle(paciente) {
                 }
             }
 
-            // Si no obtuvimos turnos próximos de SALUS, consultar contact_center_turnos_online en Supabase
-            if (turnosProximosData.length === 0 && dni) {
+            // Si no obtuvimos turnos próximos de SALUS, consultar turnos_activos_pacientes en Supabase
+            if (turnosProximosData.length === 0 && (dni || telefono)) {
                 try {
-                    const { data: turnosOnlineSb } = await supabase
-                        .from('contact_center_turnos_online')
+                    const todayIso = new Date().toISOString().split('T')[0];
+                    let q = supabase
+                        .from('turnos_activos_pacientes')
                         .select('*')
-                        .eq('dni', dni);
+                        .gte('fecha', todayIso);
 
-                    if (turnosOnlineSb && turnosOnlineSb.length > 0) {
-                        for (const row of turnosOnlineSb) {
-                            if (Array.isArray(row.turnos)) {
-                                for (const t of row.turnos) {
-                                    turnosProximosData.push({
-                                        id_visita: t.idVisita,
-                                        fecha_visita: t.fechaTurno || t.fecha,
-                                        hora_visita: t.horaInicioStr || t.horaInicio || '',
-                                        agenda: t.agenda || row.agenda_nombre,
-                                        medico: t.profesional || row.prestador_nombre,
-                                        tipo_visita: 'Turno Web Online',
-                                        asistencia: 'Reservado Online',
-                                        cliente: 'Online Web',
-                                        paciente: row.paciente_nombre,
-                                        dni: row.dni,
-                                        telefono: row.telefono,
-                                        origen: 'online',
-                                        tipo: 'online'
-                                    });
-                                }
-                            }
+                    if (dni) {
+                        const cleanDni = String(dni).replace(/\D/g, '');
+                        q = q.eq('dni', cleanDni);
+                    } else if (telefono) {
+                        const cleanTel = String(telefono).replace(/\D/g, '').slice(-8);
+                        q = q.or(`telefono.ilike.%${cleanTel}%,telefono2.ilike.%${cleanTel}%`);
+                    }
+
+                    const { data: turnosSb } = await q.order('fecha', { ascending: true }).limit(20);
+
+                    if (turnosSb && turnosSb.length > 0) {
+                        for (const row of turnosSb) {
+                            turnosProximosData.push({
+                                id_visita: row.id,
+                                fecha_visita: row.fecha,
+                                fecha_iso: row.fecha,
+                                hora_visita: row.hora || '',
+                                agenda: row.tipo_agenda || row.especialidad || 'Consulta Médica',
+                                medico: row.medico || 'Profesional Asignado',
+                                tipo_visita: row.tipo_visita || (row.origen === 'turno_online' ? 'Turno Web Online' : 'Consulta Médica'),
+                                asistencia: row.asistencia || (row.origen === 'turno_online' ? 'Reservado Online' : 'Programado'),
+                                cliente: row.obra_social || 'Particular / Prepaga',
+                                paciente: row.paciente_nombre,
+                                dni: row.dni,
+                                telefono: row.telefono,
+                                email: row.email,
+                                motivo: row.motivo,
+                                origen: row.origen === 'turno_online' ? 'online' : 'presencial',
+                                tipo: row.origen === 'turno_online' ? 'online' : 'presencial'
+                            });
                         }
                     }
                 } catch (e) {
-                    console.warn('[pacienteUnificado] error fallback turnos online:', e);
+                    console.warn('[pacienteUnificado] error fallback turnos_activos_pacientes:', e);
+                }
+
+                // Fallback secundario a contact_center_turnos_online si sigue vacío
+                if (turnosProximosData.length === 0 && dni) {
+                    try {
+                        const { data: turnosOnlineSb } = await supabase
+                            .from('contact_center_turnos_online')
+                            .select('*')
+                            .eq('dni', dni);
+
+                        if (turnosOnlineSb && turnosOnlineSb.length > 0) {
+                            for (const row of turnosOnlineSb) {
+                                if (Array.isArray(row.turnos)) {
+                                    for (const t of row.turnos) {
+                                        turnosProximosData.push({
+                                            id_visita: t.idVisita,
+                                            fecha_visita: t.fechaTurno || t.fecha,
+                                            hora_visita: t.horaInicioStr || t.horaInicio || '',
+                                            agenda: t.agenda || row.agenda_nombre,
+                                            medico: t.profesional || row.prestador_nombre,
+                                            tipo_visita: 'Turno Web Online',
+                                            asistencia: 'Reservado Online',
+                                            cliente: 'Online Web',
+                                            paciente: row.paciente_nombre,
+                                            dni: row.dni,
+                                            telefono: row.telefono,
+                                            origen: 'online',
+                                            tipo: 'online'
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[pacienteUnificado] error fallback turnos online:', e);
+                    }
                 }
             }
 

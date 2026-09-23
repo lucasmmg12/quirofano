@@ -8,6 +8,7 @@
  */
 
 import crypto from 'crypto';
+import { parseOnlineComment } from './sync_turnos_online.mjs';
 
 function cleanDni(val) {
     if (!val) return null;
@@ -124,7 +125,80 @@ export async function syncTurnosActivos(pool, supabase) {
             });
         }
 
-        // 3. INTEGRAR TURNOS ONLINE DE SUPABASE (contact_center_turnos_online)
+        // 3. EXTRAER DE SALUS TODOS LOS TURNOS ONLINE (v.Internet = 1, Data >= HOY)
+        try {
+            console.log('🌐 [SYNC-TURNOS] Consultando todos los turnos online directamente en SALUS (v.Internet = 1)...');
+            const onlineQuery = `
+                SELECT 
+                    v.id as IdVisita,
+                    v.idAgenda,
+                    a.Nombre as NombreAgenda,
+                    v.idPersonal,
+                    p.Nombre as NombreProfesional,
+                    v.Data as FechaTurno,
+                    v.HoraInici,
+                    v.HoraFi,
+                    v.FechaCreacion,
+                    v.Internet,
+                    vn.Comentarios
+                FROM Visitas v
+                INNER JOIN Visitas_ntext vn ON v.id = vn.IdVisita
+                LEFT JOIN Agendas a ON v.idAgenda = a.id
+                LEFT JOIN Personal p ON v.idPersonal = p.id
+                WHERE v.Internet = 1
+                  AND v.Data >= CAST(GETDATE() AS DATE)
+                ORDER BY v.Data ASC, v.HoraInici ASC
+            `;
+
+            const onlineResult = await pool.request().query(onlineQuery);
+            const onlineRows = onlineResult.recordset || [];
+            console.log(`📥 [SYNC-TURNOS] ${onlineRows.length} turnos online recuperados de SALUS.`);
+
+            let onlineAdded = 0;
+            for (const r of onlineRows) {
+                const contact = parseOnlineComment(r.Comentarios);
+                const dni = cleanDni(contact.dni);
+                if (!dni) continue;
+
+                const fechaStr = r.FechaTurno instanceof Date
+                    ? r.FechaTurno.toISOString().split('T')[0]
+                    : String(r.FechaTurno).slice(0, 10);
+                if (fechaStr < todayIso) continue;
+
+                const horaStr = formatHora(r.HoraInici);
+                const medico = (r.NombreProfesional || 'Profesional asignado').trim();
+                const agenda = (r.NombreAgenda || 'Turno Web').trim();
+                const id = `online_${r.IdVisita}`;
+
+                turnosMap.set(id, {
+                    id,
+                    dni,
+                    paciente_nombre: (contact.nombre || 'Paciente Web').trim(),
+                    nhc: null,
+                    telefono: cleanPhone(contact.telefono),
+                    telefono2: cleanPhone(contact.telefonoAlt),
+                    email: contact.email ? String(contact.email).trim() : null,
+                    fecha: fechaStr,
+                    hora: horaStr,
+                    medico,
+                    especialidad: contact.motivo || agenda || 'Consulta Médica',
+                    sede: 'San Luis 432 Oeste',
+                    obra_social: (contact.mutua || 'Particular / A confirmar').trim(),
+                    tipo_visita: 'Turno Web Online',
+                    motivo: contact.motivo || 'Reserva Online',
+                    tipo_agenda: agenda,
+                    origen: 'turno_online',
+                    asistencia: null,
+                    updated_at: new Date().toISOString()
+                });
+                onlineAdded++;
+            }
+            console.log(`🌐 [SYNC-TURNOS] ${onlineAdded} turnos online válidos consolidados.`);
+        } catch (onlineErr) {
+            console.error('❌ [SYNC-TURNOS] Error consultando turnos online de SALUS:', onlineErr.message);
+        }
+
+        // 3b. INTEGRAR TURNOS DE SUPABASE (contact_center_turnos_online como complemento)
         try {
             const { data: turnosOnline, error: toErr } = await supabase
                 .from('contact_center_turnos_online')
@@ -133,7 +207,6 @@ export async function syncTurnosActivos(pool, supabase) {
                 .limit(500);
 
             if (!toErr && turnosOnline && turnosOnline.length > 0) {
-                console.log(`🌐 [SYNC-TURNOS] Integrando ${turnosOnline.length} registros de turnos online...`);
                 for (const to of turnosOnline) {
                     const dni = cleanDni(to.dni);
                     if (!dni) continue;
@@ -145,7 +218,7 @@ export async function syncTurnosActivos(pool, supabase) {
 
                         const hTurno = subTurno.horaInicio || '09:00';
                         const medico = subTurno.profesional || to.prestador_nombre || 'Profesional Asignado';
-                        const id = generateTurnoId('online', dni, fTurno, hTurno, medico, subTurno.agenda);
+                        const id = subTurno.idVisita ? `online_${subTurno.idVisita}` : generateTurnoId('online', dni, fTurno, hTurno, medico, subTurno.agenda);
 
                         if (!turnosMap.has(id)) {
                             turnosMap.set(id, {
@@ -174,7 +247,7 @@ export async function syncTurnosActivos(pool, supabase) {
                 }
             }
         } catch (onlineErr) {
-            console.warn('⚠️ [SYNC-TURNOS] Advertencia recuperando turnos online:', onlineErr?.message || onlineErr);
+            console.warn('⚠️ [SYNC-TURNOS] Advertencia recuperando turnos online complementarios:', onlineErr?.message || onlineErr);
         }
 
         const totalRecords = Array.from(turnosMap.values());
