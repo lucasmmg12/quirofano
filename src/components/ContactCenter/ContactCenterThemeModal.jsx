@@ -327,29 +327,35 @@ export default function ContactCenterThemeModal({ isOpen, onClose, currentTheme,
                                                 style={{
                                                     border: isSelected ? '2px solid #0284C7' : '1px solid #E2E8F0',
                                                     borderRadius: '10px',
-                                                    padding: '8px',
+                                                    padding: '8px 10px',
                                                     cursor: 'pointer',
-                                                    background: '#F8FAFC',
+                                                    background: isSelected ? '#F0F9FF' : '#F8FAFC',
                                                     display: 'flex',
                                                     alignItems: 'center',
-                                                    gap: '10px'
+                                                    gap: '10px',
+                                                    transition: 'all 0.15s ease',
+                                                    boxShadow: isSelected ? '0 2px 8px rgba(2, 132, 199, 0.12)' : 'none'
                                                 }}
                                             >
                                                 {w.thumbnail ? (
                                                     <img 
                                                         src={w.thumbnail} 
                                                         alt={w.name} 
-                                                        style={{ width: '48px', height: '32px', borderRadius: '6px', objectFit: 'cover' }} 
+                                                        style={{ width: '56px', height: '36px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }} 
                                                     />
                                                 ) : (
-                                                    <div style={{ width: '48px', height: '32px', borderRadius: '6px', background: '#E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.62rem', color: '#64748B' }}>
+                                                    <div style={{ width: '56px', height: '36px', borderRadius: '6px', background: '#E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.66rem', fontWeight: 700, color: '#64748B', flexShrink: 0 }}>
                                                         Liso
                                                     </div>
                                                 )}
-                                                <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#1E293B', flex: 1 }}>
+                                                <div style={{ fontSize: '0.74rem', fontWeight: isSelected ? 800 : 700, color: isSelected ? '#0369A1' : '#1E293B', flex: 1, lineHeight: 1.25 }}>
                                                     {w.name}
                                                 </div>
-                                                {isSelected && <Check size={14} color="#0284C7" />}
+                                                {isSelected && (
+                                                    <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#0284C7', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                        <Check size={12} strokeWidth={3} />
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })}

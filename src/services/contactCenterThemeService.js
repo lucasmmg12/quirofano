@@ -13,6 +13,30 @@ export const WALLPAPERS = [
         thumbnail: '/wallpapers/nano_banana.jpg'
     },
     {
+        id: 'cordillera_night',
+        name: 'Noche en Cordillera (San Juan)',
+        url: '/wallpapers/cordillera_night.jpg',
+        thumbnail: '/wallpapers/cordillera_night.jpg'
+    },
+    {
+        id: 'medical_tech',
+        name: 'Pulso Médico (Tech Blue)',
+        url: '/wallpapers/medical_tech.jpg',
+        thumbnail: '/wallpapers/medical_tech.jpg'
+    },
+    {
+        id: 'aurora_waves',
+        name: 'Ondas Aurora (Descanso Visual)',
+        url: '/wallpapers/aurora_waves.jpg',
+        thumbnail: '/wallpapers/aurora_waves.jpg'
+    },
+    {
+        id: 'dora_bot',
+        name: 'Dora Bot Asistente (Sci-Fi)',
+        url: '/wallpapers/dora_bot.jpg',
+        thumbnail: '/wallpapers/dora_bot.jpg'
+    },
+    {
         id: 'none',
         name: 'Sin imagen (Liso / Trama sutil)',
         url: null,
