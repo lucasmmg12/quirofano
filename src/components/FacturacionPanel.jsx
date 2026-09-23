@@ -301,8 +301,8 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                 if (a.usuario_facturo && !a.responsable_fac) {
                     updates.responsable_fac = a.usuario_facturo;
                 }
-                // Si SALUS marcó facturada=true, el estado final debe ser Facturada, salvo que el usuario lo haya marcado como Parcial
-                if (a.facturada && a.estado_fac !== 'Facturada' && a.estado_fac !== 'Parcial') {
+                // Si SALUS marcó facturada=true y no tiene estado asignado o está Pendiente, setear Facturada
+                if (a.facturada && (!a.estado_fac || a.estado_fac === 'Pendiente')) {
                     updates.estado_fac = 'Facturada';
                 }
                 return Object.keys(updates).length > 0 ? { ...a, ...updates } : a;
@@ -652,7 +652,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             const lastDayPrevMonth = new Date(prevYear, prevMonth, 0).getDate();
             const fechaCierreSugerida = cruzaMes ? `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(lastDayPrevMonth).padStart(2, '0')}` : null;
 
-            if (facturada && estado_fac !== 'Facturada' && estado_fac !== 'Parcial') {
+            if (facturada && (!estado_fac || estado_fac === 'Pendiente')) {
                 estado_fac = 'Facturada';
             }
 
