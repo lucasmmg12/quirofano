@@ -159,6 +159,16 @@ export default function ContactCenterChatConsole({
     const [ccTheme, setCcTheme] = useState(getStoredTheme);
     const [themeModalOpen, setThemeModalOpen] = useState(false);
 
+    // Colores adaptativos de tarjetas para sidebars (soporte para modo pastel y oscuro con contraste garantizado)
+    const themeCardBg = ccTheme.cardBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF');
+    const themeCardBorder = ccTheme.cardBorder || (ccTheme.isDark ? '#334155' : '#E2E8F0');
+    const themeCardText = ccTheme.cardText || (ccTheme.isDark ? '#F8FAFC' : '#0F172A');
+    const themeCardSubtext = ccTheme.cardSubtext || (ccTheme.isDark ? '#94A3B8' : '#64748B');
+    const themeCardHoverBg = ccTheme.cardHoverBg || (ccTheme.isDark ? '#334155' : '#F8FAFC');
+    const themeCardSelectedBg = ccTheme.cardSelectedBg || (ccTheme.isDark ? '#1E3A5F' : '#EFF6FF');
+    const rightCardBg = ccTheme.rightSidebarCardBg || themeCardBg;
+    const rightCardBorder = ccTheme.rightSidebarCardBorder || themeCardBorder;
+
     // Panel de Información Resizable (con límites min 260px, max 550px)
     const consoleContainerRef = useRef(null);
     const [rightPanelWidth, setRightPanelWidth] = useState(() => {
@@ -1476,19 +1486,19 @@ export default function ContactCenterChatConsole({
                     </div>
                 </div>
                 {/* BUSCADOR DE CHATS A MANO (NOMBRE, DNI, TELÉFONO O TEXTO EN MENSAJES) */}
-                <div style={{ padding: '8px 10px', borderBottom: '1px solid #E2E8F0', background: '#FFFFFF' }}>
+                <div style={{ padding: '8px 10px', borderBottom: `1px solid ${ccTheme.leftSidebarBorder || '#E2E8F0'}`, background: ccTheme.leftSidebarBg || '#FFFFFF' }}>
                     <div style={{
                         display: 'flex',
                         alignItems: 'center',
                         gap: '8px',
-                        background: isSearching ? '#F0F9FF' : '#F8FAFC',
-                        border: `1.5px solid ${isSearching ? '#0284C7' : '#CBD5E1'}`,
+                        background: isSearching ? (ccTheme.isDark ? '#1E3A5F' : '#F0F9FF') : themeCardBg,
+                        border: `1.5px solid ${isSearching ? (ccTheme.accentColor || '#0284C7') : themeCardBorder}`,
                         borderRadius: '8px',
                         padding: '6px 10px',
                         transition: 'all 0.15s ease',
                         boxShadow: isSearching ? '0 0 0 2px rgba(2, 132, 199, 0.15)' : 'none'
                     }}>
-                        <Search size={15} color={isSearching ? '#0284C7' : '#64748B'} style={{ flexShrink: 0 }} />
+                        <Search size={15} color={isSearching ? (ccTheme.accentColor || '#0284C7') : themeCardSubtext} style={{ flexShrink: 0 }} />
                         <input 
                             ref={searchInputRef}
                             type="text"
@@ -1500,7 +1510,7 @@ export default function ContactCenterChatConsole({
                                 background: 'transparent',
                                 outline: 'none',
                                 fontSize: '0.78rem',
-                                color: '#0F172A',
+                                color: ccTheme.leftSidebarText || '#0F172A',
                                 width: '100%',
                                 fontWeight: 500
                             }}
@@ -1601,7 +1611,14 @@ export default function ContactCenterChatConsole({
                 </div>
 
                 {/* Pestañas de Filtros Superiores AsisteClick */}
-                <div style={{ display: 'flex', gap: '4px', padding: '8px 8px', borderBottom: '1px solid #F1F5F9', overflowX: 'auto', background: '#FAFAFA' }}>
+                <div style={{
+                    display: 'flex',
+                    gap: '4px',
+                    padding: '8px 8px',
+                    borderBottom: `1px solid ${ccTheme.leftSidebarBorder || '#F1F5F9'}`,
+                    overflowX: 'auto',
+                    background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#0F172A' : '#FAFAFA')
+                }}>
                     <button 
                         onClick={() => {
                             setFilterTab('sin_asignar');
@@ -1610,9 +1627,10 @@ export default function ContactCenterChatConsole({
                         }}
                         style={{
                             padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                            border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
-                            background: filterTab === 'sin_asignar' ? '#0284C7' : '#FFFFFF',
-                            color: filterTab === 'sin_asignar' ? '#FFFFFF' : '#475569',
+                            border: filterTab === 'sin_asignar' ? 'none' : `1px solid ${themeCardBorder}`,
+                            cursor: 'pointer', whiteSpace: 'nowrap',
+                            background: filterTab === 'sin_asignar' ? (ccTheme.accentColor || '#0284C7') : themeCardBg,
+                            color: filterTab === 'sin_asignar' ? '#FFFFFF' : themeCardText,
                             boxShadow: filterTab === 'sin_asignar' ? '0 2px 4px rgba(2,132,199,0.25)' : 'none'
                         }}
                     >
@@ -1629,9 +1647,10 @@ export default function ContactCenterChatConsole({
                         }}
                         style={{
                             padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                            border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
-                            background: filterTab === 'asignadas_mi' ? '#0284C7' : '#FFFFFF',
-                            color: filterTab === 'asignadas_mi' ? '#FFFFFF' : '#475569'
+                            border: filterTab === 'asignadas_mi' ? 'none' : `1px solid ${themeCardBorder}`,
+                            cursor: 'pointer', whiteSpace: 'nowrap',
+                            background: filterTab === 'asignadas_mi' ? (ccTheme.accentColor || '#0284C7') : themeCardBg,
+                            color: filterTab === 'asignadas_mi' ? '#FFFFFF' : themeCardText
                         }}
                     >
                         Mis chats ({chats.filter(c => {
@@ -1650,9 +1669,10 @@ export default function ContactCenterChatConsole({
                         }}
                         style={{
                             padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                            border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
-                            background: filterTab === 'asignadas_otros' ? '#0284C7' : '#FFFFFF',
-                            color: filterTab === 'asignadas_otros' ? '#FFFFFF' : '#475569'
+                            border: filterTab === 'asignadas_otros' ? 'none' : `1px solid ${themeCardBorder}`,
+                            cursor: 'pointer', whiteSpace: 'nowrap',
+                            background: filterTab === 'asignadas_otros' ? (ccTheme.accentColor || '#0284C7') : themeCardBg,
+                            color: filterTab === 'asignadas_otros' ? '#FFFFFF' : themeCardText
                         }}
                     >
                         Otras ({chats.filter(c => {
@@ -1668,9 +1688,10 @@ export default function ContactCenterChatConsole({
                         }}
                         style={{
                             padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                            border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
-                            background: filterTab === 'finalizados' ? '#059669' : '#FFFFFF',
-                            color: filterTab === 'finalizados' ? '#FFFFFF' : '#475569',
+                            border: filterTab === 'finalizados' ? 'none' : `1px solid ${themeCardBorder}`,
+                            cursor: 'pointer', whiteSpace: 'nowrap',
+                            background: filterTab === 'finalizados' ? '#059669' : themeCardBg,
+                            color: filterTab === 'finalizados' ? '#FFFFFF' : themeCardText,
                             boxShadow: filterTab === 'finalizados' ? '0 2px 4px rgba(5,150,105,0.25)' : 'none',
                             display: 'flex', alignItems: 'center', gap: '3px'
                         }}
@@ -1684,9 +1705,10 @@ export default function ContactCenterChatConsole({
                         }}
                         style={{
                             padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                            border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
-                            background: filterTab === 'todos' ? '#0284C7' : '#FFFFFF',
-                            color: filterTab === 'todos' ? '#FFFFFF' : '#475569'
+                            border: filterTab === 'todos' ? 'none' : `1px solid ${themeCardBorder}`,
+                            cursor: 'pointer', whiteSpace: 'nowrap',
+                            background: filterTab === 'todos' ? (ccTheme.accentColor || '#0284C7') : themeCardBg,
+                            color: filterTab === 'todos' ? '#FFFFFF' : themeCardText
                         }}
                     >
                         Todos ({chats.length})
@@ -1699,18 +1721,20 @@ export default function ContactCenterChatConsole({
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: '8px 12px',
-                    background: selectedChatIds.size > 0 ? '#EFF6FF' : '#F8FAFC',
-                    borderBottom: '1px solid #E2E8F0',
+                    background: selectedChatIds.size > 0 
+                        ? themeCardSelectedBg 
+                        : (ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#0F172A' : '#F8FAFC')),
+                    borderBottom: `1px solid ${ccTheme.leftSidebarBorder || '#E2E8F0'}`,
                     transition: 'background 0.15s ease',
                     fontSize: '0.74rem'
                 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 700, color: '#334155', userSelect: 'none' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 700, color: themeCardText, userSelect: 'none' }}>
                         <input
                             type="checkbox"
                             checked={selectableChats.length > 0 && selectableChats.every(c => selectedChatIds.has(c.id))}
                             onChange={handleSelectAllVisible}
                             disabled={selectableChats.length === 0}
-                            style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#2563EB' }}
+                            style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: ccTheme.accentColor || '#2563EB' }}
                         />
                         <span>
                             {selectedChatIds.size > 0 
@@ -1728,7 +1752,7 @@ export default function ContactCenterChatConsole({
                                     style={{
                                         background: 'transparent',
                                         border: 'none',
-                                        color: '#64748B',
+                                        color: themeCardSubtext,
                                         fontSize: '0.72rem',
                                         fontWeight: 600,
                                         cursor: 'pointer',
@@ -1761,7 +1785,7 @@ export default function ContactCenterChatConsole({
                                 </button>
                             </>
                         ) : (
-                            <span style={{ fontSize: '0.68rem', color: '#94A3B8' }}>
+                            <span style={{ fontSize: '0.68rem', color: themeCardSubtext }}>
                                 {filteredChats.length} {filteredChats.length === 1 ? 'chat' : 'chats'}
                             </span>
                         )}
@@ -1771,14 +1795,14 @@ export default function ContactCenterChatConsole({
                 {/* Lista de Chats con Tags de Asignación y Último en Responder */}
                 <div style={{ flex: 1, overflowY: 'auto' }}>
                     {filteredChats.length === 0 ? (
-                        <div style={{ padding: '36px 16px', textAlign: 'center', color: '#64748B' }}>
+                        <div style={{ padding: '36px 16px', textAlign: 'center', color: themeCardSubtext }}>
                             {isSearching ? (
                                 <>
-                                    <Search size={28} color="#94A3B8" style={{ margin: '0 auto 8px', opacity: 0.6 }} />
-                                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1E293B', marginBottom: '4px' }}>
+                                    <Search size={28} color={themeCardSubtext} style={{ margin: '0 auto 8px', opacity: 0.6 }} />
+                                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: themeCardText, marginBottom: '4px' }}>
                                         Sin resultados para "{searchTerm}"
                                     </div>
-                                    <div style={{ fontSize: '0.72rem', color: '#64748B', lineHeight: '1.4', maxWidth: '240px', margin: '0 auto 12px' }}>
+                                    <div style={{ fontSize: '0.72rem', color: themeCardSubtext, lineHeight: '1.4', maxWidth: '240px', margin: '0 auto 12px' }}>
                                         Verifica el DNI, apellido del paciente o busca palabras clave dentro de los mensajes.
                                     </div>
                                     {searchScope === 'tab' && searchedChats.length > 0 && (
@@ -1787,7 +1811,7 @@ export default function ContactCenterChatConsole({
                                             onClick={() => setSearchScope('all')}
                                             style={{
                                                 fontSize: '0.72rem', fontWeight: 700, padding: '5px 12px',
-                                                background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE',
+                                                background: themeCardSelectedBg, color: ccTheme.accentColor || '#1E40AF', border: `1px solid ${themeCardBorder}`,
                                                 borderRadius: '6px', cursor: 'pointer', marginBottom: '8px'
                                             }}
                                         >
@@ -1799,7 +1823,7 @@ export default function ContactCenterChatConsole({
                                         onClick={() => setSearchTerm('')}
                                         style={{
                                             display: 'block', margin: '6px auto 0',
-                                            fontSize: '0.72rem', color: '#0284C7', background: 'transparent',
+                                            fontSize: '0.72rem', color: ccTheme.accentColor || '#0284C7', background: 'transparent',
                                             border: 'none', cursor: 'pointer', textDecoration: 'underline'
                                         }}
                                     >
@@ -1808,8 +1832,8 @@ export default function ContactCenterChatConsole({
                                 </>
                             ) : (
                                 <>
-                                    <MessageSquare size={24} color="#CBD5E1" style={{ margin: '0 auto 8px' }} />
-                                    <div style={{ fontSize: '0.78rem', fontWeight: 600 }}>No hay conversaciones en esta carpeta</div>
+                                    <MessageSquare size={24} color={themeCardSubtext} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
+                                    <div style={{ fontSize: '0.78rem', fontWeight: 600, color: themeCardSubtext }}>No hay conversaciones en esta carpeta</div>
                                 </>
                             )}
                         </div>
@@ -1828,15 +1852,15 @@ export default function ContactCenterChatConsole({
                                     onClick={() => onSelectChat(chat.id)}
                                     style={{
                                         padding: '12px 14px',
-                                        borderBottom: '1px solid #F1F5F9',
+                                        borderBottom: `1px solid ${themeCardBorder}`,
                                         cursor: 'pointer',
                                         background: isSelected 
-                                            ? '#EFF6FF' 
+                                            ? themeCardSelectedBg 
                                             : isChecked 
-                                                ? '#F0FDF4' 
-                                                : '#FFFFFF',
+                                                ? (ccTheme.isDark ? '#064E3B' : '#F0FDF4') 
+                                                : themeCardBg,
                                         borderLeft: isSelected 
-                                            ? '4px solid #1E40AF' 
+                                            ? `4px solid ${ccTheme.accentColor || '#1E40AF'}` 
                                             : isChecked 
                                                 ? '4px solid #16A34A' 
                                                 : '4px solid transparent',
@@ -1875,16 +1899,16 @@ export default function ContactCenterChatConsole({
                                                 {getChatAvatarInitials(chat)}
                                             </div>
                                             <div>
-                                                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: isSelected ? '#1E40AF' : '#0F172A' }}>
+                                                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: isSelected ? (ccTheme.accentColor || (ccTheme.isDark ? '#38BDF8' : '#1E40AF')) : themeCardText }}>
                                                     {getCleanChatName(chat)}
                                                 </span>
-                                                <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                                <div style={{ fontSize: '0.68rem', color: themeCardSubtext }}>
                                                     +{chat.phone}
                                                 </div>
                                             </div>
                                         </div>
                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
-                                            <span style={{ fontSize: '0.68rem', color: '#94A3B8' }}>
+                                            <span style={{ fontSize: '0.68rem', color: themeCardSubtext }}>
                                                 {chat.timeAgo}
                                             </span>
                                             {isSearching && searchScope === 'all' && (
@@ -1893,9 +1917,9 @@ export default function ContactCenterChatConsole({
                                                     fontWeight: 700,
                                                     padding: '1px 5px',
                                                     borderRadius: '4px',
-                                                    background: isClosedOrArchived(chat.status) ? '#ECFDF5' : '#F1F5F9',
-                                                    color: isClosedOrArchived(chat.status) ? '#047857' : '#475569',
-                                                    border: `1px solid ${isClosedOrArchived(chat.status) ? '#A7F3D0' : '#E2E8F0'}`
+                                                    background: isClosedOrArchived(chat.status) ? (ccTheme.isDark ? '#064E3B' : '#ECFDF5') : themeCardSelectedBg,
+                                                    color: isClosedOrArchived(chat.status) ? (ccTheme.isDark ? '#6EE7B7' : '#047857') : themeCardText,
+                                                    border: `1px solid ${isClosedOrArchived(chat.status) ? (ccTheme.isDark ? '#047857' : '#A7F3D0') : themeCardBorder}`
                                                 }}>
                                                     {isClosedOrArchived(chat.status) ? '📁 Finalizado' : (chat.assignedToName ? `👤 ${chat.assignedToName}` : '⚠️ Sin asignar')}
                                                 </span>
@@ -1908,17 +1932,17 @@ export default function ContactCenterChatConsole({
                                         {isClosedOrArchived(chat.status) ? (
                                             <span style={{
                                                 fontSize: '0.66rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
-                                                background: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0',
+                                                background: ccTheme.isDark ? '#064E3B' : '#ECFDF5', color: ccTheme.isDark ? '#6EE7B7' : '#047857', border: `1px solid ${ccTheme.isDark ? '#047857' : '#A7F3D0'}`,
                                                 display: 'flex', alignItems: 'center', gap: '3px'
                                             }}>
-                                                <CheckCircle2 size={10} color="#047857" /> Finalizado {chat.resolutionReason ? `• ${chat.resolutionReason}` : ''}
+                                                <CheckCircle2 size={10} color={ccTheme.isDark ? '#6EE7B7' : '#047857'} /> Finalizado {chat.resolutionReason ? `• ${chat.resolutionReason}` : ''}
                                             </span>
                                         ) : assignedAgent ? (
                                             <span style={{
                                                 fontSize: '0.66rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
-                                                background: chatIsMine ? '#DCFCE7' : '#F1F5F9',
-                                                color: chatIsMine ? '#15803D' : '#334155',
-                                                border: `1px solid ${chatIsMine ? '#86EFAC' : '#CBD5E1'}`,
+                                                background: chatIsMine ? (ccTheme.isDark ? '#064E3B' : '#DCFCE7') : (ccTheme.isDark ? '#1E293B' : '#F1F5F9'),
+                                                color: chatIsMine ? (ccTheme.isDark ? '#6EE7B7' : '#15803D') : (ccTheme.isDark ? '#E2E8F0' : '#334155'),
+                                                border: `1px solid ${chatIsMine ? (ccTheme.isDark ? '#047857' : '#86EFAC') : (ccTheme.isDark ? '#334155' : '#CBD5E1')}`,
                                                 display: 'flex', alignItems: 'center', gap: '3px'
                                             }}>
                                                 <User size={10} />
@@ -1927,7 +1951,7 @@ export default function ContactCenterChatConsole({
                                         ) : (
                                             <span style={{
                                                 fontSize: '0.66rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
-                                                background: '#FEF3C7', color: '#B45309', border: '1px solid #FCD34D'
+                                                background: ccTheme.isDark ? '#451A03' : '#FEF3C7', color: ccTheme.isDark ? '#FDE68A' : '#B45309', border: `1px solid ${ccTheme.isDark ? '#78350F' : '#FCD34D'}`
                                             }}>
                                                 ⚠️ Sin asignar
                                             </span>
@@ -1937,7 +1961,7 @@ export default function ContactCenterChatConsole({
                                         {chatIsLocked && !isClosedOrArchived(chat.status) && (
                                             <span style={{
                                                 fontSize: '0.64rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
-                                                background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5',
+                                                background: ccTheme.isDark ? '#450A0A' : '#FEE2E2', color: ccTheme.isDark ? '#FCA5A5' : '#B91C1C', border: `1px solid ${ccTheme.isDark ? '#7F1D1D' : '#FCA5A5'}`,
                                                 display: 'flex', alignItems: 'center', gap: '2px'
                                             }}>
                                                 <Lock size={9} /> Bloqueada
@@ -1956,15 +1980,15 @@ export default function ContactCenterChatConsole({
                                                         fontWeight: 800,
                                                         padding: '1px 6px',
                                                         borderRadius: '6px',
-                                                        background: '#EFF6FF',
-                                                        color: '#1D4ED8',
-                                                        border: '1px solid #93C5FD',
+                                                        background: ccTheme.isDark ? '#1E3A5F' : '#EFF6FF',
+                                                        color: ccTheme.isDark ? '#93C5FD' : '#1D4ED8',
+                                                        border: `1px solid ${ccTheme.isDark ? '#1D4ED8' : '#93C5FD'}`,
                                                         display: 'inline-flex',
                                                         alignItems: 'center',
                                                         gap: '3px'
                                                     }}
                                                 >
-                                                    <Eye size={10} color="#2563EB" />
+                                                    <Eye size={10} color={ccTheme.isDark ? '#93C5FD' : '#2563EB'} />
                                                     {viewers.map(v => v.agentName.split(' ')[0]).join(', ')} viendo
                                                 </span>
                                             );
@@ -1974,9 +1998,9 @@ export default function ContactCenterChatConsole({
                                         {chat.lastResponder && (
                                             <span style={{
                                                 fontSize: '0.64rem', fontWeight: 700, padding: '1px 6px', borderRadius: '6px',
-                                                background: chat.lastResponderRole === 'agent' ? '#EFF6FF' : '#FFF1F2',
-                                                color: chat.lastResponderRole === 'agent' ? '#1E40AF' : '#E11D48',
-                                                border: '1px solid #E2E8F0',
+                                                background: chat.lastResponderRole === 'agent' ? (ccTheme.isDark ? '#1E3A5F' : '#EFF6FF') : (ccTheme.isDark ? '#450A0A' : '#FFF1F2'),
+                                                color: chat.lastResponderRole === 'agent' ? (ccTheme.isDark ? '#93C5FD' : '#1E40AF') : (ccTheme.isDark ? '#FCA5A5' : '#E11D48'),
+                                                border: `1px solid ${themeCardBorder}`,
                                                 display: 'flex', alignItems: 'center', gap: '3px'
                                             }}>
                                                 {chat.lastResponderRole === 'agent' ? 'Resp: ' + chat.lastResponder : '🔴 Escribió Paciente'}
@@ -1990,9 +2014,15 @@ export default function ContactCenterChatConsole({
                                                     title={`Lleva ${chat.waitingTimeText || 'un tiempo'} esperando respuesta`}
                                                     style={{
                                                         fontSize: '0.64rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
-                                                        background: chat.waitingMinutes >= 30 ? '#FEF2F2' : (chat.waitingMinutes >= 10 ? '#FFFBEB' : '#F0FDF4'),
-                                                        color: chat.waitingMinutes >= 30 ? '#DC2626' : (chat.waitingMinutes >= 10 ? '#D97706' : '#15803D'),
-                                                        border: `1px solid ${chat.waitingMinutes >= 30 ? '#FECACA' : (chat.waitingMinutes >= 10 ? '#FDE68A' : '#BBF7D0')}`,
+                                                        background: chat.waitingMinutes >= 30 
+                                                            ? (ccTheme.isDark ? '#450A0A' : '#FEF2F2') 
+                                                            : (chat.waitingMinutes >= 10 ? (ccTheme.isDark ? '#451A03' : '#FFFBEB') : (ccTheme.isDark ? '#064E3B' : '#F0FDF4')),
+                                                        color: chat.waitingMinutes >= 30 
+                                                            ? (ccTheme.isDark ? '#FCA5A5' : '#DC2626') 
+                                                            : (chat.waitingMinutes >= 10 ? (ccTheme.isDark ? '#FDE68A' : '#D97706') : (ccTheme.isDark ? '#6EE7B7' : '#15803D')),
+                                                        border: `1px solid ${chat.waitingMinutes >= 30 
+                                                            ? (ccTheme.isDark ? '#7F1D1D' : '#FECACA') 
+                                                            : (chat.waitingMinutes >= 10 ? (ccTheme.isDark ? '#78350F' : '#FDE68A') : (ccTheme.isDark ? '#047857' : '#BBF7D0'))}`,
                                                         display: 'flex', alignItems: 'center', gap: '3px'
                                                     }}
                                                 >
@@ -2005,11 +2035,11 @@ export default function ContactCenterChatConsole({
                                                     title="Esta conversación ya fue respondida por un operador"
                                                     style={{
                                                         fontSize: '0.64rem', fontWeight: 700, padding: '1px 6px', borderRadius: '6px',
-                                                        background: '#F8FAFC', color: '#15803D', border: '1px solid #DCFCE7',
+                                                        background: ccTheme.isDark ? '#064E3B' : '#F8FAFC', color: ccTheme.isDark ? '#6EE7B7' : '#15803D', border: `1px solid ${ccTheme.isDark ? '#047857' : '#DCFCE7'}`,
                                                         display: 'flex', alignItems: 'center', gap: '2px'
                                                     }}
                                                 >
-                                                    <Check size={9} color="#16A34A" /> Respondido
+                                                    <Check size={9} color={ccTheme.isDark ? '#6EE7B7' : '#16A34A'} /> Respondido
                                                 </span>
                                             )
                                         )}
@@ -2020,11 +2050,11 @@ export default function ContactCenterChatConsole({
                                         <div style={{
                                             margin: '5px 0 3px 0',
                                             padding: '4px 7px',
-                                            background: '#FFFBEB',
-                                            border: '1px solid #FDE68A',
+                                            background: ccTheme.isDark ? '#451A03' : '#FFFBEB',
+                                            border: `1px solid ${ccTheme.isDark ? '#78350F' : '#FDE68A'}`,
                                             borderRadius: '5px',
                                             fontSize: '0.68rem',
-                                            color: '#92400E',
+                                            color: ccTheme.isDark ? '#FDE68A' : '#92400E',
                                             display: 'flex',
                                             alignItems: 'center',
                                             gap: '5px',
@@ -2041,11 +2071,11 @@ export default function ContactCenterChatConsole({
                                         <div style={{
                                             margin: '5px 0 3px 0',
                                             padding: '4px 7px',
-                                            background: '#EFF6FF',
-                                            border: '1px solid #BFDBFE',
+                                            background: ccTheme.isDark ? '#1E3A5F' : '#EFF6FF',
+                                            border: `1px solid ${ccTheme.isDark ? '#1D4ED8' : '#BFDBFE'}`,
                                             borderRadius: '5px',
                                             fontSize: '0.68rem',
-                                            color: '#1E40AF',
+                                            color: ccTheme.isDark ? '#93C5FD' : '#1E40AF',
                                             display: 'flex',
                                             alignItems: 'center',
                                             gap: '5px',
@@ -2062,11 +2092,11 @@ export default function ContactCenterChatConsole({
                                         <div style={{
                                             margin: '5px 0 3px 0',
                                             padding: '4px 7px',
-                                            background: '#F5F3FF',
-                                            border: '1px solid #DDD6FE',
+                                            background: ccTheme.isDark ? '#2E1065' : '#F5F3FF',
+                                            border: `1px solid ${ccTheme.isDark ? '#6B21A8' : '#DDD6FE'}`,
                                             borderRadius: '5px',
                                             fontSize: '0.68rem',
-                                            color: '#6D28D9',
+                                            color: ccTheme.isDark ? '#DDD6FE' : '#6D28D9',
                                             display: 'flex',
                                             alignItems: 'center',
                                             gap: '5px',
@@ -2079,7 +2109,7 @@ export default function ContactCenterChatConsole({
                                         </div>
                                     )}
 
-                                    <div style={{ fontSize: '0.76rem', color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    <div style={{ fontSize: '0.76rem', color: themeCardSubtext, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                         {chat.lastMessage}
                                     </div>
                                 </div>
@@ -2116,13 +2146,13 @@ export default function ContactCenterChatConsole({
                         {/* Nombre del paciente y datos */}
                         <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0284C7' }}>
+                                <span style={{ fontSize: '1.05rem', fontWeight: 800, color: ccTheme.accentColor || '#0284C7' }}>
                                     {getCleanChatName(selectedChat)}
                                 </span>
 
                                 {/* CONDICIÓN PADRÓN */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B' }}>CONDICIÓN PADRÓN</span>
+                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: ccTheme.chatHeaderColor || '#64748B', opacity: 0.85 }}>CONDICIÓN PADRÓN</span>
                                     <span style={{
                                         fontSize: '0.68rem', fontWeight: 800,
                                         padding: '2px 8px', borderRadius: '4px',
@@ -2134,11 +2164,11 @@ export default function ContactCenterChatConsole({
                                     </span>
                                 </div>
                             </div>
-                            <div style={{ fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '3px' }}>
+                            <div style={{ fontSize: '0.72rem', color: ccTheme.chatHeaderColor || '#64748B', opacity: 0.9, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '3px' }}>
                                 <span>Tel: {selectedChat.phone}</span>
                                 <span>•</span>
                                 <span>
-                                    Última respuesta: <strong style={{ color: selectedChat.lastResponderRole === 'agent' ? '#1E40AF' : '#E11D48' }}>
+                                    Última respuesta: <strong style={{ color: selectedChat.lastResponderRole === 'agent' ? (ccTheme.accentColor || '#1E40AF') : (ccTheme.isDark ? '#FCA5A5' : '#E11D48') }}>
                                         {selectedChat.lastResponder || 'Paciente'}
                                     </strong>
                                 </span>
@@ -3612,14 +3642,14 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                 color: ccTheme.rightSidebarText || '#0F172A',
                 overflowY: 'auto'
             }}>
-                <div style={{ display: 'flex', flexShrink: 0, borderBottom: `1px solid ${ccTheme.rightSidebarBorder || '#F1F5F9'}`, background: ccTheme.rightSidebarCardBg || '#FAFAFA' }}>
+                <div style={{ display: 'flex', flexShrink: 0, borderBottom: `1px solid ${ccTheme.rightSidebarBorder || '#F1F5F9'}`, background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#0F172A' : '#FAFAFA') }}>
                     <button 
                         onClick={() => setActiveDetailTab('info')}
                         style={{
                             flex: 1, padding: '12px 0', border: 'none', background: 'transparent',
                             fontWeight: 700, fontSize: '0.76rem',
-                            color: activeDetailTab === 'info' ? '#0284C7' : '#64748B',
-                            borderBottom: activeDetailTab === 'info' ? '2px solid #0284C7' : '2px solid transparent',
+                            color: activeDetailTab === 'info' ? (ccTheme.accentColor || '#0284C7') : themeCardSubtext,
+                            borderBottom: activeDetailTab === 'info' ? `2px solid ${ccTheme.accentColor || '#0284C7'}` : '2px solid transparent',
                             cursor: 'pointer'
                         }}
                     >
@@ -3630,8 +3660,8 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                         style={{
                             flex: 1, padding: '12px 0', border: 'none', background: 'transparent',
                             fontWeight: 700, fontSize: '0.76rem',
-                            color: activeDetailTab === 'historial' ? '#0284C7' : '#64748B',
-                            borderBottom: activeDetailTab === 'historial' ? '2px solid #0284C7' : '2px solid transparent',
+                            color: activeDetailTab === 'historial' ? (ccTheme.accentColor || '#0284C7') : themeCardSubtext,
+                            borderBottom: activeDetailTab === 'historial' ? `2px solid ${ccTheme.accentColor || '#0284C7'}` : '2px solid transparent',
                             cursor: 'pointer',
                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
                         }}
@@ -3644,8 +3674,8 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                         style={{
                             flex: 1, padding: '12px 0', border: 'none', background: 'transparent',
                             fontWeight: 700, fontSize: '0.76rem',
-                            color: activeDetailTab === 'prestadores' ? '#0284C7' : '#64748B',
-                            borderBottom: activeDetailTab === 'prestadores' ? '2px solid #0284C7' : '2px solid transparent',
+                            color: activeDetailTab === 'prestadores' ? (ccTheme.accentColor || '#0284C7') : themeCardSubtext,
+                            borderBottom: activeDetailTab === 'prestadores' ? `2px solid ${ccTheme.accentColor || '#0284C7'}` : '2px solid transparent',
                             cursor: 'pointer',
                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
                         }}
@@ -3661,8 +3691,8 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                         <>
                             {/* WIDGET PRINCIPAL: RESUMEN INTELIGENTE IA (OPENAI) & PRESTADOR DETECTADO */}
                             <div style={{
-                                background: '#F8FAFC',
-                                border: '1.5px solid #E2E8F0',
+                                background: rightCardBg,
+                                border: `1.5px solid ${rightCardBorder}`,
                                 borderRadius: '12px',
                                 padding: '14px',
                                 boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
@@ -3671,8 +3701,8 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 gap: '10px'
                             }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 800, color: '#4F46E5' }}>
-                                        <Sparkles size={16} color="#6366F1" />
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 800, color: ccTheme.accentColor || '#4F46E5' }}>
+                                        <Sparkles size={16} color={ccTheme.accentColor || '#6366F1'} />
                                         RESUMEN IA DE LA CONSULTA
                                     </div>
                                     <button
@@ -3683,8 +3713,10 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         style={{
                                             display: 'inline-flex', alignItems: 'center', gap: '4px',
                                             padding: '4px 8px', borderRadius: '6px',
-                                            border: '1px solid #C7D2FE', background: '#EEF2FF',
-                                            color: '#4338CA', fontSize: '0.7rem', fontWeight: 700,
+                                            border: `1px solid ${rightCardBorder}`, 
+                                            background: ccTheme.isDark ? '#312E81' : '#EEF2FF',
+                                            color: ccTheme.isDark ? '#C7D2FE' : '#4338CA', 
+                                            fontSize: '0.7rem', fontWeight: 700,
                                             cursor: isGeneratingSummary ? 'wait' : 'pointer'
                                         }}
                                     >
@@ -3697,23 +3729,26 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                         {/* 1. QUÉ NECESITA EL PACIENTE */}
                                         <div style={{
-                                            background: '#FFFFFF', padding: '10px', borderRadius: '8px',
-                                            border: '1px solid #E2E8F0', borderLeft: '3px solid #6366F1'
+                                            background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'), 
+                                            padding: '10px', borderRadius: '8px',
+                                            border: `1px solid ${rightCardBorder}`, borderLeft: `3px solid ${ccTheme.accentColor || '#6366F1'}`
                                         }}>
                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                                                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: themeCardSubtext, textTransform: 'uppercase' }}>
                                                     ¿Qué necesita el paciente?
                                                 </span>
                                                 {aiSummaryData.tipo_tramite && (
                                                     <span style={{
-                                                        fontSize: '0.65rem', fontWeight: 700, background: '#E0E7FF',
-                                                        color: '#3730A3', padding: '1px 6px', borderRadius: '4px'
+                                                        fontSize: '0.65rem', fontWeight: 700, 
+                                                        background: ccTheme.isDark ? '#312E81' : '#E0E7FF',
+                                                        color: ccTheme.isDark ? '#C7D2FE' : '#3730A3', 
+                                                        padding: '1px 6px', borderRadius: '4px'
                                                     }}>
                                                         {aiSummaryData.tipo_tramite}
                                                     </span>
                                                 )}
                                             </div>
-                                            <div style={{ fontSize: '0.8rem', color: '#1E293B', lineHeight: 1.45, fontWeight: 600 }}>
+                                            <div style={{ fontSize: '0.8rem', color: themeCardText, lineHeight: 1.45, fontWeight: 600 }}>
                                                 {aiSummaryData.resumen_solicitud || 'El paciente no ha especificado aún su solicitud.'}
                                             </div>
                                         </div>
@@ -3721,31 +3756,32 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         {/* 2. DATOS DETECTADOS POR LA IA */}
                                         {aiSummaryData.datos_paciente && (
                                             <div style={{
-                                                background: '#FFFFFF', padding: '10px', borderRadius: '8px',
-                                                border: '1px solid #E2E8F0'
+                                                background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'), 
+                                                padding: '10px', borderRadius: '8px',
+                                                border: `1px solid ${rightCardBorder}`
                                             }}>
-                                                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: themeCardSubtext, textTransform: 'uppercase', marginBottom: '6px' }}>
                                                     Datos Aportados por el Paciente
                                                 </div>
                                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '0.74rem' }}>
                                                     <div>
-                                                        <span style={{ color: '#64748B', fontSize: '0.68rem', display: 'block' }}>DNI</span>
-                                                        <strong>{aiSummaryData.datos_paciente.dni || '—'}</strong>
+                                                        <span style={{ color: themeCardSubtext, fontSize: '0.68rem', display: 'block' }}>DNI</span>
+                                                        <strong style={{ color: themeCardText }}>{aiSummaryData.datos_paciente.dni || '—'}</strong>
                                                     </div>
                                                     <div>
-                                                        <span style={{ color: '#64748B', fontSize: '0.68rem', display: 'block' }}>Obra Social</span>
-                                                        <strong>
+                                                        <span style={{ color: themeCardSubtext, fontSize: '0.68rem', display: 'block' }}>Obra Social</span>
+                                                        <strong style={{ color: themeCardText }}>
                                                             {aiSummaryData.datos_paciente.obra_social || '—'}
                                                             {aiSummaryData.datos_paciente.plan_obra_social && !aiSummaryData.datos_paciente.obra_social?.includes(aiSummaryData.datos_paciente.plan_obra_social) ? ` (${aiSummaryData.datos_paciente.plan_obra_social})` : ''}
                                                         </strong>
                                                     </div>
                                                     <div>
-                                                        <span style={{ color: '#64748B', fontSize: '0.68rem', display: 'block' }}>Nacimiento</span>
-                                                        <strong>{aiSummaryData.datos_paciente.fecha_nacimiento || '—'}</strong>
+                                                        <span style={{ color: themeCardSubtext, fontSize: '0.68rem', display: 'block' }}>Nacimiento</span>
+                                                        <strong style={{ color: themeCardText }}>{aiSummaryData.datos_paciente.fecha_nacimiento || '—'}</strong>
                                                     </div>
                                                     <div>
-                                                        <span style={{ color: '#64748B', fontSize: '0.68rem', display: 'block' }}>Dpto / Localidad</span>
-                                                        <strong>{aiSummaryData.datos_paciente.departamento || '—'}</strong>
+                                                        <span style={{ color: themeCardSubtext, fontSize: '0.68rem', display: 'block' }}>Dpto / Localidad</span>
+                                                        <strong style={{ color: themeCardText }}>{aiSummaryData.datos_paciente.departamento || '—'}</strong>
                                                     </div>
                                                 </div>
                                             </div>
@@ -3754,11 +3790,12 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         {/* 3. DOCTOR DETECTADO & PARÁMETROS DE ATENCIÓN */}
                                         {aiSummaryData.prestador_matched ? (
                                             <div style={{
-                                                background: '#F0FDF4', padding: '10px', borderRadius: '8px',
-                                                border: '1.5px solid #86EFAC'
+                                                background: ccTheme.isDark ? '#064E3B' : '#F0FDF4', 
+                                                padding: '10px', borderRadius: '8px',
+                                                border: `1.5px solid ${ccTheme.isDark ? '#047857' : '#86EFAC'}`
                                             }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                                    <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#15803D', textTransform: 'uppercase' }}>
+                                                    <span style={{ fontSize: '0.68rem', fontWeight: 800, color: ccTheme.isDark ? '#6EE7B7' : '#15803D', textTransform: 'uppercase' }}>
                                                         👨‍⚕️ Prestador Detectado
                                                     </span>
                                                     <button
@@ -3768,7 +3805,8 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                             setDoctorQuery(aiSummaryData.prestador_matched.profesional_nombre);
                                                         }}
                                                         style={{
-                                                            background: 'none', border: 'none', color: '#166534',
+                                                            background: 'none', border: 'none', 
+                                                            color: ccTheme.isDark ? '#6EE7B7' : '#166534',
                                                             fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer', padding: 0,
                                                             textDecoration: 'underline'
                                                         }}
@@ -3777,26 +3815,30 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                     </button>
                                                 </div>
 
-                                                <div style={{ fontWeight: 800, fontSize: '0.84rem', color: '#0F172A' }}>
+                                                <div style={{ fontWeight: 800, fontSize: '0.84rem', color: ccTheme.isDark ? '#F0FDF4' : '#0F172A' }}>
                                                     {aiSummaryData.prestador_matched.profesional_nombre}
                                                 </div>
-                                                <div style={{ fontSize: '0.72rem', color: '#0284C7', fontWeight: 600 }}>
+                                                <div style={{ fontSize: '0.72rem', color: ccTheme.accentColor || '#0284C7', fontWeight: 600 }}>
                                                     {aiSummaryData.prestador_matched.especialidad || 'Consulta Médica'}
                                                 </div>
                                                 {aiSummaryData.prestador_matched.consultorio_actual && (
-                                                    <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, marginTop: '2px' }}>
+                                                    <div style={{ fontSize: '0.72rem', color: ccTheme.isDark ? '#34D399' : '#059669', fontWeight: 700, marginTop: '2px' }}>
                                                         📍 {aiSummaryData.prestador_matched.consultorio_actual}
                                                     </div>
                                                 )}
 
                                                 {aiSummaryData.prestador_matched.condiciones_consulta && (
                                                     <div style={{
-                                                        marginTop: '8px', padding: '8px', background: '#FFFFFF',
-                                                        borderRadius: '6px', border: '1px solid #BBF7D0',
-                                                        fontSize: '0.72rem', color: '#334155', lineHeight: 1.45,
+                                                        marginTop: '8px', padding: '8px', 
+                                                        background: ccTheme.isDark ? '#022C22' : '#FFFFFF',
+                                                        borderRadius: '6px', 
+                                                        border: `1px solid ${ccTheme.isDark ? '#065F46' : '#BBF7D0'}`,
+                                                        fontSize: '0.72rem', 
+                                                        color: ccTheme.isDark ? '#E2E8F0' : '#334155', 
+                                                        lineHeight: 1.45,
                                                         whiteSpace: 'pre-line', maxHeight: '160px', overflowY: 'auto'
                                                     }}>
-                                                        <div style={{ fontWeight: 800, color: '#166534', fontSize: '0.68rem', marginBottom: '4px' }}>
+                                                        <div style={{ fontWeight: 800, color: ccTheme.isDark ? '#6EE7B7' : '#166534', fontSize: '0.68rem', marginBottom: '4px' }}>
                                                             📋 CONDICIONES Y PARÁMETROS:
                                                         </div>
                                                         {aiSummaryData.prestador_matched.condiciones_consulta}
@@ -3805,20 +3847,25 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             </div>
                                         ) : aiSummaryData.doctor_detectado?.nombre_aproximado ? (
                                             <div style={{
-                                                background: '#FFFBEB', padding: '10px', borderRadius: '8px',
-                                                border: '1px solid #FDE68A', fontSize: '0.74rem'
+                                                background: ccTheme.isDark ? '#451A03' : '#FFFBEB', 
+                                                padding: '10px', borderRadius: '8px',
+                                                border: `1px solid ${ccTheme.isDark ? '#78350F' : '#FDE68A'}`, 
+                                                fontSize: '0.74rem'
                                             }}>
-                                                <div style={{ fontWeight: 800, color: '#B45309', marginBottom: '2px' }}>
+                                                <div style={{ fontWeight: 800, color: ccTheme.isDark ? '#FDE68A' : '#B45309', marginBottom: '2px' }}>
                                                     ⚠️ Doctor mencionado: {aiSummaryData.doctor_detectado.nombre_aproximado}
                                                 </div>
-                                                <div style={{ color: '#92400E', fontSize: '0.7rem' }}>
+                                                <div style={{ color: ccTheme.isDark ? '#FCD34D' : '#92400E', fontSize: '0.7rem' }}>
                                                     No se encontró coincidencia exacta en SALUS. Puedes buscarlo por nombre parcial en la pestaña "Prestadores".
                                                 </div>
                                             </div>
                                         ) : (
                                             <div style={{
-                                                padding: '8px 10px', background: '#FFFFFF', borderRadius: '6px',
-                                                border: '1px solid #E2E8F0', fontSize: '0.7rem', color: '#64748B'
+                                                padding: '8px 10px', 
+                                                background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'), 
+                                                borderRadius: '6px',
+                                                border: `1px solid ${rightCardBorder}`, 
+                                                fontSize: '0.7rem', color: themeCardSubtext
                                             }}>
                                                 ℹ️ La IA no detectó un médico específico en la conversación. Puedes consultar la cartilla en la pestaña "Prestadores".
                                             </div>
@@ -3826,10 +3873,13 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     </div>
                                 ) : (
                                     <div style={{
-                                        padding: '12px', background: '#FFFFFF', borderRadius: '8px',
-                                        border: '1px dashed #CBD5E1', textAlign: 'center'
+                                        padding: '12px', 
+                                        background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'), 
+                                        borderRadius: '8px',
+                                        border: `1px dashed ${rightCardBorder}`, 
+                                        textAlign: 'center'
                                     }}>
-                                        <div style={{ fontSize: '0.76rem', color: '#475569', marginBottom: '8px' }}>
+                                        <div style={{ fontSize: '0.76rem', color: themeCardSubtext, marginBottom: '8px' }}>
                                             Genera con IA un resumen ejecutivo de lo que necesita el paciente y detecta automáticamente los parámetros del médico consultado.
                                         </div>
                                         <button
@@ -3855,7 +3905,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
 
                             {/* CABECERA DE LA FICHA DEL PACIENTE */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: themeCardText, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                     Datos del Paciente
                                 </span>
                                 <button
@@ -3865,9 +3915,9 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     style={{
                                         fontSize: '0.66rem',
                                         fontWeight: 700,
-                                        color: isSearchingThirdParty ? '#DC2626' : '#0284C7',
-                                        background: isSearchingThirdParty ? '#FEF2F2' : '#F0F9FF',
-                                        border: `1px solid ${isSearchingThirdParty ? '#FCA5A5' : '#BAE6FD'}`,
+                                        color: isSearchingThirdParty ? '#DC2626' : (ccTheme.accentColor || '#0284C7'),
+                                        background: isSearchingThirdParty ? (ccTheme.isDark ? '#450A0A' : '#FEF2F2') : themeCardBg,
+                                        border: `1px solid ${isSearchingThirdParty ? '#FCA5A5' : rightCardBorder}`,
                                         padding: '3px 8px',
                                         borderRadius: '6px',
                                         display: 'inline-flex',
@@ -3884,18 +3934,18 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             {/* BUSCADOR DE TERCEROS / OTRO PACIENTE POR DNI EN SALUS */}
                             {isSearchingThirdParty && (
                                 <div style={{
-                                    background: '#F0F9FF',
-                                    border: '1.5px solid #BAE6FD',
+                                    background: rightCardBg,
+                                    border: `1.5px solid ${rightCardBorder}`,
                                     borderRadius: '8px',
                                     padding: '10px 12px',
                                     display: 'flex',
                                     flexDirection: 'column',
                                     gap: '6px'
                                 }}>
-                                    <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0369A1', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <div style={{ fontSize: '0.72rem', fontWeight: 800, color: ccTheme.accentColor || '#0369A1', display: 'flex', alignItems: 'center', gap: '5px' }}>
                                         <span>🔍 Vincular Paciente por DNI en SALUS</span>
                                     </div>
-                                    <div style={{ fontSize: '0.67rem', color: '#475569' }}>
+                                    <div style={{ fontSize: '0.67rem', color: themeCardSubtext }}>
                                         Ingresá el DNI del paciente que realmente se atenderá (ej: hijo/a, madre, familiar):
                                     </div>
                                     <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
@@ -3907,8 +3957,9 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             onKeyDown={(e) => { if (e.key === 'Enter') handleLinkThirdPartyDni(); }}
                                             style={{
                                                 flex: 1, padding: '5px 8px', fontSize: '0.76rem',
-                                                borderRadius: '6px', border: '1px solid #CBD5E1', outline: 'none',
-                                                background: '#FFFFFF'
+                                                borderRadius: '6px', border: `1px solid ${rightCardBorder}`, outline: 'none',
+                                                background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'),
+                                                color: themeCardText
                                             }}
                                         />
                                         <button
@@ -3916,7 +3967,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             onClick={handleLinkThirdPartyDni}
                                             disabled={isSearchingSalus}
                                             style={{
-                                                padding: '5px 12px', background: '#0284C7', color: '#FFFFFF',
+                                                padding: '5px 12px', background: ccTheme.accentColor || '#0284C7', color: '#FFFFFF',
                                                 border: 'none', borderRadius: '6px', fontSize: '0.72rem',
                                                 fontWeight: 700, cursor: isSearchingSalus ? 'wait' : 'pointer',
                                                 display: 'inline-flex', alignItems: 'center', gap: '4px'
@@ -3934,8 +3985,8 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     {/* ALERTA ACCESO RÁPIDO: TURNOS PRÓXIMOS & ONLINE DEL PACIENTE */}
                                     {patientHistory?.turnosProximos && patientHistory.turnosProximos.length > 0 && (
                                         <div style={{
-                                            background: 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%)',
-                                            border: '1.5px solid #6EE7B7',
+                                            background: ccTheme.isDark ? '#064E3B22' : 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%)',
+                                            border: `1.5px solid ${ccTheme.isDark ? '#059669' : '#6EE7B7'}`,
                                             borderRadius: '8px',
                                             padding: '8px 10px',
                                             display: 'flex',
@@ -3944,13 +3995,15 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             boxShadow: '0 2px 5px rgba(5, 150, 105, 0.08)'
                                         }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#065F46', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <div style={{ fontSize: '0.72rem', fontWeight: 800, color: ccTheme.isDark ? '#6EE7B7' : '#065F46', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                     <span>📅 TIENE TURNOS PRÓXIMOS ({patientHistory.turnosProximos.length})</span>
                                                 </div>
                                                 <button 
                                                     onClick={() => setActiveDetailTab('historial')}
                                                     style={{
-                                                        fontSize: '0.65rem', fontWeight: 700, color: '#047857', background: '#D1FAE5',
+                                                        fontSize: '0.65rem', fontWeight: 700, 
+                                                        color: ccTheme.isDark ? '#A7F3D0' : '#047857', 
+                                                        background: ccTheme.isDark ? '#064E3B' : '#D1FAE5',
                                                         border: 'none', borderRadius: '4px', padding: '2px 6px', cursor: 'pointer'
                                                     }}
                                                 >
@@ -3958,23 +4011,27 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                 </button>
                                             </div>
                                             {patientHistory.turnosProximos.slice(0, 2).map((tp, i) => (
-                                                <div key={i} style={{ background: '#FFFFFF', border: '1px solid #A7F3D0', borderRadius: '6px', padding: '6px 8px' }}>
+                                                <div key={i} style={{ 
+                                                    background: rightCardBg, 
+                                                    border: `1px solid ${rightCardBorder}`, 
+                                                    borderRadius: '6px', padding: '6px 8px' 
+                                                }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#047857' }}>
+                                                        <span style={{ fontSize: '0.76rem', fontWeight: 800, color: ccTheme.isDark ? '#6EE7B7' : '#047857' }}>
                                                             📅 {tp.fecha_visita} {tp.hora_visita ? `(${tp.hora_visita} hs)` : ''}
                                                         </span>
                                                         <span style={{
                                                             fontSize: '0.62rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px',
-                                                            background: tp.origen === 'online' ? '#EFF6FF' : '#F1F5F9',
-                                                            color: tp.origen === 'online' ? '#1D4ED8' : '#475569'
+                                                            background: tp.origen === 'online' ? (ccTheme.isDark ? '#1E3A5F' : '#EFF6FF') : (ccTheme.isDark ? '#064E3B' : '#F1F5F9'),
+                                                            color: tp.origen === 'online' ? (ccTheme.isDark ? '#93C5FD' : '#1D4ED8') : themeCardSubtext
                                                         }}>
                                                             {tp.origen === 'online' ? '🌐 ONLINE WEB' : '🏥 PRESENCIAL'}
                                                         </span>
                                                     </div>
-                                                    <div style={{ fontSize: '0.72rem', color: '#0F172A', fontWeight: 700, marginTop: '2px' }}>
+                                                    <div style={{ fontSize: '0.72rem', color: themeCardText, fontWeight: 700, marginTop: '2px' }}>
                                                         👨‍⚕️ {tp.medico || 'Profesional Asignado'}
                                                     </div>
-                                                    <div style={{ fontSize: '0.67rem', color: '#64748B' }}>
+                                                    <div style={{ fontSize: '0.67rem', color: themeCardSubtext }}>
                                                         {tp.agenda || tp.tipo_visita} {tp.cliente ? `• ${tp.cliente}` : ''}
                                                     </div>
                                                 </div>
@@ -3985,8 +4042,8 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     {/* SELECTOR DE GRUPO FAMILIAR VINCULADO (MADRE E HIJOS) */}
                                     {familyMembers && familyMembers.length > 1 && (
                                         <div style={{
-                                            background: '#F8FAFC',
-                                            border: '1.5px solid #E2E8F0',
+                                            background: rightCardBg,
+                                            border: `1.5px solid ${rightCardBorder}`,
                                             borderRadius: '8px',
                                             padding: '10px 12px',
                                             marginBottom: '8px'
@@ -3994,7 +4051,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             <div style={{
                                                 fontSize: '0.66rem',
                                                 fontWeight: 800,
-                                                color: '#334155',
+                                                color: themeCardText,
                                                 textTransform: 'uppercase',
                                                 letterSpacing: '0.04em',
                                                 marginBottom: '8px',
@@ -4005,7 +4062,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                 <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                     👨‍👩‍👧 GRUPO FAMILIAR ({familyMembers.length})
                                                 </span>
-                                                <span style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 600 }}>
+                                                <span style={{ fontSize: '0.62rem', color: themeCardSubtext, fontWeight: 600 }}>
                                                     Selecciona para conmutar ficha
                                                 </span>
                                             </div>
@@ -4029,8 +4086,8 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                                 justifyContent: 'space-between',
                                                                 padding: '6px 10px',
                                                                 borderRadius: '6px',
-                                                                border: isCurrent ? '1.5px solid #0284C7' : '1px solid #CBD5E1',
-                                                                background: isCurrent ? '#EFF6FF' : '#FFFFFF',
+                                                                border: isCurrent ? `1.5px solid ${ccTheme.accentColor || '#0284C7'}` : `1px solid ${rightCardBorder}`,
+                                                                background: isCurrent ? themeCardSelectedBg : (ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF')),
                                                                 cursor: 'pointer',
                                                                 textAlign: 'left',
                                                                 transition: 'all 0.15s ease'
@@ -4043,11 +4100,11 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                                     <div style={{
                                                                         fontSize: '0.78rem',
                                                                         fontWeight: isCurrent ? 800 : 600,
-                                                                        color: isCurrent ? '#0369A1' : '#1E293B'
+                                                                        color: isCurrent ? (ccTheme.accentColor || '#0369A1') : themeCardText
                                                                     }}>
                                                                         {fam.nombre}
                                                                     </div>
-                                                                    <div style={{ fontSize: '0.66rem', color: '#64748B' }}>
+                                                                    <div style={{ fontSize: '0.66rem', color: themeCardSubtext }}>
                                                                         DNI: {fam.dni} • {fam.edad ? `${fam.edad} años` : 'Edad s/d'}{fam.nhc ? ` • #${fam.nhc}` : ''}
                                                                     </div>
                                                                 </div>
@@ -4056,7 +4113,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                                 <span style={{
                                                                     fontSize: '0.62rem',
                                                                     fontWeight: 800,
-                                                                    background: '#0284C7',
+                                                                    background: ccTheme.accentColor || '#0284C7',
                                                                     color: '#FFFFFF',
                                                                     padding: '2px 6px',
                                                                     borderRadius: '4px'
@@ -4066,7 +4123,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                             ) : (
                                                                 <span style={{
                                                                     fontSize: '0.64rem',
-                                                                    color: '#0284C7',
+                                                                    color: ccTheme.accentColor || '#0284C7',
                                                                     fontWeight: 700
                                                                 }}>
                                                                     Asignar →
@@ -4081,16 +4138,16 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
 
                                     {/* DNI & NHC SALUS */}
                                     <div style={{ display: 'grid', gridTemplateColumns: (activeFamilyMember?.nhc || selectedChat.customFields?.nhc) ? '1fr 1fr' : '1fr', gap: '6px' }}>
-                                        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>DNI / IDENTIFICACIÓN</div>
-                                            <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
+                                        <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
+                                            <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>DNI / IDENTIFICACIÓN</div>
+                                            <div style={{ fontSize: '0.86rem', fontWeight: 800, color: themeCardText }}>
                                                 {activeFamilyMember?.dni || crmForm.dni || selectedChat.customFields?.dni || 'A verificar'}
                                             </div>
                                         </div>
                                         {(activeFamilyMember?.nhc || selectedChat.customFields?.nhc) && (
-                                            <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: '8px', padding: '8px 10px' }}>
-                                                <div style={{ fontSize: '0.65rem', color: '#0369A1', fontWeight: 700 }}>NHC (SALUS)</div>
-                                                <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0284C7' }}>
+                                            <div style={{ background: ccTheme.isDark ? '#1E3A5F' : '#F0F9FF', border: `1px solid ${ccTheme.isDark ? '#0284C7' : '#BAE6FD'}`, borderRadius: '8px', padding: '8px 10px' }}>
+                                                <div style={{ fontSize: '0.65rem', color: ccTheme.isDark ? '#BAE6FD' : '#0369A1', fontWeight: 700 }}>NHC (SALUS)</div>
+                                                <div style={{ fontSize: '0.86rem', fontWeight: 800, color: ccTheme.isDark ? '#38BDF8' : '#0284C7' }}>
                                                     #{activeFamilyMember?.nhc || selectedChat.customFields?.nhc}
                                                 </div>
                                             </div>
@@ -4098,67 +4155,71 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     </div>
 
                                     {/* NOMBRE COMPLETO */}
-                                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>NOMBRE COMPLETO</div>
-                                        <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#0F172A' }}>
+                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>NOMBRE COMPLETO</div>
+                                        <div style={{ fontSize: '0.84rem', fontWeight: 700, color: themeCardText }}>
                                             {activeFamilyMember?.nombre || crmForm.pacienteNombre || selectedChat.customFields?.pacienteNombre || selectedChat.contactName || 'Paciente'}
                                         </div>
                                     </div>
 
                                     {/* OBRA SOCIAL */}
-                                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>OBRA SOCIAL / PREPAGA</div>
-                                        <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0284C7' }}>
+                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>OBRA SOCIAL / PREPAGA</div>
+                                        <div style={{ fontSize: '0.84rem', fontWeight: 800, color: ccTheme.accentColor || '#0284C7' }}>
                                             {activeFamilyMember?.coseguro || crmForm.obraSocial || selectedChat.customFields?.obraSocial || 'A consultar'}
                                         </div>
                                     </div>
 
                                     {/* FECHA DE NACIMIENTO */}
-                                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>FECHA DE NACIMIENTO</div>
-                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
+                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>FECHA DE NACIMIENTO</div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: themeCardText }}>
                                             {activeFamilyMember?.fecha_nacimiento || crmForm.fechaNacimiento || selectedChat.customFields?.fechaNacimiento || 'No informada'}
                                         </div>
                                     </div>
 
                                     {/* EMAIL */}
-                                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>EMAIL</div>
-                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', wordBreak: 'break-all' }}>
+                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>EMAIL</div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: themeCardText, wordBreak: 'break-all' }}>
                                             {activeFamilyMember?.email || crmForm.email || selectedChat.customFields?.email || 'No informado'}
                                         </div>
                                     </div>
 
                                     {/* TELÉFONO DE CONTACTO */}
-                                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>TELÉFONO DE CONTACTO</div>
-                                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0F172A' }}>
+                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>TELÉFONO DE CONTACTO</div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: themeCardText }}>
                                             {selectedChat.customFields?.pacienteContacto || selectedChat.phone}
                                         </div>
                                     </div>
 
                                     {/* DEPARTAMENTO / SEDE */}
-                                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>DEPARTAMENTO / SEDE HABITUAL</div>
-                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <MapPin size={12} color="#0284C7" />
+                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>DEPARTAMENTO / SEDE HABITUAL</div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: themeCardText, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <MapPin size={12} color={ccTheme.accentColor || '#0284C7'} />
                                             {activeFamilyMember?.centro || crmForm.departamento || selectedChat.customFields?.departamento || 'San Juan'}
                                         </div>
                                     </div>
 
                                     {/* MOTIVO DE CONSULTA */}
-                                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>SOLICITUD / MOTIVO</div>
-                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#0F172A' }}>
+                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>SOLICITUD / MOTIVO</div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: themeCardText }}>
                                             {crmForm.motivoConsulta || selectedChat.customFields?.motivoConsulta || 'Consulta general'}
                                         </div>
                                     </div>
 
                                     {/* NOTAS CRM */}
                                     {crmForm.notas && (
-                                        <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '8px', padding: '8px 10px' }}>
-                                            <div style={{ fontSize: '0.65rem', color: '#B45309', fontWeight: 700 }}>NOTAS CRM</div>
-                                            <div style={{ fontSize: '0.78rem', color: '#78350F', whiteSpace: 'pre-line', marginTop: '2px' }}>
+                                        <div style={{ 
+                                            background: ccTheme.isDark ? '#451A03' : '#FFFBEB', 
+                                            border: `1px solid ${ccTheme.isDark ? '#78350F' : '#FDE68A'}`, 
+                                            borderRadius: '8px', padding: '8px 10px' 
+                                        }}>
+                                            <div style={{ fontSize: '0.65rem', color: ccTheme.isDark ? '#FDE68A' : '#B45309', fontWeight: 700 }}>NOTAS CRM</div>
+                                            <div style={{ fontSize: '0.78rem', color: ccTheme.isDark ? '#FEF3C7' : '#78350F', whiteSpace: 'pre-line', marginTop: '2px' }}>
                                                 {crmForm.notas}
                                             </div>
                                         </div>
@@ -4171,11 +4232,11 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                     {activeDetailTab === 'historial' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase' }}>
+                                <div style={{ fontSize: '0.74rem', fontWeight: 800, color: themeCardText, textTransform: 'uppercase' }}>
                                     Historial {activeFamilyMember ? `— ${activeFamilyMember.nombre}` : (crmForm.pacienteNombre ? `— ${crmForm.pacienteNombre}` : '')}
                                 </div>
                                 {(activeFamilyMember?.nhc || patientHistory?.nhc || selectedChat.customFields?.nhc) && (
-                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#0284C7', background: '#F0F9FF', padding: '2px 6px', borderRadius: '4px', border: '1px solid #BAE6FD' }}>
+                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: ccTheme.accentColor || '#0284C7', background: ccTheme.isDark ? '#1E3A5F' : '#F0F9FF', padding: '2px 6px', borderRadius: '4px', border: `1px solid ${ccTheme.isDark ? '#0284C7' : '#BAE6FD'}` }}>
                                         NHC: {activeFamilyMember?.nhc || patientHistory?.nhc || selectedChat.customFields?.nhc}
                                     </span>
                                 )}
@@ -4184,15 +4245,15 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             {/* Selector rápido de Familiar en Historial si hay más de 1 */}
                             {familyMembers && familyMembers.length > 1 && (
                                 <div style={{
-                                    background: '#F8FAFC',
-                                    border: '1px solid #E2E8F0',
+                                    background: rightCardBg,
+                                    border: `1px solid ${rightCardBorder}`,
                                     borderRadius: '8px',
                                     padding: '6px 8px',
                                     display: 'flex',
                                     flexDirection: 'column',
                                     gap: '5px'
                                 }}>
-                                    <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748B', display: 'flex', justifyContent: 'space-between' }}>
+                                    <div style={{ fontSize: '0.62rem', fontWeight: 700, color: themeCardSubtext, display: 'flex', justifyContent: 'space-between' }}>
                                         <span>👨‍👩‍👧 VER HISTORIAL DE:</span>
                                         <span>{familyMembers.length} integrantes</span>
                                     </div>
@@ -4209,9 +4270,9 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                     style={{
                                                         fontSize: '0.66rem',
                                                         fontWeight: isCurrent ? 800 : 600,
-                                                        color: isCurrent ? '#FFFFFF' : '#334155',
-                                                        background: isCurrent ? '#0284C7' : '#FFFFFF',
-                                                        border: isCurrent ? '1px solid #0284C7' : '1px solid #CBD5E1',
+                                                        color: isCurrent ? '#FFFFFF' : themeCardText,
+                                                        background: isCurrent ? (ccTheme.accentColor || '#0284C7') : (ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF')),
+                                                        border: isCurrent ? `1px solid ${ccTheme.accentColor || '#0284C7'}` : `1px solid ${rightCardBorder}`,
                                                         borderRadius: '5px',
                                                         padding: '3px 8px',
                                                         cursor: 'pointer',
@@ -4226,7 +4287,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                 >
                                                     <span>{fam.sexo === 'F' ? '👩' : '👨'}</span>
                                                     <span>{fam.nombre ? fam.nombre.split(',')[0] : 'Familiar'}</span>
-                                                    {isCurrent && <span style={{ fontSize: '0.58rem', background: '#0369A1', padding: '1px 3px', borderRadius: '3px' }}>ACTIVO</span>}
+                                                    {isCurrent && <span style={{ fontSize: '0.58rem', background: 'rgba(0,0,0,0.2)', padding: '1px 3px', borderRadius: '3px' }}>ACTIVO</span>}
                                                 </button>
                                             );
                                         })}
@@ -4235,33 +4296,33 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             )}
 
                             {loadingHistory ? (
-                                <div style={{ fontSize: '0.76rem', color: '#64748B', textAlign: 'center', padding: '20px' }}>
+                                <div style={{ fontSize: '0.76rem', color: themeCardSubtext, textAlign: 'center', padding: '20px' }}>
                                     Consultando registros en Sanatorio Argentino...
                                 </div>
                             ) : patientHistory ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                     {/* Resumen KPI del Paciente */}
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                        <div style={{ background: '#F8FAFC', padding: '8px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>CONSULTAS / GUARDIA</div>
-                                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0284C7' }}>
+                                        <div style={{ background: rightCardBg, padding: '8px', borderRadius: '8px', border: `1px solid ${rightCardBorder}` }}>
+                                            <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>CONSULTAS / GUARDIA</div>
+                                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: ccTheme.accentColor || '#0284C7' }}>
                                                 {patientHistory.consultas?.length || 0}
                                             </div>
                                         </div>
-                                        <div style={{ background: '#F8FAFC', padding: '8px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>CIRUGÍAS</div>
+                                        <div style={{ background: rightCardBg, padding: '8px', borderRadius: '8px', border: `1px solid ${rightCardBorder}` }}>
+                                            <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>CIRUGÍAS</div>
                                             <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#059669' }}>
                                                 {patientHistory.cirugias?.length || 0}
                                             </div>
                                         </div>
-                                        <div style={{ background: '#F8FAFC', padding: '8px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>INTERNACIONES</div>
+                                        <div style={{ background: rightCardBg, padding: '8px', borderRadius: '8px', border: `1px solid ${rightCardBorder}` }}>
+                                            <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>INTERNACIONES</div>
                                             <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#7C3AED' }}>
                                                 {patientHistory.altas?.length || 0}
                                             </div>
                                         </div>
-                                        <div style={{ background: '#F8FAFC', padding: '8px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 600 }}>LABORATORIOS</div>
+                                        <div style={{ background: rightCardBg, padding: '8px', borderRadius: '8px', border: `1px solid ${rightCardBorder}` }}>
+                                            <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>LABORATORIOS</div>
                                             <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#D97706' }}>
                                                 {patientHistory.laboratorios?.length || 0}
                                             </div>
@@ -4271,42 +4332,42 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     {/* SECCIÓN 1: TURNOS PRÓXIMOS & CITAS ONLINE (ACCESO RÁPIDO) */}
                                     {patientHistory.turnosProximos && patientHistory.turnosProximos.length > 0 ? (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#065F46', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: ccTheme.isDark ? '#6EE7B7' : '#065F46', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                 <span>📅 TURNOS PRÓXIMOS & CITAS ONLINE ({patientHistory.turnosProximos.length})</span>
                                             </div>
                                             {patientHistory.turnosProximos.map((tp, idx) => (
                                                 <div key={idx} style={{
-                                                    background: '#FFFFFF',
-                                                    border: tp.origen === 'online' ? '1.5px solid #93C5FD' : '1.5px solid #6EE7B7',
+                                                    background: rightCardBg,
+                                                    border: tp.origen === 'online' ? `1.5px solid ${ccTheme.isDark ? '#0284C7' : '#93C5FD'}` : `1.5px solid ${ccTheme.isDark ? '#059669' : '#6EE7B7'}`,
                                                     borderRadius: '8px',
                                                     padding: '8px 10px',
                                                     boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
                                                 }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                        <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0F172A' }}>
+                                                        <div style={{ fontSize: '0.8rem', fontWeight: 800, color: themeCardText }}>
                                                             📅 {tp.fecha_visita} {tp.hora_visita ? `• ${tp.hora_visita} hs` : ''}
                                                         </div>
                                                         <span style={{
                                                             fontSize: '0.64rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px',
-                                                            background: tp.origen === 'online' ? '#EFF6FF' : '#ECFDF5',
-                                                            color: tp.origen === 'online' ? '#1D4ED8' : '#047857'
+                                                            background: tp.origen === 'online' ? (ccTheme.isDark ? '#1E3A5F' : '#EFF6FF') : (ccTheme.isDark ? '#064E3B' : '#ECFDF5'),
+                                                            color: tp.origen === 'online' ? (ccTheme.isDark ? '#93C5FD' : '#1D4ED8') : (ccTheme.isDark ? '#6EE7B7' : '#047857')
                                                         }}>
                                                             {tp.origen === 'online' ? '🌐 TURNO WEB ONLINE' : '🏥 PRESENCIAL'}
                                                         </span>
                                                     </div>
-                                                    <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0284C7', marginTop: '3px' }}>
+                                                    <div style={{ fontSize: '0.76rem', fontWeight: 700, color: ccTheme.accentColor || '#0284C7', marginTop: '3px' }}>
                                                         👨‍⚕️ {tp.medico || 'Profesional Asignado'}
                                                     </div>
-                                                    <div style={{ fontSize: '0.7rem', color: '#475569', marginTop: '1px' }}>
-                                                        Agenda: <strong>{tp.agenda || tp.tipo_visita}</strong>
+                                                    <div style={{ fontSize: '0.7rem', color: themeCardSubtext, marginTop: '1px' }}>
+                                                        Agenda: <strong style={{ color: themeCardText }}>{tp.agenda || tp.tipo_visita}</strong>
                                                     </div>
                                                     {tp.cliente && (
-                                                        <div style={{ fontSize: '0.66rem', color: '#64748B', marginTop: '3px', background: '#F8FAFC', padding: '2px 6px', borderRadius: '4px' }}>
-                                                            Cobertura: <strong>{tp.cliente}</strong>
+                                                        <div style={{ fontSize: '0.66rem', color: themeCardSubtext, marginTop: '3px', background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#F8FAFC'), padding: '2px 6px', borderRadius: '4px' }}>
+                                                            Cobertura: <strong style={{ color: themeCardText }}>{tp.cliente}</strong>
                                                         </div>
                                                     )}
                                                     {tp.motivo && (
-                                                        <div style={{ fontSize: '0.68rem', color: '#78350F', background: '#FEF3C7', padding: '3px 6px', borderRadius: '4px', marginTop: '4px' }}>
+                                                        <div style={{ fontSize: '0.68rem', color: ccTheme.isDark ? '#FDE68A' : '#78350F', background: ccTheme.isDark ? '#451A03' : '#FEF3C7', padding: '3px 6px', borderRadius: '4px', marginTop: '4px' }}>
                                                             💬 Motivo: {tp.motivo}
                                                         </div>
                                                     )}
@@ -4315,17 +4376,17 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         </div>
                                     ) : (
                                         <div style={{
-                                            background: '#F8FAFC',
-                                            border: '1px solid #E2E8F0',
+                                            background: rightCardBg,
+                                            border: `1px solid ${rightCardBorder}`,
                                             borderRadius: '8px',
                                             padding: '8px 10px',
                                             display: 'flex',
                                             alignItems: 'center',
                                             gap: '6px'
                                         }}>
-                                            <Calendar size={13} color="#64748B" />
-                                            <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
-                                                📅 Turnos Próximos: <strong>Sin turnos pendientes agendados</strong>
+                                            <Calendar size={13} color={themeCardSubtext} />
+                                            <span style={{ fontSize: '0.72rem', color: themeCardSubtext, fontWeight: 600 }}>
+                                                📅 Turnos Próximos: <strong style={{ color: themeCardText }}>Sin turnos pendientes agendados</strong>
                                             </span>
                                         </div>
                                     )}
@@ -4333,59 +4394,64 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     {/* SECCIÓN 2: CONSULTAS MÉDICAS, GUARDIA & EVOLUCIÓN CLÍNICA */}
                                     {patientHistory.consultas && patientHistory.consultas.length > 0 && (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: themeCardText, display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                 <span>🩺 CONSULTAS MÉDICAS & GUARDIA ({patientHistory.consultas.length})</span>
                                             </div>
                                             {patientHistory.consultas.slice(0, 10).map((con, idx) => (
-                                                <div key={idx} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
+                                                <div key={idx} style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0F172A' }}>
+                                                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: themeCardText }}>
                                                             {con.visita_especialidad || con.agenda || 'Consulta Médica'}
                                                         </div>
                                                         <span style={{
                                                             fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px',
-                                                            background: con.asistencia === 'Presente' ? '#ECFDF5' : '#F1F5F9',
-                                                            color: con.asistencia === 'Presente' ? '#047857' : '#64748B'
+                                                            background: con.asistencia === 'Presente' ? (ccTheme.isDark ? '#064E3B' : '#ECFDF5') : (ccTheme.isDark ? '#1E293B' : '#F1F5F9'),
+                                                            color: con.asistencia === 'Presente' ? (ccTheme.isDark ? '#6EE7B7' : '#047857') : themeCardSubtext
                                                         }}>
                                                             {con.asistencia || 'Atendido'}
                                                         </span>
                                                     </div>
                                                     {con.medico && (
-                                                        <div style={{ fontSize: '0.74rem', color: '#0369A1', fontWeight: 700, marginTop: '2px' }}>
+                                                        <div style={{ fontSize: '0.74rem', color: ccTheme.accentColor || '#0369A1', fontWeight: 700, marginTop: '2px' }}>
                                                             👨‍⚕️ {con.medico}
                                                         </div>
                                                     )}
-                                                    <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600, marginTop: '1px' }}>
+                                                    <div style={{ fontSize: '0.7rem', color: themeCardSubtext, fontWeight: 600, marginTop: '1px' }}>
                                                         {con.agenda ? `${con.agenda} • ` : ''}{con.tipo_visita || 'Visita'} {con.centro ? `• ${con.centro}` : ''}
                                                     </div>
-                                                    <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '3px' }}>
-                                                        📅 Fecha: <strong>{con.fecha_visita || 'S/F'}</strong> {con.hora_visita ? `(${con.hora_visita.slice(0, 5)} hs)` : ''}
+                                                    <div style={{ fontSize: '0.68rem', color: themeCardSubtext, marginTop: '3px' }}>
+                                                        📅 Fecha: <strong style={{ color: themeCardText }}>{con.fecha_visita || 'S/F'}</strong> {con.hora_visita ? `(${con.hora_visita.slice(0, 5)} hs)` : ''}
                                                     </div>
                                                     {con.diagnostico && (
                                                         <div style={{
-                                                            fontSize: '0.68rem', fontWeight: 700, color: '#1E40AF', background: '#EFF6FF',
-                                                            border: '1px solid #BFDBFE', padding: '3px 6px', borderRadius: '4px', marginTop: '4px'
+                                                            fontSize: '0.68rem', fontWeight: 700, 
+                                                            color: ccTheme.isDark ? '#93C5FD' : '#1E40AF', 
+                                                            background: ccTheme.isDark ? '#1E3A5F' : '#EFF6FF',
+                                                            border: `1px solid ${ccTheme.isDark ? '#1D4ED8' : '#BFDBFE'}`, 
+                                                            padding: '3px 6px', borderRadius: '4px', marginTop: '4px'
                                                         }}>
                                                             🏷️ Diagnóstico: {con.diagnostico}
                                                         </div>
                                                     )}
                                                     {con.motivo && (
                                                         <div style={{
-                                                            marginTop: '6px', background: '#F8FAFC', border: '1px solid #CBD5E1',
+                                                            marginTop: '6px', 
+                                                            background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#F8FAFC'), 
+                                                            border: `1px solid ${rightCardBorder}`,
                                                             borderRadius: '6px', padding: '6px 8px'
                                                         }}>
-                                                            <div style={{ fontSize: '0.64rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <div style={{ fontSize: '0.64rem', fontWeight: 800, color: themeCardSubtext, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                                 <span>📋 Síntomas / Formulario Médico</span>
-                                                                {con.formulario && <span style={{ color: '#0284C7', fontWeight: 600 }}>({con.formulario})</span>}
+                                                                {con.formulario && <span style={{ color: ccTheme.accentColor || '#0284C7', fontWeight: 600 }}>({con.formulario})</span>}
                                                             </div>
-                                                            <div style={{ fontSize: '0.72rem', color: '#1E293B', whiteSpace: 'pre-line', marginTop: '3px', lineHeight: 1.35 }}>
+                                                            <div style={{ fontSize: '0.72rem', color: themeCardText, whiteSpace: 'pre-line', marginTop: '3px', lineHeight: 1.35 }}>
                                                                 {con.motivo}
                                                             </div>
                                                         </div>
                                                     )}
                                                     {con.cliente && (
-                                                        <div style={{ fontSize: '0.66rem', color: '#475569', marginTop: '4px', background: '#F8FAFC', padding: '2px 6px', borderRadius: '4px' }}>
-                                                            🏥 Cobertura: <strong>{con.cliente}</strong>
+                                                        <div style={{ fontSize: '0.66rem', color: themeCardSubtext, marginTop: '4px', background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#F8FAFC'), padding: '2px 6px', borderRadius: '4px' }}>
+                                                            🏥 Cobertura: <strong style={{ color: themeCardText }}>{con.cliente}</strong>
                                                         </div>
                                                     )}
                                                 </div>
@@ -4396,19 +4462,19 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     {/* Listado de Cirugías Recientes */}
                                     {patientHistory.cirugias && patientHistory.cirugias.length > 0 && (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0F172A' }}>
+                                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: themeCardText }}>
                                                 🔪 CIRUGÍAS REGISTRADAS ({patientHistory.cirugias.length})
                                             </div>
                                             {patientHistory.cirugias.slice(0, 3).map((cir, idx) => (
-                                                <div key={idx} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A' }}>
+                                                <div key={idx} style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
+                                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: themeCardText }}>
                                                         {cir.modulo || 'Procedimiento Quirúrgico'}
                                                     </div>
-                                                    <div style={{ fontSize: '0.7rem', color: '#0284C7', marginTop: '2px' }}>
+                                                    <div style={{ fontSize: '0.7rem', color: ccTheme.accentColor || '#0284C7', marginTop: '2px' }}>
                                                         Dr/a. {cir.medico || 'No especificado'} • {cir.fecha_cirugia || 'Fecha pendiente'}
                                                     </div>
-                                                    <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '2px' }}>
-                                                        Estado: <strong>{cir.status || 'Programada'}</strong>
+                                                    <div style={{ fontSize: '0.68rem', color: themeCardSubtext, marginTop: '2px' }}>
+                                                        Estado: <strong style={{ color: themeCardText }}>{cir.status || 'Programada'}</strong>
                                                     </div>
                                                 </div>
                                             ))}
@@ -4418,15 +4484,15 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     {/* Listado de Admisiones */}
                                     {patientHistory.altas && patientHistory.altas.length > 0 && (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0F172A' }}>
+                                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: themeCardText }}>
                                                 🛏️ ESTANCIAS / INTERNACIONES ({patientHistory.altas.length})
                                             </div>
                                             {patientHistory.altas.slice(0, 3).map((adm, idx) => (
-                                                <div key={idx} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 10px' }}>
-                                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A' }}>
+                                                <div key={idx} style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
+                                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: themeCardText }}>
                                                         {adm.especialidad || adm.servicio || 'Internación'}
                                                     </div>
-                                                    <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: '2px' }}>
+                                                    <div style={{ fontSize: '0.7rem', color: themeCardSubtext, marginTop: '2px' }}>
                                                         Ingreso: {adm.fecha_ingreso ? new Date(adm.fecha_ingreso).toLocaleDateString('es-AR') : 'S/D'} 
                                                         {adm.fecha_alta ? ` • Alta: ${new Date(adm.fecha_alta).toLocaleDateString('es-AR')}` : ' (Activo)'}
                                                     </div>
@@ -4436,8 +4502,8 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     )}
                                 </div>
                             ) : (
-                                <div style={{ fontSize: '0.74rem', color: '#64748B', background: '#F8FAFC', padding: '14px', borderRadius: '8px', border: '1px solid #E2E8F0', lineHeight: 1.4 }}>
-                                    💡 No se encontraron antecedentes para esta persona. Asegúrate de verificar y guardar el DNI del paciente en la pestaña <strong>Ficha CRM</strong> para consultar su historial completo en el Sanatorio.
+                                <div style={{ fontSize: '0.74rem', color: themeCardSubtext, background: rightCardBg, padding: '14px', borderRadius: '8px', border: `1px solid ${rightCardBorder}`, lineHeight: 1.4 }}>
+                                    💡 No se encontraron antecedentes para esta persona. Asegúrate de verificar y guardar el DNI del paciente en la pestaña <strong style={{ color: themeCardText }}>Ficha CRM</strong> para consultar su historial completo en el Sanatorio.
                                 </div>
                             )}
                         </div>
@@ -4446,7 +4512,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                     {/* TAB 3: PARÁMETROS Y HONORARIOS DE MÉDICOS SALUS */}
                     {activeDetailTab === 'prestadores' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase' }}>
+                            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: themeCardText, textTransform: 'uppercase' }}>
                                 Consultar Parámetros de Prestador
                             </div>
 
@@ -4458,15 +4524,16 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     onChange={(e) => setDoctorQuery(e.target.value)}
                                     style={{
                                         width: '100%', padding: '8px 12px 8px 30px',
-                                        borderRadius: '8px', border: '1px solid #CBD5E1',
-                                        fontSize: '0.8rem', outline: 'none'
+                                        borderRadius: '8px', border: `1px solid ${rightCardBorder}`,
+                                        fontSize: '0.8rem', outline: 'none',
+                                        background: rightCardBg, color: themeCardText
                                     }}
                                 />
-                                <Search size={14} color="#94A3B8" style={{ position: 'absolute', left: '10px', top: '10px' }} />
+                                <Search size={14} color={themeCardSubtext} style={{ position: 'absolute', left: '10px', top: '10px' }} />
                             </div>
 
                             {isSearchingDoctor && (
-                                <div style={{ fontSize: '0.72rem', color: '#64748B', textAlign: 'center', padding: '10px' }}>
+                                <div style={{ fontSize: '0.72rem', color: themeCardSubtext, textAlign: 'center', padding: '10px' }}>
                                     Buscando en SALUS...
                                 </div>
                             )}
@@ -4475,26 +4542,27 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '420px', overflowY: 'auto' }}>
                                     {doctorResults.map((doc) => (
                                         <div key={doc.id} style={{
-                                            background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '10px'
+                                            background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '10px'
                                         }}>
-                                            <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0F172A' }}>
+                                            <div style={{ fontWeight: 800, fontSize: '0.82rem', color: themeCardText }}>
                                                 {doc.profesional_nombre}
                                             </div>
-                                            <div style={{ fontSize: '0.72rem', color: '#0284C7', fontWeight: 600 }}>
+                                            <div style={{ fontSize: '0.72rem', color: ccTheme.accentColor || '#0284C7', fontWeight: 600 }}>
                                                 {doc.especialidad || 'Consulta Médica'}
                                             </div>
 
                                             {doc.consultorio_actual && (
-                                                <div style={{ marginTop: '4px', fontSize: '0.72rem', fontWeight: 700, color: '#059669' }}>
+                                                <div style={{ marginTop: '4px', fontSize: '0.72rem', fontWeight: 700, color: ccTheme.isDark ? '#34D399' : '#059669' }}>
                                                     📍 {doc.consultorio_actual}
                                                 </div>
                                             )}
 
                                             {doc.condiciones_consulta && (
                                                 <div style={{
-                                                    marginTop: '6px', fontSize: '0.7rem', color: '#475569',
-                                                    background: '#FFFFFF', padding: '6px 8px', borderRadius: '6px',
-                                                    border: '1px solid #E2E8F0', whiteSpace: 'pre-line'
+                                                    marginTop: '6px', fontSize: '0.7rem', color: themeCardSubtext,
+                                                    background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'), 
+                                                    padding: '6px 8px', borderRadius: '6px',
+                                                    border: `1px solid ${rightCardBorder}`, whiteSpace: 'pre-line'
                                                 }}>
                                                     {doc.condiciones_consulta}
                                                 </div>
@@ -4503,11 +4571,11 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     ))}
                                 </div>
                             ) : doctorQuery.length >= 2 && !isSearchingDoctor ? (
-                                <div style={{ fontSize: '0.72rem', color: '#94A3B8', textAlign: 'center', padding: '14px' }}>
+                                <div style={{ fontSize: '0.72rem', color: themeCardSubtext, textAlign: 'center', padding: '14px' }}>
                                     No se encontraron prestadores con ese criterio.
                                 </div>
                             ) : (
-                                <div style={{ fontSize: '0.72rem', color: '#64748B', background: '#F8FAFC', padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                <div style={{ fontSize: '0.72rem', color: themeCardSubtext, background: rightCardBg, padding: '10px', borderRadius: '8px', border: `1px solid ${rightCardBorder}` }}>
                                     💡 Escribe el apellido del médico (ej: <em>Marquez</em>, <em>Gomez</em>, <em>Borrego</em>) para ver sus honorarios particulares, plus de coseguro, alias de Mercado Pago y consultorio activo.
                                 </div>
                             )}
