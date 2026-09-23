@@ -1389,7 +1389,7 @@ Intenciones posibles:
 - "autorizacion": orden médica, autorización o coseguro
 - "gestion_familiar": el paciente indica que gestiona para otro paciente o familiar (hijo, cónyuge, etc.)
 - "gestion_propia": el paciente indica que el trámite es para sí mismo
-- "guardia": consulta sobre guardias o urgencias
+- "guardia": consulta sobre guardias o urgencias (médica, clínica, pediátrica, ginecológica, traumatológica, etc.)
 - "chequeo": circuito de chequeo preventivo
 - "informes_laboratorio": ver o consultar análisis clínicos
 - "informes_imagenes": estudios de imágenes
@@ -1978,11 +1978,13 @@ async function handleChatbotTriage(
             `Contamos con un servicio permanente de guardia médica activa las 24 horas, todos los días del año, por orden de llegada con triage de urgencia en nuestra *SEDE 01*:\n\n` +
             `📍 *Lugar de atención:* San Luis 432 Oeste, Capital, San Juan.\n\n` +
             `🩺 *Especialidades disponibles de guardia:*\n` +
-            `• *Clínica Médica* (Adultos)\n` +
-            `• *Pediatría* (Guardia Pediátrica activa 24 hs)\n` +
-            `• *Ginecología y Obstetricia* (Maternidad y urgencias)\n` +
-            `• *Guardia Cardiológica*\n` +
-            `• *Cirugía General* (Guardia pasiva especializada)\n\n` +
+            `• *Clínica Médica Adultos*\n` +
+            `• *Pediatría*\n` +
+            `• *Ginecología y Obstetricia*\n` +
+            `• *Cardiología*\n` +
+            `• *Traumatología* (Guardia pasiva especializada)\n` +
+            `• *Cirugía General* (Guardia pasiva especializada)\n` +
+            `• *Urología* (Guardia pasiva especializada)\n\n` +
             `🌐 Para más información institucional podés ingresar a:\n👉 https://www.sanatorioargentino.com.ar/`;
         nextStage = 'informacion_respondida';
     }
