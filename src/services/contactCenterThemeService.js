@@ -1,9 +1,7 @@
-/**
- * contactCenterThemeService.js
- * Sistema de personalización visual y ergonomía para Contact Center (Sanatorio Argentino).
- * Permite cambiar entre temas predeterminados (Clínico, Gris Slate, Dark) y personalizar
- * imagen de fondo (con oscurecimiento regulable), colores de sidebars y burbujas.
- */
+import { supabase } from '../lib/supabase';
+
+export const WALLPAPER_BUCKET = 'contact-center-wallpapers';
+const CUSTOM_WALLPAPERS_KEY = 'admqui_contact_center_custom_wallpapers';
 
 export const WALLPAPERS = [
     {
@@ -61,6 +59,116 @@ export const WALLPAPERS = [
         thumbnail: null
     }
 ];
+
+/**
+ * Obtiene los wallpapers subidos por los usuarios desde localStorage
+ */
+export function getCustomWallpapers() {
+    try {
+        const raw = localStorage.getItem(CUSTOM_WALLPAPERS_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed;
+        }
+    } catch (e) {
+        console.warn('Error leyendo wallpapers personalizados:', e);
+    }
+    return [];
+}
+
+/**
+ * Guarda un nuevo wallpaper en la lista local de personalizados
+ */
+export function saveCustomWallpaper(wallpaper) {
+    try {
+        const current = getCustomWallpapers();
+        const filtered = current.filter(w => w.id !== wallpaper.id && w.url !== wallpaper.url);
+        const updated = [wallpaper, ...filtered];
+        localStorage.setItem(CUSTOM_WALLPAPERS_KEY, JSON.stringify(updated));
+        return updated;
+    } catch (e) {
+        console.warn('Error guardando wallpaper personalizado:', e);
+        return getCustomWallpapers();
+    }
+}
+
+/**
+ * Elimina un wallpaper personalizado
+ */
+export function deleteCustomWallpaper(wallpaperId) {
+    try {
+        const current = getCustomWallpapers();
+        const toDelete = current.find(w => w.id === wallpaperId);
+        const updated = current.filter(w => w.id !== wallpaperId);
+        localStorage.setItem(CUSTOM_WALLPAPERS_KEY, JSON.stringify(updated));
+
+        if (toDelete?.storagePath) {
+            supabase.storage.from(WALLPAPER_BUCKET).remove([toDelete.storagePath]).catch((err) => {
+                console.warn('No se pudo borrar del bucket:', err);
+            });
+        }
+        return updated;
+    } catch (e) {
+        console.warn('Error eliminando wallpaper personalizado:', e);
+        return getCustomWallpapers();
+    }
+}
+
+/**
+ * Sube una imagen al bucket de Supabase y retorna el objeto del wallpaper
+ */
+export async function uploadCustomWallpaper(file) {
+    if (!file) throw new Error('No se proporcionó ningún archivo');
+
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!validTypes.includes(file.type)) {
+        throw new Error('Formato no soportado. Debe ser imagen JPG, PNG o WebP.');
+    }
+
+    const maxSize = 10 * 1024 * 1024; // 10 MB
+    if (file.size > maxSize) {
+        throw new Error('La imagen excede el límite de 10 MB.');
+    }
+
+    const ext = file.name?.split('.').pop() || 'jpg';
+    const cleanFileName = (file.name || 'wallpaper')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '_')
+        .slice(0, 24);
+    const storagePath = `user_${Date.now()}_${cleanFileName}.${ext}`;
+
+    const { data, error } = await supabase.storage
+        .from(WALLPAPER_BUCKET)
+        .upload(storagePath, file, {
+            contentType: file.type,
+            upsert: false
+        });
+
+    if (error) {
+        console.error('Error subiendo imagen a Supabase Storage:', error);
+        throw new Error(`Error en subida: ${error.message || 'Fallo de almacenamiento'}`);
+    }
+
+    const { data: urlData } = supabase.storage
+        .from(WALLPAPER_BUCKET)
+        .getPublicUrl(data.path);
+
+    const publicUrl = urlData.publicUrl;
+
+    const newWallpaper = {
+        id: `custom_${Date.now()}`,
+        name: file.name.replace(/\.[^/.]+$/, '').slice(0, 28) || 'Mi Fondo Personalizado',
+        url: publicUrl,
+        thumbnail: publicUrl,
+        storagePath: data.path,
+        isCustom: true,
+        createdAt: new Date().toISOString()
+    };
+
+    saveCustomWallpaper(newWallpaper);
+    return newWallpaper;
+}
+
 
 export const THEME_PRESETS = {
     default: {

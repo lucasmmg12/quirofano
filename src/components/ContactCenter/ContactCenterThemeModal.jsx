@@ -1,6 +1,17 @@
-import React, { useState } from 'react';
-import { Palette, Check, RotateCcw, X, Image as ImageIcon, Sliders, Moon, Sun, Sparkles, Flame, Leaf, Heart } from 'lucide-react';
-import { THEME_PRESETS, WALLPAPERS, saveStoredTheme, resetStoredTheme } from '../../services/contactCenterThemeService';
+import React, { useState, useRef } from 'react';
+import { 
+    Palette, Check, RotateCcw, X, Image as ImageIcon, Sliders, Moon, Sun, 
+    Sparkles, Flame, Leaf, Heart, Upload, Trash2, Loader2, Plus 
+} from 'lucide-react';
+import { 
+    THEME_PRESETS, 
+    WALLPAPERS, 
+    getCustomWallpapers, 
+    deleteCustomWallpaper, 
+    uploadCustomWallpaper, 
+    saveStoredTheme, 
+    resetStoredTheme 
+} from '../../services/contactCenterThemeService';
 
 const COLOR_SWATCHES = [
     { name: 'Blanco Clínico', color: '#FFFFFF', isDark: false },
@@ -16,6 +27,10 @@ const COLOR_SWATCHES = [
 export default function ContactCenterThemeModal({ isOpen, onClose, currentTheme, onThemeChange }) {
     const [activeTab, setActiveTab] = useState('presets'); // 'presets' | 'custom'
     const [localTheme, setLocalTheme] = useState(currentTheme);
+    const [customWallpapers, setCustomWallpapers] = useState(() => getCustomWallpapers());
+    const [uploading, setUploading] = useState(false);
+    const [uploadError, setUploadError] = useState(null);
+    const fileInputRef = useRef(null);
 
     if (!isOpen) return null;
 
@@ -60,6 +75,37 @@ export default function ContactCenterThemeModal({ isOpen, onClose, currentTheme,
         const res = resetStoredTheme();
         setLocalTheme(res);
         onThemeChange(res);
+    };
+
+    const handleFileUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Reset target value so selecting same file triggers onChange
+        e.target.value = '';
+
+        try {
+            setUploading(true);
+            setUploadError(null);
+            const newWp = await uploadCustomWallpaper(file);
+            setCustomWallpapers(getCustomWallpapers());
+            handleUpdateCustom('chatBgImage', newWp.url);
+        } catch (err) {
+            console.error('Error al subir wallpaper a Supabase Storage:', err);
+            setUploadError(err.message || 'Error al subir la imagen al bucket');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleDeleteCustom = (e, wpId, wpUrl) => {
+        e.stopPropagation();
+        const updated = deleteCustomWallpaper(wpId);
+        setCustomWallpapers(updated);
+        // Si el fondo borrado estaba actualmente activo, quitarlo
+        if (localTheme.chatBgImage === wpUrl) {
+            handleUpdateCustom('chatBgImage', null);
+        }
     };
 
     return (
@@ -447,11 +493,173 @@ export default function ContactCenterThemeModal({ isOpen, onClose, currentTheme,
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                             {/* 1. Selector de Imagen de Fondo */}
                             <div>
-                                <label style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                                    <ImageIcon size={14} color="#0284C7" />
-                                    Fondo del Chat de WhatsApp:
-                                </label>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                    <label style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <ImageIcon size={14} color="#0284C7" />
+                                        Fondo del Chat de WhatsApp:
+                                    </label>
+                                    <span style={{ fontSize: '0.66rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10B981' }}></span>
+                                        Almacenamiento Cloud (Bucket Activo)
+                                    </span>
+                                </div>
+
+                                {/* Input invisible para subida de archivo */}
+                                <input 
+                                    type="file" 
+                                    ref={fileInputRef} 
+                                    onChange={handleFileUpload} 
+                                    accept="image/jpeg,image/png,image/webp,image/gif" 
+                                    style={{ display: 'none' }} 
+                                />
+
+                                {/* Botón / Card de Subida a Bucket */}
+                                <div
+                                    onClick={() => !uploading && fileInputRef.current?.click()}
+                                    style={{
+                                        border: '1.5px dashed #38BDF8',
+                                        borderRadius: '12px',
+                                        padding: '10px 14px',
+                                        background: uploading ? '#F0F9FF' : '#F8FAFC',
+                                        marginBottom: '12px',
+                                        cursor: uploading ? 'wait' : 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <div style={{
+                                            width: '36px',
+                                            height: '36px',
+                                            borderRadius: '8px',
+                                            background: '#E0F2FE',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: '#0284C7'
+                                        }}>
+                                            {uploading ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0369A1' }}>
+                                                {uploading ? 'Subiendo foto a Supabase Storage...' : 'Subir tu propia imagen o fotografía'}
+                                            </div>
+                                            <div style={{ fontSize: '0.67rem', color: '#64748B' }}>
+                                                Formatos JPG, PNG, WebP (hasta 10 MB). Se guarda en el bucket y se aplica al chat.
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        disabled={uploading}
+                                        style={{
+                                            background: '#0284C7',
+                                            color: '#FFFFFF',
+                                            border: 'none',
+                                            borderRadius: '7px',
+                                            padding: '6px 12px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 700,
+                                            cursor: uploading ? 'wait' : 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '5px'
+                                        }}
+                                    >
+                                        <Plus size={13} />
+                                        Subir archivo
+                                    </button>
+                                </div>
+
+                                {uploadError && (
+                                    <div style={{
+                                        background: '#FEF2F2',
+                                        border: '1px solid #FECACA',
+                                        color: '#B91C1C',
+                                        borderRadius: '8px',
+                                        padding: '8px 12px',
+                                        fontSize: '0.72rem',
+                                        marginBottom: '10px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between'
+                                    }}>
+                                        <span>⚠️ {uploadError}</span>
+                                        <button onClick={() => setUploadError(null)} style={{ background: 'none', border: 'none', color: '#B91C1C', cursor: 'pointer' }}>
+                                            <X size={13} />
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Cuadrícula de Wallpapers */}
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                                    {/* 1. Fondos personalizados del usuario subidos al bucket */}
+                                    {customWallpapers.map(w => {
+                                        const isSelected = localTheme.chatBgImage === w.url;
+                                        return (
+                                            <div
+                                                key={w.id}
+                                                onClick={() => handleUpdateCustom('chatBgImage', w.url)}
+                                                style={{
+                                                    border: isSelected ? '2px solid #0284C7' : '1.5px solid #BAE6FD',
+                                                    borderRadius: '10px',
+                                                    padding: '8px 10px',
+                                                    cursor: 'pointer',
+                                                    background: isSelected ? '#EFF6FF' : '#F0F9FF',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '10px',
+                                                    transition: 'all 0.15s ease',
+                                                    boxShadow: isSelected ? '0 2px 8px rgba(2, 132, 199, 0.16)' : 'none',
+                                                    position: 'relative'
+                                                }}
+                                            >
+                                                <img 
+                                                    src={w.thumbnail || w.url} 
+                                                    alt={w.name} 
+                                                    style={{ width: '56px', height: '36px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }} 
+                                                />
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ fontSize: '0.74rem', fontWeight: isSelected ? 800 : 700, color: isSelected ? '#0369A1' : '#1E293B', lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        {w.name}
+                                                    </div>
+                                                    <span style={{ fontSize: '0.60rem', color: '#0284C7', fontWeight: 700, background: '#E0F2FE', padding: '1px 5px', borderRadius: '4px' }}>
+                                                        Subida por ti
+                                                    </span>
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <button
+                                                        type="button"
+                                                        title="Eliminar este fondo"
+                                                        onClick={(e) => handleDeleteCustom(e, w.id, w.url)}
+                                                        style={{
+                                                            background: 'transparent',
+                                                            border: 'none',
+                                                            color: '#94A3B8',
+                                                            cursor: 'pointer',
+                                                            padding: '4px',
+                                                            borderRadius: '4px',
+                                                            display: 'flex',
+                                                            alignItems: 'center'
+                                                        }}
+                                                        onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
+                                                        onMouseLeave={(e) => e.currentTarget.style.color = '#94A3B8'}
+                                                    >
+                                                        <Trash2 size={13} />
+                                                    </button>
+                                                    {isSelected && (
+                                                        <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#0284C7', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                            <Check size={12} strokeWidth={3} />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+
+                                    {/* 2. Fondos predeterminados del sistema */}
                                     {WALLPAPERS.map(w => {
                                         const isSelected = localTheme.chatBgImage === w.url;
                                         return (
