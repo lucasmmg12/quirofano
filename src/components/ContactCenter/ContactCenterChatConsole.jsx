@@ -9,7 +9,7 @@ import {
     Edit3, Save, X, History, Activity, FileCheck, RefreshCw,
     Zap, CalendarCheck, PlusCircle, ShieldCheck, BarChart3, Volume2, VolumeX,
     GripVertical, Download, ZoomIn, ZoomOut, RotateCw, Copy, ArrowUpDown,
-    FileText, FileSpreadsheet, File, Maximize2
+    FileText, FileSpreadsheet, File, Maximize2, Palette
 } from 'lucide-react';
 
 /**
@@ -119,6 +119,8 @@ import {
     syncQuickRepliesFromDb,
     interpolateQuickReplyVariables
 } from '../../data/contactCenterQuickReplies';
+import { getStoredTheme } from '../../services/contactCenterThemeService';
+import ContactCenterThemeModal from './ContactCenterThemeModal';
 
 // =========================================================================
 // 🧪 [MODO PRUEBA TEMPORAL] INDICADOR DE AUTO-REINICIO CADA 3 MINUTOS
@@ -152,6 +154,10 @@ export default function ContactCenterChatConsole({
     const [bulkCloseModalOpen, setBulkCloseModalOpen] = useState(false);
     const [bulkResolutionReason, setBulkResolutionReason] = useState('Cierre masivo de cola');
     const [isBulkClosing, setIsBulkClosing] = useState(false);
+
+    // Personalización de Temas y Ergonomía Visual (Presets, Fondos, Nano Banana, Sidebars)
+    const [ccTheme, setCcTheme] = useState(getStoredTheme);
+    const [themeModalOpen, setThemeModalOpen] = useState(false);
 
     // Panel de Información Resizable (con límites min 260px, max 550px)
     const consoleContainerRef = useRef(null);
@@ -1361,9 +1367,9 @@ export default function ContactCenterChatConsole({
                 height: 'calc(100vh - 78px)',
                 maxHeight: 'calc(100vh - 78px)',
                 minHeight: '480px',
-                background: '#FFFFFF',
+                background: ccTheme.leftSidebarBg || '#FFFFFF',
                 borderRadius: '14px',
-                border: '1px solid #E2E8F0',
+                border: `1px solid ${ccTheme.leftSidebarBorder || '#E2E8F0'}`,
                 overflow: 'hidden',
                 boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
                 userSelect: isDraggingRight ? 'none' : 'auto'
@@ -1372,13 +1378,21 @@ export default function ContactCenterChatConsole({
             {/* ═════════════════════════════════════════════════════════════════ */}
             {/* COLUMNA 1: SIDEBAR DE CONTACT CENTER (MÓDULOS + AGENTES + FILTROS) */}
             {/* ═════════════════════════════════════════════════════════════════ */}
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, borderRight: '1px solid #E2E8F0', background: '#FFFFFF' }}>
+            <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                minHeight: 0,
+                borderRight: `1px solid ${ccTheme.leftSidebarBorder || '#E2E8F0'}`,
+                background: ccTheme.leftSidebarBg || '#FFFFFF',
+                color: ccTheme.leftSidebarText || '#0F172A'
+            }}>
 
                 {/* 1. NAVEGACIÓN DEL MÓDULO (IMAGEN 2) Y SELECTOR DE AGENTES */}
                 <div style={{
                     padding: '8px 8px 6px',
-                    borderBottom: '1px solid #F1F5F9',
-                    background: '#F8FAFC',
+                    borderBottom: `1px solid ${ccTheme.leftSidebarBorder || '#F1F5F9'}`,
+                    background: ccTheme.leftSidebarHeaderBg || '#F8FAFC',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '6px'
@@ -1414,8 +1428,24 @@ export default function ContactCenterChatConsole({
                             </span>
                         </div>
 
-                        {/* Sonido y Sync */}
+                        {/* Sonido, Tema y Sync */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                            <button
+                                type="button"
+                                onClick={() => setThemeModalOpen(true)}
+                                title="Personalizar tema, imagen de fondo y colores"
+                                style={{
+                                    padding: '3px 7px', borderRadius: '5px',
+                                    border: `1px solid ${ccTheme.id !== 'default' ? '#0284C7' : '#CBD5E1'}`,
+                                    background: ccTheme.id !== 'default' ? '#0284C7' : '#FFFFFF',
+                                    color: ccTheme.id !== 'default' ? '#FFFFFF' : '#0284C7',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px',
+                                    fontSize: '0.66rem', fontWeight: 700
+                                }}
+                            >
+                                <Palette size={12} />
+                                <span>Tema</span>
+                            </button>
                             <button
                                 type="button"
                                 onClick={onToggleSound}
@@ -2062,13 +2092,20 @@ export default function ContactCenterChatConsole({
             {/* ═════════════════════════════════════════════════════════════════ */}
             {/* COLUMNA 2: VISOR DE CHAT Y COMPOSITOR                            */}
             {/* ═════════════════════════════════════════════════════════════════ */}
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden', background: '#F8FAFC' }}>
+            <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                height: '100%', 
+                minHeight: 0, 
+                overflow: 'hidden', 
+                background: ccTheme.chatBgColor || '#F8FAFC' 
+            }}>
                 {/* Barra Superior del Chat con Control de Asignación Exclusiva */}
                 <div style={{
                     padding: '12px 20px',
                     flexShrink: 0,
-                    background: '#FFFFFF',
-                    borderBottom: '1px solid #E2E8F0',
+                    background: ccTheme.chatHeaderBg || '#FFFFFF',
+                    borderBottom: `1px solid ${ccTheme.chatHeaderBorder || '#E2E8F0'}`,
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
@@ -2474,8 +2511,13 @@ export default function ContactCenterChatConsole({
                         display: 'flex',
                         flexDirection: 'column',
                         gap: '12px',
-                        backgroundImage: 'radial-gradient(#E2E8F0 1px, transparent 1px)',
-                        backgroundSize: '20px 20px'
+                        background: ccTheme.chatBgColor || '#F8FAFC',
+                        backgroundImage: ccTheme.chatBgImage 
+                            ? `linear-gradient(rgba(15, 23, 42, ${ccTheme.chatOverlayOpacity ?? 0.70}), rgba(15, 23, 42, ${ccTheme.chatOverlayOpacity ?? 0.70})), url('${ccTheme.chatBgImage}')`
+                            : 'radial-gradient(#E2E8F0 1px, transparent 1px)',
+                        backgroundSize: ccTheme.chatBgImage ? 'cover' : '20px 20px',
+                        backgroundPosition: 'center',
+                        backgroundAttachment: 'fixed'
                     }}
                 >
                     {/* Barra de Orden de Mensajes (Últimos a primeros) */}
@@ -3566,10 +3608,11 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                 flexDirection: 'column',
                 height: '100%',
                 minHeight: 0,
-                background: '#FFFFFF',
+                background: ccTheme.rightSidebarBg || '#FFFFFF',
+                color: ccTheme.rightSidebarText || '#0F172A',
                 overflowY: 'auto'
             }}>
-                <div style={{ display: 'flex', flexShrink: 0, borderBottom: '1px solid #F1F5F9', background: '#FAFAFA' }}>
+                <div style={{ display: 'flex', flexShrink: 0, borderBottom: `1px solid ${ccTheme.rightSidebarBorder || '#F1F5F9'}`, background: ccTheme.rightSidebarCardBg || '#FAFAFA' }}>
                     <button 
                         onClick={() => setActiveDetailTab('info')}
                         style={{
@@ -5408,6 +5451,14 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                     </div>
                 </div>
             )}
+
+            {/* Modal de Personalización Visual (Presets, Nano Banana, Opacidad y Sidebars) */}
+            <ContactCenterThemeModal
+                isOpen={themeModalOpen}
+                onClose={() => setThemeModalOpen(false)}
+                currentTheme={ccTheme}
+                onThemeChange={setCcTheme}
+            />
         </div>
     );
 }
