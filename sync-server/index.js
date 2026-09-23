@@ -61,9 +61,13 @@ const SQL_CONFIG = {
     pool: { max: 5, min: 0, idleTimeoutMillis: 30000 },
 };
 
-// â”€â”€ Pool de conexiones â”€â”€
+// ── Pool de conexiones ──
 let pool = null;
 async function getPool() {
+    if (pool && !pool.connected) {
+        try { await pool.close(); } catch (_) {}
+        pool = null;
+    }
     if (!pool || !pool.connected) {
         console.log('🔌 Conectando a SQL Server SALUS...');
         pool = await sql.connect(SQL_CONFIG);
@@ -2896,108 +2900,108 @@ app.get('/api/salus/sync-all', async (req, res) => {
     const results = {};
 
     try {
-        const db = await getPool();
+        const getDb = async () => await getPool();
 
         try {
-            results.cirugias = await syncCirugias(db);
+            results.cirugias = await syncCirugias(await getDb());
         } catch (err) {
             console.error('âŒ Error en cirugías:', err.message);
             results.cirugias = { error: err.message };
         }
 
         try {
-            results.presupuestos = await syncPresupuestos(db, fastSync);
+            results.presupuestos = await syncPresupuestos(await getDb(), fastSync);
         } catch (err) {
             console.error('âŒ Error en presupuestos:', err.message);
             results.presupuestos = { error: err.message };
         }
 
         try {
-            results.deudas = await syncDeudas(db, fastSync);
+            results.deudas = await syncDeudas(await getDb(), fastSync);
         } catch (err) {
             console.error('âŒ Error en deudas:', err.message);
             results.deudas = { error: err.message };
         }
 
         try {
-            results.cobros = await syncCobros(db, fastSync);
+            results.cobros = await syncCobros(await getDb(), fastSync);
         } catch (err) {
             console.error('Error en cobros:', err.message);
             results.cobros = { error: err.message };
         }
 
         try {
-            results.notasCredito = await syncNotasCredito(db, fastSync);
+            results.notasCredito = await syncNotasCredito(await getDb(), fastSync);
         } catch (err) {
             console.error('Error en notas de credito:', err.message);
             results.notasCredito = { error: err.message };
         }
 
         try {
-            results.altas = await syncAltasAdministrativas(db, fastSync);
+            results.altas = await syncAltasAdministrativas(await getDb(), fastSync);
         } catch (err) {
             console.error('❌ Error en altas administrativas:', err.message);
             results.altas = { error: err.message };
         }
 
         try {
-            results.uci = await syncUci(db, fastSync);
+            results.uci = await syncUci(await getDb(), fastSync);
         } catch (err) {
             console.error('❌ Error en UCI:', err.message);
             results.uci = { error: err.message };
         }
 
         try {
-            results.fojaQuirurgica = await syncFojaQuirurgica(db, fastSync);
+            results.fojaQuirurgica = await syncFojaQuirurgica(await getDb(), fastSync);
         } catch (err) {
             console.error('❌ Error en foja quirúrgica:', err.message);
             results.fojaQuirurgica = { error: err.message };
         }
 
         try {
-            results.facturacionInternada = await syncFacturacionInternada(db, fastSync);
+            results.facturacionInternada = await syncFacturacionInternada(await getDb(), fastSync);
         } catch (err) {
             console.error('❌ Error en facturación internada:', err.message);
             results.facturacionInternada = { error: err.message };
         }
 
         try {
-            results.facturacion = await syncFacturacionSede(db);
+            results.facturacion = await syncFacturacionSede(await getDb());
         } catch (err) {
             console.error('❌ Error en facturación sede:', err.message);
             results.facturacion = { error: err.message };
         }
 
         try {
-            results.visitas = await syncVisitasSede(db);
+            results.visitas = await syncVisitasSede(await getDb());
         } catch (err) {
             console.error('❌ Error en visitas sede:', err.message);
             results.visitas = { error: err.message };
         }
 
         try {
-            results.asociaciones = await syncAsociacionesCirugias(db, fastSync);
+            results.asociaciones = await syncAsociacionesCirugias(await getDb(), fastSync);
         } catch (err) {
             console.error('Error en asociaciones:', err.message);
             results.asociaciones = { error: err.message };
         }
 
         try {
-            results.laboratorios = await syncLaboratorios(db, fastSync);
+            results.laboratorios = await syncLaboratorios(await getDb(), fastSync);
         } catch (err) {
             console.error('Error en laboratorios:', err.message);
             results.laboratorios = { error: err.message };
         }
 
         try {
-            results.consultasGuardia = await syncConsultasGuardia(db);
+            results.consultasGuardia = await syncConsultasGuardia(await getDb());
         } catch (err) {
             console.error('Error en consultas guardia:', err.message);
             results.consultasGuardia = { error: err.message };
         }
 
         try {
-            results.recepciones = await syncRecepcionesVisitas(db, fastSync);
+            results.recepciones = await syncRecepcionesVisitas(await getDb(), fastSync);
         } catch (err) {
             console.error('Error en recepciones:', err.message);
             results.recepciones = { error: err.message };
@@ -3041,7 +3045,7 @@ app.get('/api/salus/sync-all', async (req, res) => {
 
         try {
             console.log('🔄 [Turnos Online] Sincronizando alertas de turnos duplicados con SALUS...');
-            results.turnosOnline = await syncTurnosOnlineToSupabase(db, { days: fastSync ? 2 : 4, supabaseClient: supabase });
+            results.turnosOnline = await syncTurnosOnlineToSupabase(await getDb(), { days: fastSync ? 2 : 4, supabaseClient: supabase });
         } catch (err) {
             console.error('❌ Error en sincronización de turnos online:', err.message);
             results.turnosOnline = { error: err.message };

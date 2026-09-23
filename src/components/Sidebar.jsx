@@ -46,12 +46,9 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         if (id === 'manual') return true;
         if (id === 'actividad_usuarios') return MASTER_ADMINS.includes(username);
 
-        // Simon IA / Beto chat
-        if (id === 'beto' || id === 'simon') {
-            return selectedModules.includes('beto');
-        }
-        if (id === 'beto_rules' || id === 'beto_analytics') {
-            return MASTER_ADMINS.includes(username) || selectedModules.includes(id);
+        // Simon IA — Acceso completo y público para todos los usuarios
+        if (['beto', 'simon', 'beto_rules', 'beto_analytics'].includes(id)) {
+            return true;
         }
 
         // Gobernanza

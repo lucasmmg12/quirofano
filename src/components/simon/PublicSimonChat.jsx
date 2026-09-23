@@ -107,12 +107,6 @@ export default function PublicSimonChat() {
     
     // Session state (simplified)
     useEffect(() => {
-        // Initialize public conversation ID on mount
-        if (!activeConversation) {
-            const tempId = 'pub_' + Date.now().toString(36) + Math.random().toString(36).substr(2)
-            setActiveConversation(tempId)
-        }
-        
         // Silently check health to wake up backend if asleep
         checkRAGHealth().then(online => setBackendOnline(online)).catch(() => setBackendOnline(false))
     }, [])
@@ -164,6 +158,9 @@ export default function PublicSimonChat() {
 
         sendRAGMessage(question, activeConversation)
             .then(result => {
+                if (result.conversation_id) {
+                    setActiveConversation(result.conversation_id)
+                }
                 const assistantMsg = { 
                     role: 'assistant', 
                     content: result.answer || result.message || 'Sin respuesta',
@@ -193,6 +190,9 @@ export default function PublicSimonChat() {
             setIsLoading(true)
             sendRAGMessage(suggestion, activeConversation)
                 .then(result => {
+                    if (result.conversation_id) {
+                        setActiveConversation(result.conversation_id)
+                    }
                     const assistantMsg = { 
                         role: 'assistant', 
                         content: result.answer || result.message || 'Sin respuesta',

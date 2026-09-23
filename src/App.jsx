@@ -38,6 +38,7 @@ import ConsultasPanel from './components/ConsultasPanel.jsx';
 import AuditoriaHistoriasPanel from './components/AuditoriaHistoriasPanel.jsx';
 import AuditoriaPDFPanel from './components/AuditoriaPDFPanel.jsx';
 import BetoPanel from './components/BetoPanel.jsx';
+import PublicSimonChat from './components/simon/PublicSimonChat.jsx';
 import AsociacionesEntregaPanel from './components/AsociacionesEntregaPanel.jsx';
 import LaboratoriosPanel from './components/LaboratoriosPanel.jsx';
 import PublicLabView from './components/PublicLabView.jsx';
@@ -127,6 +128,16 @@ export default function AppRoot() {
             <Route path="/share/*" element={<PublicRecordView />} />
             <Route path="/lab/:labSlug" element={<LabPortalWrapper />} />
             <Route path="/publico/laboratorio/:hash" element={<LegacyLabRedirect />} />
+            <Route path="/simon-publico" element={<PublicSimonChat />} />
+            <Route path="/public-simon" element={<PublicSimonChat />} />
+            <Route path="/chat-simon" element={<PublicSimonChat />} />
+            <Route path="/simon" element={
+                !currentUser ? (
+                    <PublicSimonChat />
+                ) : (
+                    <App currentUser={currentUser} onLogout={handleLogout} />
+                )
+            } />
             <Route path="*" element={
                 !currentUser ? (
                     <LoginScreen onLogin={handleLogin} />
@@ -311,8 +322,8 @@ function App({ currentUser, onLogout }) {
             if (CC_ALL_VIEWS.includes(activeView)) isVisible = canUserAccessContactCenter(currentUser);
             else if (['config', 'manual'].includes(activeView)) isVisible = true;
             else if (activeView === 'actividad_usuarios') isVisible = MASTER_ADMINS.includes(username);
-            else if (['beto', 'simon'].includes(activeView)) isVisible = selectedModules.includes('beto');
-            else if (['beto_rules', 'beto_analytics'].includes(activeView)) isVisible = MASTER_ADMINS.includes(username) || selectedModules.includes(activeView);
+            // Simon IA: Acceso completo y público para todos los usuarios
+            else if (['beto', 'simon', 'beto_rules', 'beto_analytics'].includes(activeView)) isVisible = true;
             else if (['gobernanza', 'gobernanza_indicadores'].includes(activeView)) isVisible = selectedModules.includes('gobernanza') || selectedModules.includes('gobernanza_indicadores');
             else if (ALWAYS_VISIBLE.includes(activeView)) isVisible = true;
             else isVisible = selectedModules.includes(activeView);
@@ -1075,7 +1086,7 @@ function App({ currentUser, onLogout }) {
                     <AuditoriaPDFPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
-                {(activeView === 'beto' || activeView === 'beto_rules' || activeView === 'beto_analytics') && (
+                {(activeView === 'beto' || activeView === 'simon' || activeView === 'beto_rules' || activeView === 'beto_analytics') && (
                     <BetoPanel activeView={activeView} addToast={addToast} />
                 )}
 
