@@ -842,10 +842,15 @@ export default function RAGPanel() {
                     </div>
 
                     {bootPhase === 'error' && (
-                        <button className="simon-retry-btn-modern" onClick={startSimon}>
-                            <Sparkles size={14} />
-                            Reintentar Conexión
-                        </button>
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '14px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                            <button className="simon-retry-btn-modern" onClick={startSimon}>
+                                <Sparkles size={14} />
+                                Reintentar Conexión
+                            </button>
+                            <button className="simon-retry-btn-modern" style={{ background: '#475569', color: '#fff' }} onClick={() => setBootPhase('done')}>
+                                Entrar al Chat
+                            </button>
+                        </div>
                     )}
                 </div>
             </div>
@@ -1219,7 +1224,7 @@ export default function RAGPanel() {
                         <button
                             className="rag-send-btn"
                             onClick={handleSend}
-                            disabled={!inputValue.trim() || isLoading || !backendOnline}
+                            disabled={!inputValue.trim() || isLoading}
                             title="Enviar pregunta (Enter)"
                         >
                             {isLoading ? <Loader2 size={18} className="rag-spin" /> : <Send size={18} />}

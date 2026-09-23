@@ -3,7 +3,8 @@
  * Diseño clínico limpio, réplica del Login de Calidad DORA
  */
 import { useState, useRef, useEffect } from 'react';
-import { Lock, User, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, Loader2, AlertCircle, Brain, Sparkles, MessageSquare } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { login } from '../services/authService';
 import { logAction } from '../services/auditService';
 
@@ -333,6 +334,55 @@ export default function LoginScreen({ onLogin }) {
                         >Administrador</a>
                     </p>
                 </form>
+
+                {/* Acceso público directo a Simón IA */}
+                <div style={{
+                    marginTop: '20px',
+                    padding: '14px 18px',
+                    background: 'linear-gradient(135deg, rgba(238, 242, 255, 0.9) 0%, rgba(224, 231, 255, 0.6) 100%)',
+                    border: '1.5px solid #C7D2FE',
+                    borderRadius: '14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 2px 8px rgba(99, 102, 241, 0.08)',
+                    textAlign: 'center'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#3730A3', fontWeight: 700, fontSize: '0.84rem' }}>
+                        <Brain size={18} color="#4F46E5" />
+                        <span>Simón IA · Asistente Institucional</span>
+                        <span style={{ background: '#4F46E5', color: '#fff', fontSize: '0.62rem', padding: '1px 6px', borderRadius: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Libre</span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '0.74rem', color: '#4B5563', lineHeight: 1.35 }}>
+                        Consultá directivas médicas, coberturas de obras sociales y aranceles sin iniciar sesión.
+                    </p>
+                    <Link
+                        to="/simon"
+                        style={{
+                            marginTop: '4px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            width: '100%',
+                            padding: '9px 14px',
+                            background: '#4F46E5',
+                            color: '#FFFFFF',
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            borderRadius: '8px',
+                            textDecoration: 'none',
+                            transition: 'all 0.15s ease',
+                            boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)'
+                        }}
+                        onMouseOver={e => e.currentTarget.style.background = '#4338CA'}
+                        onMouseOut={e => e.currentTarget.style.background = '#4F46E5'}
+                    >
+                        <Sparkles size={14} />
+                        <span>Chatear con Simón IA ahora</span>
+                    </Link>
+                </div>
 
                 {/* Footer */}
                 <p style={{

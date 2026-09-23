@@ -312,6 +312,11 @@ function App({ currentUser, onLogout }) {
             return;
         }
 
+        // Simon IA: Acceso completo y público para todos los usuarios
+        if (['beto', 'simon', 'beto_rules', 'beto_analytics'].includes(activeView)) {
+            return;
+        }
+
         if (!selectedModules || selectedModules.length === 0) return;
         const ALWAYS_VISIBLE = ['inicio', 'config'];
         let isVisible = true;

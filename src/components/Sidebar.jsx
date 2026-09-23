@@ -25,6 +25,11 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             ].includes(id);
         }
 
+        // Simon IA — Acceso completo y público para todos los usuarios
+        if (['beto', 'simon', 'beto_rules', 'beto_analytics'].includes(id)) {
+            return true;
+        }
+
         // Master Admins can see everything
         if (MASTER_ADMINS.includes(username)) return true;
 
