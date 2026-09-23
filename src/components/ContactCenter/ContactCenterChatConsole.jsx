@@ -9,7 +9,8 @@ import {
     Edit3, Save, X, History, Activity, FileCheck, RefreshCw,
     Zap, CalendarCheck, PlusCircle, ShieldCheck, BarChart3, Volume2, VolumeX,
     GripVertical, Download, ZoomIn, ZoomOut, RotateCw, Copy, ArrowUpDown,
-    FileText, FileSpreadsheet, File, Maximize2, Palette
+    FileText, FileSpreadsheet, File, Maximize2, Palette,
+    Mic, Square, Trash2, Loader2, Upload
 } from 'lucide-react';
 
 /**
@@ -27,6 +28,7 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
     const isPdf = !isAudio && !isImage && (cleanUrl.includes('.pdf') || explicitType === 'pdf' || cleanCaption.toLowerCase().endsWith('.pdf') || cleanText.toLowerCase().endsWith('.pdf'));
     const isWord = !isAudio && !isImage && (cleanUrl.includes('.docx') || cleanUrl.includes('.doc') || explicitType === 'word' || cleanCaption.toLowerCase().includes('.doc') || cleanText.toLowerCase().includes('.doc'));
     const isExcel = !isAudio && !isImage && (cleanUrl.includes('.xlsx') || cleanUrl.includes('.xls') || cleanUrl.includes('.csv') || explicitType === 'excel' || cleanCaption.toLowerCase().includes('.xls') || cleanText.toLowerCase().includes('.xls') || cleanCaption.toLowerCase().includes('.csv'));
+    const isTxt = !isAudio && !isImage && !isPdf && !isWord && !isExcel && (cleanUrl.includes('.txt') || cleanCaption.toLowerCase().endsWith('.txt') || cleanText.toLowerCase().endsWith('.txt'));
     
     let fileType = 'document';
     let label = 'Documento Adjunto';
@@ -70,6 +72,13 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
         bgColor = '#F0FDF4';
         borderColor = '#BBF7D0';
         ext = 'XLSX';
+    } else if (isTxt) {
+        fileType = 'txt';
+        label = 'Archivo de Texto';
+        color = '#475569';
+        bgColor = '#F8FAFC';
+        borderColor = '#CBD5E1';
+        ext = 'TXT';
     }
     
     let filename = cleanCaption || (cleanText && !cleanText.startsWith('[') && !cleanText.startsWith('_event_') && cleanText.length < 80 ? cleanText : '');
@@ -108,7 +117,7 @@ import {
     analyzeMedicalOrderImage, generateChatAiSummary,
     FINAL_ATTENTION_MESSAGE, isClosedOrArchived, fetchFamilyMembersByPhone,
     isUserAuthorizedForContactCenter, subscribeToChatPresence,
-    transcribeAudioMessage
+    transcribeAudioMessage, uploadContactCenterMedia
 } from '../../services/contactCenterService';
 import { normalizeArgentinePhone } from '../../services/builderbotApi';
 import { fetchPacienteDetalle } from '../../services/pacienteUnificadoService';
@@ -239,6 +248,19 @@ export default function ContactCenterChatConsole({
     }, []);
     const [messageInput, setMessageInput] = useState('');
     const [isPrivateNote, setIsPrivateNote] = useState(false);
+
+    // Estado para adjuntos (Excel, Word, PDF, TXT, imágenes, audio)
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [uploadingMedia, setUploadingMedia] = useState(false);
+    const [uploadError, setUploadError] = useState(null);
+    const attachmentInputRef = useRef(null);
+
+    // Estado para grabación de notas de voz (audio)
+    const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+    const [recordingTime, setRecordingTime] = useState(0);
+    const mediaRecorderRef = useRef(null);
+    const recordingChunksRef = useRef([]);
+    const recordingTimerRef = useRef(null);
     const [activeDetailTab, setActiveDetailTab] = useState('info'); // 'info', 'historial', 'prestadores'
     const [transferMenuOpen, setTransferMenuOpen] = useState(false);
     const transferMenuRef = useRef(null);
@@ -1270,8 +1292,138 @@ export default function ContactCenterChatConsole({
         }
     };
 
-    const sendDirectMessage = (text, isNote = false) => {
-        if (!text || !text.trim()) return;
+    // === Gestión de archivos adjuntos (Excel, Word, PDF, TXT, Imágenes, Audios) ===
+    const handleFileSelected = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        e.target.value = '';
+
+        if (file.size > 50 * 1024 * 1024) {
+            alert('El archivo seleccionado supera el límite de 50 MB.');
+            return;
+        }
+
+        let detectedType = 'document';
+        if (file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|svg)$/i.test(file.name)) {
+            detectedType = 'image';
+        } else if (file.type.startsWith('audio/') || /\.(mp3|wav|ogg|oga|m4a|aac|webm)$/i.test(file.name)) {
+            detectedType = 'audio';
+        }
+
+        setSelectedFile({
+            file,
+            name: file.name,
+            size: (file.size / 1024).toFixed(1) + ' KB',
+            type: detectedType,
+            previewUrl: detectedType === 'image' ? URL.createObjectURL(file) : null
+        });
+    };
+
+    const handleRemoveSelectedFile = () => {
+        if (selectedFile?.previewUrl) {
+            URL.revokeObjectURL(selectedFile.previewUrl);
+        }
+        setSelectedFile(null);
+    };
+
+    // === Grabación de notas de voz (Audio) ===
+    const startAudioRecording = async () => {
+        if (!canWriteMessage) {
+            alert('Debes asignarte la conversación antes de enviar un audio.');
+            return;
+        }
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+                ? 'audio/webm;codecs=opus' 
+                : MediaRecorder.isTypeSupported('audio/webm') 
+                    ? 'audio/webm' 
+                    : 'audio/ogg';
+            const mediaRecorder = new MediaRecorder(stream, { mimeType });
+            mediaRecorderRef.current = mediaRecorder;
+            recordingChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) {
+                    recordingChunksRef.current.push(e.data);
+                }
+            };
+
+            mediaRecorder.onstop = async () => {
+                stream.getTracks().forEach(t => t.stop());
+                const blob = new Blob(recordingChunksRef.current, { type: mimeType });
+                if (blob.size < 1000) {
+                    setUploadError('Audio demasiado corto');
+                    setTimeout(() => setUploadError(null), 3000);
+                    return;
+                }
+                await sendAudioRecording(blob, mimeType);
+            };
+
+            mediaRecorder.start(250);
+            setIsRecordingAudio(true);
+            setRecordingTime(0);
+            recordingTimerRef.current = setInterval(() => {
+                setRecordingTime(prev => prev + 1);
+            }, 1000);
+        } catch (err) {
+            console.error('Error al acceder al micrófono:', err);
+            setUploadError('No se pudo acceder al micrófono. Verifique los permisos del navegador.');
+            setTimeout(() => setUploadError(null), 4000);
+        }
+    };
+
+    const stopAudioRecording = () => {
+        if (mediaRecorderRef.current && isRecordingAudio) {
+            mediaRecorderRef.current.stop();
+            setIsRecordingAudio(false);
+            if (recordingTimerRef.current) {
+                clearInterval(recordingTimerRef.current);
+                recordingTimerRef.current = null;
+            }
+        }
+    };
+
+    const cancelAudioRecording = () => {
+        if (mediaRecorderRef.current && isRecordingAudio) {
+            mediaRecorderRef.current.stream?.getTracks().forEach(t => t.stop());
+            mediaRecorderRef.current.stop();
+            recordingChunksRef.current = [];
+            setIsRecordingAudio(false);
+            setRecordingTime(0);
+            if (recordingTimerRef.current) {
+                clearInterval(recordingTimerRef.current);
+                recordingTimerRef.current = null;
+            }
+        }
+    };
+
+    const sendAudioRecording = async (blob, mimeType) => {
+        try {
+            setUploadingMedia(true);
+            const ext = mimeType.includes('ogg') ? 'ogg' : 'webm';
+            const audioFile = new File([blob], `audio_${Date.now()}.${ext}`, { type: mimeType });
+            const uploaded = await uploadContactCenterMedia(audioFile, 'audios');
+            
+            onSendMessage(
+                selectedChat.id,
+                '🎤 Audio',
+                isPrivateNote,
+                uploaded.publicUrl,
+                'audio',
+                audioFile.name
+            );
+        } catch (err) {
+            console.error('Error subiendo audio:', err);
+            setUploadError('Error al subir o enviar la nota de voz');
+            setTimeout(() => setUploadError(null), 4000);
+        } finally {
+            setUploadingMedia(false);
+            setRecordingTime(0);
+        }
+    };
+
+    const sendDirectMessage = async (text, isNote = false) => {
         if (!isAuthorized) {
             alert('No tienes autorización para responder en el Contact Center. Solo las 4 agentes asignadas y Lucas Marinero tienen permisos de respuesta.');
             return;
@@ -1284,6 +1436,39 @@ export default function ContactCenterChatConsole({
             alert(`Esta conversación está asignada exclusivamente a ${assignedAgentObj?.name || 'otra agente'}. Modo solo lectura.`);
             return;
         }
+
+        // Si hay un archivo adjunto seleccionado
+        if (selectedFile) {
+            try {
+                setUploadingMedia(true);
+                const folder = selectedFile.type === 'image' ? 'images' : selectedFile.type === 'audio' ? 'audios' : 'documents';
+                const uploaded = await uploadContactCenterMedia(selectedFile.file, folder);
+
+                onSendMessage(
+                    selectedChat.id,
+                    (text || '').trim(),
+                    isNote,
+                    uploaded.publicUrl,
+                    selectedFile.type,
+                    selectedFile.name
+                );
+
+                handleRemoveSelectedFile();
+                setMessageInput('');
+                setQuickRepliesOpen(false);
+                setQuickRepliesModalOpen(false);
+                return;
+            } catch (err) {
+                console.error('Error enviando archivo adjunto:', err);
+                alert(`Error al enviar adjunto: ${err.message || 'Fallo de subida'}`);
+                return;
+            } finally {
+                setUploadingMedia(false);
+            }
+        }
+
+        if (!text || !text.trim()) return;
+
         onSendMessage(selectedChat.id, text.trim(), isNote);
         setMessageInput('');
         setQuickRepliesOpen(false);
@@ -1296,7 +1481,7 @@ export default function ContactCenterChatConsole({
             alert('Debes asignarte la conversación antes de responder para evitar que dos agentes escriban a la vez.');
             return;
         }
-        if (!messageInput.trim()) return;
+        if (!messageInput.trim() && !selectedFile) return;
 
         let textToSend = messageInput.trim();
         // Si el usuario escribió un atajo (ej: /dan o /bosi), resolverlo de inmediato
@@ -3555,38 +3740,229 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 </div>
                             )}
 
-                            <div style={{
-                                display: 'flex', alignItems: 'center', gap: '10px',
-                                background: isPrivateNote ? '#FFF7ED' : '#F8FAFC',
-                                border: isPrivateNote ? '1.5px solid #F97316' : '1px solid #E2E8F0',
-                                borderRadius: '12px', padding: '8px 12px'
-                            }}>
-                                <input 
-                                    ref={inputRef}
-                                    type="text"
-                                    disabled={isLocked}
-                                    placeholder={isPrivateNote 
-                                        ? `Escribe una nota interna que solo verá el equipo (o / para atajos)...` 
-                                        : `Escribe respuesta a ${selectedChat.contactName} (o / para atajos rápidos)...`}
-                                    value={messageInput}
-                                    onChange={handleInputChange}
-                                    onKeyDown={handleInputKeyDown}
-                                    style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: '0.88rem', color: '#1E293B' }}
-                                />
+                            {/* Alert de Error en subida de archivo / audio */}
+                            {uploadError && (
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    padding: '6px 12px', marginBottom: '6px', background: '#FEF2F2',
+                                    border: '1px solid #FECACA', borderRadius: '8px', color: '#B91C1C',
+                                    fontSize: '0.72rem', fontWeight: 600
+                                }}>
+                                    <span>⚠️ {uploadError}</span>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setUploadError(null)}
+                                        style={{ background: 'none', border: 'none', color: '#B91C1C', cursor: 'pointer' }}
+                                    >
+                                        <X size={13} />
+                                    </button>
+                                </div>
+                            )}
 
-                                <button 
-                                    type="submit"
-                                    disabled={isLocked}
-                                    style={{
-                                        display: 'flex', alignItems: 'center', gap: '6px',
-                                        background: isPrivateNote ? '#EA580C' : '#0284C7',
-                                        color: '#FFFFFF', border: 'none', padding: '8px 16px',
-                                        borderRadius: '8px', fontWeight: 700, fontSize: '0.8rem', cursor: isLocked ? 'not-allowed' : 'pointer'
-                                    }}
-                                >
-                                    {isPrivateNote ? <Lock size={14} /> : <Send size={14} />}
-                                    {isPrivateNote ? 'Guardar Nota' : 'Enviar WhatsApp'}
-                                </button>
+                            {/* Chip / Card de Archivo Adjunto Seleccionado */}
+                            {selectedFile && (
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    padding: '8px 12px', marginBottom: '8px', background: '#F0F9FF',
+                                    border: '1.5px solid #BAE6FD', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                                        {selectedFile.type === 'image' && selectedFile.previewUrl ? (
+                                            <img src={selectedFile.previewUrl} alt="Preview" style={{ width: '36px', height: '36px', borderRadius: '6px', objectFit: 'cover' }} />
+                                        ) : selectedFile.name.endsWith('.xlsx') || selectedFile.name.endsWith('.xls') || selectedFile.name.endsWith('.csv') ? (
+                                            <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#16A34A' }}>
+                                                <FileSpreadsheet size={20} />
+                                            </div>
+                                        ) : selectedFile.name.endsWith('.docx') || selectedFile.name.endsWith('.doc') ? (
+                                            <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#DBEAFE', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563EB' }}>
+                                                <FileText size={20} />
+                                            </div>
+                                        ) : selectedFile.name.endsWith('.pdf') ? (
+                                            <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#DC2626' }}>
+                                                <FileText size={20} />
+                                            </div>
+                                        ) : selectedFile.name.endsWith('.txt') ? (
+                                            <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569' }}>
+                                                <FileText size={20} />
+                                            </div>
+                                        ) : (
+                                            <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0284C7' }}>
+                                                <File size={20} />
+                                            </div>
+                                        )}
+                                        <div style={{ minWidth: 0 }}>
+                                            <div style={{ fontSize: '0.80rem', fontWeight: 800, color: '#0369A1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {selectedFile.name}
+                                            </div>
+                                            <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                                {selectedFile.size} • Adjunto listo (opcional: escribe un mensaje de acompañamiento)
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleRemoveSelectedFile}
+                                        style={{
+                                            background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '6px',
+                                            padding: '4px', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center'
+                                        }}
+                                        title="Quitar archivo adjunto"
+                                    >
+                                        <X size={15} />
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Contenedor Principal de Entrada (Texto / Grabador de Audio) */}
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                background: isPrivateNote ? '#FFF7ED' : '#F8FAFC',
+                                border: isPrivateNote ? '1.5px solid #F97316' : '1px solid #CBD5E1',
+                                borderRadius: '12px', padding: '6px 10px'
+                            }}>
+                                {isRecordingAudio ? (
+                                    /* Modo Grabador de Audio Activo */
+                                    <div style={{
+                                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                        padding: '4px 8px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{
+                                                width: '10px', height: '10px', borderRadius: '50%', background: '#EF4444',
+                                                display: 'inline-block'
+                                            }}></span>
+                                            <span style={{ fontSize: '0.80rem', fontWeight: 800, color: '#B91C1C' }}>
+                                                Grabando nota de voz WhatsApp: {Math.floor(recordingTime / 60)}:{String(recordingTime % 60).padStart(2, '0')}
+                                            </span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <button
+                                                type="button"
+                                                onClick={cancelAudioRecording}
+                                                style={{
+                                                    background: '#FFFFFF', border: '1px solid #FECACA', color: '#DC2626',
+                                                    padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                                                }}
+                                            >
+                                                <Trash2 size={13} /> Cancelar
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={stopAudioRecording}
+                                                style={{
+                                                    background: '#16A34A', border: 'none', color: '#FFFFFF',
+                                                    padding: '5px 12px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 800,
+                                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px',
+                                                    boxShadow: '0 2px 4px rgba(22, 163, 74, 0.25)'
+                                                }}
+                                            >
+                                                <Send size={13} /> Enviar Audio
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    /* Modo Redacción Normal con Adjuntos */
+                                    <>
+                                        {/* Input File Oculto Universal */}
+                                        <input 
+                                            type="file"
+                                            ref={attachmentInputRef}
+                                            onChange={handleFileSelected}
+                                            accept="image/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+                                            style={{ display: 'none' }}
+                                        />
+
+                                        {/* Botón Clip para adjuntar cualquier archivo */}
+                                        <button
+                                            type="button"
+                                            onClick={() => !uploadingMedia && attachmentInputRef.current?.click()}
+                                            disabled={isLocked || uploadingMedia}
+                                            title="Adjuntar archivo (Excel, Word, PDF, TXT, Fotos, Audios)"
+                                            style={{
+                                                background: selectedFile ? '#E0F2FE' : '#FFFFFF',
+                                                border: selectedFile ? '1.5px solid #0284C7' : '1px solid #CBD5E1',
+                                                borderRadius: '8px', padding: '6px 8px',
+                                                color: selectedFile ? '#0284C7' : '#64748B',
+                                                cursor: (isLocked || uploadingMedia) ? 'not-allowed' : 'pointer',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                boxShadow: selectedFile ? '0 1px 3px rgba(2, 132, 199, 0.2)' : 'none',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            <Paperclip size={17} />
+                                        </button>
+
+                                        {/* Input de Texto */}
+                                        <input 
+                                            ref={inputRef}
+                                            type="text"
+                                            disabled={isLocked || uploadingMedia}
+                                            placeholder={isPrivateNote 
+                                                ? `Escribe una nota interna que solo verá el equipo (o / para atajos)...` 
+                                                : selectedFile
+                                                    ? `Mensaje opcional para acompañar ${selectedFile.name}...`
+                                                    : `Escribe respuesta a ${selectedChat.contactName} (o / para atajos rápidos)...`}
+                                            value={messageInput}
+                                            onChange={handleInputChange}
+                                            onKeyDown={handleInputKeyDown}
+                                            style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: '0.88rem', color: '#1E293B' }}
+                                        />
+
+                                        {/* Botón Micrófono para Grabar Nota de Voz */}
+                                        {!messageInput.trim() && !selectedFile && !isPrivateNote && (
+                                            <button
+                                                type="button"
+                                                onClick={startAudioRecording}
+                                                disabled={isLocked || uploadingMedia}
+                                                title="Grabar y enviar nota de voz por WhatsApp"
+                                                style={{
+                                                    background: '#FFFFFF', border: '1px solid #CBD5E1',
+                                                    borderRadius: '8px', padding: '6px 8px',
+                                                    color: '#0284C7', cursor: (isLocked || uploadingMedia) ? 'not-allowed' : 'pointer',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                                                }}
+                                            >
+                                                <Mic size={17} />
+                                            </button>
+                                        )}
+
+                                        {/* Botón Enviar */}
+                                        <button 
+                                            type="submit"
+                                            disabled={isLocked || uploadingMedia || (!messageInput.trim() && !selectedFile)}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '6px',
+                                                background: isPrivateNote ? '#EA580C' : '#0284C7',
+                                                color: '#FFFFFF', border: 'none', padding: '8px 16px',
+                                                borderRadius: '8px', fontWeight: 700, fontSize: '0.8rem',
+                                                cursor: (isLocked || uploadingMedia || (!messageInput.trim() && !selectedFile)) ? 'not-allowed' : 'pointer',
+                                                opacity: (isLocked || uploadingMedia || (!messageInput.trim() && !selectedFile)) ? 0.6 : 1,
+                                                boxShadow: !isLocked && (messageInput.trim() || selectedFile) ? '0 2px 6px rgba(2, 132, 199, 0.3)' : 'none'
+                                            }}
+                                        >
+                                            {uploadingMedia ? (
+                                                <>
+                                                    <Loader2 size={14} className="animate-spin" />
+                                                    Subiendo...
+                                                </>
+                                            ) : isPrivateNote ? (
+                                                <>
+                                                    <Lock size={14} /> Guardar Nota
+                                                </>
+                                            ) : selectedFile ? (
+                                                <>
+                                                    <Send size={14} /> Enviar con Adjunto
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Send size={14} /> Enviar WhatsApp
+                                                </>
+                                            )}
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </form>

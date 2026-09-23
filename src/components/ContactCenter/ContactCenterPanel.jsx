@@ -345,8 +345,8 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         };
     }, []);
 
-    // Manejar envío de mensaje en la consola de chat
-    const handleSendMessage = async (chatId, text, isNote = false) => {
+    // Manejar envío de mensaje en la consola de chat (texto, notas y archivos multimedia)
+    const handleSendMessage = async (chatId, text, isNote = false, mediaUrl = null, mediaType = null, fileName = null) => {
         const targetChat = chats.find(c => c.id === chatId);
         if (!targetChat) return;
 
@@ -356,18 +356,25 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 text,
                 isNote,
                 activeAgent,
-                currentUser
+                currentUser,
+                mediaUrl,
+                mediaType,
+                fileName
             });
 
             setChats(prev => prev.map(c => c.id === chatId ? updatedChat : c));
 
             if (addToast) {
-                addToast(
-                    isNote 
-                        ? `Nota interna registrada por ${activeAgent.name}` 
-                        : `Mensaje WhatsApp enviado por ${activeAgent.name}`, 
-                    'success'
-                );
+                const label = isNote 
+                    ? `Nota interna registrada por ${activeAgent.name}` 
+                    : mediaType === 'audio' 
+                        ? `Audio enviado por ${activeAgent.name}` 
+                        : mediaType === 'image' 
+                            ? `Imagen enviada por ${activeAgent.name}` 
+                            : mediaUrl 
+                                ? `Archivo enviado por ${activeAgent.name}` 
+                                : `Mensaje WhatsApp enviado por ${activeAgent.name}`;
+                addToast(label, 'success');
             }
         } catch (err) {
             console.error(err);

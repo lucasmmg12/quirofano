@@ -777,7 +777,48 @@ export async function fetchLiveAndDemoChats() {
  * Deja tag con el agente que respondió y actualiza lastResponder.
  * Inmediatamente pausa el chatbot para que no interfiera.
  */
-export async function sendContactCenterMessage({ chat, text, isNote, activeAgent, currentUser }) {
+/**
+ * Sube cualquier tipo de archivo (Excel, Word, PDF, TXT, imágenes, audio) al bucket whatsapp-media
+ */
+export async function uploadContactCenterMedia(file, folder = 'attachments') {
+    if (!file) throw new Error('No se seleccionó ningún archivo');
+    
+    const ext = file.name?.split('.').pop() || 'bin';
+    const cleanName = (file.name || 'archivo')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '_')
+        .slice(0, 30);
+    const fileName = `contact_center/${folder}/${Date.now()}_${cleanName}.${ext}`;
+
+    const { data, error } = await supabase.storage
+        .from('whatsapp-media')
+        .upload(fileName, file, { contentType: file.type || 'application/octet-stream', upsert: false });
+
+    if (error) {
+        console.error('Error subiendo media a whatsapp-media:', error);
+        throw error;
+    }
+
+    const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(data.path);
+    return {
+        publicUrl: urlData.publicUrl,
+        storagePath: data.path,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type
+    };
+}
+
+export async function sendContactCenterMessage({ 
+    chat, 
+    text, 
+    isNote, 
+    activeAgent, 
+    currentUser,
+    mediaUrl = null,
+    mediaType = null,
+    fileName = null
+}) {
     if (!isUserAuthorizedForContactCenter(currentUser)) {
         throw new Error('No tienes autorización para responder en el Contact Center. Solo las 4 agentes asignadas y Lucas Marinero tienen permisos operativos de respuesta.');
     }
@@ -791,6 +832,17 @@ export async function sendContactCenterMessage({ chat, text, isNote, activeAgent
     const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
     const normalizedPhone = normalizeArgentinePhone(chat.phone);
 
+    const finalMediaType = mediaType || (mediaUrl ? 'document' : 'text');
+    const defaultContent = finalMediaType === 'image' 
+        ? '📷 Imagen' 
+        : finalMediaType === 'audio' 
+            ? '🎤 Audio' 
+            : finalMediaType === 'document' 
+                ? (fileName ? `📎 ${fileName}` : '📎 Documento') 
+                : text;
+
+    const finalContent = (text && text.trim()) ? text.trim() : defaultContent;
+
     // 1. Guardar en Supabase whatsapp_messages
     try {
         const { error: insertError } = await supabase
@@ -798,8 +850,9 @@ export async function sendContactCenterMessage({ chat, text, isNote, activeAgent
             .insert({
                 phone: normalizedPhone,
                 direction: isNote ? 'note' : 'outgoing',
-                content: text,
-                media_type: 'text',
+                content: finalContent,
+                media_type: finalMediaType,
+                media_url: mediaUrl || null,
                 sender_name: activeAgent.name,
                 is_read: true,
                 line_id: 'contact_center', // Exclusivo de la línea oficial Contact Center
@@ -808,7 +861,10 @@ export async function sendContactCenterMessage({ chat, text, isNote, activeAgent
                     line: 'contact_center',
                     agent: activeAgent.id,
                     agentName: activeAgent.name,
-                    isNote: !!isNote
+                    isNote: !!isNote,
+                    mediaUrl: mediaUrl || null,
+                    mediaType: finalMediaType,
+                    fileName: fileName || null
                 }
             });
 
@@ -826,7 +882,7 @@ export async function sendContactCenterMessage({ chat, text, isNote, activeAgent
                 .from('contact_center_conversations')
                 .update({
                     bot_active: false,
-                    last_message_text: text,
+                    last_message_text: finalContent,
                     last_message_at: now.toISOString(),
                     updated_at: now.toISOString()
                 })
@@ -840,11 +896,12 @@ export async function sendContactCenterMessage({ chat, text, isNote, activeAgent
     if (!isNote && normalizedPhone) {
         try {
             await sendWhatsAppMessage({
-                content: text,
+                content: finalContent,
                 number: normalizedPhone,
-                lineId: 'contact_center'
+                lineId: 'contact_center',
+                ...(mediaUrl && { mediaUrl })
             });
-            console.log(`[contact-center] ✅ Mensaje despachado a BuilderBot (Línea Contact Center): ${normalizedPhone} por ${activeAgent.name}`);
+            console.log(`[contact-center] ✅ Mensaje con media despachado a BuilderBot (Línea Contact Center): ${normalizedPhone} por ${activeAgent.name}`);
         } catch (bbError) {
             console.error('[contact-center] Error despachando a BuilderBot:', bbError);
         }
@@ -858,8 +915,12 @@ export async function sendContactCenterMessage({ chat, text, isNote, activeAgent
         senderAgentId: activeAgent.id,
         agentRole: activeAgent.role || 'Atención al Paciente',
         tagColor: activeAgent.color,
-        type: 'text',
-        text,
+        type: finalMediaType,
+        text: finalContent,
+        caption: finalContent,
+        mediaUrl: mediaUrl || null,
+        mediaType: finalMediaType,
+        fileName: fileName || null,
         isNote: !!isNote,
         timestamp: timeStr
     };
@@ -867,7 +928,7 @@ export async function sendContactCenterMessage({ chat, text, isNote, activeAgent
     const updatedChat = {
         ...chat,
         botActive: false,
-        lastMessage: isNote ? `[Nota interna] ${text}` : text,
+        lastMessage: isNote ? `[Nota interna] ${finalContent}` : finalContent,
         lastMessageTimestamp: now.getTime(),
         timeAgo: 'hace unos segundos',
         lastResponder: activeAgent.name,
