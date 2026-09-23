@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
-import { Palette, Check, RotateCcw, X, Image as ImageIcon, Sliders, Moon, Sun, Sparkles } from 'lucide-react';
+import { Palette, Check, RotateCcw, X, Image as ImageIcon, Sliders, Moon, Sun, Sparkles, Flame, Leaf, Heart } from 'lucide-react';
 import { THEME_PRESETS, WALLPAPERS, saveStoredTheme, resetStoredTheme } from '../../services/contactCenterThemeService';
 
 const COLOR_SWATCHES = [
     { name: 'Blanco Clínico', color: '#FFFFFF', isDark: false },
     { name: 'Gris Slate', color: '#1E293B', isDark: true },
     { name: 'Deep Obsidian', color: '#0B1120', isDark: true },
+    { name: 'Furia Carmesí', color: '#180707', isDark: true },
+    { name: 'Verde Botánico', color: '#F0F7F4', isDark: false },
+    { name: 'Pastel Calidez', color: '#FAF7F2', isDark: false },
     { name: 'Azul Noche', color: '#0F172A', isDark: true },
-    { name: 'Gris Carbón', color: '#18181B', isDark: true },
-    { name: 'Gris Plata', color: '#F1F5F9', isDark: false }
+    { name: 'Gris Carbón', color: '#18181B', isDark: true }
 ];
 
 export default function ContactCenterThemeModal({ isOpen, onClose, currentTheme, onThemeChange }) {
@@ -304,6 +306,138 @@ export default function ContactCenterThemeModal({ isOpen, onClose, currentTheme,
                                 </div>
                                 {localTheme.id === 'dark' && (
                                     <div style={{ background: '#10B981', color: '#FFFFFF', borderRadius: '50%', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Check size={14} strokeWidth={3} />
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Preset 4: Furia Roja */}
+                            <div
+                                onClick={() => handleSelectPreset('inferno_fury')}
+                                style={{
+                                    border: localTheme.id === 'inferno_fury' ? '2px solid #EF4444' : '1px solid #7F1D1D',
+                                    borderRadius: '12px',
+                                    padding: '14px',
+                                    cursor: 'pointer',
+                                    background: '#180707',
+                                    color: '#FFFFFF',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: localTheme.id === 'inferno_fury' ? '0 0 0 3px rgba(239, 68, 68, 0.35)' : 'none'
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{
+                                        width: '42px', height: '42px', borderRadius: '10px',
+                                        background: '#2B0B0B', border: '1px solid #7F1D1D',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                    }}>
+                                        <Flame size={20} color="#EF4444" />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#FEE2E2', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            {THEME_PRESETS.inferno_fury.name}
+                                            <span style={{ fontSize: '0.62rem', background: '#EF4444', color: '#FFF', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                                Furia & Poder
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '0.72rem', color: '#FCA5A5', marginTop: '2px' }}>
+                                            {THEME_PRESETS.inferno_fury.description}
+                                        </div>
+                                    </div>
+                                </div>
+                                {localTheme.id === 'inferno_fury' && (
+                                    <div style={{ background: '#EF4444', color: '#FFFFFF', borderRadius: '50%', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Check size={14} strokeWidth={3} />
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Preset 5: Paz y Flores (Zen Verde) */}
+                            <div
+                                onClick={() => handleSelectPreset('blooming_peace')}
+                                style={{
+                                    border: localTheme.id === 'blooming_peace' ? '2px solid #16A34A' : '1px solid #BBF7D0',
+                                    borderRadius: '12px',
+                                    padding: '14px',
+                                    cursor: 'pointer',
+                                    background: '#F0F7F4',
+                                    color: '#14532D',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: localTheme.id === 'blooming_peace' ? '0 0 0 3px rgba(22, 163, 74, 0.25)' : 'none'
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{
+                                        width: '42px', height: '42px', borderRadius: '10px',
+                                        background: '#DCFCE7', border: '1px solid #86EFAC',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                    }}>
+                                        <Leaf size={20} color="#16A34A" />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#14532D', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            {THEME_PRESETS.blooming_peace.name}
+                                            <span style={{ fontSize: '0.62rem', background: '#16A34A', color: '#FFF', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                                Zen & Crecimiento
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '0.72rem', color: '#15803D', marginTop: '2px' }}>
+                                            {THEME_PRESETS.blooming_peace.description}
+                                        </div>
+                                    </div>
+                                </div>
+                                {localTheme.id === 'blooming_peace' && (
+                                    <div style={{ background: '#16A34A', color: '#FFFFFF', borderRadius: '50%', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Check size={14} strokeWidth={3} />
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Preset 6: Calidez Familiar (Pastel) */}
+                            <div
+                                onClick={() => handleSelectPreset('family_warmth')}
+                                style={{
+                                    border: localTheme.id === 'family_warmth' ? '2px solid #B45309' : '1px solid #E7DFD5',
+                                    borderRadius: '12px',
+                                    padding: '14px',
+                                    cursor: 'pointer',
+                                    background: '#FAF7F2',
+                                    color: '#451A03',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: localTheme.id === 'family_warmth' ? '0 0 0 3px rgba(180, 83, 9, 0.2)' : 'none'
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{
+                                        width: '42px', height: '42px', borderRadius: '10px',
+                                        background: '#F3ECE2', border: '1px solid #D7C9B8',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                    }}>
+                                        <Heart size={20} color="#B45309" />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#451A03', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            {THEME_PRESETS.family_warmth.name}
+                                            <span style={{ fontSize: '0.62rem', background: '#B45309', color: '#FFF', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                                Hogar & Maternidad
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '0.72rem', color: '#78350F', marginTop: '2px' }}>
+                                            {THEME_PRESETS.family_warmth.description}
+                                        </div>
+                                    </div>
+                                </div>
+                                {localTheme.id === 'family_warmth' && (
+                                    <div style={{ background: '#B45309', color: '#FFFFFF', borderRadius: '50%', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                         <Check size={14} strokeWidth={3} />
                                     </div>
                                 )}
