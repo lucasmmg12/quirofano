@@ -1188,6 +1188,19 @@ Devuelve un JSON con:
 // MOTOR DE TRIAGE DEL CHATBOT (AHORRO DE MENSAJES Y EXTRACCIÓN CON IA)
 // =============================================
 
+// =========================================================================
+// 🧪 [MODO PRUEBA TEMPORAL] REINICIO AUTOMÁTICO DE BOT CADA 3 MINUTOS
+// Permite probar el flujo del bot repetidamente. Si pasan más de 3 minutos
+// de inactividad, el bot se reinicia a cero ('inicio', activo, sin asignar)
+// y le avisa al usuario por WhatsApp.
+//
+// 👉 PARA QUITAR O DESACTIVAR:
+//    Cambiar TEST_AUTO_RESET_3_MIN = false (o eliminar los bloques con esta etiqueta).
+// =========================================================================
+const TEST_AUTO_RESET_3_MIN = true;
+const TEST_RESET_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutos
+// =========================================================================
+
 async function handleChatbotTriage(
     supabase: any,
     phone: string,
@@ -1216,10 +1229,26 @@ async function handleChatbotTriage(
         conv?.closed_by_agent_id
     );
 
-    // Si el chat estaba cerrado y el paciente vuelve a escribir:
+    // =========================================================================
+    // 🧪 [MODO PRUEBA TEMPORAL] VERIFICACIÓN DE TIMEOUT (3 MINUTOS)
+    // =========================================================================
+    let wasResetByTimeout = false;
+    if (TEST_AUTO_RESET_3_MIN && conv && !wasClosed) {
+        const lastActivity = conv.last_message_at || conv.updated_at;
+        if (lastActivity) {
+            const elapsedMs = Date.now() - new Date(lastActivity).getTime();
+            if (elapsedMs >= TEST_RESET_TIMEOUT_MS) {
+                console.log(`[triage-bot] 🧪 [MODO PRUEBA] Chat ${phone} inactivo por ${(elapsedMs / 1000).toFixed(0)}s (>= 3 min). REINICIANDO BOT A CERO.`);
+                wasResetByTimeout = true;
+            }
+        }
+    }
+    // =========================================================================
+
+    // Si el chat estaba cerrado O si venció el timeout de 3 minutos en Modo Prueba:
     // REACTIVAR TODO A CERO para que el paciente hable con el bot desde 'inicio'
-    if (wasClosed) {
-        console.log(`[triage-bot] Chat ${phone} estaba cerrado (${conv?.resolution_reason || conv?.status}). REACTIVANDO TODO A CERO para nueva atención.`);
+    if (wasClosed || wasResetByTimeout) {
+        console.log(`[triage-bot] Chat ${phone} ${wasResetByTimeout ? 'inactivo > 3 min (MODO PRUEBA)' : 'estaba cerrado'}. REACTIVANDO TODO A CERO para nueva atención.`);
         await supabase
             .from('contact_center_conversations')
             .update({
@@ -1253,9 +1282,9 @@ async function handleChatbotTriage(
         }
     }
 
-    // Si la conversación NO estaba cerrada y ya está asignada a un agente humano en vivo
+    // Si la conversación NO estaba cerrada ni reseteada por timeout, y ya está asignada a un agente humano en vivo
     // O si el bot fue silenciado/pausado manualmente o ya está esperando a un asesor, NO responder
-    if (conv && !wasClosed) {
+    if (conv && !wasClosed && !wasResetByTimeout) {
         if (conv.assigned_agent_id || conv.bot_active === false || conv.bot_stage === 'esperando_agente') {
             console.log(`[triage-bot] Chat ${phone} asignado a ${conv.assigned_agent_name || conv.assigned_agent_id}, bot_active=false o bot_stage=${conv.bot_stage}. Bot en silencio.`);
             
@@ -2329,6 +2358,13 @@ async function handleChatbotTriage(
         console.log(`[triage-bot] ✅ Conversación ${phone} persistida (stage: ${nextStage}, bot_active: ${cleanUpdates.bot_active})`);
     }
 
+    // =========================================================================
+    // 🧪 [MODO PRUEBA TEMPORAL] AVISO AL USUARIO POR REINICIO DE 3 MINUTOS
+    // =========================================================================
+    if (TEST_AUTO_RESET_3_MIN && wasResetByTimeout && replyText) {
+        replyText = `🔄 *[Modo Prueba - Reinicio por Inactividad]*\n_Pasaron más de 3 minutos sin interacción. El bot se ha reiniciado automáticamente a cero para una nueva prueba._\n\n` + replyText;
+    }
+
     // Enviar el mensaje saliente al paciente vía WhatsApp SOLO si hay respuesta explícita
     if (replyText) {
         await sendBotWhatsAppReply(supabase, phone, replyText, lineId);
@@ -2724,13 +2760,23 @@ Si un dato no fue aportado en el texto, indícalo como null.`
 async function sendBotWhatsAppReply(supabase: any, phone: string, text: string, lineId: string | null) {
     try {
         const targetLine = lineId || 'contact_center';
+
+        // =========================================================================
+        // 🧪 [MODO PRUEBA TEMPORAL] NOTIFICACIÓN AL USUARIO AL PIE DEL MENSAJE
+        // Se desactiva automáticamente si TEST_AUTO_RESET_3_MIN = false
+        // =========================================================================
+        let finalContent = text;
+        if (TEST_AUTO_RESET_3_MIN && !text.includes('Modo Prueba') && !text.includes('modo prueba')) {
+            finalContent += '\n\n_(⏱️ Modo prueba activo: El bot se reinicia automáticamente tras 3 min de inactividad)_';
+        }
+
         // 1. Guardar mensaje saliente en whatsapp_messages
         await supabase
             .from('whatsapp_messages')
             .insert({
                 phone,
                 direction: 'outgoing',
-                content: text,
+                content: finalContent,
                 media_type: 'text',
                 sender_name: 'Bot Sanatorio',
                 is_read: true,
@@ -2751,7 +2797,7 @@ async function sendBotWhatsAppReply(supabase: any, phone: string, text: string, 
             },
             body: JSON.stringify({
                 number: phone,
-                content: text,
+                content: finalContent,
                 lineId: targetLine
             })
         });

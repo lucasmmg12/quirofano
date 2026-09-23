@@ -117,6 +117,12 @@ import {
     interpolateQuickReplyVariables
 } from '../../data/contactCenterQuickReplies';
 
+// =========================================================================
+// 🧪 [MODO PRUEBA TEMPORAL] INDICADOR DE AUTO-REINICIO CADA 3 MINUTOS
+// Para quitar o desactivar: cambiar a false
+// =========================================================================
+const TEST_BOT_RESET_INDICATOR_ENABLED = true;
+
 export default function ContactCenterChatConsole({ 
     chats = [], 
     activeChatId, 
@@ -2189,6 +2195,25 @@ export default function ContactCenterChatConsole({
                                         <RefreshCw size={11} />
                                         Reiniciar
                                     </button>
+                                    {TEST_BOT_RESET_INDICATOR_ENABLED && (
+                                        <span
+                                            title="Modo de prueba activo: El bot reinicia automáticamente su conversación a 'inicio' tras 3 minutos de inactividad"
+                                            style={{
+                                                padding: '3px 7px',
+                                                borderRadius: '6px',
+                                                fontSize: '0.65rem',
+                                                fontWeight: 800,
+                                                background: '#FEF3C7',
+                                                border: '1px solid #FCD34D',
+                                                color: '#B45309',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '3px'
+                                            }}
+                                        >
+                                            ⏱️ Auto-reset 3m
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                             <div style={{ fontSize: '0.66rem', color: botActive ? '#166534' : '#92400E', lineHeight: 1.25 }}>
