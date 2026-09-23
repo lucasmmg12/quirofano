@@ -2441,8 +2441,6 @@ async function handleChatbotTriage(
             updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, true, paciente?.edad);
         } else if (isExistingPatient) {
             const hasOrderImageMsg = patientSentImageRecently ? '\n\n✅ *Ya recibimos la foto de tu orden médica.*' : '';
-            const otherFams = (familiaresDetectados || []).filter(f => String(f.dni) !== String(paciente?.dni)).map(f => (f.nombre || '').split(',')[0].trim());
-            const famNote = otherFams.length > 0 ? ` (o para ${otherFams.join(', ')})` : '';
 
             const osTurnoInfo = getRegisteredOsInfo(paciente?.coseguro || conv?.obra_social);
             const osTurnoBullet = osTurnoInfo.hasRegisteredOs
@@ -2451,7 +2449,7 @@ async function handleChatbotTriage(
 
             replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos a coordinar tu turno${doctorNoteMsg}.${hasOrderImageMsg}\n\n` +
                 `Por favor indícanos:\n` +
-                `• ¿El turno es para vos (*${fullName}*), o estás gestionando para otro paciente / familiar${famNote}?\n` +
+                `• ¿El turno es para vos (*${fullName}*), o estás gestionando para otro paciente / familiar?\n` +
                 `• Si es para vos: indícanos preferencia de día/horario y si es primera consulta o control.\n` +
                 `• Si es para otra persona: indícanos el *DNI* (sin puntos) y *Nombre Completo* del paciente que se va a atender.\n` +
                 `${osTurnoBullet}\n\n` +
@@ -2527,11 +2525,6 @@ async function handleChatbotTriage(
     // =============================================
     else if (analysis.intent === 'gestion_familiar') {
         updates.motivo_consulta = 'Gestión para Tercero / Familiar (Turno o Autorización)';
-        
-        const otherFams = (familiaresDetectados || []).filter(f => String(f.dni) !== String(paciente?.dni)).map(f => `${f.nombre} (DNI ${f.dni})`);
-        const famSuggesMsg = otherFams.length > 0 
-            ? `\n\n👥 *Familiares vinculados a tu línea:*\n${otherFams.map(f => `• ${f}`).join('\n')}\n*(Podés escribir directamente el nombre o DNI de la persona a atender)*` 
-            : '';
 
         replyText = `¡Entendido *${fullName}*! 🏥 Te ayudamos a gestionar el *turno o autorización* para tu familiar u otro paciente.\n\n` +
             `Por favor indícanos en un solo mensaje:\n` +
@@ -2539,7 +2532,7 @@ async function handleChatbotTriage(
             `• *DNI* (sin puntos) y *Nombre Completo* del paciente que se atenderá.\n` +
             `• *Obra Social o Prepaga* y qué *plan* posee (o si es Particular).\n` +
             `• Si es turno: médico, especialidad o estudio requerido, y preferencia horaria.\n` +
-            `• Si es autorización: envíanos la *foto clara de la orden médica*.${famSuggesMsg}\n\n` +
+            `• Si es autorización: envíanos la *foto clara de la orden médica*.\n\n` +
             `*(Si el paciente ya está registrado en Sanatorio Argentino, con su DNI lo localizamos de inmediato)*.\n\n` +
             `${getAgentHandoffNotice()}`;
 
