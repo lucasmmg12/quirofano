@@ -647,10 +647,6 @@ export default function AltasPanel({ addToast, currentUser }) {
 
         result = result.map(alta => {
             const asignacion = matchAsignacion(criterios, alta.cliente, alta.especialidad, alta.proceso);
-            const ctrlAdm = (alta.control_adm_finalizado || '').trim().toLowerCase();
-            const isCtrlAdmSi = ctrlAdm === 'sí' || ctrlAdm === 'si' || ctrlAdm === 's' 
-                || ctrlAdm === 'true' || ctrlAdm === '1' || ctrlAdm === 'yes';
-            const obsHasAltaAdm = (alta.observaciones || '').toLowerCase().includes('alta adm');
 
             const pacKey = (alta.paciente || '').trim().toUpperCase();
             const dateKey = alta.fecha_ingreso || 'sin-fecha';
@@ -696,9 +692,29 @@ export default function AltasPanel({ addToast, currentUser }) {
             const isParticular = !rawCliente || !/^\d{2,3}/.test(rawCliente) || rawCliente.includes('042') || rawCliente.toUpperCase().includes('PARTICULAR');
             const clienteNormalized = isParticular ? '042 - PARTICULARES' : rawCliente;
 
-            const effectiveEstado = (isCtrlAdmSi || obsHasAltaAdm || alta.estado === 'Alta Adm')
-                ? 'Alta Adm'
-                : (alta.estado || (isParticular ? 'Particular' : 'Vacío'));
+            const finalCtrlAdm = (control_adm_finalizado || alta.control_adm_finalizado || '').trim().toLowerCase();
+            const isCtrlAdmSi = finalCtrlAdm === 'sí' || finalCtrlAdm === 'si' || finalCtrlAdm === 's' 
+                || finalCtrlAdm === 'true' || finalCtrlAdm === '1' || finalCtrlAdm === 'yes';
+            const isCtrlAdmNo = finalCtrlAdm === 'no' || finalCtrlAdm === 'n' || finalCtrlAdm === 'false' || finalCtrlAdm === '0';
+            const obsHasAltaAdm = (observaciones || alta.observaciones || '').toLowerCase().includes('alta adm');
+
+            // ── Lógica de Estado Efectivo ──
+            // 1. Si el operador asignó un estado manualmente (ej. 'Suspendida', 'En auditoría', 'Prórroga', etc.),
+            //    ese estado manual TIENE PRIORIDAD y no debe ser pisado por notas de observaciones ni SALUS.
+            // 2. Si el estado en DB es 'Alta Adm' pero SALUS indica explícitamente que no tiene alta (isCtrlAdmNo), se revierte.
+            // 3. Si no tiene estado manual (o es null), se autodetecta 'Alta Adm' desde SALUS (Control ADM = Sí o mención en observaciones sin cancelación).
+            let effectiveEstado = alta.estado;
+            if (effectiveEstado === 'Alta Adm' && isCtrlAdmNo) {
+                effectiveEstado = isParticular ? 'Particular' : 'Vacío';
+            } else if (!effectiveEstado) {
+                if (isCtrlAdmSi || (!isCtrlAdmNo && obsHasAltaAdm)) {
+                    effectiveEstado = 'Alta Adm';
+                } else if (isParticular) {
+                    effectiveEstado = 'Particular';
+                } else {
+                    effectiveEstado = 'Vacío';
+                }
+            }
             // Responsable: manual override tiene prioridad sobre auto-match
             const autoResp = asignacion?.responsable || '';
             const finalResp = alta.responsable_override || autoResp;

@@ -1412,9 +1412,9 @@ async function syncNotasCredito(db, fastSync = false) {
 async function syncAltasAdministrativas(db, fastSync = false) {
     console.log(`📋 [4/7] Extrayendo altas administrativas de SALUS... (fastSync: ${fastSync})`);
 
-    const daysBack = fastSync ? 15 : 60;
+    const daysBack = fastSync ? 45 : 90;
     const openIngresoFilter = fastSync 
-        ? "TA.[Fecha ingreso] >= DATEADD(DAY, -30, CAST(GETDATE() AS DATE))"
+        ? "TA.[Fecha ingreso] >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE))"
         : "TA.[Fecha ingreso] >= '2025-01-01'";
 
     const result = await db.request().query(`
@@ -1673,7 +1673,7 @@ async function syncFojaQuirurgica(db, fastSync = false) {
 async function syncFacturacionInternada(db, fastSync = false) {
     console.log(`🧾 [4b/10] Extrayendo facturación internada (PDV 21/31) de SALUS... (fastSync: ${fastSync})`);
 
-    const daysBack = fastSync ? 15 : 90;
+    const daysBack = fastSync ? 45 : 90;
     const result = await db.request().query(`
         SELECT 
             [Fecha factura],

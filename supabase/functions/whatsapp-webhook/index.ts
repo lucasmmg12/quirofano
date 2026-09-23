@@ -810,6 +810,138 @@ function getRegisteredOsInfo(osRaw?: string | null): { hasRegisteredOs: boolean;
     return { hasRegisteredOs: true, cleanOsName: clean };
 }
 
+/**
+ * Motor Conversacional Inteligente para WhatsApp potenciado por ChatGPT (OpenAI GPT-4o).
+ * Permite mantener conversaciones fluidas, empáticas y naturales, responder consultas institucionales
+ * y transferir de inmediato al equipo humano si el paciente lo solicita o se frustra con el bot.
+ */
+async function generateChatGptConversationalResponse(
+    userText: string,
+    context?: ConversationContext,
+    patientInfo?: {
+        fullName: string;
+        phone: string;
+        isExistingPatient: boolean;
+        dni: string | null;
+        obraSocial: string | null;
+    }
+): Promise<{
+    replyText: string;
+    intent: string;
+    transferToAgent: boolean;
+    summary: string | null;
+}> {
+    const openAiKey = Deno.env.get('OPENAI_API_KEY');
+    const pName = patientInfo?.fullName || 'Paciente';
+    const pDni = patientInfo?.dni || 'No informado';
+    const pOs = patientInfo?.obraSocial || 'A confirmar';
+
+    if (!openAiKey) {
+        console.warn('[conversational-bot] OPENAI_API_KEY no configurada');
+        return {
+            replyText: `¡Hola *${pName}*! 🏥 Te damos la bienvenida a *Sanatorio Argentino*.\n\n¿En qué podemos orientarte hoy? Podés consultarnos por turnos médicos, autorizaciones, guardias 24hs o pedir hablar con un asesor.`,
+            intent: 'general',
+            transferToAgent: false,
+            summary: 'Consulta general'
+        };
+    }
+
+    try {
+        const thread = (context?.history || []).slice(-8).map((m: any) => {
+            const role = m.direction === 'incoming' 
+                ? (pName || 'Paciente') 
+                : (m.sender_name === 'Bot Sanatorio' || m.raw_payload?.bot ? 'Asistente_Virtual' : `Asesor_Humano (${m.sender_name || 'Agente'})`);
+            return `${role}: ${m.content}`;
+        }).join('\n');
+
+        const systemPrompt = `Eres el Asistente Virtual Inteligente oficial de Sanatorio Argentino (San Juan, Argentina), una prestigiosa institución de salud fundada en 1957.
+Tu misión es mantener una conversación natural, cálida, empática, ágil y resolutiva con los pacientes a través de WhatsApp.
+
+DATOS DEL PACIENTE:
+- Nombre: ${pName}
+- DNI: ${pDni}
+- Cobertura / Obra Social: ${pOs}
+
+DIRECTIVAS PRINCIPALES:
+1. TONO: Cercano, humano, cordial, respetuoso y profesional (español argentino rioplatense educado: "¡Hola ${pName.split(' ')[0]}!", "te comento", "contanos").
+2. CONVERSACIONAL REAL: Responde de forma directa, útil e inteligente al mensaje del paciente. NUNCA respondas con menús numéricos rígidos ni opciones robóticas ("1️⃣ El turno es para mí, 2️⃣ Es para otro...").
+3. PEDIDO DE ASESOR HUMANO O FRUSTRACIÓN CON EL BOT (MÁXIMA PRIORIDAD):
+   Si el paciente pide que lo atienda una persona, un asesor, un humano, un operador, o manifiesta que el bot no le sirve o no funciona (ej: "quiero que me atienda una persona porque el bot nunca funciona", "como hago para que me atienda una persona", "pasame con alguien"):
+   - Pide sinceras disculpas por la frustración o demora.
+   - Confirma de inmediato que lo estás comunicando con una asesora humana del equipo de atención para que continúe la conversación de forma personalizada.
+   - Establece obligatoriamente "transferToAgent": true y "intent": "derivacion_agente".
+4. TURNOS MÉDICOS:
+   - Para agendar o coordinar, consulta amablemente qué especialidad o profesional busca, su cobertura/obra social y su preferencia horaria (mañana o tarde).
+   - Si es para un hijo o familiar, solicita con cordialidad el Nombre y DNI del paciente a atender.
+5. INFORMACIÓN INSTITUCIONAL VERÍDICA:
+   - Sede San Luis (San Luis 432 Oeste, Capital): Maternidad, Quirófanos, Internación, Consultorios externos, Guardias Médicas 24 horas (Clínica médica adultos, Pediatría 24hs activa, Ginecología/Obstetricia, Cardiología). Por orden de llegada con triage de urgencia.
+   - Sede Santa Fe (Santa Fe 263 Este, Capital): Consultorios externos, Vacunatorio, Chequeo Preventivo de Salud, Programa Prevenir (OSP), Diagnóstico por Imágenes (Ecografía, Rayos, Tomografía, Resonancia, Mamografía), Kinesiología.
+   - Laboratorio: Resultados online en la web oficial con usuario y contraseña entregados en la extracción.
+   - Obras Sociales: Atendemos OSP, OSDE, Swiss Medical, Galeno, Medifé, Jerárquicos y la gran mayoría de prepagas y obras sociales, y atención Particular.
+6. FORMATO: Breve y claro, optimizado para lectura en WhatsApp (máximo 2 párrafos cortos, uso de *negrita* para resaltar datos clave, emojis médicos sobrios 🏥 🩺).
+
+Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
+{
+  "replyText": "Texto de la respuesta en WhatsApp...",
+  "intent": "derivacion_agente | turno | autorizacion | guardia | chequeo | informes | agradecimiento | general",
+  "transferToAgent": boolean,
+  "summary": "Resumen breve de la consulta en 1 línea para el equipo"
+}`;
+
+        const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openAiKey}`
+            },
+            body: JSON.stringify({
+                model: 'gpt-4o',
+                response_format: { type: 'json_object' },
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: `Historial de la conversación reciente:\n${thread || '(Sin mensajes previos)'}\n\nÚltimo mensaje recibido del paciente:\n"${userText}"` }
+                ],
+                temperature: 0.3,
+                max_tokens: 350
+            })
+        });
+
+        if (aiRes.ok) {
+            const aiData = await aiRes.json();
+            const content = aiData.choices?.[0]?.message?.content || '{}';
+            const parsed = JSON.parse(content);
+            return {
+                replyText: parsed.replyText || `¡Hola *${pName}*! 🏥 ¿En qué podemos ayudarte hoy?`,
+                intent: parsed.intent || 'general',
+                transferToAgent: Boolean(parsed.transferToAgent),
+                summary: parsed.summary || null
+            };
+        } else {
+            console.error('[conversational-bot] Error en respuesta de OpenAI:', await aiRes.text());
+        }
+    } catch (err: any) {
+        console.error('[conversational-bot] Excepción llamando a OpenAI:', err?.message || err);
+    }
+
+    // Fallback defensivo
+    const isHumanRequest = /\b(persona|humano|asesor|asesora|operador|operadora|alguien)\b/i.test(userText);
+    if (isHumanRequest) {
+        return {
+            replyText: `¡Hola *${pName}*! 🏥 Te pido sinceras disculpas por la molestia.\n\nYa mismo te comunico con una de nuestras asesoras humanas del equipo de atención para que continúe asistiéndote personalmente.\n\n📌 *Por favor aguardá unos instantes.*`,
+            intent: 'derivacion_agente',
+            transferToAgent: true,
+            summary: 'Solicitud de atención humana'
+        };
+    }
+
+    return {
+        replyText: `¡Hola *${pName}*! 🏥 ¿En qué podemos orientarte hoy en *Sanatorio Argentino*? Podés consultarnos por turnos, autorizaciones, guardias 24hs o pedir hablar con un asesor.`,
+        intent: 'general',
+        transferToAgent: false,
+        summary: 'Consulta general'
+    };
+}
+
 async function detectIntentAndEntities(supabase: any, text: string, context?: ConversationContext): Promise<IntentDetectionResult> {
     const clean = text.toLowerCase().trim();
 
@@ -1016,7 +1148,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
     }
 
     // 14. DERIVACIÓN EXPLÍCITA A ASESOR HUMANO / OPERADOR
-    const isAgente = /\b(hablar\s+con\s+(?:un\s+|una\s+)?(?:asesor|asesora|persona|operador|operadora|humano|agente|representante|alguien)|atencion\s+humana|comunicarme\s+con\s+(?:alguien|un\s+agente)|pasame\s+con\s+(?:un\s+|una\s+)?(?:asesor|asesora|operador|agente))\b/i.test(clean);
+    const isAgente = /\b(atienda\s+(?:un[ao]?\s+)?(?:persona|humano|alguien|asesor[ao]?|operador[ao]?)|hablar\s+con\s+(?:un[ao]?\s+)?(?:asesor|asesora|persona|operador|operadora|humano|agente|representante|alguien)|comunicarme\s+con\s+(?:un[ao]?\s+)?(?:asesor|asesora|persona|humano|alguien|un\s+agente)|pasame\s+con\s+(?:un[ao]?\s+)?(?:asesor|asesora|operador|agente|alguien)|atenci[oó]n\s+humana|asistencia\s+humana|persona\s+real|humano\s+por\s+favor|quiero\s+una\s+persona|(?:el\s+)?bot\s+(?:no\s+sirve|no\s+funciona|nunca\s+funciona|no\s+entiende|es\s+in[uú]til)|no\s+quiero\s+(?:hablar\s+con\s+)?(?:un\s+)?bot|como\s+hago\s+para\s+que\s+me\s+atienda\s+un[ao]?\s+(?:persona|humano|alguien))\b/i.test(clean);
     if (isAgente) {
         return { intent: 'derivacion_agente', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
     }
@@ -1142,7 +1274,7 @@ Intenciones posibles:
 - "informes_laboratorio": ver o consultar análisis clínicos
 - "informes_imagenes": estudios de imágenes
 - "seguimiento_asesor": responde a lo acordado con el asesor humano
-- "agradecimiento_cierre": agradece o se despide
+- "derivacion_agente": el paciente solicita ser atendido por una persona, asesor humano, operador, o se queja del bot
 - "general": si no encaja en ninguna
 Devuelve un JSON con:
 {
@@ -2260,13 +2392,15 @@ async function handleChatbotTriage(
     else if (analysis.intent === 'derivacion_agente') {
         updates.motivo_consulta = 'Solicitud de Atención con Asesor Humano';
         if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥\n\n${getAgentHandoffNotice()}`;
+            replyText = `¡Hola *${fullName}*! 🏥 Te pido sinceras disculpas por cualquier inconveniente.\n\n` +
+                `Ya mismo te comunico con una de nuestras asesoras humanas del equipo de atención para que continúe asistiéndote de forma personalizada.\n\n` +
+                `${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
             updates.ai_summary = buildTriageSummary(updates, 'derivacion_agente', analysis.doctorRecord, true, paciente?.edad);
         } else {
-            const intro = `¡Hola! 👋 Te comunicamos con el equipo de atención de *Sanatorio Argentino*.`;
+            const intro = `¡Hola! 👋 Te pido disculpas por la molestia. Ya mismo te comunicamos con una asesora humana de *Sanatorio Argentino*.`;
             const res = await handleNewPatientIntake(
                 cleanText,
                 candidateDni,
@@ -2291,36 +2425,36 @@ async function handleChatbotTriage(
         nextStage = 'informacion_respondida';
     }
     // =============================================
-    // FLUJO: SALUDO GENERAL O SOLICITUD ABIERTA
+    // FLUJO CONVERSACIONAL INTELIGENTE POTENCIADO POR CHATGPT (OPENAI GPT-4o)
     // =============================================
     else {
-        if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥 ¿En qué podemos ayudarte hoy?\n\n` +
-                `¿El trámite es para vos (*${fullName}*) o estás gestionando para otro paciente / familiar?\n\n` +
-                `1️⃣ *El turno o autorización es para mí*\n` +
-                `2️⃣ *Estoy gestionando para otro paciente / familiar*\n` +
-                `3️⃣ *Guardias médicas las 24 horas*\n` +
-                `4️⃣ *Informes, estudios, horarios y sedes*\n\n` +
-                `• Si es para vos: indícanos qué especialidad o práctica necesitás.\n` +
-                `• Si es para otra persona: indícanos el *DNI* (sin puntos) y *Nombre Completo* del paciente a atender.`;
-            updates.bot_stage = 'menu_opciones';
-            updates.bot_active = true;
-            nextStage = 'menu_opciones';
-        } else {
-            const intro = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.`;
-            const res = await handleNewPatientIntake(
-                cleanText,
-                candidateDni,
-                conv,
+        console.log(`[triage-bot] 🤖 Invocando Motor Conversacional ChatGPT (GPT-4o) para "${cleanText}"`);
+        const convResult = await generateChatGptConversationalResponse(
+            cleanText,
+            conversationContext,
+            {
+                fullName,
                 phone,
-                updates,
-                'inicio',
-                analysis.doctorRecord,
-                doctorDisplay,
-                intro
-            );
-            nextStage = res.nextStage;
-            replyText = res.replyText;
+                isExistingPatient,
+                dni: resolvedDni,
+                obraSocial: paciente?.coseguro || updates.obra_social || conv?.obra_social || null
+            }
+        );
+
+        replyText = convResult.replyText;
+
+        if (convResult.transferToAgent) {
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+            updates.motivo_consulta = convResult.summary || 'Solicitud de atención con asesor humano';
+            updates.ai_summary = buildTriageSummary(updates, 'derivacion_agente', analysis.doctorRecord, isExistingPatient, paciente?.edad);
+        } else {
+            updates.bot_active = true;
+            nextStage = 'conversacion_activa';
+            if (convResult.summary) {
+                updates.motivo_consulta = convResult.summary;
+            }
         }
     }
 
