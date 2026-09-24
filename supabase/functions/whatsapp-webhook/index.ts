@@ -167,8 +167,9 @@ Deno.serve(async (req) => {
 
             if (openAiKey) {
                 try {
+                    const isReasoningModel = activeModel.startsWith('o1') || activeModel.startsWith('o3');
                     const messagesPayload: any[] = [
-                        { role: 'system', content: compiledPrompt }
+                        { role: isReasoningModel ? 'developer' : 'system', content: compiledPrompt }
                     ];
 
                     if (Array.isArray(history) && history.length > 0) {
@@ -182,19 +183,26 @@ Deno.serve(async (req) => {
 
                     messagesPayload.push({ role: 'user', content: userMessage });
 
+                    const requestPayload: any = {
+                        model: activeModel,
+                        response_format: { type: 'json_object' },
+                        messages: messagesPayload
+                    };
+
+                    if (!isReasoningModel) {
+                        requestPayload.temperature = activeTemp;
+                        requestPayload.max_tokens = 800;
+                    } else {
+                        requestPayload.max_completion_tokens = 1000;
+                    }
+
                     const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'Authorization': `Bearer ${openAiKey}`
                         },
-                        body: JSON.stringify({
-                            model: activeModel,
-                            response_format: { type: 'json_object' },
-                            messages: messagesPayload,
-                            temperature: activeTemp,
-                            max_tokens: 800
-                        })
+                        body: JSON.stringify(requestPayload)
                     });
 
                     if (aiRes.ok) {
@@ -1372,8 +1380,25 @@ Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
 
         const selectedModel = dynamicConfig.model || 'gpt-4o';
         const selectedTemp = Number.isFinite(dynamicConfig.temperature) ? dynamicConfig.temperature : 0.3;
+        const isReasoningModel = selectedModel.startsWith('o1') || selectedModel.startsWith('o3');
 
         console.log(`[conversational-bot] Invocando OpenAI con System Prompt dinámico (Modelo: ${selectedModel}, Temp: ${selectedTemp}, Caracteres: ${finalSystemPrompt.length})`);
+
+        const requestPayload: any = {
+            model: selectedModel,
+            response_format: { type: 'json_object' },
+            messages: [
+                { role: isReasoningModel ? 'developer' : 'system', content: finalSystemPrompt },
+                { role: 'user', content: `Historial de la conversación reciente:\n${thread || '(Sin mensajes previos)'}\n\nÚltimo mensaje recibido del paciente:\n"${userText}"` }
+            ]
+        };
+
+        if (!isReasoningModel) {
+            requestPayload.temperature = selectedTemp;
+            requestPayload.max_tokens = 450;
+        } else {
+            requestPayload.max_completion_tokens = 800;
+        }
 
         const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
@@ -1381,16 +1406,7 @@ Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${openAiKey}`
             },
-            body: JSON.stringify({
-                model: selectedModel,
-                response_format: { type: 'json_object' },
-                messages: [
-                    { role: 'system', content: finalSystemPrompt },
-                    { role: 'user', content: `Historial de la conversación reciente:\n${thread || '(Sin mensajes previos)'}\n\nÚltimo mensaje recibido del paciente:\n"${userText}"` }
-                ],
-                temperature: selectedTemp,
-                max_tokens: 350
-            })
+            body: JSON.stringify(requestPayload)
         });
 
         if (aiRes.ok) {

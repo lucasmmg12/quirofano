@@ -488,9 +488,24 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
 
                             {/* Modelo OpenAI */}
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
-                                    Modelo OpenAI
-                                </label>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                    <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
+                                        Modelo OpenAI
+                                    </label>
+                                    {(model.startsWith('o1') || model.startsWith('o3')) && (
+                                        <span style={{
+                                            fontSize: '0.65rem',
+                                            fontWeight: 800,
+                                            padding: '1px 6px',
+                                            borderRadius: '6px',
+                                            background: '#F3E8FF',
+                                            color: '#7E22CE',
+                                            border: '1px solid #E9D5FF'
+                                        }}>
+                                            🧠 Motor de Razonamiento
+                                        </span>
+                                    )}
+                                </div>
                                 <select
                                     value={model}
                                     onChange={(e) => setModel(e.target.value)}
@@ -499,15 +514,22 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                                         padding: '8px 12px',
                                         borderRadius: '8px',
                                         border: '1px solid #CBD5E1',
-                                        fontSize: '0.85rem',
+                                        fontSize: '0.82rem',
                                         color: '#0F2942',
                                         background: '#F8FAFC',
                                         cursor: 'pointer'
                                     }}
                                 >
-                                    <option value="gpt-4o">gpt-4o (Recomendado - Máxima empatía y precisión)</option>
-                                    <option value="gpt-4o-mini">gpt-4o-mini (Respuesta ultra rápida)</option>
-                                    <option value="gpt-4.1">gpt-4.1</option>
+                                    <optgroup label="🚀 Nueva Generación de Modelos (Flagship y Razonamiento)">
+                                        <option value="gpt-4.5-preview">gpt-4.5-preview (Nuevo Flagship - Máxima inteligencia y empatía conversacional)</option>
+                                        <option value="chatgpt-4o-latest">chatgpt-4o-latest (Versión continua dinámica más reciente)</option>
+                                        <option value="o3-mini">o3-mini (Nuevo Motor de Razonamiento - Ultra veloz con lógica y triage clínico)</option>
+                                        <option value="o1">o1 (Razonamiento profundo para análisis médico complejo)</option>
+                                    </optgroup>
+                                    <optgroup label="⚡ Modelos Establecidos de Alta Velocidad">
+                                        <option value="gpt-4o">gpt-4o (Recomendado - Excelente balance clínico, calidez y costo)</option>
+                                        <option value="gpt-4o-mini">gpt-4o-mini (Ultra rápido - Menor latencia y costo de tokens)</option>
+                                    </optgroup>
                                 </select>
                             </div>
 
@@ -515,10 +537,14 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                             <div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                                     <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
-                                        Temperatura: <strong style={{ color: '#0284C7' }}>{temperature}</strong>
+                                        Temperatura: <strong style={{ color: (model.startsWith('o1') || model.startsWith('o3')) ? '#7E22CE' : '#0284C7' }}>
+                                            {(model.startsWith('o1') || model.startsWith('o3')) ? 'Auto (Razonamiento)' : temperature}
+                                        </strong>
                                     </label>
-                                    <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                        {parseFloat(temperature) <= 0.3 ? 'Preciso / Clínico' : 'Conversacional / Creativo'}
+                                    <span style={{ fontSize: '0.68rem', color: (model.startsWith('o1') || model.startsWith('o3')) ? '#7E22CE' : '#64748B' }}>
+                                        {(model.startsWith('o1') || model.startsWith('o3'))
+                                            ? 'Optimizada por OpenAI'
+                                            : (parseFloat(temperature) <= 0.3 ? 'Preciso / Clínico' : 'Conversacional / Creativo')}
                                     </span>
                                 </div>
                                 <input
@@ -527,13 +553,26 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                                     max="1.0"
                                     step="0.05"
                                     value={temperature}
+                                    disabled={model.startsWith('o1') || model.startsWith('o3')}
                                     onChange={(e) => setTemperature(e.target.value)}
-                                    style={{ width: '100%', cursor: 'pointer' }}
+                                    style={{
+                                        width: '100%',
+                                        cursor: (model.startsWith('o1') || model.startsWith('o3')) ? 'not-allowed' : 'pointer',
+                                        opacity: (model.startsWith('o1') || model.startsWith('o3')) ? 0.35 : 1
+                                    }}
                                 />
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#94A3B8', marginTop: '2px' }}>
-                                    <span>0.0 (Estricto)</span>
-                                    <span>0.3 (Recomendado)</span>
-                                    <span>1.0 (Creativo)</span>
+                                    {(model.startsWith('o1') || model.startsWith('o3')) ? (
+                                        <span style={{ color: '#7E22CE', fontStyle: 'italic' }}>
+                                            * Los modelos de la serie 'o' autogestionan el razonamiento interno sin requerir ajuste manual de temperatura.
+                                        </span>
+                                    ) : (
+                                        <>
+                                            <span>0.0 (Estricto)</span>
+                                            <span>0.3 (Recomendado)</span>
+                                            <span>1.0 (Creativo)</span>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
