@@ -15,6 +15,7 @@ import {
     DEFAULT_HANDOFF_DELAY
 } from '../../services/contactCenterService';
 import ContactCenterBotTree from './ContactCenterBotTree';
+import ContactCenterTestSandbox from './ContactCenterTestSandbox';
 import { DEFAULT_BOT_TREE_NODES, generatePromptDirectivesFromTree } from './botTreeData';
 
 const VARIABLE_TAGS = [
@@ -32,6 +33,8 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
     const [showPreview, setShowPreview] = useState(false);
     const [activeSubTab, setActiveSubTab] = useState('tree'); // 'tree' | 'editor' | 'simulator'
     const [botTreeNodes, setBotTreeNodes] = useState(DEFAULT_BOT_TREE_NODES);
+    const [sandboxInitialMessage, setSandboxInitialMessage] = useState('');
+    const [sandboxInitialPatientType, setSandboxInitialPatientType] = useState('registrado');
 
     // Form state - AI Bot
     const [systemPrompt, setSystemPrompt] = useState(DEFAULT_CHATBOT_SYSTEM_PROMPT);
@@ -194,15 +197,12 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
         addToast?.('System Prompt actualizado con las respuestas y bifurcaciones del árbol.', 'success');
     };
 
-    // Probar paso del árbol directamente en el Simulador Sandbox
+    // Probar paso del árbol directamente en el Ambiente de Test
     const handleTestNodeInSimulator = ({ message, nodeId, nodeTitle, patientType }) => {
+        setSandboxInitialMessage(message);
+        setSandboxInitialPatientType(patientType || 'registrado');
         setActiveSubTab('simulator');
-        setPresetPatient(patientType || 'registrado');
-        setSimMode('chat');
-        addToast?.(`Cargando paso: "${nodeTitle}" en el Simulador...`, 'info');
-        setTimeout(() => {
-            handleSendSimMessage(message);
-        }, 300);
+        addToast?.(`Paso "${nodeTitle}" precargado en el Ambiente de Test`, 'info');
     };
 
     // Restablecer al prompt de fábrica
@@ -611,8 +611,24 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                 />
             )}
 
-            {/* VISTA 2 y 3: EDITOR DE SYSTEM PROMPT & SIMULADOR */}
-            {activeSubTab !== 'tree' && (
+            {/* VISTA 2: AMBIENTE DE TEST Y SANDBOX (IA EN VIVO) */}
+            {activeSubTab === 'simulator' && (
+                <ContactCenterTestSandbox
+                    systemPrompt={systemPrompt}
+                    model={model}
+                    temperature={temperature}
+                    botName={botName}
+                    handoffNormal={handoffNormal}
+                    handoffDelay={handoffDelay}
+                    delayThreshold={delayThreshold}
+                    initialMessage={sandboxInitialMessage}
+                    initialPatientType={sandboxInitialPatientType}
+                    addToast={addToast}
+                />
+            )}
+
+            {/* VISTA 3: EDITOR DE SYSTEM PROMPT & PARÁMETROS */}
+            {activeSubTab === 'editor' && (
                 <>
             {/* Grid 2 Columnas: Parámetros del Modelo y System Prompt */}
             <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '20px' }}>
@@ -895,13 +911,14 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <button
-                                onClick={() => setShowPreview(!showPreview)}
+                                type="button"
+                                onClick={() => setActiveSubTab('simulator')}
                                 style={{
-                                    padding: '5px 10px',
+                                    padding: '5px 12px',
                                     borderRadius: '6px',
-                                    border: '1px solid #CBD5E1',
-                                    background: showPreview ? '#EFF6FF' : '#FFFFFF',
-                                    color: showPreview ? '#0284C7' : '#475569',
+                                    border: '1px solid #A7F3D0',
+                                    background: '#ECFDF5',
+                                    color: '#059669',
                                     fontSize: '0.74rem',
                                     fontWeight: 700,
                                     cursor: 'pointer',
@@ -910,8 +927,8 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                                     gap: '5px'
                                 }}
                             >
-                                {showPreview ? <EyeOff size={13} /> : <Eye size={13} />}
-                                {showPreview ? 'Ocultar Vista Previa' : 'Simular con Paciente'}
+                                <Play size={13} />
+                                Probar en Ambiente de Test
                             </button>
 
                             <button
