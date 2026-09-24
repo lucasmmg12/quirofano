@@ -824,15 +824,15 @@ function getRegisteredOsInfo(osRaw?: string | null): { hasRegisteredOs: boolean;
 function getWelcomeMenuMessage(pacienteNombre?: string): string {
     const raw = (pacienteNombre || '').trim();
     let firstName = '';
-    if (raw && raw !== 'Paciente') {
+    if (raw && raw !== 'Paciente' && raw !== 'Usuario' && raw !== 'WhatsApp User') {
         const clean = raw.includes(',') ? raw.split(',')[1].trim().split(' ')[0] : raw.split(' ')[0];
         if (clean && clean.length >= 2) firstName = ` *${clean}*`;
     }
 
     return `¡Hola${firstName}! 🏥 Te damos la bienvenida a *Sanatorio Argentino*.\n\n` +
         `¿En qué podemos ayudarte hoy? Por favor seleccioná una opción:\n\n` +
-        `1️⃣ *Consultar mi próximo turno o visita agendada* 📅\n` +
-        `2️⃣ *Solicitar un nuevo turno médico* 🩺\n` +
+        `1️⃣ *Solicitar un nuevo turno médico* 🩺\n` +
+        `2️⃣ *Consultar mi próximo turno o visita agendada* 📅\n` +
         `3️⃣ *Autorizaciones y órdenes médicas* 📋\n` +
         `4️⃣ *Guardia médica 24 horas y urgencias* 🚨\n` +
         `5️⃣ *Hablar con un asesor* 👤 _(Lun a Vie 7:30 a 21 hs, Sáb 8 a 12 hs)_\n\n` +
@@ -1150,21 +1150,21 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
 
     if (/^[1|1️⃣]$/.test(clean) || /^opci[oó]n\s*1$/i.test(clean)) {
         if (isLastBotWelcomeMenu) {
-            return { intent: 'consultar_turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
+            return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
         }
         if (isLastBotGreetingMenu) {
             return { intent: 'gestion_propia', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
         }
-        return { intent: 'consultar_turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
+        return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
     }
     if (/^[2|2️⃣]$/.test(clean) || /^opci[oó]n\s*2$/i.test(clean)) {
         if (isLastBotWelcomeMenu) {
-            return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
+            return { intent: 'consultar_turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
         }
         if (isLastBotGreetingMenu) {
             return { intent: 'gestion_familiar', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
         }
-        return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
+        return { intent: 'consultar_turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
     }
     if (/^[3|3️⃣]$/.test(clean) || /^opci[oó]n\s*3$/i.test(clean)) {
         if (isLastBotWelcomeMenu) {
@@ -1644,83 +1644,12 @@ async function handleChatbotTriage(
     const candidateDni = dniMatch ? dniMatch[0] : (conv?.dni || null);
 
     // Búsqueda en el padrón maestro de SALUS (hospital_pacientes)
-    // 1. Prioridad: Mapeo automático por TELÉFONO (+549..., 549..., 264..., 15..., 54..., etc.)
-    // Si hay varios pacientes vinculados al mismo teléfono (ej: madre e hijos), la RPC devuelve primero al de MAYOR EDAD (madre/titular).
+    // REGLA INSTITUCIONAL: El mapeo del paciente se realiza únicamente a partir del DNI provisto por el usuario
     let paciente: any = null;
-    let familiaresDetectados: any[] = [];
-    if (phone) {
-        try {
-            const { data: rpcRes, error: rpcErr } = await supabase.rpc('buscar_paciente_por_telefono', { p_telefono: phone });
-            if (!rpcErr && rpcRes && rpcRes.length > 0) {
-                familiaresDetectados = rpcRes;
-                // Por defecto: persona de mayor edad (madre / titular a cargo)
-                paciente = rpcRes[0];
-                console.log(`[triage-bot] Paciente principal (mayor edad/madre) por Teléfono ${phone}: ${paciente.nombre} (${paciente.edad} años)`);
-
-                // Si hay más de un miembro familiar en la misma línea telefónica:
-                if (familiaresDetectados.length > 1) {
-                    const textLower = cleanText.toLowerCase();
-
-                    // A. ¿El usuario escribió el DNI de algún familiar específico?
-                    const matchDniFam = familiaresDetectados.find(f => f.dni && textLower.includes(String(f.dni).trim()));
-                    if (matchDniFam) {
-                        paciente = matchDniFam;
-                        console.log(`[triage-bot] Conmutado a familiar por DNI explícito en mensaje: ${paciente.nombre} (DNI: ${paciente.dni})`);
-                    } else {
-                        // B. ¿El usuario menciona el nombre de pila de algún familiar? (ej: "Felipe", "Sofia", etc.)
-                        const matchNombreFam = familiaresDetectados.find(f => {
-                            const raw = (f.nombre || '').toLowerCase();
-                            // Si formato es "APELLIDO, NOMBRE" extraer NOMBRE
-                            const pName = raw.includes(',') ? raw.split(',')[1].trim().split(' ')[0] : raw.split(' ')[0];
-                            return pName && pName.length >= 3 && new RegExp(`\\b${pName}\\b`, 'i').test(textLower);
-                        });
-
-                        if (matchNombreFam) {
-                            paciente = matchNombreFam;
-                            console.log(`[triage-bot] Conmutado a familiar por mención de nombre ("${matchNombreFam.nombre}") en mensaje.`);
-                        } else if (/\b(hijo|hija|nene|nena|bebe|bebé|niño|niña|pediatra|pediatria|pediatría)\b/i.test(textLower)) {
-                            // C. Si menciona que es para su hijo/a o pediatría, y hay un menor de edad en el grupo familiar
-                            const menorFam = familiaresDetectados.find(f => {
-                                const ed = parseInt(String(f.edad || '99').replace(/\D/g, ''), 10);
-                                return !isNaN(ed) && ed < 18;
-                            });
-                            if (menorFam) {
-                                paciente = menorFam;
-                                console.log(`[triage-bot] Conmutado a hijo/menor familiar por palabra clave de pediatría/hijo: ${paciente.nombre} (${paciente.edad} años)`);
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn('[triage-bot] Error llamando buscar_paciente_por_telefono:', e);
-        }
-    }
-
-    // 2. Fallback de búsqueda textual en teléfono si falló la RPC
-    if (!paciente && phone) {
-        const rawPhoneDigits = phone.replace(/\D/g, '');
-        const last7 = rawPhoneDigits.slice(-7);
-        if (last7.length >= 6) {
-            const { data: pByPhoneList } = await supabase
-                .from('hospital_pacientes')
-                .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
-                .ilike('telefono', `%${last7}%`)
-                .order('edad', { ascending: false })
-                .limit(5);
-
-            if (pByPhoneList && pByPhoneList.length > 0) {
-                familiaresDetectados = pByPhoneList;
-                paciente = pByPhoneList[0];
-                console.log(`[triage-bot] Paciente titular encontrado por fallback Teléfono ${last7} (prioridad edad): ${paciente.nombre} (${paciente.edad} años)`);
-            }
-        }
-    }
-
-    // 3. Detección de DNI en mensaje: si es de un tercero/familiar, se guarda en pacienteConsultado SIN pisar al titular
     let pacienteConsultado: any = null;
+
     if (candidateDni) {
-        if (!paciente || String(paciente.dni) !== String(candidateDni)) {
+        try {
             const { data: pByDni, error: pacError } = await supabase
                 .from('hospital_pacientes')
                 .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
@@ -1732,14 +1661,18 @@ async function handleChatbotTriage(
                 const isExplicitlyOther = /\b(otro\s+paciente|otra\s+persona|un\s+paciente|del\s+paciente|de\s+un\s+paciente|de\s+otro\s+paciente|otros?\s+pacientes?|algun\s+paciente|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+mama|mi\s+mamá|mi\s+papa|mi\s+papá|mi\s+madre|mi\s+padre|mi\s+esposo|mi\s+esposa|mi\s+bebe|mi\s+bebé|alguien\s+m[aá]s)\b/i.test(cleanText) ||
                     conv?.bot_stage === 'esperando_dni_turno';
 
-                if (!paciente && !conv?.dni && !isExplicitlyOther) {
+                if (!conv?.dni || !isExplicitlyOther) {
                     paciente = pByDni;
-                    console.log(`[triage-bot] Titular identificado por DNI propio provisto ${candidateDni}: ${paciente.nombre}`);
+                    console.log(`[triage-bot] Titular identificado en SALUS por DNI provisto ${candidateDni}: ${paciente.nombre} (HC: ${paciente.nhc})`);
                 } else {
                     pacienteConsultado = pByDni;
                     console.log(`[triage-bot] Paciente consultado (familiar/tercero) DNI ${candidateDni}: ${pacienteConsultado.nombre} (Titular se mantiene: ${paciente?.nombre || conv?.nombre_completo})`);
                 }
+            } else {
+                console.log(`[triage-bot] DNI provisto ${candidateDni} no figura en padrón maestro de SALUS`);
             }
+        } catch (e) {
+            console.warn('[triage-bot] Error consultando paciente por DNI:', e);
         }
     }
 
@@ -2083,10 +2016,38 @@ async function handleChatbotTriage(
         analysis.intent !== 'volver_atras' && 
         analysis.intent !== 'cancelar_turno_online'
     ) {
+        // Si el paciente incluyó DNI en la respuesta, mapearlo en SALUS
+        if (candidateDni && (!paciente || String(paciente.dni) !== String(candidateDni))) {
+            const { data: pFound } = await supabase
+                .from('hospital_pacientes')
+                .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
+                .eq('dni', candidateDni)
+                .limit(1)
+                .maybeSingle();
+            if (pFound) {
+                paciente = pFound;
+                updates.dni = paciente.dni;
+                updates.nombre_completo = paciente.nombre;
+                updates.obra_social = paciente.coseguro || updates.obra_social;
+                updates.nhc = paciente.nhc;
+                updates.es_paciente_existente = true;
+                console.log(`[triage-bot] Paciente mapeado exitosamente en FLUJO 0C por DNI ${candidateDni}: ${paciente.nombre}`);
+            } else {
+                updates.dni = candidateDni;
+            }
+        }
+
+        const mappedName = paciente?.nombre || fullName;
+        let cleanName = mappedName;
+        if (mappedName && mappedName.includes(',')) {
+            const parts = mappedName.split(',').map((p: string) => p.trim());
+            cleanName = `${parts[1]} ${parts[0]}`;
+        }
         const docMsg = updates.medico_o_especialidad 
             ? ` con *${updates.medico_o_especialidad}*` 
             : (doctorDisplay ? ` con el *${doctorDisplay}*` : '');
-        replyText = `¡Muchas gracias *${fullName}*! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.\n\n` +
+
+        replyText = `¡Muchas gracias${cleanName && cleanName !== 'Paciente' ? ` *${cleanName}*` : ''}! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.\n\n` +
             `Un asesor del equipo de Sanatorio Argentino agendará la cita en el sistema SALUS y te confirmará los detalles a la brevedad.\n\n` +
             `${getAgentHandoffNotice()}\n\n` +
             `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
@@ -2094,7 +2055,7 @@ async function handleChatbotTriage(
         updates.bot_active = false;
         nextStage = 'esperando_agente';
         updates.motivo_consulta = updates.motivo_consulta || `Solicitud de Turno: ${docMsg || 'A coordinar'}`;
-        updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, isExistingPatient, paciente?.edad);
+        updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, Boolean(paciente), paciente?.edad);
     }
     // =============================================
     // FLUJO 1: PACIENTE RESPONDIENDO DNI O DATOS DESDE NÚMERO NUEVO/NO REGISTRADO
@@ -2606,6 +2567,7 @@ async function handleChatbotTriage(
         const isAskingOtherInTurno = /\b(otro\s+paciente|otra\s+persona|un\s+paciente|del\s+paciente|de\s+un\s+paciente|de\s+otro\s+paciente|otros?\s+pacientes?|algun\s+paciente|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+mama|mi\s+mamá|mi\s+papa|mi\s+papá|mi\s+madre|mi\s+padre|mi\s+esposo|mi\s+esposa|mi\s+bebe|mi\s+bebé|mi\s+abuelo|mi\s+abuela|alguien\s+m[aá]s)\b/i.test(cleanText);
 
         const isAskingNewTurno = 
+            analysis.isExplicitNumberOption === '1' ||
             analysis.isExplicitNumberOption === '2' ||
             currentStage === 'turno_consultado' ||
             currentStage === 'esperando_confirmacion_turno' ||
@@ -2655,41 +2617,30 @@ async function handleChatbotTriage(
             updates.bot_active = false;
             nextStage = 'esperando_agente';
             updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, isExistingPatient, paciente?.edad);
-        } else if (isExistingPatient) {
+        } else {
             const hasOrderImageMsg = patientSentImageRecently ? '\n\n✅ *Ya recibimos la foto de tu orden médica.*' : '';
 
             const osTurnoInfo = getRegisteredOsInfo(paciente?.coseguro || conv?.obra_social);
             const osTurnoBullet = osTurnoInfo.hasRegisteredOs
-                ? `• *Obra Social y Plan:* En tu ficha figura *${osTurnoInfo.cleanOsName}*. Confirmános si seguís teniendo cobertura allí y qué *plan* tenés (o si es otra/particular).`
-                : `• *Obra Social y Plan:* ¿Con qué obra social o prepaga te atendés (y qué plan posees), o es Particular?`;
+                ? `5️⃣ *Obra Social y Plan:* En tu ficha figura *${osTurnoInfo.cleanOsName}*. Confirmános si seguís teniendo cobertura allí y qué *plan* tenés (o si es otra/particular).`
+                : `5️⃣ *Obra Social / Prepaga* y plan (o si tu atención será Particular)`;
 
-            replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos a coordinar tu turno${doctorNoteMsg}.${hasOrderImageMsg}\n\n` +
+            const dniPrompt = paciente?.dni 
+                ? `• *DNI:* En tu ficha figura *${paciente.dni}* (si el turno es para otra persona, indícanos su DNI y Nombre Completo)\n` 
+                : `1️⃣ Número de *DNI del paciente* (sin puntos ni espacios)\n`;
+
+            replyText = `¡Hola${paciente ? ` *${fullName}*` : ''}! 🏥 Te ayudamos a coordinar tu nuevo turno médico${doctorNoteMsg}.${hasOrderImageMsg}\n\n` +
                 `Por favor indícanos:\n` +
-                (doctorDisplay ? '' : `• ¿Con qué profesional o para qué especialidad médica solicitás el turno?\n`) +
-                `• ¿El turno es para vos (*${fullName}*), o estás gestionando para otro paciente / familiar?\n` +
-                `• Si es para vos: indícanos preferencia de día/horario y si es primera consulta o control.\n` +
-                `• Si es para otra persona: indícanos el *DNI* (sin puntos) y *Nombre Completo* del paciente que se va a atender.\n` +
+                `${dniPrompt}` +
+                (doctorDisplay ? '' : `2️⃣ ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n`) +
+                `3️⃣ ¿El turno es para vos o para un familiar / otra persona?\n` +
+                `4️⃣ Preferencia de *días y horarios* (mañana o tarde)\n` +
                 `${osTurnoBullet}\n\n` +
                 `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
             updates.status = 'bot';
             updates.bot_active = true;
             nextStage = 'esperando_datos_turno';
-            updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, true, paciente?.edad);
-        } else {
-            const intro = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\nCon gusto te ayudamos a coordinar tu turno${doctorNoteMsg}.`;
-            const res = await handleNewPatientIntake(
-                cleanText,
-                candidateDni,
-                conv,
-                phone,
-                updates,
-                'turno',
-                analysis.doctorRecord,
-                doctorDisplay,
-                intro
-            );
-            nextStage = res.nextStage;
-            replyText = res.replyText;
+            updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, isExistingPatient, paciente?.edad);
         }
     }
     // =============================================
