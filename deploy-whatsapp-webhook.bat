@@ -2,7 +2,9 @@
 echo ========================================
 echo  Deploying whatsapp-webhook (with media persistence)
 echo ========================================
-set SUPABASE_ACCESS_TOKEN=sbp_5b15e67cd11ce4fd0768b3c956db8f7968d4f6b1
+for /f "tokens=1,2 delims==" %%a in (.env) do (
+    if "%%a"=="SUPABASE_ACCESS_TOKEN" set SUPABASE_ACCESS_TOKEN=%%b
+)
 npx -y supabase@latest functions deploy whatsapp-webhook --project-ref hakysnqiryimxbwdslwe --no-verify-jwt --use-api
 echo.
 echo ========================================
