@@ -249,10 +249,11 @@ function App({ currentUser, onLogout }) {
             initActivity();
             
             if (isUciOnly) {
-                setSelectedModules(['gobernanza_indicadores']);
+                setSelectedModules(['gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics']);
                 setNeedsModuleOnboarding(false);
                 setShowModuleOnboarding(false);
-                if (activeView !== 'gobernanza_indicadores') {
+                const UCI_ALLOWED_VIEWS = ['gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
+                if (activeView === 'inicio' || !UCI_ALLOWED_VIEWS.includes(activeView)) {
                     navigate('/gobernanza_indicadores', { replace: true });
                 }
                 return;
@@ -319,7 +320,8 @@ function App({ currentUser, onLogout }) {
         const CC_ALL_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'contact_center_config'];
 
         if (isUciOnly) {
-            if (activeView !== 'gobernanza_indicadores') {
+            const UCI_ALLOWED_VIEWS = ['gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
+            if (!UCI_ALLOWED_VIEWS.includes(activeView)) {
                 setActiveView('gobernanza_indicadores');
             }
             return;
@@ -1236,19 +1238,19 @@ function App({ currentUser, onLogout }) {
                 </div>
             )}
 
-            {/* Modales y Asistentes (desactivados para usuario restringido UCI) */}
+            {/* Beto — AI Assistant Widget (FAB hidden, opened from sidebar avatar) */}
+            <BetoWidget
+                currentUser={currentUser}
+                currentModule={activeView}
+                onNavigate={(mod) => setActiveView(mod)}
+                hideFab={true}
+                externalOpen={betoWidgetOpen}
+                onExternalClose={() => setBetoWidgetOpen(false)}
+            />
+
+            {/* Modales y Asistentes complementarios (desactivados para usuario restringido UCI) */}
             {!isUciOnly && (
                 <>
-                    {/* Beto — AI Assistant Widget (FAB hidden, opened from sidebar) */}
-                    <BetoWidget
-                        currentUser={currentUser}
-                        currentModule={activeView}
-                        onNavigate={(mod) => setActiveView(mod)}
-                        hideFab={true}
-                        externalOpen={betoWidgetOpen}
-                        onExternalClose={() => setBetoWidgetOpen(false)}
-                    />
-
                     {/* Beto Guide Popup on Dashboard & Gobernanza entry */}
                     <BetoGuidePopup activeView={activeView} />
 

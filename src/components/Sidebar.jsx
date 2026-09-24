@@ -19,7 +19,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const ALWAYS_VISIBLE = ['inicio', 'config'];
     const isModuleVisible = (id) => {
         if (isUciOnly) {
-            return id === 'gobernanza_indicadores';
+            return id === 'gobernanza_indicadores' || ['beto', 'simon', 'beto_rules', 'beto_analytics'].includes(id);
         }
 
         if (isContactCenterOnly) {
@@ -370,17 +370,29 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
 
             <nav className="sidebar__nav">
                 {isUciOnly ? (
-                    <Link
-                        to="/gobernanza_indicadores"
-                        className={`sidebar__item ${activeView === 'gobernanza_indicadores' ? 'sidebar__item--active' : ''}`}
-                        onClick={() => onViewChange && onViewChange('gobernanza_indicadores', true)}
-                        title={collapsed ? 'Gobernanza UCI' : undefined}
-                        style={{ display: 'flex', textDecoration: 'none' }}
-                    >
-                        <BarChart3 size={20} className="sidebar__item-icon" />
-                        {!collapsed && <span className="sidebar__item-label">Gobernanza UCI</span>}
-                        {activeView === 'gobernanza_indicadores' && <div className="sidebar__item-indicator" />}
-                    </Link>
+                    <>
+                        <Link
+                            to="/gobernanza_indicadores"
+                            className={`sidebar__item ${activeView === 'gobernanza_indicadores' ? 'sidebar__item--active' : ''}`}
+                            onClick={() => onViewChange && onViewChange('gobernanza_indicadores', true)}
+                            title={collapsed ? 'Gobernanza UCI' : undefined}
+                            style={{ display: 'flex', textDecoration: 'none' }}
+                        >
+                            <BarChart3 size={20} className="sidebar__item-icon" />
+                            {!collapsed && <span className="sidebar__item-label">Gobernanza UCI</span>}
+                            {activeView === 'gobernanza_indicadores' && <div className="sidebar__item-indicator" />}
+                        </Link>
+
+                        {/* Simon IA / Beto habilitado para UCI */}
+                        {renderGroup({
+                            label: 'Simon IA',
+                            icon: Brain,
+                            isOpen: simonOpen,
+                            setOpen: setSimonOpen,
+                            isGroupActive: isSimonActive,
+                            subItems: simonSubItems,
+                        })}
+                    </>
                 ) : (
                     <>
                         {/* ─── Inicio ─── */}
