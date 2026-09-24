@@ -86,21 +86,8 @@ function getNameTokens(str) {
 export async function fetchPacienteDetalle(paciente) {
     let { id_paciente, dni, nombre, nhc, telefono } = paciente;
 
-    // Si no tenemos NI DNI NI NHC pero tenemos teléfono, resolver primero con el padrón maestro
-    if (!dni && !nhc && telefono) {
-        try {
-            const { data: rpcPac } = await supabase.rpc('buscar_paciente_por_telefono', { p_telefono: String(telefono) });
-            if (rpcPac && rpcPac.length > 0) {
-                const found = rpcPac[0];
-                dni = dni || found.dni;
-                nhc = nhc || found.nhc;
-                nombre = nombre || found.nombre;
-                id_paciente = id_paciente || found.id_paciente;
-            }
-        } catch (e) {
-            console.warn('[pacienteUnificado] error buscando paciente por teléfono:', e);
-        }
-    }
+    // Vinculación exclusiva por DNI o NHC: No resolver pacientes por teléfono para evitar confusiones de identidad
+
 
     // Queries paralelas a todas las tablas relacionadas
     const queries = [];

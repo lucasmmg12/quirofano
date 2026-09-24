@@ -1148,110 +1148,22 @@ export async function saveCrmPatientCard({ phone, dni, nombreCompleto, obraSocia
 }
 
 /**
- * Busca datos del paciente por teléfono en el padrón maestro de SALUS (hospital_pacientes)
- * Admite todos los formatos: +549..., 549..., 264..., 15..., 54..., o últimos dígitos locales.
- * Prioriza conexión en tiempo real a SQL Server de SALUS vía sync-server.
+ * Vinculación EXCLUSIVA por DNI: Se eliminó la resolución de pacientes y grupos familiares por número de teléfono
+ * para evitar confusiones de identidad cuando múltiples familiares comparten una misma línea telefónica.
  */
 export async function fetchFamilyMembersByPhone(phone) {
-    if (!phone || String(phone).replace(/\D/g, '').length < 6) return [];
-    
-    // 1. Prioridad: Consulta en tiempo real a SALUS SQL Server (sync-server local) con timeout 2.5s
-    try {
-        const cleanDigits = String(phone).replace(/\D/g, '');
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2500);
-        const baseUrl = getSalusSyncBaseUrl();
-        const res = await fetch(`${baseUrl}/api/salus/familiares/${cleanDigits}`, {
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        if (res.ok) {
-            const json = await res.json();
-            if (json.success && Array.isArray(json.familiares) && json.familiares.length > 0) {
-                return json.familiares;
-            }
-        }
-    } catch (_) {
-        // Fallback silencioso si sync-server local no está activo
-    }
-
-    // 2. Fallback: RPC de Supabase hospital_pacientes
-    try {
-        const { data, error } = await supabase.rpc('buscar_familiares_por_telefono', { p_telefono: String(phone) });
-        if (!error && Array.isArray(data) && data.length > 0) {
-            return data;
-        }
-    } catch (e) {
-        console.warn('Error en fetchFamilyMembersByPhone:', e);
-    }
+    // Deprecado: La vinculación de pacientes ahora es exclusivamente por DNI.
     return [];
 }
 
 export async function lookupPatientByPhone(phone) {
-    if (!phone || String(phone).replace(/\D/g, '').length < 6) return null;
-
-    // 1. Prioridad: Buscar grupo familiar en tiempo real en SALUS (el primer registro siempre es la madre/adulto)
-    try {
-        const fams = await fetchFamilyMembersByPhone(phone);
-        if (Array.isArray(fams) && fams.length > 0) {
-            return fams[0];
-        }
-    } catch (_) {}
-
-    let patient = null;
-    try {
-        const { data, error } = await supabase.rpc('buscar_paciente_por_telefono', { p_telefono: String(phone) });
-        if (!error && data && data.length > 0) {
-            // El primer resultado siempre es la persona de mayor edad (madre/titular adulto)
-            patient = data[0];
-        }
-    } catch (err) {
-        console.warn('Advertencia ejecutando RPC buscar_paciente_por_telefono:', err);
-    }
-
-    // Fallback de búsqueda con ILIKE por los últimos 7 dígitos ordenando por mayor edad (madre)
-    if (!patient) {
-        try {
-            const clean = String(phone).replace(/\D/g, '');
-            const last7 = clean.slice(-7);
-            if (last7.length >= 6) {
-                const { data } = await supabase
-                    .from('hospital_pacientes')
-                    .select('*')
-                    .ilike('telefono', `%${last7}%`)
-                    .order('edad', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-                if (data) patient = data;
-            }
-        } catch (e) {
-            console.warn('Error en fallback de búsqueda por teléfono:', e);
-        }
-    }
-
-    // Si encontramos paciente pero no tiene email, buscar en contact_center_turnos_online
-    if (patient && !patient.email) {
-        try {
-            const cleanPhone = String(phone).replace(/\D/g, '').slice(-7);
-            const { data: toRow } = await supabase
-                .from('contact_center_turnos_online')
-                .select('email')
-                .or(`dni.eq.${patient.dni || '0'},telefono.ilike.%${cleanPhone}%`)
-                .not('email', 'is', null)
-                .limit(1)
-                .maybeSingle();
-            if (toRow && toRow.email) {
-                patient.email = toRow.email;
-            }
-        } catch (_) {}
-    }
-
-    return patient;
+    // Deprecado: La vinculación de pacientes ahora es exclusivamente por DNI.
+    return null;
 }
 
 /**
  * Busca datos del paciente en el padrón maestro de SALUS (hospital_pacientes)
- * Soporta búsqueda por DNI, NHC o TELÉFONO (+549..., 264..., 15..., etc.)
+ * Soporta búsqueda EXCLUSIVA por DNI o NHC (NO por teléfono para evitar confusiones familiares).
  * Realiza búsqueda en tiempo real en SQL Server de SALUS con fallback local.
  */
 export async function lookupPatientFromSalus(query) {
@@ -1259,31 +1171,25 @@ export async function lookupPatientFromSalus(query) {
     const rawStr = String(query).trim();
     const clean = rawStr.replace(/\D/g, '');
 
-    // Si parece un teléfono (más de 8 dígitos, o contiene prefijos de telefonía / símbolos)
-    if (clean.length >= 9 || rawStr.startsWith('+') || rawStr.includes('-') || rawStr.startsWith('15')) {
-        const byPhone = await lookupPatientByPhone(rawStr);
-        if (byPhone) return byPhone;
-    }
+    if (!clean || clean.length < 5) return null;
 
     // 1. Prioridad: Búsqueda en tiempo real en SALUS SQL Server vía sync-server (timeout 2.5s)
-    if (clean.length >= 5) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2500);
-            const baseUrl = getSalusSyncBaseUrl();
-            const res = await fetch(`${baseUrl}/api/salus/paciente/${clean}`, {
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-            if (res.ok) {
-                const json = await res.json();
-                if (json.success && json.paciente) {
-                    return json.paciente;
-                }
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2500);
+        const baseUrl = getSalusSyncBaseUrl();
+        const res = await fetch(`${baseUrl}/api/salus/paciente/${clean}`, {
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+            const json = await res.json();
+            if (json.success && json.paciente) {
+                return json.paciente;
             }
-        } catch (_) {
-            // Fallback a Supabase si sync-server no responde
         }
+    } catch (_) {
+        // Fallback a Supabase si sync-server no responde
     }
 
     // 2. Fallback: Búsqueda por DNI o NHC en Supabase hospital_pacientes
@@ -1315,10 +1221,6 @@ export async function lookupPatientFromSalus(query) {
             return data;
         }
 
-        // Si no encontró por DNI/NHC pero tiene entre 6 y 11 dígitos, probar búsqueda por teléfono
-        if (clean.length >= 6) {
-            return await lookupPatientByPhone(rawStr);
-        }
         return null;
     } catch (err) {
         console.error('Error buscando paciente en hospital_pacientes:', err);

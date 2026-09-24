@@ -1735,48 +1735,14 @@ async function handleChatbotTriage(
         updates.medico_o_especialidad = null;
     }
 
-    // 1. Identificar al TITULAR legítimo de la línea telefónica en SALUS (hospital_pacientes)
-    // El titular del teléfono es la persona dueña de la línea de WhatsApp (ej: Lucas Marinero)
-    const cleanLocalPhone = phone.replace(/\D/g, '').replace(/^(?:549|54)/, '');
-    let titularPaciente: any = null;
-
-    if (cleanLocalPhone.length >= 8) {
-        try {
-            const { data: pByPhone, error: phoneErr } = await supabase
-                .from('hospital_pacientes')
-                .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
-                .ilike('telefono', `%${cleanLocalPhone}%`)
-                .order('id_paciente', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-            if (!phoneErr && pByPhone) {
-                titularPaciente = pByPhone;
-                console.log(`[triage-bot] Titular de la línea ${phone} (${cleanLocalPhone}) identificado en SALUS: ${titularPaciente.nombre} (DNI: ${titularPaciente.dni})`);
-            }
-        } catch (e) {
-            console.warn('[triage-bot] Error consultando titular por teléfono:', e);
-        }
-    }
-
-    // Detectar si el usuario está preguntando expresamente por sí mismo (titular)
-    const isExplicitlyForSelf = /\b(para\s+m[ií]|a\s+mi\s+nombre|mis\s+turnos?|yo\s+tengo|tengo\s+yo|para\s+mi\s+persona|el\s+m[ií]o|los\s+m[ií]os)\b/i.test(cleanText);
-
-    // Detectar si el usuario está consultando o refiriéndose a un tercero / familiar
-    const isExplicitlyOther = !isExplicitlyForSelf && (
-        /\b(otro\s+paciente|otra\s+persona|un\s+paciente|del\s+paciente|de\s+un\s+paciente|de\s+otro\s+paciente|otros?\s+pacientes?|algun\s+paciente|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+mama|mi\s+mamá|mi\s+papa|mi\s+papá|mi\s+madre|mi\s+padre|mi\s+esposo|mi\s+esposa|mi\s+pareja|mi\s+bebe|mi\s+bebé|mi\s+abuelo|mi\s+abuela|alguien\s+m[aá]s)\b/i.test(cleanText) ||
-        currentStage === 'esperando_dni_turno' ||
-        (currentStage === 'turno_consultado' && Boolean(cleanText.match(/\b\d{7,8}\b/))) ||
-        (currentStage === 'esperando_confirmacion_turno' && Boolean(cleanText.match(/\b\d{7,8}\b/)))
-    );
-
+    // 1. Identificar al paciente EXCLUSIVAMENTE por DNI (nunca por teléfono)
+    // Se elimina la vinculación por teléfono para evitar confusiones de identidad cuando múltiples familiares comparten la misma línea.
     // Helper de extracción de DNI rápido por expresión regular (7 u 8 dígitos)
     const normalizedText = cleanText.replace(/\./g, '');
     const dniMatch = cleanText.match(/\b\d{7,8}\b/) || normalizedText.match(/\b\d{7,8}\b/);
     const dniInMessage = dniMatch ? dniMatch[0] : null;
 
-    let paciente: any = titularPaciente || null;
-    let pacienteConsultado: any = null;
+    let paciente: any = null;
 
     if (dniInMessage) {
         try {
@@ -1788,24 +1754,15 @@ async function handleChatbotTriage(
                 .maybeSingle();
 
             if (pByDni) {
-                // ¿El DNI provisto es de un tercero o del titular?
-                const isThirdParty = isExplicitlyOther || (titularPaciente && String(titularPaciente.dni) !== String(dniInMessage) && !isExplicitlyForSelf);
-
-                if (isThirdParty) {
-                    pacienteConsultado = pByDni;
-                    console.log(`[triage-bot] Paciente consultado (familiar/tercero) DNI ${dniInMessage}: ${pacienteConsultado.nombre} (Titular se preserva: ${paciente?.nombre || conv?.nombre_completo})`);
-                } else {
-                    paciente = pByDni;
-                    titularPaciente = pByDni;
-                    console.log(`[triage-bot] Titular identificado en SALUS por DNI provisto ${dniInMessage}: ${paciente.nombre} (HC: ${paciente.nhc})`);
-                }
+                paciente = pByDni;
+                console.log(`[triage-bot] Paciente identificado en SALUS por DNI provisto ${dniInMessage}: ${paciente.nombre} (HC: ${paciente.nhc})`);
             } else {
                 console.log(`[triage-bot] DNI provisto ${dniInMessage} no figura en padrón maestro de SALUS`);
             }
         } catch (e) {
             console.warn('[triage-bot] Error consultando paciente por DNI:', e);
         }
-    } else if (!paciente && conv?.dni) {
+    } else if (conv?.dni) {
         try {
             const { data: pConv } = await supabase
                 .from('hospital_pacientes')
@@ -1815,15 +1772,15 @@ async function handleChatbotTriage(
                 .maybeSingle();
             if (pConv) paciente = pConv;
         } catch (e) {
-            console.warn('[triage-bot] Error recuperando paciente titular previo:', e);
+            console.warn('[triage-bot] Error recuperando paciente por DNI previo:', e);
         }
     }
 
-    // REGLA DE ORO: Preservar SIEMPRE el nombre y DNI original del titular del chat
-    // NUNCA sobreescribir el titular con el DNI o nombre de un paciente consultado (familiar/tercero)
+    // Nombre a mostrar: Si tenemos paciente validado por DNI, usar su nombre.
+    // Si no, usar el nombre de contacto de WhatsApp o 'Paciente'. NUNCA inferir un titular de SALUS sin DNI.
     const rawFullName = (
         (paciente?.nombre && !paciente.nombre.toLowerCase().startsWith('paciente')) ? paciente.nombre :
-        (conv?.nombre_completo && !conv.nombre_completo.toLowerCase().startsWith('paciente') && !conv.nombre_completo.toLowerCase().startsWith('familiar') && (!pacienteConsultado || conv.nombre_completo !== pacienteConsultado.nombre) ? conv.nombre_completo : null) ||
+        (conv?.nombre_completo && conv?.dni && !conv.nombre_completo.toLowerCase().startsWith('paciente') ? conv.nombre_completo : null) ||
         senderName ||
         'Paciente'
     ).trim();
@@ -1836,8 +1793,8 @@ async function handleChatbotTriage(
         }
     }
     const fullName = displayName;
-    const os = (paciente?.coseguro || (conv?.obra_social && (!pacienteConsultado || conv.obra_social !== pacienteConsultado.coseguro) ? conv.obra_social : null) || 'Particular / A confirmar').trim();
-    const dniTitular = paciente?.dni || (conv?.dni && conv.dni !== pacienteConsultado?.dni ? conv.dni : null);
+    const os = (paciente?.coseguro || (conv?.dni && conv?.obra_social ? conv.obra_social : null) || 'Particular / A confirmar').trim();
+    const dniTitular = paciente?.dni || conv?.dni || null;
 
     const isExistingPatient = !!(paciente || dniTitular);
 
@@ -1850,22 +1807,22 @@ async function handleChatbotTriage(
             nhc: paciente?.nhc || conv?.nhc || null,
             fecha_nacimiento: paciente?.fecha_nacimiento || updates.fecha_nacimiento || conv?.fecha_nacimiento || null,
             email: paciente?.email || updates.email || conv?.email || null,
-            telefono_contacto: paciente?.telefono || updates.telefono_contacto || phone,
+            telefono_contacto: phone,
             departamento: paciente?.centro || updates.departamento || conv?.departamento || 'San Juan',
             es_paciente_existente: true
         };
     }
 
-    // 2. VINCULAR TURNOS Y VISITAS PRÓXIMAS (SALUS + ONLINE) USANDO DNI O TELÉFONO DEL TITULAR
+    // 2. VINCULAR TURNOS Y VISITAS PRÓXIMAS (SALUS + ONLINE) EXCLUSIVAMENTE POR DNI
     const resolvedDni = dniTitular || conv?.dni || null;
     let turnosActivosProximos: any[] = [];
     let turnoOnlineProximo: any = null;
 
-    if (resolvedDni || phone) {
+    if (resolvedDni) {
         try {
             const { data: turnosRes, error: tErr } = await supabase.rpc('buscar_turnos_proximos', {
-                p_dni: resolvedDni || null,
-                p_telefono: phone || null
+                p_dni: resolvedDni,
+                p_telefono: null
             });
             if (!tErr && Array.isArray(turnosRes) && turnosRes.length > 0) {
                 turnosActivosProximos = turnosRes;

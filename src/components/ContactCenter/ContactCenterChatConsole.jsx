@@ -115,7 +115,7 @@ import {
     MASTER_ADMINS, toggleBotActive, fetchDoctorParameters,
     saveCrmPatientCard, lookupPatientFromSalus, resetBotWorkflow,
     analyzeMedicalOrderImage, generateChatAiSummary,
-    FINAL_ATTENTION_MESSAGE, isClosedOrArchived, fetchFamilyMembersByPhone,
+    FINAL_ATTENTION_MESSAGE, isClosedOrArchived,
     isUserAuthorizedForContactCenter, subscribeToChatPresence,
     transcribeAudioMessage, uploadContactCenterMedia
 } from '../../services/contactCenterService';
@@ -486,73 +486,29 @@ export default function ContactCenterChatConsole({
     // Estados Resumen IA del Paciente y Prestador
     const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
     const [aiSummaryData, setAiSummaryData] = useState(null);
-    const [familyMembers, setFamilyMembers] = useState([]);
-    const [activeFamilyMember, setActiveFamilyMember] = useState(null);
     const patientHistoryCache = useRef({});
 
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
     const selectedChat = chats.find(c => c.id === activeChatId) || chats[0] || {};
 
-    // Sincronizar formulario CRM, familiares y Resumen IA cuando cambia el chat activo
+    // Sincronizar formulario CRM y Resumen IA cuando cambia el chat activo (Vinculación EXCLUSIVA por DNI)
     useEffect(() => {
         if (selectedChat) {
-            const normPhone = selectedChat.phone ? normalizeArgentinePhone(selectedChat.phone) : '';
-            // Recuperar miembro familiar en memoria persistente (localStorage o selectedChat)
-            let persistedFam = selectedChat.activeFamilyMember || null;
-            if (!persistedFam && normPhone) {
-                try {
-                    const saved = localStorage.getItem('cc_active_family_member_' + normPhone);
-                    if (saved) persistedFam = JSON.parse(saved);
-                } catch (_) {}
-            }
-            setActiveFamilyMember(persistedFam);
-
-            const initialDni = persistedFam?.dni || (selectedChat.customFields?.dni && selectedChat.customFields?.dni !== 'A verificar' ? selectedChat.customFields?.dni : '');
-            const initialNombre = persistedFam?.nombre || selectedChat.customFields?.pacienteNombre || selectedChat.contactName || '';
+            const initialDni = (selectedChat.customFields?.dni && selectedChat.customFields?.dni !== 'A verificar') ? selectedChat.customFields?.dni : '';
+            const initialNombre = selectedChat.customFields?.pacienteNombre || selectedChat.contactName || '';
 
             setCrmForm({
                 dni: initialDni,
                 pacienteNombre: initialNombre,
-                obraSocial: persistedFam?.coseguro || (selectedChat.customFields?.obraSocial && selectedChat.customFields?.obraSocial !== 'A consultar' ? selectedChat.customFields?.obraSocial : ''),
+                obraSocial: (selectedChat.customFields?.obraSocial && selectedChat.customFields?.obraSocial !== 'A consultar') ? selectedChat.customFields?.obraSocial : '',
                 fechaNacimiento: selectedChat.customFields?.fechaNacimiento && selectedChat.customFields?.fechaNacimiento !== 'No informada' ? selectedChat.customFields?.fechaNacimiento : '',
-                email: persistedFam?.email || (selectedChat.customFields?.email && selectedChat.customFields?.email !== 'No informado' ? selectedChat.customFields?.email : ''),
+                email: (selectedChat.customFields?.email && selectedChat.customFields?.email !== 'No informado') ? selectedChat.customFields?.email : '',
                 departamento: selectedChat.customFields?.departamento || 'San Juan',
                 motivoConsulta: selectedChat.customFields?.motivoConsulta || selectedChat.customFields?.turnosDiaHora || '',
                 notas: selectedChat.customFields?.notas || ''
             });
             setIsEditingCrm(false);
             setAiSummaryData(selectedChat.aiSummary || null);
-
-            // Consultar si hay más de un familiar vinculado al mismo número de teléfono
-            if (selectedChat.phone) {
-                fetchFamilyMembersByPhone(selectedChat.phone).then(fams => {
-                    if (Array.isArray(fams) && fams.length > 0) {
-                        setFamilyMembers(fams);
-                        // Reconectar miembro fijado si coincide con algún familiar del listado
-                        const currentDni = persistedFam?.dni || selectedChat.customFields?.dni;
-                        const matchedFam = fams.find(f => String(f.dni) === String(currentDni) || (persistedFam?.nhc && String(f.nhc) === String(persistedFam.nhc)));
-                        if (matchedFam) {
-                            setActiveFamilyMember(matchedFam);
-                            selectedChat.activeFamilyMember = matchedFam;
-                            const birth = matchedFam.fecha_nacimiento || '';
-                            const formattedBirth = birth.includes('/') ? birth : (birth.includes('-') ? `${birth.split('-')[2]}/${birth.split('-')[1]}/${birth.split('-')[0]}` : birth);
-                            setCrmForm(prev => ({
-                                ...prev,
-                                dni: matchedFam.dni || prev.dni,
-                                pacienteNombre: matchedFam.nombre || prev.pacienteNombre,
-                                obraSocial: matchedFam.coseguro || prev.obraSocial,
-                                fechaNacimiento: formattedBirth || prev.fechaNacimiento,
-                                email: matchedFam.email || prev.email,
-                                departamento: matchedFam.centro || prev.departamento
-                            }));
-                        }
-                    } else {
-                        setFamilyMembers([]);
-                    }
-                }).catch(() => setFamilyMembers([]));
-            } else {
-                setFamilyMembers([]);
-            }
 
             // Si ya tiene un DNI específico pero faltan datos esenciales (fecha de nacimiento, email), resolver en background con SALUS
             const currentFechaNac = selectedChat.customFields?.fechaNacimiento;
@@ -596,69 +552,6 @@ export default function ContactCenterChatConsole({
             presenceTrackerRef.current?.untrackChat();
         }
     }, [selectedChat?.id, selectedChat?.phone]);
-
-    // Conmutar ficha activa a otro miembro del grupo familiar (Fijación permanente en memoria y base de datos)
-    const handleSelectFamilyMember = async (fam) => {
-        if (!fam) return;
-        if (fam.nhc) delete patientHistoryCache.current[`nhc_${fam.nhc}`];
-        if (fam.dni) delete patientHistoryCache.current[`dni_${fam.dni}`];
-        
-        setActiveFamilyMember(fam);
-        if (selectedChat) {
-            selectedChat.activeFamilyMember = fam;
-        }
-
-        const normPhone = selectedChat?.phone ? normalizeArgentinePhone(selectedChat.phone) : '';
-        if (normPhone) {
-            try {
-                localStorage.setItem('cc_active_family_member_' + normPhone, JSON.stringify(fam));
-            } catch (_) {}
-        }
-
-        const birth = fam.fecha_nacimiento || '';
-        const formattedBirth = birth.includes('/') ? birth : (birth.includes('-') ? `${birth.split('-')[2]}/${birth.split('-')[1]}/${birth.split('-')[0]}` : birth);
-
-        const updated = {
-            dni: fam.dni || '',
-            pacienteNombre: fam.nombre || '',
-            obraSocial: fam.coseguro || crmForm.obraSocial || '',
-            fechaNacimiento: formattedBirth || crmForm.fechaNacimiento || '',
-            email: fam.email || crmForm.email || '',
-            departamento: fam.centro || crmForm.departamento || 'San Juan'
-        };
-
-        setCrmForm(prev => ({ ...prev, ...updated }));
-
-        if (selectedChat?.customFields) {
-            selectedChat.customFields.dni = fam.dni;
-            selectedChat.customFields.nhc = fam.nhc;
-            selectedChat.customFields.pacienteNombre = fam.nombre;
-            selectedChat.customFields.obraSocial = fam.coseguro;
-            selectedChat.customFields.fechaNacimiento = formattedBirth;
-            selectedChat.customFields.email = fam.email || selectedChat.customFields.email;
-            selectedChat.customFields.esPacienteExistente = true;
-        }
-        if (selectedChat) {
-            selectedChat.contactName = fam.nombre;
-        }
-        setForceUpdate(n => n + 1);
-
-        try {
-            await saveCrmPatientCard({
-                phone: selectedChat?.phone,
-                dni: fam.dni,
-                nombreCompleto: fam.nombre,
-                obraSocial: fam.coseguro,
-                fechaNacimiento: formattedBirth,
-                email: fam.email,
-                departamento: fam.centro || 'San Juan',
-                motivoConsulta: crmForm.motivoConsulta
-            });
-            showToast(`Ficha fijada: ${fam.nombre}`, 'success');
-        } catch (err) {
-            console.warn('Error guardando conmutación de ficha familiar:', err);
-        }
-    };
 
     // Sincronizar catálogo institucional de respuestas rápidas de Contact Center
     useEffect(() => {
@@ -744,15 +637,15 @@ export default function ContactCenterChatConsole({
     }, [selectedChat?.id, selectedChat?.phone, selectedChat?.messages?.length]);
 
     // Cargar Historial 360° y Turnos Próximos del paciente
+    // Cargar Historial 360° y Turnos Próximos del paciente EXCLUSIVAMENTE por DNI o NHC
     useEffect(() => {
-        const targetDni = (activeFamilyMember?.dni || crmForm.dni || selectedChat?.customFields?.dni || '').replace(/\D/g, '');
-        const targetNhc = activeFamilyMember?.nhc || selectedChat?.customFields?.nhc || '';
-        const targetNombre = activeFamilyMember?.nombre || crmForm.pacienteNombre || selectedChat?.contactName || '';
-        // Si hay DNI o NHC, NO buscar por teléfono para no colisionar con otros familiares del mismo número
-        const phoneToSearch = (!targetDni && !targetNhc) ? (selectedChat?.phone || '') : null;
+        const targetDni = (crmForm.dni || selectedChat?.customFields?.dni || '').replace(/\D/g, '');
+        const targetNhc = selectedChat?.customFields?.nhc || '';
+        const targetNombre = crmForm.pacienteNombre || selectedChat?.contactName || '';
 
-        if (targetDni.length >= 6 || targetNhc || (phoneToSearch && phoneToSearch.length >= 6)) {
-            const cacheKey = targetNhc ? `nhc_${targetNhc}` : (targetDni ? `dni_${targetDni}` : `tel_${phoneToSearch}`);
+        // Vinculación exclusiva por DNI: NO buscar nunca por teléfono
+        if (targetDni.length >= 6 || targetNhc) {
+            const cacheKey = targetNhc ? `nhc_${targetNhc}` : `dni_${targetDni}`;
             if (patientHistoryCache.current[cacheKey]) {
                 setPatientHistory(patientHistoryCache.current[cacheKey]);
                 setLoadingHistory(false);
@@ -763,7 +656,7 @@ export default function ContactCenterChatConsole({
             fetchPacienteDetalle({ 
                 dni: targetDni || null, 
                 nhc: targetNhc || null, 
-                telefono: phoneToSearch, 
+                telefono: null, 
                 nombre: targetNombre 
             })
                 .then(det => {
@@ -781,13 +674,13 @@ export default function ContactCenterChatConsole({
         } else {
             setPatientHistory(null);
         }
-    }, [activeFamilyMember?.dni, activeFamilyMember?.nhc, crmForm.dni, selectedChat?.id]);
+    }, [crmForm.dni, selectedChat?.id]);
 
-    // Búsqueda en Padrón SALUS (admite DNI, NHC o Teléfono)
+    // Búsqueda en Padrón SALUS (EXCLUSIVA por DNI o NHC)
     const handleLookupSalus = async () => {
-        const queryToSearch = (crmForm.dni || selectedChat?.phone || '').trim();
-        if (!queryToSearch || queryToSearch.length < 4) {
-            alert('Ingresa al menos 5 dígitos del DNI o selecciona una conversación con teléfono para buscar en SALUS');
+        const queryToSearch = (crmForm.dni || '').trim();
+        if (!queryToSearch || queryToSearch.length < 5) {
+            alert('Ingresa al menos 5 dígitos del DNI para buscar en SALUS');
             return;
         }
         setIsSearchingSalus(true);
@@ -812,7 +705,7 @@ export default function ContactCenterChatConsole({
                     selectedChat.customFields.esPacienteExistente = true;
                 }
             } else {
-                alert('No se encontró paciente en el Padrón de SALUS con los datos provistos (' + queryToSearch + ').');
+                alert('No se encontró paciente en el Padrón de SALUS con el DNI provisto (' + queryToSearch + ').');
             }
         } catch (e) {
             console.error(e);
@@ -866,15 +759,6 @@ export default function ContactCenterChatConsole({
                     email: found.email,
                     departamento: found.centro || 'San Juan',
                     motivoConsulta: crmForm.motivoConsulta
-                });
-
-                // Integrar inmediatamente al grupo familiar si no estaba listado
-                setFamilyMembers(prev => {
-                    const exists = prev.some(p => String(p.dni) === String(found.dni));
-                    if (!exists) {
-                        return [found, ...prev];
-                    }
-                    return prev;
                 });
 
                 showToast(`Ficha vinculada exitosamente a ${found.nombre} (DNI ${found.dni})`, 'success');
@@ -1097,19 +981,6 @@ export default function ContactCenterChatConsole({
         }
         if (tokens.length > 1 && (tokens.every(t => normCleanName.includes(t)) || tokens.every(t => normPaciente.includes(t)))) {
             return { isMatch: true, matchType: 'nombre', matchText: cleanName };
-        }
-
-        if (Array.isArray(chat.familyMembers)) {
-            for (const fam of chat.familyMembers) {
-                const famName = normalizeSearch(fam.nombre || fam.name);
-                const famDni = (fam.dni || '').replace(/\D/g, '');
-                if (famName.includes(q)) {
-                    return { isMatch: true, matchType: 'familiar', matchText: `Familiar: ${fam.nombre || fam.name}` };
-                }
-                if (digits && digits.length >= 4 && famDni.includes(digits)) {
-                    return { isMatch: true, matchType: 'familiar', matchText: `Familiar DNI: ${fam.dni}` };
-                }
-            }
         }
 
         // 3. Teléfono
@@ -4539,116 +4410,19 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         </div>
                                     )}
 
-                                    {/* SELECTOR DE GRUPO FAMILIAR VINCULADO (MADRE E HIJOS) */}
-                                    {familyMembers && familyMembers.length > 1 && (
-                                        <div style={{
-                                            background: rightCardBg,
-                                            border: `1.5px solid ${rightCardBorder}`,
-                                            borderRadius: '8px',
-                                            padding: '10px 12px',
-                                            marginBottom: '8px'
-                                        }}>
-                                            <div style={{
-                                                fontSize: '0.66rem',
-                                                fontWeight: 800,
-                                                color: themeCardText,
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.04em',
-                                                marginBottom: '8px',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between'
-                                            }}>
-                                                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                    👨‍👩‍👧 GRUPO FAMILIAR ({familyMembers.length})
-                                                </span>
-                                                <span style={{ fontSize: '0.62rem', color: themeCardSubtext, fontWeight: 600 }}>
-                                                    Selecciona para conmutar ficha
-                                                </span>
-                                            </div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                {familyMembers.map((fam) => {
-                                                    const isCurrent = activeFamilyMember 
-                                                        ? (String(activeFamilyMember.dni) === String(fam.dni) || (activeFamilyMember.nhc && String(activeFamilyMember.nhc) === String(fam.nhc)))
-                                                        : (String(crmForm.dni) === String(fam.dni) || (selectedChat.customFields?.dni && String(selectedChat.customFields.dni) === String(fam.dni)));
-                                                    const edadNum = parseInt(String(fam.edad || '0').replace(/\D/g, ''), 10);
-                                                    const isMinor = !isNaN(edadNum) && edadNum < 18;
-                                                    const icon = isMinor ? '👦' : (fam.sexo === 'F' ? '👩' : '👨');
-
-                                                    return (
-                                                        <button
-                                                            key={fam.id_paciente || fam.dni}
-                                                            type="button"
-                                                            onClick={() => handleSelectFamilyMember(fam)}
-                                                            style={{
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'space-between',
-                                                                padding: '6px 10px',
-                                                                borderRadius: '6px',
-                                                                border: isCurrent ? `1.5px solid ${ccTheme.accentColor || '#0284C7'}` : `1px solid ${rightCardBorder}`,
-                                                                background: isCurrent ? themeCardSelectedBg : (ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF')),
-                                                                cursor: 'pointer',
-                                                                textAlign: 'left',
-                                                                transition: 'all 0.15s ease'
-                                                            }}
-                                                            title={`Clic para conmutar ficha a ${fam.nombre}`}
-                                                        >
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                <span style={{ fontSize: '1rem' }}>{icon}</span>
-                                                                <div>
-                                                                    <div style={{
-                                                                        fontSize: '0.78rem',
-                                                                        fontWeight: isCurrent ? 800 : 600,
-                                                                        color: isCurrent ? (ccTheme.accentColor || '#0369A1') : themeCardText
-                                                                    }}>
-                                                                        {fam.nombre}
-                                                                    </div>
-                                                                    <div style={{ fontSize: '0.66rem', color: themeCardSubtext }}>
-                                                                        DNI: {fam.dni} • {fam.edad ? `${fam.edad} años` : 'Edad s/d'}{fam.nhc ? ` • #${fam.nhc}` : ''}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            {isCurrent ? (
-                                                                <span style={{
-                                                                    fontSize: '0.62rem',
-                                                                    fontWeight: 800,
-                                                                    background: ccTheme.accentColor || '#0284C7',
-                                                                    color: '#FFFFFF',
-                                                                    padding: '2px 6px',
-                                                                    borderRadius: '4px'
-                                                                }}>
-                                                                    ACTIVO
-                                                                </span>
-                                                            ) : (
-                                                                <span style={{
-                                                                    fontSize: '0.64rem',
-                                                                    color: ccTheme.accentColor || '#0284C7',
-                                                                    fontWeight: 700
-                                                                }}>
-                                                                    Asignar →
-                                                                </span>
-                                                            )}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-
                                     {/* DNI & NHC SALUS */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: (activeFamilyMember?.nhc || selectedChat.customFields?.nhc) ? '1fr 1fr' : '1fr', gap: '6px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: selectedChat.customFields?.nhc ? '1fr 1fr' : '1fr', gap: '6px' }}>
                                         <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
                                             <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>DNI / IDENTIFICACIÓN</div>
                                             <div style={{ fontSize: '0.86rem', fontWeight: 800, color: themeCardText }}>
-                                                {activeFamilyMember?.dni || crmForm.dni || selectedChat.customFields?.dni || 'A verificar'}
+                                                {crmForm.dni || selectedChat.customFields?.dni || 'A verificar'}
                                             </div>
                                         </div>
-                                        {(activeFamilyMember?.nhc || selectedChat.customFields?.nhc) && (
+                                        {selectedChat.customFields?.nhc && (
                                             <div style={{ background: ccTheme.isDark ? '#1E3A5F' : '#F0F9FF', border: `1px solid ${ccTheme.isDark ? '#0284C7' : '#BAE6FD'}`, borderRadius: '8px', padding: '8px 10px' }}>
                                                 <div style={{ fontSize: '0.65rem', color: ccTheme.isDark ? '#BAE6FD' : '#0369A1', fontWeight: 700 }}>NHC (SALUS)</div>
                                                 <div style={{ fontSize: '0.86rem', fontWeight: 800, color: ccTheme.isDark ? '#38BDF8' : '#0284C7' }}>
-                                                    #{activeFamilyMember?.nhc || selectedChat.customFields?.nhc}
+                                                    #{selectedChat.customFields?.nhc}
                                                 </div>
                                             </div>
                                         )}
@@ -4658,7 +4432,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
                                         <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>NOMBRE COMPLETO</div>
                                         <div style={{ fontSize: '0.84rem', fontWeight: 700, color: themeCardText }}>
-                                            {activeFamilyMember?.nombre || crmForm.pacienteNombre || selectedChat.customFields?.pacienteNombre || selectedChat.contactName || 'Paciente'}
+                                            {crmForm.pacienteNombre || selectedChat.customFields?.pacienteNombre || selectedChat.contactName || 'Paciente'}
                                         </div>
                                     </div>
 
@@ -4666,7 +4440,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
                                         <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>OBRA SOCIAL / PREPAGA</div>
                                         <div style={{ fontSize: '0.84rem', fontWeight: 800, color: ccTheme.accentColor || '#0284C7' }}>
-                                            {activeFamilyMember?.coseguro || crmForm.obraSocial || selectedChat.customFields?.obraSocial || 'A consultar'}
+                                            {crmForm.obraSocial || selectedChat.customFields?.obraSocial || 'A consultar'}
                                         </div>
                                     </div>
 
@@ -4674,7 +4448,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
                                         <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>FECHA DE NACIMIENTO</div>
                                         <div style={{ fontSize: '0.82rem', fontWeight: 600, color: themeCardText }}>
-                                            {activeFamilyMember?.fecha_nacimiento || crmForm.fechaNacimiento || selectedChat.customFields?.fechaNacimiento || 'No informada'}
+                                            {crmForm.fechaNacimiento || selectedChat.customFields?.fechaNacimiento || 'No informada'}
                                         </div>
                                     </div>
 
@@ -4682,7 +4456,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
                                         <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>EMAIL</div>
                                         <div style={{ fontSize: '0.82rem', fontWeight: 600, color: themeCardText, wordBreak: 'break-all' }}>
-                                            {activeFamilyMember?.email || crmForm.email || selectedChat.customFields?.email || 'No informado'}
+                                            {crmForm.email || selectedChat.customFields?.email || 'No informado'}
                                         </div>
                                     </div>
 
@@ -4699,7 +4473,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>DEPARTAMENTO / SEDE HABITUAL</div>
                                         <div style={{ fontSize: '0.82rem', fontWeight: 600, color: themeCardText, display: 'flex', alignItems: 'center', gap: '4px' }}>
                                             <MapPin size={12} color={ccTheme.accentColor || '#0284C7'} />
-                                            {activeFamilyMember?.centro || crmForm.departamento || selectedChat.customFields?.departamento || 'San Juan'}
+                                            {crmForm.departamento || selectedChat.customFields?.departamento || 'San Juan'}
                                         </div>
                                     </div>
 
@@ -4733,67 +4507,14 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div style={{ fontSize: '0.74rem', fontWeight: 800, color: themeCardText, textTransform: 'uppercase' }}>
-                                    Historial {activeFamilyMember ? `— ${activeFamilyMember.nombre}` : (crmForm.pacienteNombre ? `— ${crmForm.pacienteNombre}` : '')}
+                                    Historial {crmForm.pacienteNombre ? `— ${crmForm.pacienteNombre}` : (selectedChat.contactName ? `— ${selectedChat.contactName}` : '')}
                                 </div>
-                                {(activeFamilyMember?.nhc || patientHistory?.nhc || selectedChat.customFields?.nhc) && (
+                                {(patientHistory?.nhc || selectedChat.customFields?.nhc) && (
                                     <span style={{ fontSize: '0.68rem', fontWeight: 700, color: ccTheme.accentColor || '#0284C7', background: ccTheme.isDark ? '#1E3A5F' : '#F0F9FF', padding: '2px 6px', borderRadius: '4px', border: `1px solid ${ccTheme.isDark ? '#0284C7' : '#BAE6FD'}` }}>
-                                        NHC: {activeFamilyMember?.nhc || patientHistory?.nhc || selectedChat.customFields?.nhc}
+                                        NHC: {patientHistory?.nhc || selectedChat.customFields?.nhc}
                                     </span>
                                 )}
                             </div>
-
-                            {/* Selector rápido de Familiar en Historial si hay más de 1 */}
-                            {familyMembers && familyMembers.length > 1 && (
-                                <div style={{
-                                    background: rightCardBg,
-                                    border: `1px solid ${rightCardBorder}`,
-                                    borderRadius: '8px',
-                                    padding: '6px 8px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '5px'
-                                }}>
-                                    <div style={{ fontSize: '0.62rem', fontWeight: 700, color: themeCardSubtext, display: 'flex', justifyContent: 'space-between' }}>
-                                        <span>👨‍👩‍👧 VER HISTORIAL DE:</span>
-                                        <span>{familyMembers.length} integrantes</span>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '2px' }}>
-                                        {familyMembers.map((fam) => {
-                                            const isCurrent = activeFamilyMember 
-                                                ? (String(activeFamilyMember.dni) === String(fam.dni) || (activeFamilyMember.nhc && String(activeFamilyMember.nhc) === String(fam.nhc)))
-                                                : (String(crmForm.dni) === String(fam.dni) || (selectedChat.customFields?.dni && String(selectedChat.customFields.dni) === String(fam.dni)));
-                                            return (
-                                                <button
-                                                    key={fam.id_paciente || fam.dni}
-                                                    type="button"
-                                                    onClick={() => handleSelectFamilyMember(fam)}
-                                                    style={{
-                                                        fontSize: '0.66rem',
-                                                        fontWeight: isCurrent ? 800 : 600,
-                                                        color: isCurrent ? '#FFFFFF' : themeCardText,
-                                                        background: isCurrent ? (ccTheme.accentColor || '#0284C7') : (ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF')),
-                                                        border: isCurrent ? `1px solid ${ccTheme.accentColor || '#0284C7'}` : `1px solid ${rightCardBorder}`,
-                                                        borderRadius: '5px',
-                                                        padding: '3px 8px',
-                                                        cursor: 'pointer',
-                                                        whiteSpace: 'nowrap',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px',
-                                                        boxShadow: isCurrent ? '0 1px 3px rgba(2,132,199,0.25)' : 'none',
-                                                        transition: 'all 0.15s ease'
-                                                    }}
-                                                    title={`Ver historial de ${fam.nombre}`}
-                                                >
-                                                    <span>{fam.sexo === 'F' ? '👩' : '👨'}</span>
-                                                    <span>{fam.nombre ? fam.nombre.split(',')[0] : 'Familiar'}</span>
-                                                    {isCurrent && <span style={{ fontSize: '0.58rem', background: 'rgba(0,0,0,0.2)', padding: '1px 3px', borderRadius: '3px' }}>ACTIVO</span>}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
 
                             {loadingHistory ? (
                                 <div style={{ fontSize: '0.76rem', color: themeCardSubtext, textAlign: 'center', padding: '20px' }}>
