@@ -185,6 +185,8 @@ const VIEW_LABELS = {
     contact_center_nueva: 'Contact Center - Nueva Conversación',
     turnos_online: 'Turnos Online Duplicados',
     contact_center_metricas: 'Contact Center - Métricas y Costos',
+    gobernanza: 'Gobernanza de Datos',
+    gobernanza_indicadores: 'Gobernanza UCI',
 };
 
 function App({ currentUser, onLogout }) {
@@ -203,6 +205,9 @@ function App({ currentUser, onLogout }) {
     // Router hooks
     const location = useLocation();
     const navigate = useNavigate();
+
+    // Restricted viewer check
+    const isUciOnly = (currentUser?.usuario || '').toLowerCase().trim() === 'naguilera';
 
     // Derive activeView directly from the URL pathname
     // If it's "/" or unrecognized, it will default to 'inicio' visually (handled below)
@@ -233,11 +238,25 @@ function App({ currentUser, onLogout }) {
             const initActivity = async () => {
                 await startSession(currentUser);
                 // Track initial module
-                const initialView = isContactCenterOnly ? 'contact_center' : (localStorage.getItem('active_view') || 'inicio');
+                const initialView = isUciOnly 
+                    ? 'gobernanza_indicadores' 
+                    : isContactCenterOnly 
+                        ? 'contact_center' 
+                        : (localStorage.getItem('active_view') || 'inicio');
                 trackModuleChange(initialView, VIEW_LABELS[initialView] || initialView);
             };
             initActivity();
             
+            if (isUciOnly) {
+                setSelectedModules(['gobernanza_indicadores']);
+                setNeedsModuleOnboarding(false);
+                setShowModuleOnboarding(false);
+                if (activeView !== 'gobernanza_indicadores') {
+                    navigate('/gobernanza_indicadores', { replace: true });
+                }
+                return;
+            }
+
             if (isContactCenterOnly) {
                 // Módulo Contact Center y módulo Simon IA ENTERO (Chat, Reglas, Analytics)
                 setSelectedModules(['contact_center', 'turnos_online', 'beto', 'beto_rules', 'beto_analytics']);
@@ -297,6 +316,13 @@ function App({ currentUser, onLogout }) {
         const username = (currentUser?.usuario || '').toLowerCase().trim();
         const isContactCenterOnly = isContactCenterExclusiveAgent(currentUser);
         const CC_ALL_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas'];
+
+        if (isUciOnly) {
+            if (activeView !== 'gobernanza_indicadores') {
+                setActiveView('gobernanza_indicadores');
+            }
+            return;
+        }
 
         if (isContactCenterOnly) {
             // Estricto: Contact Center y Simon IA ENTERO
@@ -485,13 +511,14 @@ function App({ currentUser, onLogout }) {
     useEffect(() => {
         const handler = (e) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                if (isUciOnly) return;
                 e.preventDefault();
                 setCommandPaletteOpen(prev => !prev);
             }
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, []);
+    }, [isUciOnly]);
 
     // === CART OPERATIONS (unified: prácticas + internación) ===
     const handleAddToCart = useCallback((practice) => {
@@ -1206,71 +1233,73 @@ function App({ currentUser, onLogout }) {
                 </div>
             )}
 
-            {/* Beto — AI Assistant Widget (FAB hidden, opened from sidebar) */}
-            <BetoWidget
-                currentUser={currentUser}
-                currentModule={activeView}
-                onNavigate={(mod) => setActiveView(mod)}
-                hideFab={true}
-                externalOpen={betoWidgetOpen}
-                onExternalClose={() => setBetoWidgetOpen(false)}
-            />
+            {/* Modales y Asistentes (desactivados para usuario restringido UCI) */}
+            {!isUciOnly && (
+                <>
+                    {/* Beto — AI Assistant Widget (FAB hidden, opened from sidebar) */}
+                    <BetoWidget
+                        currentUser={currentUser}
+                        currentModule={activeView}
+                        onNavigate={(mod) => setActiveView(mod)}
+                        hideFab={true}
+                        externalOpen={betoWidgetOpen}
+                        onExternalClose={() => setBetoWidgetOpen(false)}
+                    />
 
-            {/* Beto Guide Popup on Dashboard & Gobernanza entry */}
-            <BetoGuidePopup activeView={activeView} />
+                    {/* Beto Guide Popup on Dashboard & Gobernanza entry */}
+                    <BetoGuidePopup activeView={activeView} />
 
-            {/* #4 — Command Palette (Ctrl+K) */}
-            <CommandPalette
-                isOpen={commandPaletteOpen}
-                onClose={() => setCommandPaletteOpen(false)}
-                currentUser={currentUser}
-                onNavigate={(mod) => { setActiveView(mod); setCommandPaletteOpen(false); }}
-                onBetoQuery={(query) => {
-                    // Open Beto and send the query
-                    const betoFab = document.getElementById('beto-fab');
-                    if (betoFab) betoFab.click();
-                    // Small delay to let Beto open, then type the query
-                    setTimeout(() => {
-                        const betoInput = document.querySelector('#beto-chat-panel textarea');
-                        if (betoInput) {
-                            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-                            nativeInputValueSetter.call(betoInput, query);
-                            betoInput.dispatchEvent(new Event('input', { bubbles: true }));
-                            // Trigger send
+                    {/* #4 — Command Palette (Ctrl+K) */}
+                    <CommandPalette
+                        isOpen={commandPaletteOpen}
+                        onClose={() => setCommandPaletteOpen(false)}
+                        currentUser={currentUser}
+                        onNavigate={(mod) => { setActiveView(mod); setCommandPaletteOpen(false); }}
+                        onBetoQuery={(query) => {
+                            // Open Beto and send the query
+                            const betoFab = document.getElementById('beto-fab');
+                            if (betoFab) betoFab.click();
+                            // Small delay to let Beto open, then type the query
                             setTimeout(() => {
-                                const sendBtn = document.querySelector('#beto-chat-panel button:last-child');
-                                if (sendBtn) sendBtn.click();
-                            }, 200);
-                        }
-                    }, 2500);
-                }}
-            />
+                                const betoInput = document.querySelector('#beto-chat-panel textarea');
+                                if (betoInput) {
+                                    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+                                    nativeInputValueSetter.call(betoInput, query);
+                                    betoInput.dispatchEvent(new Event('input', { bubbles: true }));
+                                    // Trigger send
+                                    setTimeout(() => {
+                                        const sendBtn = document.querySelector('#beto-chat-panel button:last-child');
+                                        if (sendBtn) sendBtn.click();
+                                    }, 200);
+                                }
+                            }, 2500);
+                        }}
+                    />
 
-            {/* Easter egg: Homer idle overlay — solo para frojo */}
-            {currentUser?.usuario === 'frojo' && <IdleHomerOverlay />}
+                    {/* Welcome Onboarding — post-login, once per session */}
+                    <WelcomeOnboarding
+                        currentUser={currentUser}
+                        onOpenBeto={() => setBetoWidgetOpen(true)}
+                        onClose={() => {
+                            // After welcome closes, show module onboarding if needed
+                            if (needsModuleOnboarding) {
+                                setTimeout(() => setShowModuleOnboarding(true), 500);
+                                setNeedsModuleOnboarding(false);
+                            }
+                        }}
+                    />
 
-            {/* Welcome Onboarding — post-login, once per session */}
-            <WelcomeOnboarding
-                currentUser={currentUser}
-                onOpenBeto={() => setBetoWidgetOpen(true)}
-                onClose={() => {
-                    // After welcome closes, show module onboarding if needed
-                    if (needsModuleOnboarding) {
-                        setTimeout(() => setShowModuleOnboarding(true), 500);
-                        setNeedsModuleOnboarding(false);
-                    }
-                }}
-            />
-
-            {/* Module Onboarding — first-time module selection */}
-            {showModuleOnboarding && (
-                <ModuleOnboarding
-                    currentUser={currentUser}
-                    onComplete={(modules) => {
-                        setShowModuleOnboarding(false);
-                        if (modules) setSelectedModules(modules);
-                    }}
-                />
+                    {/* Module Onboarding — first-time module selection */}
+                    {showModuleOnboarding && (
+                        <ModuleOnboarding
+                            currentUser={currentUser}
+                            onComplete={(modules) => {
+                                setShowModuleOnboarding(false);
+                                if (modules) setSelectedModules(modules);
+                            }}
+                        />
+                    )}
+                </>
             )}
 
             {/* Module Reconfiguration — from ConfigPanel */}

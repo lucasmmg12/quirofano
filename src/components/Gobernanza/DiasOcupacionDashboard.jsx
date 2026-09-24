@@ -211,14 +211,23 @@ export function esDiaOcupadoValido(fechaOcupacion, fechaIngreso, fechaAlta) {
     return dOcup !== altStr;
 }
 
-export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpdate, addToast }) {
+export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpdate, addToast, currentUser }) {
+    const isUciOnly = (currentUser?.usuario || '').toLowerCase().trim() === 'naguilera';
+
     // === ESTADOS DE NAVEGACIÓN Y SECTOR ===
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [sectorId, setSectorId] = useState('UCI');
     const [uciSubNivel, setUciSubNivel] = useState('CONSOLIDADO'); // 'CONSOLIDADO' | 'INTENSIVA' | 'INTERMEDIA'
     const [isUciOpen, setIsUciOpen] = useState(() => {
+        if (isUciOnly) return true;
         return localStorage.getItem('telar_uci_expanded') === 'true';
     });
+
+    useEffect(() => {
+        if (isUciOnly && sectorId !== 'UCI') {
+            setSectorId('UCI');
+        }
+    }, [isUciOnly, sectorId]);
 
     const handleToggleUci = () => {
         setIsUciOpen(prev => {
@@ -233,6 +242,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     });
 
     const handleToggleGuardia = () => {
+        if (isUciOnly) return;
         setIsGuardiaOpen(prev => {
             const next = !prev;
             try { localStorage.setItem('telar_guardia_expanded', String(next)); } catch {}
@@ -585,6 +595,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
     // Cuando cambia el sector, actualizar camas por defecto
     const handleSelectSector = (sId) => {
+        if (isUciOnly && sId !== 'UCI') return;
         setSectorId(sId);
         setSelectedEspecialidades(null);
         setBoxFiltro('TODOS');
@@ -2671,28 +2682,30 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         )}
 
                         {/* Botón de Documentación Técnica */}
-                        <button
-                            onClick={() => {
-                                setDocModalTab(sectorId);
-                                setShowDocModal(true);
-                            }}
-                            style={{
-                                background: '#F8FAFC',
-                                border: '1px solid #CBD5E1',
-                                color: '#334155',
-                                borderRadius: '8px',
-                                padding: '6px 12px',
-                                fontSize: '0.8rem',
-                                fontWeight: 600,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <BookOpen size={15} color="#2563EB" />
-                            Fórmulas & SQL
-                        </button>
+                        {!isUciOnly && (
+                            <button
+                                onClick={() => {
+                                    setDocModalTab(sectorId);
+                                    setShowDocModal(true);
+                                }}
+                                style={{
+                                    background: '#F8FAFC',
+                                    border: '1px solid #CBD5E1',
+                                    color: '#334155',
+                                    borderRadius: '8px',
+                                    padding: '6px 12px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <BookOpen size={15} color="#2563EB" />
+                                Fórmulas & SQL
+                            </button>
+                        )}
 
                         {/* Botón Tablero de Indicadores */}
                         <button
@@ -3054,7 +3067,9 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
                     {/* Sincronización y Exportación IA */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <SalusSyncButton onComplete={() => { fetchData(); fetchUltimaActualizacion(); }} />
+                        {!isUciOnly && (
+                            <SalusSyncButton onComplete={() => { fetchData(); fetchUltimaActualizacion(); }} />
+                        )}
                         
                         {onOpenInfografia && (
                             <button
@@ -3385,152 +3400,154 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             </div>
 
                             {/* 🚑 SERVICIO: GUARDIA CLÍNICA (EXPANDIBLE AL TOCARLO) */}
-                            <div style={{
-                                borderRadius: '8px',
-                                border: `1.5px solid ${isGuardiaOpen || sectorId === 'GUARDIA' ? '#93C5FD' : '#E2E8F0'}`,
-                                background: '#FFFFFF',
-                                boxShadow: isGuardiaOpen || sectorId === 'GUARDIA' ? '0 4px 12px -2px rgba(37, 99, 235, 0.08)' : '0 1px 2px rgba(0,0,0,0.03)',
-                                overflow: 'hidden',
-                                transition: 'all 0.2s ease'
-                            }}>
-                                {/* Botón Cabecera Guardia */}
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        handleToggleGuardia();
-                                        if (sectorId !== 'GUARDIA') handleSelectSector('GUARDIA');
-                                    }}
-                                    style={{
-                                        width: '100%',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        padding: '11px 12px',
-                                        background: sectorId === 'GUARDIA' ? '#EFF6FF' : '#F8FAFC',
-                                        border: 'none',
-                                        cursor: 'pointer',
-                                        textAlign: 'left',
-                                        transition: 'background 0.15s ease'
-                                    }}
-                                    onMouseEnter={e => { if (sectorId !== 'GUARDIA') e.currentTarget.style.background = '#F1F5F9'; }}
-                                    onMouseLeave={e => { if (sectorId !== 'GUARDIA') e.currentTarget.style.background = '#F8FAFC'; }}
-                                >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ fontSize: '1.25rem' }}>🚑</span>
-                                        <div>
-                                            <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1E40AF' }}>
-                                                Guardia Clínica
-                                            </div>
-                                            <div style={{ fontSize: '0.68rem', color: '#3B82F6' }}>
-                                                Urgencias & Shockroom
+                            {!isUciOnly && (
+                                <div style={{
+                                    borderRadius: '8px',
+                                    border: `1.5px solid ${isGuardiaOpen || sectorId === 'GUARDIA' ? '#93C5FD' : '#E2E8F0'}`,
+                                    background: '#FFFFFF',
+                                    boxShadow: isGuardiaOpen || sectorId === 'GUARDIA' ? '0 4px 12px -2px rgba(37, 99, 235, 0.08)' : '0 1px 2px rgba(0,0,0,0.03)',
+                                    overflow: 'hidden',
+                                    transition: 'all 0.2s ease'
+                                }}>
+                                    {/* Botón Cabecera Guardia */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            handleToggleGuardia();
+                                            if (sectorId !== 'GUARDIA') handleSelectSector('GUARDIA');
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            padding: '11px 12px',
+                                            background: sectorId === 'GUARDIA' ? '#EFF6FF' : '#F8FAFC',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            textAlign: 'left',
+                                            transition: 'background 0.15s ease'
+                                        }}
+                                        onMouseEnter={e => { if (sectorId !== 'GUARDIA') e.currentTarget.style.background = '#F1F5F9'; }}
+                                        onMouseLeave={e => { if (sectorId !== 'GUARDIA') e.currentTarget.style.background = '#F8FAFC'; }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ fontSize: '1.25rem' }}>🚑</span>
+                                            <div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1E40AF' }}>
+                                                    Guardia Clínica
+                                                </div>
+                                                <div style={{ fontSize: '0.68rem', color: '#3B82F6' }}>
+                                                    Urgencias & Shockroom
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                    
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{
-                                            fontSize: '0.68rem',
-                                            background: sectorId === 'GUARDIA' ? '#2563EB' : '#DBEAFE',
-                                            color: sectorId === 'GUARDIA' ? '#FFFFFF' : '#1E40AF',
-                                            padding: '2px 8px',
-                                            borderRadius: '10px',
-                                            fontWeight: 800
-                                        }}>
-                                            {activeGuardiaIds.length} activos
-                                        </span>
-                                        <span style={{ color: sectorId === 'GUARDIA' ? '#2563EB' : '#94A3B8', display: 'flex', alignItems: 'center' }}>
-                                            {isGuardiaOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                                        </span>
-                                    </div>
-                                </button>
-
-                                {/* CONTENIDO DESPLEGABLE DE GUARDIA */}
-                                {isGuardiaOpen && (
-                                    <div style={{
-                                        borderTop: '1px solid #DBEAFE',
-                                        background: '#FFFFFF',
-                                        animation: 'fadeIn 0.2s ease-out'
-                                    }}>
-                                        <div style={{ padding: '10px 12px', background: '#F8FAFC', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
-                                                Indicadores Guardia ({activeGuardiaIds.length})
+                                        
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{
+                                                fontSize: '0.68rem',
+                                                background: sectorId === 'GUARDIA' ? '#2563EB' : '#DBEAFE',
+                                                color: sectorId === 'GUARDIA' ? '#FFFFFF' : '#1E40AF',
+                                                padding: '2px 8px',
+                                                borderRadius: '10px',
+                                                fontWeight: 800
+                                            }}>
+                                                {activeGuardiaIds.length} activos
                                             </span>
-                                            <button
-                                                type="button"
-                                                onClick={handleSelectAllGuardiaIndicators}
-                                                style={{
-                                                    background: 'transparent',
-                                                    border: 'none',
-                                                    color: '#2563EB',
-                                                    fontSize: '0.68rem',
-                                                    fontWeight: 700,
-                                                    cursor: 'pointer',
-                                                    padding: '1px 4px'
-                                                }}
-                                            >
-                                                Todos
-                                            </button>
+                                            <span style={{ color: sectorId === 'GUARDIA' ? '#2563EB' : '#94A3B8', display: 'flex', alignItems: 'center' }}>
+                                                {isGuardiaOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                            </span>
                                         </div>
+                                    </button>
 
-                                        <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '320px', overflowY: 'auto' }}>
-                                            {INDICADORES_GUARDIA_CATALOGO.map(ind => {
-                                                const isChecked = activeGuardiaIds.includes(ind.id);
-                                                return (
-                                                    <div
-                                                        key={ind.id}
-                                                        onClick={() => {
-                                                            if (sectorId !== 'GUARDIA') handleSelectSector('GUARDIA');
-                                                            handleToggleGuardiaIndicator(ind.id);
-                                                        }}
-                                                        style={{
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'space-between',
-                                                            padding: '6px 8px',
-                                                            borderRadius: '6px',
-                                                            cursor: 'pointer',
-                                                            background: isChecked && sectorId === 'GUARDIA' ? '#EFF6FF' : 'transparent',
-                                                            border: isChecked && sectorId === 'GUARDIA' ? '1px solid #BFDBFE' : '1px solid transparent',
-                                                            transition: 'all 0.12s ease'
-                                                        }}
-                                                    >
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                                                            {isChecked ? (
-                                                                <CheckSquare size={15} color="#1E40AF" />
-                                                            ) : (
-                                                                <Square size={15} color="#94A3B8" />
-                                                            )}
-                                                            <span style={{
-                                                                fontSize: '0.74rem',
-                                                                fontWeight: isChecked ? 700 : 500,
-                                                                color: isChecked ? '#1E293B' : '#475569',
-                                                                whiteSpace: 'nowrap',
-                                                                overflow: 'hidden',
-                                                                textOverflow: 'ellipsis'
+                                    {/* CONTENIDO DESPLEGABLE DE GUARDIA */}
+                                    {isGuardiaOpen && (
+                                        <div style={{
+                                            borderTop: '1px solid #DBEAFE',
+                                            background: '#FFFFFF',
+                                            animation: 'fadeIn 0.2s ease-out'
+                                        }}>
+                                            <div style={{ padding: '10px 12px', background: '#F8FAFC', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
+                                                    Indicadores Guardia ({activeGuardiaIds.length})
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSelectAllGuardiaIndicators}
+                                                    style={{
+                                                        background: 'transparent',
+                                                        border: 'none',
+                                                        color: '#2563EB',
+                                                        fontSize: '0.68rem',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        padding: '1px 4px'
+                                                    }}
+                                                >
+                                                    Todos
+                                                </button>
+                                            </div>
+
+                                            <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '320px', overflowY: 'auto' }}>
+                                                {INDICADORES_GUARDIA_CATALOGO.map(ind => {
+                                                    const isChecked = activeGuardiaIds.includes(ind.id);
+                                                    return (
+                                                        <div
+                                                            key={ind.id}
+                                                            onClick={() => {
+                                                                if (sectorId !== 'GUARDIA') handleSelectSector('GUARDIA');
+                                                                handleToggleGuardiaIndicator(ind.id);
                                                             }}
-                                                            title={ind.descripcion}
-                                                            >
-                                                                {ind.label}
+                                                            style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'space-between',
+                                                                padding: '6px 8px',
+                                                                borderRadius: '6px',
+                                                                cursor: 'pointer',
+                                                                background: isChecked && sectorId === 'GUARDIA' ? '#EFF6FF' : 'transparent',
+                                                                border: isChecked && sectorId === 'GUARDIA' ? '1px solid #BFDBFE' : '1px solid transparent',
+                                                                transition: 'all 0.12s ease'
+                                                            }}
+                                                        >
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                                                {isChecked ? (
+                                                                    <CheckSquare size={15} color="#1E40AF" />
+                                                                ) : (
+                                                                    <Square size={15} color="#94A3B8" />
+                                                                )}
+                                                                <span style={{
+                                                                    fontSize: '0.74rem',
+                                                                    fontWeight: isChecked ? 700 : 500,
+                                                                    color: isChecked ? '#1E293B' : '#475569',
+                                                                    whiteSpace: 'nowrap',
+                                                                    overflow: 'hidden',
+                                                                    textOverflow: 'ellipsis'
+                                                                }}
+                                                                title={ind.descripcion}
+                                                                >
+                                                                    {ind.label}
+                                                                </span>
+                                                            </div>
+                                                            <span style={{
+                                                                fontSize: '0.6rem',
+                                                                fontWeight: 700,
+                                                                padding: '1px 4px',
+                                                                borderRadius: '4px',
+                                                                background: ind.tipo === 'kpi' ? '#DBEAFE' : '#D1FAE5',
+                                                                color: ind.tipo === 'kpi' ? '#1E40AF' : '#065F46',
+                                                                flexShrink: 0
+                                                            }}>
+                                                                {ind.tipo === 'kpi' ? 'KPI' : 'Donut'}
                                                             </span>
                                                         </div>
-                                                        <span style={{
-                                                            fontSize: '0.6rem',
-                                                            fontWeight: 700,
-                                                            padding: '1px 4px',
-                                                            borderRadius: '4px',
-                                                            background: ind.tipo === 'kpi' ? '#DBEAFE' : '#D1FAE5',
-                                                            color: ind.tipo === 'kpi' ? '#1E40AF' : '#065F46',
-                                                            flexShrink: 0
-                                                        }}>
-                                                            {ind.tipo === 'kpi' ? 'KPI' : 'Donut'}
-                                                        </span>
-                                                    </div>
-                                                );
-                                            })}
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
-                                    </div>
-                                )}
-                            </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}

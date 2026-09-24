@@ -13,10 +13,15 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const isFrojo = currentUser?.usuario === 'frojo';
     const username = (currentUser?.usuario || '').toLowerCase().trim();
     const isContactCenterOnly = isContactCenterExclusiveAgent(currentUser);
+    const isUciOnly = username === 'naguilera';
 
     // Module visibility: null/empty = show all, array = only show listed + always-visible
     const ALWAYS_VISIBLE = ['inicio', 'config'];
     const isModuleVisible = (id) => {
+        if (isUciOnly) {
+            return id === 'gobernanza_indicadores';
+        }
+
         if (isContactCenterOnly) {
             // Estricto: Únicamente Contact Center y el módulo Simon IA ENTERO (Chat, Documentos, Reglas, Analytics)
             return [
@@ -363,7 +368,21 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             </div>
 
             <nav className="sidebar__nav">
-                {/* ─── Inicio ─── */}
+                {isUciOnly ? (
+                    <Link
+                        to="/gobernanza_indicadores"
+                        className={`sidebar__item ${activeView === 'gobernanza_indicadores' ? 'sidebar__item--active' : ''}`}
+                        onClick={() => onViewChange && onViewChange('gobernanza_indicadores', true)}
+                        title={collapsed ? 'Gobernanza UCI' : undefined}
+                        style={{ display: 'flex', textDecoration: 'none' }}
+                    >
+                        <BarChart3 size={20} className="sidebar__item-icon" />
+                        {!collapsed && <span className="sidebar__item-label">Gobernanza UCI</span>}
+                        {activeView === 'gobernanza_indicadores' && <div className="sidebar__item-indicator" />}
+                    </Link>
+                ) : (
+                    <>
+                        {/* ─── Inicio ─── */}
                 {!isContactCenterOnly && (() => {
                     const isActive = activeView === 'inicio';
                     return (
@@ -532,111 +551,117 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                         </Link>
                     );
                 })}
+                </>
+            )}
             </nav>
 
             <div className="sidebar__footer" style={{ padding: collapsed ? '12px 0' : '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                {/* ─── Beto Animated Avatar ─── */}
-                <button
-                    onClick={() => onOpenBeto?.()}
-                    title={collapsed ? 'Hablar con Beto' : undefined}
-                    style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        padding: 0, position: 'relative',
-                        width: collapsed ? 44 : 64, height: collapsed ? 44 : 64,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        transition: 'all 0.3s ease',
-                    }}
-                >
-                    {/* Outer breathing glow */}
-                    <div style={{
-                        position: 'absolute', inset: -4,
-                        borderRadius: '50%',
-                        background: 'radial-gradient(circle, rgba(99,102,241,0.25) 0%, transparent 70%)',
-                        animation: 'beto-breathe 3s ease-in-out infinite',
-                    }} />
-                    {/* Orbiting ring 1 */}
-                    <div style={{
-                        position: 'absolute', inset: -3,
-                        borderRadius: '50%',
-                        border: '1.5px solid rgba(129,140,248,0.35)',
-                        animation: 'beto-orbit 8s linear infinite',
-                    }} />
-                    {/* Orbiting ring 2 (counter-rotate) */}
-                    <div style={{
-                        position: 'absolute', inset: -7,
-                        borderRadius: '50%',
-                        border: '1px dashed rgba(165,180,252,0.25)',
-                        animation: 'beto-orbit-reverse 12s linear infinite',
-                    }} />
-                    {/* Pulsing dot on ring */}
-                    <div style={{
-                        position: 'absolute',
-                        width: 6, height: 6, borderRadius: '50%',
-                        background: '#818CF8',
-                        boxShadow: '0 0 8px rgba(129,140,248,0.8)',
-                        top: -5, left: '50%', marginLeft: -3,
-                        animation: 'beto-orbit 8s linear infinite',
-                        transformOrigin: `3px ${(collapsed ? 44 : 64) / 2 + 5}px`,
-                    }} />
-                    {/* Avatar image with glassmorphism border */}
-                    <div style={{
-                        width: collapsed ? 36 : 52, height: collapsed ? 36 : 52,
-                        borderRadius: '50%', overflow: 'hidden',
-                        border: '2px solid rgba(255,255,255,0.3)',
-                        boxShadow: '0 0 20px rgba(99,102,241,0.4), 0 0 40px rgba(99,102,241,0.15), inset 0 0 10px rgba(255,255,255,0.1)',
-                        animation: 'beto-float 4s ease-in-out infinite',
-                        position: 'relative', zIndex: 2,
-                        transition: 'all 0.3s ease',
-                    }}>
-                        {isFrojo ? (
-                            <img
-                                src="/tim-payne-ya-supero-la-barrera-de-los-cinco-JYXMRXEMGZAUJOQH5XSJ2AY2DA.avif"
-                                alt="Tim Payne"
-                                style={{
-                                    width: '100%', height: '100%', objectFit: 'cover',
-                                    pointerEvents: 'none',
-                                }}
-                            />
-                        ) : (
-                            <video
-                                src="/the_avatar_is_greetings_202606091123.mp4"
-                                autoPlay
-                                loop
-                                muted
-                                playsInline
-                                style={{
-                                    width: '100%', height: '100%', objectFit: 'cover',
-                                    pointerEvents: 'none',
-                                }}
-                            />
-                        )}
-                    </div>
-                    {/* Online indicator */}
-                    <div style={{
-                        position: 'absolute',
-                        bottom: collapsed ? 0 : 2,
-                        right: collapsed ? 0 : 4,
-                        width: 10, height: 10,
-                        borderRadius: '50%',
-                        background: '#10B981',
-                        border: '2px solid #1E3A5F',
-                        zIndex: 3,
-                        animation: 'beto-pulse-dot 2s ease-in-out infinite',
-                    }} />
-                </button>
+                {!isUciOnly && (
+                    <>
+                        {/* ─── Beto Animated Avatar ─── */}
+                        <button
+                            onClick={() => onOpenBeto?.()}
+                            title={collapsed ? 'Hablar con Beto' : undefined}
+                            style={{
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                padding: 0, position: 'relative',
+                                width: collapsed ? 44 : 64, height: collapsed ? 44 : 64,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                transition: 'all 0.3s ease',
+                            }}
+                        >
+                            {/* Outer breathing glow */}
+                            <div style={{
+                                position: 'absolute', inset: -4,
+                                borderRadius: '50%',
+                                background: 'radial-gradient(circle, rgba(99,102,241,0.25) 0%, transparent 70%)',
+                                animation: 'beto-breathe 3s ease-in-out infinite',
+                            }} />
+                            {/* Orbiting ring 1 */}
+                            <div style={{
+                                position: 'absolute', inset: -3,
+                                borderRadius: '50%',
+                                border: '1.5px solid rgba(129,140,248,0.35)',
+                                animation: 'beto-orbit 8s linear infinite',
+                            }} />
+                            {/* Orbiting ring 2 (counter-rotate) */}
+                            <div style={{
+                                position: 'absolute', inset: -7,
+                                borderRadius: '50%',
+                                border: '1px dashed rgba(165,180,252,0.25)',
+                                animation: 'beto-orbit-reverse 12s linear infinite',
+                            }} />
+                            {/* Pulsing dot on ring */}
+                            <div style={{
+                                position: 'absolute',
+                                width: 6, height: 6, borderRadius: '50%',
+                                background: '#818CF8',
+                                boxShadow: '0 0 8px rgba(129,140,248,0.8)',
+                                top: -5, left: '50%', marginLeft: -3,
+                                animation: 'beto-orbit 8s linear infinite',
+                                transformOrigin: `3px ${(collapsed ? 44 : 64) / 2 + 5}px`,
+                            }} />
+                            {/* Avatar image with glassmorphism border */}
+                            <div style={{
+                                width: collapsed ? 36 : 52, height: collapsed ? 36 : 52,
+                                borderRadius: '50%', overflow: 'hidden',
+                                border: '2px solid rgba(255,255,255,0.3)',
+                                boxShadow: '0 0 20px rgba(99,102,241,0.4), 0 0 40px rgba(99,102,241,0.15), inset 0 0 10px rgba(255,255,255,0.1)',
+                                animation: 'beto-float 4s ease-in-out infinite',
+                                position: 'relative', zIndex: 2,
+                                transition: 'all 0.3s ease',
+                            }}>
+                                {isFrojo ? (
+                                    <img
+                                        src="/tim-payne-ya-supero-la-barrera-de-los-cinco-JYXMRXEMGZAUJOQH5XSJ2AY2DA.avif"
+                                        alt="Tim Payne"
+                                        style={{
+                                            width: '100%', height: '100%', objectFit: 'cover',
+                                            pointerEvents: 'none',
+                                        }}
+                                    />
+                                ) : (
+                                    <video
+                                        src="/the_avatar_is_greetings_202606091123.mp4"
+                                        autoPlay
+                                        loop
+                                        muted
+                                        playsInline
+                                        style={{
+                                            width: '100%', height: '100%', objectFit: 'cover',
+                                            pointerEvents: 'none',
+                                        }}
+                                    />
+                                )}
+                            </div>
+                            {/* Online indicator */}
+                            <div style={{
+                                position: 'absolute',
+                                bottom: collapsed ? 0 : 2,
+                                right: collapsed ? 0 : 4,
+                                width: 10, height: 10,
+                                borderRadius: '50%',
+                                background: '#10B981',
+                                border: '2px solid #1E3A5F',
+                                zIndex: 3,
+                                animation: 'beto-pulse-dot 2s ease-in-out infinite',
+                            }} />
+                        </button>
 
-                {!collapsed && (
-                    <div className="animate-fade-in" style={{ textAlign: 'center' }}>
-                        <p style={{
-                            margin: 0, fontSize: '0.72rem', fontWeight: 700,
-                            color: 'rgba(255,255,255,0.9)',
-                            letterSpacing: '0.5px',
-                        }}>{ isFrojo ? 'TIM PAYNE' : 'BETO' } <span style={{ fontWeight: 400, opacity: 0.7 }}>IA</span></p>
-                        <p style={{
-                            margin: '2px 0 0', fontSize: '0.6rem',
-                            color: 'rgba(255,255,255,0.45)',
-                        }}>{ isFrojo ? 'No Payne, No Gain 💪' : 'Tu asistente personal' }</p>
-                    </div>
+                        {!collapsed && (
+                            <div className="animate-fade-in" style={{ textAlign: 'center' }}>
+                                <p style={{
+                                    margin: 0, fontSize: '0.72rem', fontWeight: 700,
+                                    color: 'rgba(255,255,255,0.9)',
+                                    letterSpacing: '0.5px',
+                                }}>{ isFrojo ? 'TIM PAYNE' : 'BETO' } <span style={{ fontWeight: 400, opacity: 0.7 }}>IA</span></p>
+                                <p style={{
+                                    margin: '2px 0 0', fontSize: '0.6rem',
+                                    color: 'rgba(255,255,255,0.45)',
+                                }}>{ isFrojo ? 'No Payne, No Gain 💪' : 'Tu asistente personal' }</p>
+                            </div>
+                        )}
+                    </>
                 )}
 
                 {!collapsed && (

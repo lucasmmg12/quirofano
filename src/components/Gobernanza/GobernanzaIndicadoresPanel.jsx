@@ -30,6 +30,7 @@ export default function GobernanzaIndicadoresPanel({ currentUser, addToast }) {
         <div className="content no-print" style={{ padding: 0, height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column' }}>
             {/* Dashboard Unificado Único */}
             <DiasOcupacionDashboard 
+                currentUser={currentUser}
                 onOpenInfografia={handleOpenInfografia}
                 onMetricsUpdate={handleMetricsUpdate}
                 addToast={addToast}
