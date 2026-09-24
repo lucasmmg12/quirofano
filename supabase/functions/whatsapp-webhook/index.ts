@@ -1689,26 +1689,7 @@ async function handleChatbotTriage(
         }
     }
 
-    // 2. Si se detectó un DNI en el mensaje (candidateDni):
-    // Un contacto/paciente puede gestionar un turno o autorización para OTRO paciente (hijo, cónyuge, familiar, etc.)
-    // Por lo tanto, si hay candidateDni y no coincide con el paciente del teléfono, priorizamos el paciente del DNI aportado
-    if (candidateDni && (!paciente || String(paciente.dni) !== String(candidateDni))) {
-        const { data: pByDni, error: pacError } = await supabase
-            .from('hospital_pacientes')
-            .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
-            .eq('dni', candidateDni)
-            .limit(1)
-            .maybeSingle();
-
-        if (pacError) {
-            console.error('[triage-bot] Error consultando hospital_pacientes por DNI:', pacError);
-        } else if (pByDni) {
-            paciente = pByDni;
-            console.log(`[triage-bot] Paciente conmutado a beneficiario por DNI provisto ${candidateDni}: ${paciente.nombre} (${paciente.coseguro})`);
-        }
-    }
-
-    // 3. Fallback de búsqueda textual en teléfono si falló la RPC (ordenando por edad descendente para priorizar a la madre)
+    // 2. Fallback de búsqueda textual en teléfono si falló la RPC
     if (!paciente && phone) {
         const rawPhoneDigits = phone.replace(/\D/g, '');
         const last7 = rawPhoneDigits.slice(-7);
@@ -1723,14 +1704,48 @@ async function handleChatbotTriage(
             if (pByPhoneList && pByPhoneList.length > 0) {
                 familiaresDetectados = pByPhoneList;
                 paciente = pByPhoneList[0];
-                console.log(`[triage-bot] Paciente encontrado por fallback Teléfono ${last7} (prioridad edad): ${paciente.nombre} (${paciente.edad} años)`);
+                console.log(`[triage-bot] Paciente titular encontrado por fallback Teléfono ${last7} (prioridad edad): ${paciente.nombre} (${paciente.edad} años)`);
             }
         }
     }
 
-    // Datos del paciente identificado
-    const isExistingPatient = !!(paciente || conv?.dni);
-    const rawFullName = (paciente?.nombre || conv?.nombre_completo || senderName || 'Paciente').trim();
+    // 3. Detección de DNI en mensaje: si es de un tercero/familiar, se guarda en pacienteConsultado SIN pisar al titular
+    let pacienteConsultado: any = null;
+    if (candidateDni) {
+        if (!paciente || String(paciente.dni) !== String(candidateDni)) {
+            const { data: pByDni, error: pacError } = await supabase
+                .from('hospital_pacientes')
+                .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
+                .eq('dni', candidateDni)
+                .limit(1)
+                .maybeSingle();
+
+            if (pByDni) {
+                const isExplicitlyOther = /\b(otro\s+paciente|otra\s+persona|un\s+paciente|del\s+paciente|de\s+un\s+paciente|de\s+otro\s+paciente|otros?\s+pacientes?|algun\s+paciente|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+mama|mi\s+mamá|mi\s+papa|mi\s+papá|mi\s+madre|mi\s+padre|mi\s+esposo|mi\s+esposa|mi\s+bebe|mi\s+bebé|alguien\s+m[aá]s)\b/i.test(cleanText) ||
+                    conv?.bot_stage === 'esperando_dni_turno';
+
+                if (!paciente && !conv?.dni && !isExplicitlyOther) {
+                    paciente = pByDni;
+                    console.log(`[triage-bot] Titular identificado por DNI propio provisto ${candidateDni}: ${paciente.nombre}`);
+                } else {
+                    pacienteConsultado = pByDni;
+                    console.log(`[triage-bot] Paciente consultado (familiar/tercero) DNI ${candidateDni}: ${pacienteConsultado.nombre} (Titular se mantiene: ${paciente?.nombre || conv?.nombre_completo})`);
+                }
+            }
+        }
+    }
+
+    // REGLA DE ORO: Preservar SIEMPRE el nombre original del titular del chat
+    // 1. Si paciente fue hallado por teléfono en SALUS, su nombre oficial.
+    // 2. Si conv?.nombre_completo ya existía y no es genérico, preservar el nombre del chat.
+    // 3. senderName de WhatsApp.
+    const rawFullName = (
+        (paciente?.nombre && !paciente.nombre.toLowerCase().startsWith('paciente')) ? paciente.nombre :
+        (conv?.nombre_completo && !conv.nombre_completo.toLowerCase().startsWith('paciente') && !conv.nombre_completo.toLowerCase().startsWith('familiar') ? conv.nombre_completo : null) ||
+        senderName ||
+        'Paciente'
+    ).trim();
+
     let displayName = rawFullName;
     if (rawFullName.includes(',')) {
         const parts = rawFullName.split(',').map(p => p.trim()).filter(Boolean);
@@ -1740,11 +1755,14 @@ async function handleChatbotTriage(
     }
     const fullName = displayName;
     const os = (paciente?.coseguro || conv?.obra_social || 'Particular / A confirmar').trim();
+    const dniTitular = paciente?.dni || (conv?.dni && conv.dni !== pacienteConsultado?.dni ? conv.dni : (pacienteConsultado ? null : candidateDni));
 
-    if (isExistingPatient) {
+    const isExistingPatient = !!(paciente || conv?.dni);
+
+    if (isExistingPatient || paciente) {
         updates = {
             ...updates,
-            dni: paciente?.dni || candidateDni || conv?.dni,
+            dni: dniTitular,
             nombre_completo: fullName,
             obra_social: os,
             nhc: paciente?.nhc || conv?.nhc || null,
@@ -1756,8 +1774,8 @@ async function handleChatbotTriage(
         };
     }
 
-    // 2. VINCULAR TURNOS Y VISITAS PRÓXIMAS (SALUS + ONLINE) USANDO DNI O TELÉFONO
-    const resolvedDni = updates.dni || paciente?.dni || candidateDni || conv?.dni || null;
+    // 2. VINCULAR TURNOS Y VISITAS PRÓXIMAS (SALUS + ONLINE) USANDO DNI O TELÉFONO DEL TITULAR
+    const resolvedDni = dniTitular || conv?.dni || null;
     let turnosActivosProximos: any[] = [];
     let turnoOnlineProximo: any = null;
 
@@ -1965,7 +1983,7 @@ async function handleChatbotTriage(
             updates.motivo_consulta = 'Consulta de Turno de otro paciente (esperando DNI)';
         } else {
             let dniToSearch: string | null = dniInCurrentMsg;
-            let isConsultingOther = isAskingForOtherPatient || currentStage === 'esperando_dni_turno' || (dniInCurrentMsg && conv?.dni && dniInCurrentMsg !== conv?.dni);
+            let isConsultingOther = isAskingForOtherPatient || currentStage === 'esperando_dni_turno' || (dniInCurrentMsg && dniTitular && dniInCurrentMsg !== dniTitular) || Boolean(pacienteConsultado);
 
             if (!dniToSearch) {
                 if (currentStage === 'esperando_dni_turno') {
