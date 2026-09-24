@@ -93,6 +93,162 @@ Deno.serve(async (req) => {
             );
         }
 
+        // =============================================
+        // SIMULADOR DE CHATBOT / PACIENTE (Testing Sandbox desde Contact Center Config)
+        // Permite probar respuestas, prompts compilados y los dos caminos de admisión
+        // sin enviar mensajes reales por WhatsApp
+        // =============================================
+        if (payload.action === 'simulate' || eventName === 'bot.simulate') {
+            const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+            const userMessage = payload.message || 'Hola';
+            const patientData = payload.patient || {};
+            const overrideConfig = payload.overrideConfig || null;
+            const history = payload.history || [];
+
+            // 1. Resolver configuración dinámica (o usar override si se está probando borrador)
+            const dynamicConfig = await getDynamicChatbotConfig(supabase);
+            const activePrompt = (overrideConfig?.systemPrompt && overrideConfig.systemPrompt.trim().length > 10)
+                ? overrideConfig.systemPrompt
+                : (dynamicConfig.systemPrompt || '');
+            const activeModel = overrideConfig?.model || dynamicConfig.model || 'gpt-4o';
+            const activeTemp = overrideConfig?.temperature !== undefined ? parseFloat(overrideConfig.temperature) : dynamicConfig.temperature;
+            const activeBotName = overrideConfig?.botName || dynamicConfig.botName || 'Dora';
+
+            // 2. Compilar variables del paciente
+            const pName = patientData.nombre || 'Paciente de Prueba';
+            const pDni = patientData.dni || (patientData.esRegistrado ? '28475561' : 'Sin DNI');
+            const pOs = patientData.obraSocial || patientData.cobertura || (patientData.esRegistrado ? 'OSP (Obra Social Provincia) - Plan Tradicional' : 'A confirmar');
+            const pTurnos = patientData.turnos || (patientData.esRegistrado 
+                ? '\nTURNOS PRÓXIMOS AGENDADOS DEL PACIENTE EN EL SANATORIO:\n1. Fecha: 28/09/2026 | Hora: 16:30 hs | Profesional: Dra. Gómez Carrizo | Especialidad: Ginecología | Sede: Sede San Luis (San Luis 432 Oeste)\n'
+                : 'No registra turnos previos.');
+
+            let compiledPrompt = activePrompt
+                .replace(/\{nombre\}/g, pName)
+                .replace(/\{dni\}/g, pDni)
+                .replace(/\{cobertura\}/g, pOs)
+                .replace(/\{turnos\}/g, pTurnos)
+                .replace(/\{bot_name\}|\{nombre_bot\}|\{asistente\}/gi, activeBotName);
+
+            if (!compiledPrompt.includes('{nombre}') && !compiledPrompt.includes(pName)) {
+                compiledPrompt += `\n\nDATOS DEL PACIENTE ACTUAL:\n- Nombre: ${pName}\n- DNI: ${pDni}\n- Cobertura: ${pOs}\n${pTurnos}`;
+            }
+
+            // Asegurar formato JSON de salida si no está
+            if (!compiledPrompt.includes('"replyText"') || !compiledPrompt.includes('"transferToAgent"')) {
+                compiledPrompt += `\n\nDevuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:\n{\n  "replyText": "Texto de la respuesta en WhatsApp...",\n  "intent": "derivacion_agente | turno | autorizacion | guardia | chequeo | informes | agradecimiento | general",\n  "transferToAgent": boolean,\n  "summary": "Resumen breve de la consulta en 1 línea para el equipo"\n}`;
+            }
+
+            // Verificar si el DNI existe en la base hospital_pacientes
+            let isExistingInDb = false;
+            let dbRecord = null;
+            if (patientData.dni) {
+                const cleanDni = String(patientData.dni).replace(/\D/g, '');
+                if (cleanDni) {
+                    const { data: pFound } = await supabase
+                        .from('hospital_pacientes')
+                        .select('id, nombre, coseguro, fecha_nacimiento')
+                        .eq('dni', cleanDni)
+                        .maybeSingle();
+                    if (pFound) {
+                        isExistingInDb = true;
+                        dbRecord = pFound;
+                    }
+                }
+            }
+
+            // 3. Ejecutar llamada real a OpenAI
+            const openAiKey = Deno.env.get('OPENAI_API_KEY');
+            let aiResult = {
+                replyText: '',
+                intent: 'general',
+                transferToAgent: false,
+                summary: 'Simulación'
+            };
+
+            if (openAiKey) {
+                try {
+                    const messagesPayload: any[] = [
+                        { role: 'system', content: compiledPrompt }
+                    ];
+
+                    if (Array.isArray(history) && history.length > 0) {
+                        for (const h of history.slice(-6)) {
+                            messagesPayload.push({
+                                role: h.sender === 'user' ? 'user' : 'assistant',
+                                content: typeof h.text === 'string' ? h.text : JSON.stringify(h.text)
+                            });
+                        }
+                    }
+
+                    messagesPayload.push({ role: 'user', content: userMessage });
+
+                    const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${openAiKey}`
+                        },
+                        body: JSON.stringify({
+                            model: activeModel,
+                            response_format: { type: 'json_object' },
+                            messages: messagesPayload,
+                            temperature: activeTemp,
+                            max_tokens: 800
+                        })
+                    });
+
+                    if (aiRes.ok) {
+                        const json = await aiRes.json();
+                        const rawContent = json.choices?.[0]?.message?.content || '{}';
+                        const parsed = JSON.parse(rawContent);
+                        aiResult = {
+                            replyText: parsed.replyText || 'Hola, ¿en qué puedo ayudarte?',
+                            intent: parsed.intent || 'general',
+                            transferToAgent: Boolean(parsed.transferToAgent),
+                            summary: parsed.summary || 'Consulta simulada'
+                        };
+                    } else {
+                        const errText = await aiRes.text();
+                        console.warn('[simulate] Error OpenAI:', errText);
+                        aiResult.replyText = `(Aviso: Error conectando con OpenAI: ${errText.substring(0, 100)})`;
+                    }
+                } catch (e: any) {
+                    console.warn('[simulate] Exception OpenAI:', e);
+                    aiResult.replyText = `(Aviso: Excepción invocando OpenAI: ${e.message})`;
+                }
+            } else {
+                aiResult.replyText = `¡Hola ${pName}! Soy ${activeBotName}, asistente virtual de Sanatorio Argentino. (Atención simulada: OpenAI API Key no detectada en backend)`;
+            }
+
+            // 4. Calcular aviso de handoff según estado de la cola
+            const queueCount = await refreshQueueAndHandoffConfig(supabase);
+            let handoffNotice = null;
+            if (aiResult.transferToAgent || aiResult.intent === 'derivacion_agente') {
+                handoffNotice = getAgentHandoffNotice(queueCount);
+            }
+
+            return new Response(
+                JSON.stringify({
+                    ok: true,
+                    result: {
+                        replyText: aiResult.replyText,
+                        intent: aiResult.intent,
+                        transferToAgent: aiResult.transferToAgent,
+                        summary: aiResult.summary,
+                        handoffNotice,
+                        compiledPrompt,
+                        isExistingInDb,
+                        dbRecord,
+                        modelUsed: activeModel,
+                        temperatureUsed: activeTemp,
+                        botNameUsed: activeBotName,
+                        queueCount
+                    }
+                }),
+                { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
+
         // Solo procesar mensajes incoming
         // Los outgoing se guardan desde el frontend via saveOutgoingMessage()
         // Procesar ambos causaba mensajes duplicados
@@ -1162,7 +1318,8 @@ async function generateChatGptConversationalResponse(
                 .replace(/\{nombre\}/g, pName)
                 .replace(/\{dni\}/g, pDni)
                 .replace(/\{cobertura\}/g, pOs)
-                .replace(/\{turnos\}/g, turnosContextStr);
+                .replace(/\{turnos\}/g, turnosContextStr)
+                .replace(/\{bot_name\}|\{nombre_bot\}|\{asistente\}/gi, dynamicConfig.botName || 'Dora');
 
             if (!dynamicConfig.systemPrompt.includes('{nombre}') && !dynamicConfig.systemPrompt.includes(pName)) {
                 finalSystemPrompt += `\n\nDATOS DEL PACIENTE ACTUAL:\n- Nombre: ${pName}\n- DNI: ${pDni}\n- Cobertura: ${pOs}\n${turnosContextStr}`;

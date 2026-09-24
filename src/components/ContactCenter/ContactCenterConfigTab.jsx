@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
     Bot, Save, RotateCcw, Copy, Check, Sparkles, Sliders, Shield, 
     AlertCircle, Info, RefreshCw, Eye, EyeOff, Terminal, CheckCircle2,
-    Cpu, Activity, Zap, Users, MessageSquare, Clock, AlertTriangle
+    Cpu, Activity, Zap, Users, MessageSquare, Clock, AlertTriangle,
+    Send, Trash2, Search, UserCheck, UserX, CornerDownLeft, Play, ArrowRight
 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { 
     fetchChatbotConfig, 
     saveChatbotConfig, 
@@ -15,8 +17,9 @@ import {
 const VARIABLE_TAGS = [
     { tag: '{nombre}', label: 'Nombre Paciente', desc: 'Nombre completo o de pila detectado' },
     { tag: '{dni}', label: 'DNI Paciente', desc: 'DNI validado del paciente' },
-    { tag: '{cobertura}', label: 'Obra Social / Prepaga', desc: 'Cobertura médica o Particular' },
-    { tag: '{turnos}', label: 'Turnos Próximos', desc: 'Lista contextual de turnos agendados en Salus' }
+    { tag: '{cobertura}', label: 'Obra Social y Plan', desc: 'Cobertura médica o Particular' },
+    { tag: '{turnos}', label: 'Turnos Próximos', desc: 'Lista contextual de turnos agendados en Salus' },
+    { tag: '{bot_name}', label: 'Nombre del Asistente', desc: 'Nombre asignado al bot (ej: Dora / Betina)' }
 ];
 
 export default function ContactCenterConfigTab({ currentUser, addToast }) {
@@ -38,6 +41,28 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
     const [handoffDelay, setHandoffDelay] = useState(DEFAULT_HANDOFF_DELAY);
     const [delayThreshold, setDelayThreshold] = useState(5);
     const [unassignedQueueCount, setUnassignedQueueCount] = useState(0);
+
+    // Simulator state
+    const [simMode, setSimMode] = useState('chat'); // 'chat' | 'prompt'
+    const [simPatientType, setSimPatientType] = useState('registrado'); // 'registrado' | 'nuevo' | 'custom'
+    const [simPatient, setSimPatient] = useState({
+        nombre: 'María Belén Gómez',
+        dni: '28475561',
+        obraSocial: 'OSP (Obra Social Provincia) - Plan Tradicional',
+        turnos: '1. Fecha: 28/09/2026 | Hora: 16:30 hs | Profesional: Dra. Gómez Carrizo | Especialidad: Ginecología | Sede: Sede San Luis (San Luis 432 Oeste)',
+        esRegistrado: true
+    });
+    const [simSearchQuery, setSimSearchQuery] = useState('');
+    const [simSearchResults, setSimSearchResults] = useState([]);
+    const [simSearching, setSimSearching] = useState(false);
+    
+    // Chat Simulation
+    const [simMessages, setSimMessages] = useState([
+        { id: 1, sender: 'bot', text: '¡Hola! 👋 Soy Dora, tu asistente virtual de Sanatorio Argentino. ¿En qué te puedo ayudar hoy?', time: '14:30' }
+    ]);
+    const [simInput, setSimInput] = useState('');
+    const [simSending, setSimSending] = useState(false);
+    const [lastSimResult, setLastSimResult] = useState(null);
 
     const textareaRef = useRef(null);
 
@@ -138,13 +163,155 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
         addToast?.('Prompt copiado al portapapeles', 'info');
     };
 
+    // Cambiar preset de paciente para simulación
+    const setPresetPatient = (type) => {
+        setSimPatientType(type);
+        if (type === 'registrado') {
+            setSimPatient({
+                nombre: 'María Belén Gómez',
+                dni: '28475561',
+                obraSocial: 'OSP (Obra Social Provincia) - Plan Tradicional',
+                turnos: '1. Fecha: 28/09/2026 | Hora: 16:30 hs | Profesional: Dra. Gómez Carrizo | Especialidad: Ginecología | Sede: Sede San Luis (San Luis 432 Oeste)',
+                esRegistrado: true
+            });
+        } else if (type === 'nuevo') {
+            setSimPatient({
+                nombre: 'Carlos Emanuel Mendoza',
+                dni: '35123987',
+                obraSocial: 'A confirmar / Particular',
+                turnos: 'No registra turnos previos en el Sanatorio.',
+                esRegistrado: false
+            });
+        }
+    };
+
+    // Búsqueda de paciente real en hospital_pacientes (SALUS)
+    const handleSearchPatient = async (query) => {
+        setSimSearchQuery(query);
+        if (!query || query.trim().length < 3) {
+            setSimSearchResults([]);
+            return;
+        }
+        setSimSearching(true);
+        try {
+            const clean = query.trim();
+            const isNum = /^\d+$/.test(clean);
+            let q = supabase.from('hospital_pacientes').select('id, nombre, dni, coseguro, fecha_nacimiento, centro').limit(6);
+            if (isNum) {
+                q = q.ilike('dni', `%${clean}%`);
+            } else {
+                q = q.ilike('nombre', `%${clean.toUpperCase()}%`);
+            }
+            const { data } = await q;
+            setSimSearchResults(data || []);
+        } catch (err) {
+            console.error('Error buscando paciente en SALUS:', err);
+        } finally {
+            setSimSearching(false);
+        }
+    };
+
+    const handleSelectDbPatient = (p) => {
+        setSimPatientType('custom');
+        setSimPatient({
+            nombre: p.nombre,
+            dni: p.dni,
+            obraSocial: p.coseguro || 'Particular',
+            turnos: 'Sin turnos próximos agendados.',
+            esRegistrado: true
+        });
+        setSimSearchResults([]);
+        setSimSearchQuery('');
+        addToast?.(`Paciente cargado desde SALUS: ${p.nombre}`, 'info');
+    };
+
+    // Enviar mensaje de prueba al sandbox
+    const handleSendSimMessage = async (textToSend) => {
+        const message = (textToSend || simInput).trim();
+        if (!message || simSending) return;
+
+        const userMsg = {
+            id: Date.now(),
+            sender: 'user',
+            text: message,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+
+        const updatedHistory = [...simMessages, userMsg];
+        setSimMessages(updatedHistory);
+        setSimInput('');
+        setSimSending(true);
+
+        try {
+            const { data, error } = await supabase.functions.invoke('whatsapp-webhook', {
+                body: {
+                    action: 'simulate',
+                    message,
+                    patient: simPatient,
+                    overrideConfig: {
+                        systemPrompt,
+                        model,
+                        temperature,
+                        botName,
+                        handoffNormal,
+                        handoffDelay,
+                        delayThreshold
+                    },
+                    history: updatedHistory.map(m => ({ sender: m.sender, text: m.text }))
+                }
+            });
+
+            if (error) throw error;
+
+            const res = data?.result;
+            setLastSimResult(res);
+
+            if (res) {
+                const botReply = {
+                    id: Date.now() + 1,
+                    sender: 'bot',
+                    text: res.replyText,
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    intent: res.intent,
+                    transferToAgent: res.transferToAgent,
+                    handoffNotice: res.handoffNotice,
+                    modelUsed: res.modelUsed
+                };
+                setSimMessages(prev => [...prev, botReply]);
+            }
+        } catch (err) {
+            console.error('Error en simulación:', err);
+            setSimMessages(prev => [
+                ...prev,
+                {
+                    id: Date.now() + 1,
+                    sender: 'bot',
+                    text: `⚠️ Error ejecutando simulación: ${err.message || 'Error en Edge Function'}.`,
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    isError: true
+                }
+            ]);
+        } finally {
+            setSimSending(false);
+        }
+    };
+
+    // Limpiar chat de prueba
+    const handleClearSimChat = () => {
+        setSimMessages([
+            { id: 1, sender: 'bot', text: `¡Hola! 👋 Soy ${botName}, tu asistente virtual de Sanatorio Argentino. ¿En qué te puedo ayudar hoy?`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+        ]);
+        setLastSimResult(null);
+    };
+
     // Vista previa interpolada
     const renderPreviewText = () => {
         let text = systemPrompt;
-        text = text.replace(/\{nombre\}/g, 'María Belén Gómez');
-        text = text.replace(/\{dni\}/g, '28475561');
-        text = text.replace(/\{cobertura\}/g, 'OSP (Obra Social Provincia) - Plan Tradicional');
-        text = text.replace(/\{turnos\}/g, '\nTURNOS PRÓXIMOS AGENDADOS DEL PACIENTE EN EL SANATORIO:\n1. Fecha: 28/09/2026 | Hora: 16:30 hs | Profesional: Dra. Gómez Carrizo | Especialidad: Ginecología | Sede: Sede San Luis (San Luis 432 Oeste)\n');
+        text = text.replace(/\{nombre\}/g, simPatient.nombre || 'Paciente');
+        text = text.replace(/\{dni\}/g, simPatient.dni || 'Sin DNI');
+        text = text.replace(/\{cobertura\}/g, simPatient.obraSocial || 'A confirmar');
+        text = text.replace(/\{turnos\}/g, simPatient.turnos || 'Sin turnos');
+        text = text.replace(/\{bot_name\}|\{nombre_bot\}|\{asistente\}/gi, botName || 'Dora');
         return text;
     };
 
@@ -532,47 +699,526 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                         </div>
                     </div>
 
-                    {/* Area de Texto o Vista Previa */}
+                    {/* Area de Texto o Simulador de Paciente Interactivo */}
                     {showPreview ? (
                         <div style={{
-                            padding: '18px',
-                            background: '#F8FAFC',
+                            display: 'flex',
+                            flexDirection: 'column',
                             flex: 1,
-                            overflowY: 'auto',
-                            maxHeight: '620px'
+                            background: '#F8FAFC',
+                            overflow: 'hidden'
                         }}>
+                            {/* Barra Superior del Simulador: Escenarios y Modos */}
                             <div style={{
-                                background: '#EFF6FF',
-                                border: '1px solid #BFDBFE',
-                                borderRadius: '8px',
-                                padding: '10px 14px',
-                                marginBottom: '14px',
-                                fontSize: '0.78rem',
-                                color: '#1E40AF',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px'
-                            }}>
-                                <Info size={16} />
-                                <span>
-                                    <strong>Simulación activa:</strong> Mostrando cómo la Edge Function ensambla el prompt con datos reales de prueba de un paciente antes de invocar OpenAI.
-                                </span>
-                            </div>
-                            <pre style={{
-                                fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-                                fontSize: '0.82rem',
-                                lineHeight: 1.6,
-                                color: '#1E293B',
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-word',
-                                margin: 0,
-                                padding: '16px',
+                                padding: '14px 18px',
                                 background: '#FFFFFF',
-                                borderRadius: '8px',
-                                border: '1px solid #E2E8F0'
+                                borderBottom: '1px solid #E2E8F0',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '12px'
                             }}>
-                                {renderPreviewText()}
-                            </pre>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                                    {/* Selector de Presets de Pacientes */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                        <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', marginRight: '4px' }}>
+                                            Escenario:
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPresetPatient('registrado')}
+                                            style={{
+                                                padding: '5px 10px',
+                                                borderRadius: '6px',
+                                                border: simPatientType === 'registrado' ? '1px solid #16A34A' : '1px solid #CBD5E1',
+                                                background: simPatientType === 'registrado' ? '#DCFCE7' : '#FFFFFF',
+                                                color: simPatientType === 'registrado' ? '#15803D' : '#475569',
+                                                fontSize: '0.74rem',
+                                                fontWeight: 700,
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '5px'
+                                            }}
+                                        >
+                                            <UserCheck size={13} />
+                                            1️⃣ Paciente Registrado (SALUS)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPresetPatient('nuevo')}
+                                            style={{
+                                                padding: '5px 10px',
+                                                borderRadius: '6px',
+                                                border: simPatientType === 'nuevo' ? '1px solid #0284C7' : '1px solid #CBD5E1',
+                                                background: simPatientType === 'nuevo' ? '#E0F2FE' : '#FFFFFF',
+                                                color: simPatientType === 'nuevo' ? '#0369A1' : '#475569',
+                                                fontSize: '0.74rem',
+                                                fontWeight: 700,
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '5px'
+                                            }}
+                                        >
+                                            <UserX size={13} />
+                                            2️⃣ Paciente Nuevo / No Registrado
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSimPatientType('search')}
+                                            style={{
+                                                padding: '5px 10px',
+                                                borderRadius: '6px',
+                                                border: simPatientType === 'search' || simPatientType === 'custom' ? '1px solid #9333EA' : '1px solid #CBD5E1',
+                                                background: simPatientType === 'search' || simPatientType === 'custom' ? '#F3E8FF' : '#FFFFFF',
+                                                color: simPatientType === 'search' || simPatientType === 'custom' ? '#7E22CE' : '#475569',
+                                                fontSize: '0.74rem',
+                                                fontWeight: 700,
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '5px'
+                                            }}
+                                        >
+                                            <Search size={13} />
+                                            Buscar en SALUS
+                                        </button>
+                                    </div>
+
+                                    {/* Selector de Modo: Chat Sandbox vs Prompt Compilado */}
+                                    <div style={{
+                                        display: 'inline-flex',
+                                        background: '#F1F5F9',
+                                        padding: '2px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #E2E8F0'
+                                    }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSimMode('chat')}
+                                            style={{
+                                                padding: '4px 10px',
+                                                borderRadius: '6px',
+                                                border: 'none',
+                                                background: simMode === 'chat' ? '#FFFFFF' : 'transparent',
+                                                color: simMode === 'chat' ? '#0284C7' : '#64748B',
+                                                fontWeight: 700,
+                                                fontSize: '0.74rem',
+                                                cursor: 'pointer',
+                                                boxShadow: simMode === 'chat' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}
+                                        >
+                                            <MessageSquare size={13} />
+                                            Chat Sandbox (IA)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSimMode('prompt')}
+                                            style={{
+                                                padding: '4px 10px',
+                                                borderRadius: '6px',
+                                                border: 'none',
+                                                background: simMode === 'prompt' ? '#FFFFFF' : 'transparent',
+                                                color: simMode === 'prompt' ? '#0284C7' : '#64748B',
+                                                fontWeight: 700,
+                                                fontSize: '0.74rem',
+                                                cursor: 'pointer',
+                                                boxShadow: simMode === 'prompt' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}
+                                        >
+                                            <Terminal size={13} />
+                                            Prompt Compilado
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Buscador rápido si está en modo search */}
+                                {simPatientType === 'search' && (
+                                    <div style={{
+                                        background: '#FAF5FF',
+                                        border: '1px solid #E9D5FF',
+                                        borderRadius: '8px',
+                                        padding: '10px 14px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '8px'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <Search size={15} color="#7E22CE" />
+                                            <input
+                                                type="text"
+                                                value={simSearchQuery}
+                                                onChange={(e) => handleSearchPatient(e.target.value)}
+                                                placeholder="Ingresá DNI o Nombre de un paciente en SALUS (ej: 28475561 o Perez)..."
+                                                style={{
+                                                    flex: 1,
+                                                    padding: '6px 10px',
+                                                    borderRadius: '6px',
+                                                    border: '1px solid #CBD5E1',
+                                                    fontSize: '0.8rem',
+                                                    background: '#FFFFFF'
+                                                }}
+                                                autoFocus
+                                            />
+                                            {simSearching && <span style={{ fontSize: '0.72rem', color: '#7E22CE' }}>Buscando...</span>}
+                                        </div>
+                                        {simSearchResults.length > 0 && (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '140px', overflowY: 'auto' }}>
+                                                {simSearchResults.map(p => (
+                                                    <div
+                                                        key={p.id || p.dni}
+                                                        onClick={() => handleSelectDbPatient(p)}
+                                                        style={{
+                                                            padding: '6px 10px',
+                                                            background: '#FFFFFF',
+                                                            borderRadius: '6px',
+                                                            border: '1px solid #E2E8F0',
+                                                            cursor: 'pointer',
+                                                            display: 'flex',
+                                                            justifyContent: 'space-between',
+                                                            alignItems: 'center',
+                                                            fontSize: '0.74rem'
+                                                        }}
+                                                    >
+                                                        <div>
+                                                            <strong style={{ color: '#0F2942' }}>{p.nombre}</strong> — DNI: {p.dni}
+                                                        </div>
+                                                        <div style={{ color: '#0284C7', fontWeight: 600 }}>
+                                                            {p.coseguro || 'Particular'}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Franja compacta con los datos activos del paciente */}
+                                <div style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                                    gap: '8px',
+                                    padding: '8px 12px',
+                                    background: '#F8FAFC',
+                                    borderRadius: '8px',
+                                    border: '1px solid #E2E8F0',
+                                    fontSize: '0.74rem'
+                                }}>
+                                    <div>
+                                        <span style={{ color: '#64748B', fontWeight: 600 }}>{'{nombre}'}: </span>
+                                        <input
+                                            type="text"
+                                            value={simPatient.nombre}
+                                            onChange={(e) => setSimPatient({ ...simPatient, nombre: e.target.value })}
+                                            style={{ border: 'none', background: 'transparent', fontWeight: 700, color: '#0F2942', width: '130px', outline: 'none' }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <span style={{ color: '#64748B', fontWeight: 600 }}>{'{dni}'}: </span>
+                                        <input
+                                            type="text"
+                                            value={simPatient.dni}
+                                            onChange={(e) => setSimPatient({ ...simPatient, dni: e.target.value })}
+                                            style={{ border: 'none', background: 'transparent', fontWeight: 700, color: '#0F2942', width: '90px', outline: 'none' }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <span style={{ color: '#64748B', fontWeight: 600 }}>{'{cobertura}'}: </span>
+                                        <input
+                                            type="text"
+                                            value={simPatient.obraSocial}
+                                            onChange={(e) => setSimPatient({ ...simPatient, obraSocial: e.target.value })}
+                                            style={{ border: 'none', background: 'transparent', fontWeight: 700, color: '#0F2942', width: '140px', outline: 'none' }}
+                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{
+                                            padding: '2px 8px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.68rem',
+                                            fontWeight: 800,
+                                            background: simPatient.esRegistrado ? '#DCFCE7' : '#FEE2E2',
+                                            color: simPatient.esRegistrado ? '#166534' : '#991B1B'
+                                        }}>
+                                            {simPatient.esRegistrado ? '✓ Registrado en SALUS' : '✗ No registrado'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Contenido según simMode */}
+                            {simMode === 'prompt' ? (
+                                <div style={{ padding: '16px', overflowY: 'auto', flex: 1, maxHeight: '520px' }}>
+                                    <div style={{
+                                        background: '#EFF6FF',
+                                        border: '1px solid #BFDBFE',
+                                        borderRadius: '8px',
+                                        padding: '10px 14px',
+                                        marginBottom: '12px',
+                                        fontSize: '0.76rem',
+                                        color: '#1E40AF',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px'
+                                    }}>
+                                        <Info size={15} />
+                                        <span>
+                                            System Prompt completamente ensamblado para <strong>{simPatient.nombre}</strong> (DNI {simPatient.dni}) con el modelo <strong>{model}</strong>.
+                                        </span>
+                                    </div>
+                                    <pre style={{
+                                        fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                                        fontSize: '0.8rem',
+                                        lineHeight: 1.6,
+                                        color: '#1E293B',
+                                        whiteSpace: 'pre-wrap',
+                                        wordBreak: 'break-word',
+                                        margin: 0,
+                                        padding: '16px',
+                                        background: '#FFFFFF',
+                                        borderRadius: '8px',
+                                        border: '1px solid #E2E8F0'
+                                    }}>
+                                        {renderPreviewText()}
+                                    </pre>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '520px' }}>
+                                    {/* Sugerencias de Consultas Rápidas */}
+                                    <div style={{
+                                        padding: '8px 14px',
+                                        background: '#F1F5F9',
+                                        borderBottom: '1px solid #E2E8F0',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        overflowX: 'auto',
+                                        whiteSpace: 'nowrap'
+                                    }}>
+                                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748B', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                            <Sparkles size={12} color="#0284C7" /> Pruebas rápidas:
+                                        </span>
+                                        {[
+                                            'Hola, ¿qué turnos tengo agendados?',
+                                            'Quiero pedir un turno con ginecología',
+                                            'Soy nuevo y no estoy registrado en el Sanatorio',
+                                            'Quiero hablar con una persona por favor',
+                                            '¿Cuáles son los horarios de guardia activa?'
+                                        ].map((suggestion, idx) => (
+                                            <button
+                                                key={idx}
+                                                type="button"
+                                                onClick={() => handleSendSimMessage(suggestion)}
+                                                disabled={simSending}
+                                                style={{
+                                                    padding: '3px 8px',
+                                                    borderRadius: '12px',
+                                                    border: '1px solid #CBD5E1',
+                                                    background: '#FFFFFF',
+                                                    fontSize: '0.7rem',
+                                                    color: '#334155',
+                                                    cursor: simSending ? 'not-allowed' : 'pointer',
+                                                    transition: 'all 0.1s'
+                                                }}
+                                                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#0284C7'; e.currentTarget.style.color = '#0284C7'; }}
+                                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.color = '#334155'; }}
+                                            >
+                                                {suggestion}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Transcript del Chat */}
+                                    <div style={{
+                                        flex: 1,
+                                        overflowY: 'auto',
+                                        padding: '16px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '12px',
+                                        background: '#F8FAFC'
+                                    }}>
+                                        {simMessages.map((msg) => {
+                                            const isUser = msg.sender === 'user';
+                                            return (
+                                                <div
+                                                    key={msg.id}
+                                                    style={{
+                                                        display: 'flex',
+                                                        flexDirection: 'column',
+                                                        alignItems: isUser ? 'flex-end' : 'flex-start',
+                                                        gap: '4px'
+                                                    }}
+                                                >
+                                                    <div style={{
+                                                        maxWidth: '85%',
+                                                        padding: '10px 14px',
+                                                        borderRadius: isUser ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
+                                                        background: isUser ? '#DCFCE7' : '#FFFFFF',
+                                                        border: isUser ? '1px solid #BBF7D0' : '1px solid #E2E8F0',
+                                                        color: '#0F2942',
+                                                        fontSize: '0.82rem',
+                                                        lineHeight: 1.5,
+                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                                        wordBreak: 'break-word',
+                                                        whiteSpace: 'pre-wrap'
+                                                    }}>
+                                                        {!isUser && (
+                                                            <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#0284C7', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                <Bot size={12} />
+                                                                {botName} (Asistente Virtual)
+                                                            </div>
+                                                        )}
+                                                        {msg.text}
+                                                        <div style={{
+                                                            fontSize: '0.65rem',
+                                                            color: '#94A3B8',
+                                                            textAlign: 'right',
+                                                            marginTop: '4px'
+                                                        }}>
+                                                            {msg.time}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Avisos de Handoff y Badges de IA si hubo derivación */}
+                                                    {!isUser && msg.transferToAgent && (
+                                                        <div style={{
+                                                            maxWidth: '85%',
+                                                            background: '#FEF3C7',
+                                                            border: '1px solid #FCD34D',
+                                                            borderRadius: '8px',
+                                                            padding: '8px 12px',
+                                                            fontSize: '0.74rem',
+                                                            color: '#92400E',
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            gap: '4px'
+                                                        }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800 }}>
+                                                                <AlertTriangle size={14} color="#D97706" />
+                                                                <span>El bot transfirió la conversación al equipo de atención (Handoff)</span>
+                                                            </div>
+                                                            {msg.handoffNotice && (
+                                                                <div style={{
+                                                                    fontSize: '0.72rem',
+                                                                    color: '#78350F',
+                                                                    background: '#FFFFFF',
+                                                                    padding: '6px 8px',
+                                                                    borderRadius: '6px',
+                                                                    border: '1px solid #FDE68A',
+                                                                    whiteSpace: 'pre-wrap'
+                                                                }}>
+                                                                    <strong>Aviso despachado al paciente:</strong><br />
+                                                                    {msg.handoffNotice}
+                                                                </div>
+                                                            )}
+                                                            <div style={{ display: 'flex', gap: '8px', fontSize: '0.68rem', color: '#B45309' }}>
+                                                                <span>Intent: <strong>{msg.intent}</strong></span>
+                                                                <span>Modelo: <strong>{msg.modelUsed || model}</strong></span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+
+                                        {simSending && (
+                                            <div style={{
+                                                alignSelf: 'flex-start',
+                                                padding: '8px 14px',
+                                                borderRadius: '12px',
+                                                background: '#FFFFFF',
+                                                border: '1px solid #E2E8F0',
+                                                fontSize: '0.76rem',
+                                                color: '#64748B',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px'
+                                            }}>
+                                                <RefreshCw size={13} className="spin" color="#0284C7" />
+                                                <span>{botName} está procesando tu respuesta con OpenAI ({model})...</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Input de Mensaje de Simulación */}
+                                    <div style={{
+                                        padding: '12px 16px',
+                                        background: '#FFFFFF',
+                                        borderTop: '1px solid #E2E8F0',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px'
+                                    }}>
+                                        <button
+                                            type="button"
+                                            onClick={handleClearSimChat}
+                                            title="Reiniciar chat de simulación"
+                                            style={{
+                                                padding: '8px',
+                                                borderRadius: '8px',
+                                                border: '1px solid #E2E8F0',
+                                                background: '#F8FAFC',
+                                                color: '#64748B',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <Trash2 size={15} />
+                                        </button>
+                                        <input
+                                            type="text"
+                                            value={simInput}
+                                            onChange={(e) => setSimInput(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    handleSendSimMessage();
+                                                }
+                                            }}
+                                            placeholder={`Escribí un mensaje simulando ser ${simPatient.nombre}...`}
+                                            disabled={simSending}
+                                            style={{
+                                                flex: 1,
+                                                padding: '10px 14px',
+                                                borderRadius: '8px',
+                                                border: '1px solid #CBD5E1',
+                                                fontSize: '0.82rem',
+                                                color: '#0F2942',
+                                                background: '#FFFFFF',
+                                                outline: 'none'
+                                            }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSendSimMessage()}
+                                            disabled={simSending || !simInput.trim()}
+                                            style={{
+                                                padding: '10px 18px',
+                                                borderRadius: '8px',
+                                                border: 'none',
+                                                background: simSending || !simInput.trim() ? '#94A3B8' : 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                                color: '#FFFFFF',
+                                                fontSize: '0.82rem',
+                                                fontWeight: 700,
+                                                cursor: simSending || !simInput.trim() ? 'not-allowed' : 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
+                                            }}
+                                        >
+                                            <Send size={14} />
+                                            Probar
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
