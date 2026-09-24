@@ -213,41 +213,43 @@ export async function fetchPacienteDetalle(paciente) {
             let consultasData = [];
             let turnosProximosData = [];
 
-            // 4.1 Intentar primero endpoint en tiempo real de SALUS (sync-server) con resolución dinámica de URL
-            try {
-                const params = new URLSearchParams();
-                if (dni) params.append('dni', dni);
-                if (nhc) params.append('nhc', nhc);
-                if (telefono) params.append('telefono', telefono);
-                if (nombre) params.append('nombre', nombre);
+            // 4.1 Intentar primero endpoint en tiempo real de SALUS (sync-server) si está disponible en la red
+            const syncBase = getSalusSyncBaseUrl();
+            if (syncBase) {
+                try {
+                    const params = new URLSearchParams();
+                    if (dni) params.append('dni', dni);
+                    if (nhc) params.append('nhc', nhc);
+                    if (telefono) params.append('telefono', telefono);
+                    if (nombre) params.append('nombre', nombre);
 
-                const ctrl = new AbortController();
-                const timeoutId = setTimeout(() => ctrl.abort(), 3500);
+                    const ctrl = new AbortController();
+                    const timeoutId = setTimeout(() => ctrl.abort(), 3500);
 
-                const syncBase = getSalusSyncBaseUrl();
-                const res = await fetch(`${syncBase}/api/salus/paciente-historial-clinico?${params.toString()}`, {
-                    signal: ctrl.signal
-                });
-                clearTimeout(timeoutId);
+                    const res = await fetch(`${syncBase}/api/salus/paciente-historial-clinico?${params.toString()}`, {
+                        signal: ctrl.signal
+                    });
+                    clearTimeout(timeoutId);
 
-                if (res.ok) {
-                    const json = await res.json();
-                    if (json.success) {
-                        consultasData = json.consultas || [];
-                        turnosProximosData = json.turnosProximos || [];
+                    if (res.ok) {
+                        const json = await res.json();
+                        if (json.success) {
+                            consultasData = json.consultas || [];
+                            turnosProximosData = json.turnosProximos || [];
+                        }
                     }
+                } catch (err) {
+                    // Fallback silencioso a base Supabase para dispositivos en red o clientes remotos
                 }
-            } catch (err) {
-                // Fallback silencioso a base Supabase para dispositivos en red o clientes remotos
             }
 
-            // 4.2 Si no obtuvimos consultas de SALUS vía sync-server, recurrir a las tablas globales de Supabase
+            // 4.2 Si no obtuvimos consultas de SALUS vía sync-server (ej: clientes remotos o Vercel), recurrir a las tablas globales de Supabase
             if (consultasData.length === 0) {
                 // A. Buscar en salus_visitas (historial unificado de consultas médicas en Supabase)
                 try {
                     let qVis = supabase
                         .from('salus_visitas')
-                        .select('id_visita, paciente, cliente, tipo_visita, especialidad, grupo_agenda, fecha_visita, hora_inicio, asistencia, nhc, nif, motivo_visita, responsable, centro');
+                        .select('id_visita, paciente, cliente, tipo_visita, especialidad, grupo_agenda, fecha_visita, hora_inicio, asistencia, nhc, nif, motivo_visita, responsable, centro, comentarios');
 
                     if (nhc && dni) {
                         qVis = qVis.or(`nhc.eq.${nhc},nif.eq.${dni}`);
@@ -265,6 +267,19 @@ export async function fetchPacienteDetalle(paciente) {
                     const { data: svVisitas } = await qVis.order('fecha_visita', { ascending: false }).limit(50);
                     if (svVisitas && svVisitas.length > 0) {
                         svVisitas.forEach(v => {
+                            let diag = null;
+                            let form = null;
+                            let mot = v.motivo_visita || null;
+                            if (v.comentarios) {
+                                try {
+                                    const parsed = JSON.parse(v.comentarios);
+                                    diag = parsed.diagnostico || null;
+                                    form = parsed.formulario || null;
+                                    mot = parsed.motivo || mot;
+                                } catch {
+                                    diag = v.comentarios;
+                                }
+                            }
                             consultasData.push({
                                 id_visita: v.id_visita,
                                 fecha_visita: v.fecha_visita,
@@ -277,8 +292,9 @@ export async function fetchPacienteDetalle(paciente) {
                                 centro: v.centro || 'Sanatorio Argentino',
                                 paciente: v.paciente || nombre,
                                 nhc: v.nhc,
-                                diagnostico: null,
-                                motivo: v.motivo_visita,
+                                diagnostico: diag,
+                                motivo: mot,
+                                formulario: form,
                                 origen: 'salus_presencial'
                             });
                         });

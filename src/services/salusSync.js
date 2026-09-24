@@ -14,6 +14,11 @@ export function getSalusSyncBaseUrl() {
     if (import.meta.env.VITE_SALUS_SYNC_URL) {
         return import.meta.env.VITE_SALUS_SYNC_URL.replace(/\/api\/salus\/?$/, '');
     }
+    // Si la aplicación se carga sobre HTTPS (ej: producción en Vercel), el navegador bloquea llamadas HTTP (Mixed Content).
+    // En ese caso devolvemos null para que el frontend consulte directamente la base de datos central de Supabase.
+    if (window.location.protocol === 'https:') {
+        return null;
+    }
     const host = window.location.hostname;
     const isLocal = host === 'localhost' || host === '127.0.0.1';
     // Si estamos en Vite dev server (puerto 5173), Vite proxea /api/salus de forma transparente
@@ -23,11 +28,7 @@ export function getSalusSyncBaseUrl() {
     if (isLocal) {
         return 'http://localhost:3456';
     }
-    // Si el usuario está navegando desde la red LAN interna del Sanatorio (128.223.x.x o 192.168.x.x)
-    if (/^(128\.223\.|192\.168\.|10\.)/.test(host)) {
-        return `http://${host}:3456`;
-    }
-    // IP fija del servidor de Sync en Sanatorio Argentino (intranet)
+    // IP fija del servidor de Sync en Sanatorio Argentino (intranet LAN: 128.223.17.60)
     return 'http://128.223.17.60:3456';
 }
 

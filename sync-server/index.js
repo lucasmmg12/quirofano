@@ -435,6 +435,11 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
                             fVisita = String(c.fecha_visita).slice(0, 10);
                         }
                     }
+                    const extraData = {};
+                    if (c.diagnostico) extraData.diagnostico = c.diagnostico;
+                    if (c.formulario) extraData.formulario = c.formulario;
+                    if (c.motivo) extraData.motivo = c.motivo;
+
                     return {
                         id_visita: c.id_visita,
                         paciente: c.paciente || null,
@@ -449,6 +454,7 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
                         grupo_agenda: c.agenda || null,
                         asistencia: c.asistencia || 'Presente',
                         motivo_visita: c.motivo || null,
+                        comentarios: Object.keys(extraData).length > 0 ? JSON.stringify(extraData) : null,
                         synced_at: new Date().toISOString()
                     };
                 }).filter(r => r.id_visita);
@@ -456,6 +462,40 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
                 for (let i = 0; i < rowsToUpsert.length; i += 50) {
                     const chunk = rowsToUpsert.slice(i, i + 50);
                     await supabase.from('salus_visitas').upsert(chunk, { onConflict: 'id_visita' });
+                }
+
+                // Persistir también diagnósticos a calidad_pacientes_diagnosticos si tienen datos clínicos
+                const diagsToUpsert = consultas
+                    .filter(c => c.diagnostico || c.motivo || c.formulario)
+                    .map(c => {
+                        let fVisitaIso = null;
+                        if (c.fecha_visita) {
+                            if (c.fecha_visita.includes('/')) {
+                                const [d, m, y] = c.fecha_visita.split('/');
+                                fVisitaIso = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+                            } else {
+                                fVisitaIso = String(c.fecha_visita).slice(0, 10);
+                            }
+                        }
+                        return {
+                            id_visita: c.id_visita,
+                            nhc: String(c.nhc || resolvedNhc || ''),
+                            dni: resolvedDni ? String(resolvedDni) : null,
+                            paciente: c.paciente || null,
+                            fecha_visita: fVisitaIso,
+                            diagnostico: c.diagnostico || null,
+                            motivo: c.motivo || null,
+                            formulario: c.formulario || null,
+                            centro: c.centro || null,
+                            updated_at: new Date().toISOString()
+                        };
+                    });
+
+                if (diagsToUpsert.length > 0) {
+                    for (let i = 0; i < diagsToUpsert.length; i += 50) {
+                        const chunk = diagsToUpsert.slice(i, i + 50);
+                        await supabase.from('calidad_pacientes_diagnosticos').upsert(chunk, { onConflict: 'id_visita' });
+                    }
                 }
             } catch (ePersist) {
                 console.warn('⚠️ [Historial Clinico] Error persistiendo a Supabase salus_visitas:', ePersist.message);
@@ -3754,6 +3794,42 @@ app.listen(PORT, '0.0.0.0', () => {
                 console.warn('⚠️ [Médicos Auto] Error en ciclo periódico:', e.message);
             }
         }, 30 * 60 * 1000);
+
+        // 4. HISTORIAL CLÍNICO CONTACT CENTER (Cada 4 min y al inicio)
+        // Sincroniza consultas, diagnósticos y síntomas de los pacientes de Contact Center hacia Supabase
+        async function syncHistorialContactCenter() {
+            try {
+                const poolInst = await getPool();
+                const { data: convs, error: convErr } = await supabase
+                    .from('contact_center_conversations')
+                    .select('phone, dni, nhc, nombre_completo')
+                    .or('dni.not.is.null,nhc.not.is.null')
+                    .order('last_message_at', { ascending: false })
+                    .limit(50);
+
+                if (!convErr && convs && convs.length > 0) {
+                    console.log(`⏰ [Historial Contact Center Auto] Sincronizando historial 360 de ${convs.length} pacientes activos hacia Supabase...`);
+                    for (const c of convs) {
+                        try {
+                            await getPacienteHistorialClinico(poolInst, {
+                                nhc: c.nhc,
+                                dni: c.dni,
+                                telefono: c.phone,
+                                nombre: c.nombre_completo
+                            });
+                        } catch (_) {
+                            // Ignorar errores individuales para no interrumpir el lote
+                        }
+                    }
+                    console.log('⏰ [Historial Contact Center Auto] ✅ Sincronización de historiales completada con éxito.');
+                }
+            } catch (e) {
+                console.warn('⚠️ [Historial Contact Center Auto] Error en ciclo:', e.message);
+            }
+        }
+
+        setTimeout(syncHistorialContactCenter, 5000);
+        setInterval(syncHistorialContactCenter, 4 * 60 * 1000);
     }).catch(err => console.warn('⚠️ Conexión inicial fallida:', err.message));
 });
 
