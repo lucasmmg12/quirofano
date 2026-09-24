@@ -1825,38 +1825,42 @@ DIRECTIVAS PRINCIPALES:
    - Si el paciente manifiesta que se equivocó, desea cambiar de opción o volver, o si le das opciones informativas, recuérdale que puede escribir "Menú" o "Atrás" para regresar al inicio.
 8. FORMATO: Breve y claro, optimizado para lectura en WhatsApp (máximo 2 párrafos cortos, uso de *negrita* para resaltar datos clave, emojis médicos sobrios 🏥 🩺). Al final de respuestas orientativas puedes agregar: "\\n\\n🔙 *Volver:* Escribí *\\"Menú\\"* | 👤 *Agente:* Escribí *\\"Agente\\"*".`;
 
+export const DEFAULT_HANDOFF_NORMAL = `👩‍⚕️ Un agente te responderá a la brevedad. El bot quedará en pausa.\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.`;
+
+export const DEFAULT_HANDOFF_DELAY = `⚠️ En este momento estamos experimentando una alta demanda en nuestro canal de atención y presentamos algunas demoras. Un asesor te responderá a la brevedad por orden de llegada. El bot quedará en pausa.\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.`;
+
 /**
- * Obtiene la configuración activa del chatbot desde app_config
+ * Obtiene la configuración activa del chatbot desde app_config y el estado de la cola
  */
 export async function fetchChatbotConfig() {
     try {
-        const { data, error } = await supabase
-            .from('app_config')
-            .select('key, value, updated_at, updated_by')
-            .in('key', [
-                'contact_center_system_prompt',
-                'contact_center_ai_model',
-                'contact_center_ai_temperature',
-                'contact_center_bot_name'
-            ]);
+        const [configRes, queueRes] = await Promise.all([
+            supabase
+                .from('app_config')
+                .select('key, value, updated_at, updated_by')
+                .in('key', [
+                    'contact_center_system_prompt',
+                    'contact_center_ai_model',
+                    'contact_center_ai_temperature',
+                    'contact_center_bot_name',
+                    'contact_center_handoff_normal',
+                    'contact_center_handoff_delay',
+                    'contact_center_delay_threshold'
+                ]),
+            supabase
+                .from('contact_center_conversations')
+                .select('phone', { count: 'exact', head: true })
+                .eq('status', 'sin_asignar')
+        ]);
 
-        if (error) {
-            console.error('[contactCenterService] Error fetching chatbot config:', error);
-            return {
-                systemPrompt: DEFAULT_CHATBOT_SYSTEM_PROMPT,
-                model: 'gpt-4o',
-                temperature: '0.3',
-                botName: 'Dora',
-                updatedAt: null,
-                updatedBy: null
-            };
-        }
+        const data = configRes.data || [];
+        const unassignedQueueCount = queueRes.count || 0;
 
         const map = {};
         let latestUpdate = null;
         let lastUser = null;
 
-        (data || []).forEach(row => {
+        data.forEach(row => {
             map[row.key] = row.value;
             if (row.updated_at && (!latestUpdate || new Date(row.updated_at) > new Date(latestUpdate))) {
                 latestUpdate = row.updated_at;
@@ -1869,6 +1873,10 @@ export async function fetchChatbotConfig() {
             model: map['contact_center_ai_model'] || 'gpt-4o',
             temperature: map['contact_center_ai_temperature'] || '0.3',
             botName: map['contact_center_bot_name'] || 'Dora',
+            handoffNormal: map['contact_center_handoff_normal'] || DEFAULT_HANDOFF_NORMAL,
+            handoffDelay: map['contact_center_handoff_delay'] || DEFAULT_HANDOFF_DELAY,
+            delayThreshold: map['contact_center_delay_threshold'] ? parseInt(map['contact_center_delay_threshold'], 10) : 5,
+            unassignedQueueCount,
             updatedAt: latestUpdate,
             updatedBy: lastUser
         };
@@ -1879,6 +1887,10 @@ export async function fetchChatbotConfig() {
             model: 'gpt-4o',
             temperature: '0.3',
             botName: 'Dora',
+            handoffNormal: DEFAULT_HANDOFF_NORMAL,
+            handoffDelay: DEFAULT_HANDOFF_DELAY,
+            delayThreshold: 5,
+            unassignedQueueCount: 0,
             updatedAt: null,
             updatedBy: null
         };
@@ -1888,7 +1900,16 @@ export async function fetchChatbotConfig() {
 /**
  * Guarda y actualiza la configuración del chatbot en app_config
  */
-export async function saveChatbotConfig({ systemPrompt, model = 'gpt-4o', temperature = '0.3', botName = 'Dora', user = 'admin' }) {
+export async function saveChatbotConfig({
+    systemPrompt,
+    model = 'gpt-4o',
+    temperature = '0.3',
+    botName = 'Dora',
+    handoffNormal = DEFAULT_HANDOFF_NORMAL,
+    handoffDelay = DEFAULT_HANDOFF_DELAY,
+    delayThreshold = 5,
+    user = 'admin'
+}) {
     const now = new Date().toISOString();
     const rows = [
         {
@@ -1919,6 +1940,30 @@ export async function saveChatbotConfig({ systemPrompt, model = 'gpt-4o', temper
             key: 'contact_center_bot_name',
             value: botName,
             label: 'Nombre del Asistente Virtual',
+            category: 'contact_center',
+            updated_at: now,
+            updated_by: user
+        },
+        {
+            key: 'contact_center_handoff_normal',
+            value: handoffNormal,
+            label: 'Mensaje de derivación estándar (Cola normal)',
+            category: 'contact_center',
+            updated_at: now,
+            updated_by: user
+        },
+        {
+            key: 'contact_center_handoff_delay',
+            value: handoffDelay,
+            label: 'Mensaje de derivación por alta demanda (Demoras)',
+            category: 'contact_center',
+            updated_at: now,
+            updated_by: user
+        },
+        {
+            key: 'contact_center_delay_threshold',
+            value: String(delayThreshold),
+            label: 'Umbral de chats sin asignar para activar aviso de demoras',
             category: 'contact_center',
             updated_at: now,
             updated_by: user

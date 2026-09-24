@@ -831,16 +831,96 @@ function isContactCenterOpen(now: Date = new Date()): boolean {
     return false; // Domingos y fuera de horario
 }
 
+let cachedHandoffSettings: {
+    normalMessage: string;
+    delayMessage: string;
+    threshold: number;
+    timestamp: number;
+} | null = null;
+
+let currentQueueCount = 0;
+let lastQueueCheck = 0;
+
 /**
- * Mensaje institucional cuando el bot se frena y transfiere a los agentes de atención
+ * Consulta la cantidad de conversaciones sin asignar en la cola y la configuración de avisos de demora
  */
-function getAgentHandoffNotice(): string {
+async function refreshQueueAndHandoffConfig(supabaseClient: any): Promise<number> {
+    const now = Date.now();
+    // Cache de 15 segundos para no saturar la base de datos en tráfico alto
+    if (now - lastQueueCheck < 15000 && cachedHandoffSettings) {
+        return currentQueueCount;
+    }
+    lastQueueCheck = now;
+
+    try {
+        if (supabaseClient) {
+            // 1. Obtener cantidad de chats sin asignar en espera
+            const { count, error: countErr } = await supabaseClient
+                .from('contact_center_conversations')
+                .select('phone', { count: 'exact', head: true })
+                .eq('status', 'sin_asignar');
+
+            if (!countErr && typeof count === 'number') {
+                currentQueueCount = count;
+            }
+
+            // 2. Obtener textos personalizados de derivación y umbral de demoras desde app_config
+            const { data: configData, error: cfgErr } = await supabaseClient
+                .from('app_config')
+                .select('key, value')
+                .in('key', [
+                    'contact_center_handoff_normal',
+                    'contact_center_handoff_delay',
+                    'contact_center_delay_threshold'
+                ]);
+
+            if (!cfgErr && configData && configData.length > 0) {
+                const map: Record<string, string> = {};
+                for (const row of configData) {
+                    map[row.key] = row.value;
+                }
+                cachedHandoffSettings = {
+                    normalMessage: map['contact_center_handoff_normal'] || '',
+                    delayMessage: map['contact_center_handoff_delay'] || '',
+                    threshold: map['contact_center_delay_threshold'] ? parseInt(map['contact_center_delay_threshold'], 10) : 5,
+                    timestamp: now
+                };
+            }
+        }
+    } catch (err) {
+        console.warn('[queue-status] Error consultando cola sin asignar o configuración de handoff:', err);
+    }
+
+    return currentQueueCount;
+}
+
+/**
+ * Mensaje institucional cuando el bot se frena y transfiere a los agentes de atención.
+ * Si hay muchas conversaciones sin asignar esperando (umbral >= 5 o configurado),
+ * advierte empáticamente al paciente sobre la demora.
+ */
+function getAgentHandoffNotice(queueCountOverride?: number): string {
     const open = isContactCenterOpen();
-    if (open) {
-        return `👩‍⚕️ Un agente te responderá a la brevedad. El bot quedará en pausa.\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.`;
-    } else {
+    if (!open) {
         return `🕒 *Fuera de horario de atención:*\nNuestro horario de Contact Center es de Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\nTu mensaje quedó registrado y un agente te responderá al inicio del próximo día hábil.\n\n🚨 *Guardias 24 hs:* Sede 01 (San Luis 432 Oeste) activa para urgencias.`;
     }
+
+    const count = typeof queueCountOverride === 'number' ? queueCountOverride : currentQueueCount;
+    const threshold = (cachedHandoffSettings && cachedHandoffSettings.threshold > 0) ? cachedHandoffSettings.threshold : 5;
+
+    // Si la cantidad de mensajes sin asignar supera o iguala el umbral, avisar sobre demoras
+    if (count >= threshold) {
+        if (cachedHandoffSettings?.delayMessage && cachedHandoffSettings.delayMessage.trim().length > 10) {
+            return cachedHandoffSettings.delayMessage.replace(/\{cola\}/g, String(count));
+        }
+        return `⚠️ *Aviso de Demora:* En este momento estamos experimentando una alta demanda en nuestro canal de atención y presentamos algunas demoras. Un asesor te responderá a la brevedad por orden de llegada. El bot quedará en pausa.\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.`;
+    }
+
+    // Flujo normal sin demoras críticas
+    if (cachedHandoffSettings?.normalMessage && cachedHandoffSettings.normalMessage.trim().length > 10) {
+        return cachedHandoffSettings.normalMessage.replace(/\{cola\}/g, String(count));
+    }
+    return `👩‍⚕️ Un agente te responderá a la brevedad. El bot quedará en pausa.\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.`;
 }
 
 /**
@@ -1703,6 +1783,9 @@ async function handleChatbotTriage(
     if (!phone || (!incomingText && !mediaUrl)) return;
     const cleanText = (incomingText || '').trim();
     const isIncomingMedia = (mediaType === 'image' || mediaType === 'document' || cleanText === '[image]' || cleanText === '[document]' || Boolean(mediaUrl));
+
+    // Refrescar cola de espera y configuración de avisos de demora en caliente
+    await refreshQueueAndHandoffConfig(supabase);
 
     // 1. Obtener estado actual de la conversación
     const { data: conv } = await supabase

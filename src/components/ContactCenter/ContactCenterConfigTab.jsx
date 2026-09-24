@@ -2,12 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
     Bot, Save, RotateCcw, Copy, Check, Sparkles, Sliders, Shield, 
     AlertCircle, Info, RefreshCw, Eye, EyeOff, Terminal, CheckCircle2,
-    Cpu, Activity, Zap
+    Cpu, Activity, Zap, Users, MessageSquare, Clock, AlertTriangle
 } from 'lucide-react';
 import { 
     fetchChatbotConfig, 
     saveChatbotConfig, 
-    DEFAULT_CHATBOT_SYSTEM_PROMPT 
+    DEFAULT_CHATBOT_SYSTEM_PROMPT,
+    DEFAULT_HANDOFF_NORMAL,
+    DEFAULT_HANDOFF_DELAY
 } from '../../services/contactCenterService';
 
 const VARIABLE_TAGS = [
@@ -23,13 +25,19 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
     const [copied, setCopied] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
 
-    // Form state
+    // Form state - AI Bot
     const [systemPrompt, setSystemPrompt] = useState(DEFAULT_CHATBOT_SYSTEM_PROMPT);
     const [botName, setBotName] = useState('Dora');
     const [model, setModel] = useState('gpt-4o');
     const [temperature, setTemperature] = useState('0.3');
     const [lastUpdated, setLastUpdated] = useState(null);
     const [lastUser, setLastUser] = useState(null);
+
+    // Form state - Handoff & Delays
+    const [handoffNormal, setHandoffNormal] = useState(DEFAULT_HANDOFF_NORMAL);
+    const [handoffDelay, setHandoffDelay] = useState(DEFAULT_HANDOFF_DELAY);
+    const [delayThreshold, setDelayThreshold] = useState(5);
+    const [unassignedQueueCount, setUnassignedQueueCount] = useState(0);
 
     const textareaRef = useRef(null);
 
@@ -42,6 +50,10 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
             setBotName(cfg.botName || 'Dora');
             setModel(cfg.model || 'gpt-4o');
             setTemperature(cfg.temperature || '0.3');
+            setHandoffNormal(cfg.handoffNormal || DEFAULT_HANDOFF_NORMAL);
+            setHandoffDelay(cfg.handoffDelay || DEFAULT_HANDOFF_DELAY);
+            setDelayThreshold(cfg.delayThreshold ?? 5);
+            setUnassignedQueueCount(cfg.unassignedQueueCount || 0);
             setLastUpdated(cfg.updatedAt);
             setLastUser(cfg.updatedBy);
         } catch (err) {
@@ -88,11 +100,14 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                 model,
                 temperature,
                 botName,
+                handoffNormal,
+                handoffDelay,
+                delayThreshold: parseInt(delayThreshold, 10) || 5,
                 user: userIdentifier
             });
             setLastUpdated(new Date().toISOString());
             setLastUser(userIdentifier);
-            addToast?.('¡Configuración del Chatbot actualizada exitosamente!', 'success');
+            addToast?.('¡Configuración del Chatbot y Derivaciones actualizada exitosamente!', 'success');
         } catch (err) {
             console.error('Error guardando config:', err);
             addToast?.('Error al guardar la configuración en la base de datos', 'error');
@@ -103,12 +118,15 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
 
     // Restablecer al prompt de fábrica
     const handleResetDefault = () => {
-        if (window.confirm('¿Estás seguro de restablecer el System Prompt al texto predeterminado de fábrica? Perderás los cambios no guardados.')) {
+        if (window.confirm('¿Estás seguro de restablecer los valores al texto predeterminado de fábrica? Perderás los cambios no guardados.')) {
             setSystemPrompt(DEFAULT_CHATBOT_SYSTEM_PROMPT);
             setModel('gpt-4o');
             setTemperature('0.3');
             setBotName('Dora');
-            addToast?.('Prompt restablecido al valor predeterminado', 'info');
+            setHandoffNormal(DEFAULT_HANDOFF_NORMAL);
+            setHandoffDelay(DEFAULT_HANDOFF_DELAY);
+            setDelayThreshold(5);
+            addToast?.('Configuración restablecida al valor predeterminado', 'info');
         }
     };
 
@@ -604,6 +622,257 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                     </div>
                 </div>
 
+            </div>
+
+            {/* Tarjeta de Avisos de Derivación y Detección de Demoras */}
+            <div style={{
+                background: '#FFFFFF',
+                borderRadius: '16px',
+                border: '1px solid #E2E8F0',
+                padding: '24px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '20px'
+            }}>
+                {/* Header de la sección */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        <div style={{
+                            width: '44px',
+                            height: '44px',
+                            borderRadius: '12px',
+                            background: unassignedQueueCount >= delayThreshold ? '#FEF3C7' : '#F0F9FF',
+                            color: unassignedQueueCount >= delayThreshold ? '#D97706' : '#0284C7',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            border: `1px solid ${unassignedQueueCount >= delayThreshold ? '#FDE68A' : '#BAE6FD'}`
+                        }}>
+                            {unassignedQueueCount >= delayThreshold ? <AlertTriangle size={24} /> : <MessageSquare size={24} />}
+                        </div>
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F2942' }}>
+                                    Avisos de Derivación y Control Dinámico de Demoras
+                                </h3>
+                                <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 700,
+                                    padding: '4px 10px',
+                                    borderRadius: '12px',
+                                    background: unassignedQueueCount >= delayThreshold ? '#FEF2F2' : '#ECFDF5',
+                                    color: unassignedQueueCount >= delayThreshold ? '#DC2626' : '#059669',
+                                    border: `1px solid ${unassignedQueueCount >= delayThreshold ? '#FECACA' : '#A7F3D0'}`
+                                }}>
+                                    <Users size={13} />
+                                    Cola actual: {unassignedQueueCount} {unassignedQueueCount === 1 ? 'paciente' : 'pacientes'} sin asignar
+                                </span>
+                            </div>
+                            <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: '#64748B' }}>
+                                Cuando el bot se frena para pasarle el caso a un asesor humano, despacha automáticamente el mensaje de despedida correspondiente. Si hay muchos pacientes en cola, le advierte que estamos con algunas demoras.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Selector de Umbral de Activación */}
+                    <div style={{
+                        background: '#F8FAFC',
+                        border: '1px solid #CBD5E1',
+                        borderRadius: '12px',
+                        padding: '10px 16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '14px'
+                    }}>
+                        <div>
+                            <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>
+                                Umbral para advertir demoras:
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                (Si hay ≥ {delayThreshold} chats sin asignar)
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <input
+                                type="range"
+                                min="1"
+                                max="25"
+                                step="1"
+                                value={delayThreshold}
+                                onChange={(e) => setDelayThreshold(Number(e.target.value))}
+                                style={{ width: '90px', cursor: 'pointer' }}
+                            />
+                            <span style={{
+                                minWidth: '32px',
+                                textAlign: 'center',
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                background: '#FFFFFF',
+                                border: '1px solid #CBD5E1',
+                                fontSize: '0.84rem',
+                                fontWeight: 800,
+                                color: '#0F2942'
+                            }}>
+                                {delayThreshold}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Grid 2 Columnas de Mensajes: Normal vs Demora */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                    
+                    {/* Caja 1: Mensaje Normal */}
+                    <div style={{
+                        background: unassignedQueueCount < delayThreshold ? '#F0FDF4' : '#F8FAFC',
+                        borderRadius: '12px',
+                        border: `1px solid ${unassignedQueueCount < delayThreshold ? '#86EFAC' : '#E2E8F0'}`,
+                        padding: '16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{
+                                    width: '10px',
+                                    height: '10px',
+                                    borderRadius: '50%',
+                                    background: '#16A34A'
+                                }} />
+                                <strong style={{ fontSize: '0.85rem', color: '#166534' }}>
+                                    Mensaje Estándar (Carga Normal)
+                                </strong>
+                            </div>
+                            {unassignedQueueCount < delayThreshold && (
+                                <span style={{
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    background: '#DCFCE7',
+                                    color: '#15803D',
+                                    padding: '2px 6px',
+                                    borderRadius: '6px'
+                                }}>
+                                    ACTUALMENTE ACTIVO
+                                </span>
+                            )}
+                        </div>
+                        <p style={{ margin: 0, fontSize: '0.74rem', color: '#475569' }}>
+                            Se envía cuando la cola de espera es menor a {delayThreshold} conversaciones:
+                        </p>
+                        <textarea
+                            value={handoffNormal}
+                            onChange={(e) => setHandoffNormal(e.target.value)}
+                            rows={5}
+                            style={{
+                                width: '100%',
+                                padding: '10px 12px',
+                                borderRadius: '8px',
+                                border: '1px solid #CBD5E1',
+                                fontSize: '0.82rem',
+                                lineHeight: 1.5,
+                                color: '#0F2942',
+                                background: '#FFFFFF',
+                                resize: 'vertical'
+                            }}
+                            placeholder="Mensaje de derivación habitual..."
+                        />
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <button
+                                type="button"
+                                onClick={() => setHandoffNormal(DEFAULT_HANDOFF_NORMAL)}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#64748B',
+                                    fontSize: '0.72rem',
+                                    cursor: 'pointer',
+                                    textDecoration: 'underline'
+                                }}
+                            >
+                                Restaurar mensaje original
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Caja 2: Mensaje de Demora */}
+                    <div style={{
+                        background: unassignedQueueCount >= delayThreshold ? '#FFFBEB' : '#F8FAFC',
+                        borderRadius: '12px',
+                        border: `1px solid ${unassignedQueueCount >= delayThreshold ? '#FCD34D' : '#E2E8F0'}`,
+                        padding: '16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{
+                                    width: '10px',
+                                    height: '10px',
+                                    borderRadius: '50%',
+                                    background: '#D97706'
+                                }} />
+                                <strong style={{ fontSize: '0.85rem', color: '#92400E' }}>
+                                    Mensaje de Alta Demora (Cola Saturada)
+                                </strong>
+                            </div>
+                            {unassignedQueueCount >= delayThreshold && (
+                                <span style={{
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    background: '#FEF3C7',
+                                    color: '#B45309',
+                                    padding: '2px 6px',
+                                    borderRadius: '6px'
+                                }}>
+                                    ACTUALMENTE ACTIVO
+                                </span>
+                            )}
+                        </div>
+                        <p style={{ margin: 0, fontSize: '0.74rem', color: '#475569' }}>
+                            Se envía automáticamente si hay {delayThreshold} o más mensajes sin responder:
+                        </p>
+                        <textarea
+                            value={handoffDelay}
+                            onChange={(e) => setHandoffDelay(e.target.value)}
+                            rows={5}
+                            style={{
+                                width: '100%',
+                                padding: '10px 12px',
+                                borderRadius: '8px',
+                                border: '1px solid #CBD5E1',
+                                fontSize: '0.82rem',
+                                lineHeight: 1.5,
+                                color: '#0F2942',
+                                background: '#FFFFFF',
+                                resize: 'vertical'
+                            }}
+                            placeholder="Mensaje de advertencia de demoras..."
+                        />
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <button
+                                type="button"
+                                onClick={() => setHandoffDelay(DEFAULT_HANDOFF_DELAY)}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#64748B',
+                                    fontSize: '0.72rem',
+                                    cursor: 'pointer',
+                                    textDecoration: 'underline'
+                                }}
+                            >
+                                Restaurar mensaje original
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
             </div>
 
         </div>
