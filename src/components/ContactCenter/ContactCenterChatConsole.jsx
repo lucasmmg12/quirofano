@@ -1015,7 +1015,8 @@ export default function ContactCenterChatConsole({
         myAliases.includes(selectedChat.assignedTo.toLowerCase()) ||
         (selectedChat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
     );
-    const isUnassigned = !selectedChat.assignedTo || selectedChat.status === 'sin_asignar';
+    const isBot = (selectedChat.status === 'bot' || (selectedChat.botActive && selectedChat.status !== 'sin_asignar' && !selectedChat.assignedTo));
+    const isUnassigned = !selectedChat.assignedTo && selectedChat.status === 'sin_asignar';
     const assignedAgentObj = selectedChat.assignedTo ? getAgentById(selectedChat.assignedTo) : null;
 
     // Regla estricta: Dos agentes no pueden escribir a la vez. Siempre sí o sí deben asignárselo.
@@ -1212,7 +1213,11 @@ export default function ContactCenterChatConsole({
                         (chat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
                     );
                     const closed = isClosedOrArchived(chat.status);
-                    if (filterTab === 'sin_asignar') return (!chat.assignedTo || chat.status === 'sin_asignar') && !closed;
+                    const isChatBot = (chat.status === 'bot' || (chat.botActive && chat.status !== 'sin_asignar' && !chat.assignedTo)) && !closed;
+                    const isChatUnassigned = !chat.assignedTo && chat.status === 'sin_asignar' && !closed;
+
+                    if (filterTab === 'bot') return isChatBot;
+                    if (filterTab === 'sin_asignar') return isChatUnassigned;
                     if (filterTab === 'asignadas_mi') return isMine && !closed;
                     if (filterTab === 'asignadas_otros') return chatAssigned && !isMine && !closed;
                     if (filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') return closed;
@@ -1229,8 +1234,11 @@ export default function ContactCenterChatConsole({
                 (chat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
             );
             const closed = isClosedOrArchived(chat.status);
+            const isChatBot = (chat.status === 'bot' || (chat.botActive && chat.status !== 'sin_asignar' && !chat.assignedTo)) && !closed;
+            const isChatUnassigned = !chat.assignedTo && chat.status === 'sin_asignar' && !closed;
 
-            if (filterTab === 'sin_asignar') return (!chat.assignedTo || chat.status === 'sin_asignar') && !closed;
+            if (filterTab === 'bot') return isChatBot;
+            if (filterTab === 'sin_asignar') return isChatUnassigned;
             if (filterTab === 'asignadas_mi') return isMine && !closed;
             if (filterTab === 'asignadas_otros') return chatAssigned && !isMine && !closed;
             if (filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') return closed;
@@ -1806,8 +1814,26 @@ export default function ContactCenterChatConsole({
                 }}>
                     <button 
                         onClick={() => {
+                            setFilterTab('bot');
+                            const first = chats.find(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c.status));
+                            if (first && onSelectChat) onSelectChat(first.id);
+                        }}
+                        style={{
+                            padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                            border: filterTab === 'bot' ? 'none' : `1px solid ${themeCardBorder}`,
+                            cursor: 'pointer', whiteSpace: 'nowrap',
+                            background: filterTab === 'bot' ? '#7C3AED' : themeCardBg,
+                            color: filterTab === 'bot' ? '#FFFFFF' : themeCardText,
+                            boxShadow: filterTab === 'bot' ? '0 2px 4px rgba(124, 58, 237, 0.25)' : 'none',
+                            display: 'flex', alignItems: 'center', gap: '4px'
+                        }}
+                    >
+                        🤖 Bot ({chats.filter(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c.status)).length})
+                    </button>
+                    <button 
+                        onClick={() => {
                             setFilterTab('sin_asignar');
-                            const first = chats.find(c => (!c.assignedTo || c.status === 'sin_asignar') && !isClosedOrArchived(c.status));
+                            const first = chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c.status));
                             if (first && onSelectChat) onSelectChat(first.id);
                         }}
                         style={{
@@ -1819,7 +1845,7 @@ export default function ContactCenterChatConsole({
                             boxShadow: filterTab === 'sin_asignar' ? '0 2px 4px rgba(2,132,199,0.25)' : 'none'
                         }}
                     >
-                        Sin asignar ({chats.filter(c => (!c.assignedTo || c.status === 'sin_asignar') && !isClosedOrArchived(c.status)).length})
+                        Sin asignar ({chats.filter(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c.status)).length})
                     </button>
                     <button 
                         onClick={() => {
@@ -2106,7 +2132,7 @@ export default function ContactCenterChatConsole({
                                                     color: isClosedOrArchived(chat.status) ? (ccTheme.isDark ? '#6EE7B7' : '#047857') : themeCardText,
                                                     border: `1px solid ${isClosedOrArchived(chat.status) ? (ccTheme.isDark ? '#047857' : '#A7F3D0') : themeCardBorder}`
                                                 }}>
-                                                    {isClosedOrArchived(chat.status) ? '📁 Finalizado' : (chat.assignedToName ? `👤 ${chat.assignedToName}` : '⚠️ Sin asignar')}
+                                                    {isClosedOrArchived(chat.status) ? '📁 Finalizado' : (chat.assignedToName ? `👤 ${chat.assignedToName}` : ((chat.status === 'bot' || (chat.botActive && chat.status !== 'sin_asignar')) ? '🤖 Bot' : '⚠️ Sin asignar'))}
                                                 </span>
                                             )}
                                         </div>
@@ -2132,6 +2158,14 @@ export default function ContactCenterChatConsole({
                                             }}>
                                                 <User size={10} />
                                                 {assignedAgent.name} {chatIsMine ? '(Tú)' : ''}
+                                            </span>
+                                        ) : (chat.status === 'bot' || (chat.botActive && chat.status !== 'sin_asignar')) ? (
+                                            <span style={{
+                                                fontSize: '0.66rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
+                                                background: ccTheme.isDark ? '#3B0764' : '#F3E8FF', color: ccTheme.isDark ? '#D8B4FE' : '#7E22CE', border: `1px solid ${ccTheme.isDark ? '#6B21A8' : '#D8B4FE'}`,
+                                                display: 'flex', alignItems: 'center', gap: '3px'
+                                            }}>
+                                                🤖 Bot (Auto-gestión)
                                             </span>
                                         ) : (
                                             <span style={{
@@ -2504,6 +2538,19 @@ export default function ContactCenterChatConsole({
                                     <RefreshCw size={12} /> Reabrir Atención
                                 </button>
                             </div>
+                        ) : isBot ? (
+                            <button 
+                                onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id)}
+                                style={{
+                                    padding: '7px 14px', borderRadius: '8px', border: 'none',
+                                    background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
+                                    color: '#FFFFFF', fontWeight: 700, fontSize: '0.76rem',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                    boxShadow: '0 2px 6px rgba(124, 58, 237, 0.3)'
+                                }}
+                            >
+                                <UserCheck size={14} /> Asignarme y pausar Bot
+                            </button>
                         ) : isUnassigned ? (
                             <button 
                                 onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id)}
@@ -3531,6 +3578,38 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     Supervisión: Reasignar a mí
                                 </button>
                             )}
+                        </div>
+                    ) : isBot ? (
+                        /* CASO BOT: GESTIONADO POR ASISTENTE VIRTUAL */
+                        <div style={{
+                            padding: '12px 18px', borderRadius: '10px',
+                            background: '#F5F3FF', border: '1.5px solid #DDD6FE', color: '#5B21B6',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <Bot size={22} color="#7C3AED" />
+                                <div>
+                                    <div style={{ fontSize: '0.84rem', fontWeight: 800 }}>
+                                        Conversación en Auto-gestión (Bot Activo)
+                                    </div>
+                                    <div style={{ fontSize: '0.74rem', color: '#6D28D9', marginTop: '2px' }}>
+                                        El paciente está interactuando con el asistente o su consulta fue resuelta. Para responder como asesor humano, puedes asignártela.
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id)}
+                                style={{
+                                    padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                    background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
+                                    color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 700,
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                    boxShadow: '0 2px 6px rgba(124, 58, 237, 0.3)', whiteSpace: 'nowrap'
+                                }}
+                            >
+                                <UserCheck size={14} /> Asignarme y pausar Bot
+                            </button>
                         </div>
                     ) : isUnassigned ? (
                         /* CASO 3: SIN ASIGNAR -> BLOQUEO DE TECLADO HASTA ASIGNARSE */

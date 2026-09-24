@@ -1562,7 +1562,7 @@ async function handleChatbotTriage(
                 assigned_agent_id: null,
                 assigned_agent_name: null,
                 assigned_at: null,
-                status: 'sin_asignar',
+                status: 'bot',
                 bot_active: true,
                 bot_stage: 'inicio',
                 motivo_consulta: null,
@@ -1579,7 +1579,7 @@ async function handleChatbotTriage(
             conv.resolution_reason = null;
             conv.closed_by_agent_id = null;
             conv.closed_by_agent_name = null;
-            conv.status = 'sin_asignar';
+            conv.status = 'bot';
             conv.bot_active = true;
             conv.bot_stage = 'inicio';
         }
@@ -1623,7 +1623,7 @@ async function handleChatbotTriage(
         updates.assigned_agent_id = null;
         updates.assigned_agent_name = null;
         updates.assigned_at = null;
-        updates.status = 'sin_asignar';
+        updates.status = 'bot';
         updates.bot_active = true;
         updates.bot_stage = 'inicio';
         updates.motivo_consulta = null;
@@ -2802,6 +2802,21 @@ async function handleChatbotTriage(
         'ai_summary', 'nhc', 'resolution_reason', 'closed_at',
         'closed_by_agent_id', 'closed_by_agent_name'
     ]);
+
+    // Determinar status definitivo de la conversación si no tiene agente humano asignado
+    if (!conv?.assigned_agent_id) {
+        if (updates.bot_active === false || nextStage === 'esperando_agente' || updates.status === 'sin_asignar') {
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            if (!nextStage || nextStage === currentStage || nextStage === 'inicio') {
+                nextStage = 'esperando_agente';
+            }
+        } else {
+            // El bot atendió/resolvió o continúa en auto-gestión autónoma (se mantiene en capa "bot")
+            updates.status = 'bot';
+            updates.bot_active = true;
+        }
+    }
 
     // Persistir o actualizar en contact_center_conversations
     updates.bot_stage = nextStage;

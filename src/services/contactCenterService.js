@@ -729,7 +729,7 @@ export async function fetchLiveAndDemoChats() {
                 phone: phone,
                 channel: 'WHATSAPP',
                 channelNumber: '5492645825637',
-                status: conv?.status || 'sin_asignar',
+                status: conv?.status || (conv?.bot_active !== false && !conv?.assigned_agent_id ? 'bot' : 'sin_asignar'),
                 unread: lastMsg.direction === 'incoming',
                 lastMessage: lastMsg.content || (lastMsg.media_type ? `[${lastMsg.media_type}]` : conv?.last_message_text || 'Conversación iniciada'),
                 lastMessageTimestamp: lastDateMs,
@@ -986,7 +986,7 @@ export async function resetBotWorkflow(phone) {
                 closed_by_agent_name: null,
                 motivo_consulta: null,
                 medico_o_especialidad: null,
-                status: 'sin_asignar',
+                status: 'bot',
                 updated_at: new Date().toISOString()
             })
             .eq('phone', norm);
