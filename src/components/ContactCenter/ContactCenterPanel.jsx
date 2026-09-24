@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { 
     MessageSquare, CalendarCheck, PlusCircle, ShieldCheck, 
     Headphones, RefreshCw, Layers, CheckCircle2, Lock, Sparkles,
-    User, ChevronDown, AlertTriangle, BarChart3, Volume2, VolumeX, Radio
+    User, ChevronDown, AlertTriangle, BarChart3, Volume2, VolumeX, Radio, Settings
 } from 'lucide-react';
 import ContactCenterChatConsole from './ContactCenterChatConsole';
 import ContactCenterNuevaConversacion from './ContactCenterNuevaConversacion';
 import ContactCenterPermisosTab from './ContactCenterPermisosTab';
 import ContactCenterTurnosOnlineTab from './ContactCenterTurnosOnlineTab';
 import ContactCenterMetricsTab from './ContactCenterMetricsTab';
+import ContactCenterConfigTab from './ContactCenterConfigTab';
 import { 
     INITIAL_CHATS, fetchAllowedUsers, updateAllowedUsers, 
     canUserAccessContactCenter, MASTER_ADMINS,
@@ -636,6 +637,21 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                             Métricas y Costos
                         </button>
 
+                        <button
+                            onClick={() => handleNavigateTab('configuracion')}
+                            style={{
+                                padding: '6px 12px', borderRadius: '6px', border: 'none',
+                                fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '5px',
+                                background: activeSubTab === 'configuracion' ? '#0F2942' : 'transparent',
+                                color: activeSubTab === 'configuracion' ? '#FFFFFF' : '#64748B',
+                                transition: 'all 0.15s'
+                            }}
+                        >
+                            <Settings size={14} />
+                            Configuración
+                        </button>
+
                         {isLMarinero && (
                             <button
                                 onClick={() => handleNavigateTab('permisos')}
@@ -759,6 +775,13 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     activeAgent={activeAgent}
                     onCreateChat={handleCreateChat}
                     onNavigateTab={handleNavigateTab}
+                />
+            )}
+
+            {activeSubTab === 'configuracion' && (
+                <ContactCenterConfigTab 
+                    currentUser={currentUser}
+                    addToast={addToast}
                 />
             )}
 

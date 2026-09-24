@@ -961,6 +961,66 @@ function formatTurnosActivosReply(turnos: any[], pacienteNombre?: string, isOthe
     return reply;
 }
 
+let cachedChatbotConfig: {
+    systemPrompt: string;
+    model: string;
+    temperature: number;
+    botName: string;
+    timestamp: number;
+} | null = null;
+
+async function getDynamicChatbotConfig(supabaseClient: any): Promise<{
+    systemPrompt: string;
+    model: string;
+    temperature: number;
+    botName: string;
+}> {
+    const now = Date.now();
+    // Cache de 30 segundos en memoria para máxima velocidad sin sobrecargar la base de datos
+    if (cachedChatbotConfig && (now - cachedChatbotConfig.timestamp < 30000)) {
+        return cachedChatbotConfig;
+    }
+
+    try {
+        if (supabaseClient) {
+            const { data, error } = await supabaseClient
+                .from('app_config')
+                .select('key, value')
+                .in('key', [
+                    'contact_center_system_prompt',
+                    'contact_center_ai_model',
+                    'contact_center_ai_temperature',
+                    'contact_center_bot_name'
+                ]);
+
+            if (!error && data && data.length > 0) {
+                const map: Record<string, string> = {};
+                for (const row of data) {
+                    map[row.key] = row.value;
+                }
+                const resolved = {
+                    systemPrompt: map['contact_center_system_prompt'] || '',
+                    model: map['contact_center_ai_model'] || 'gpt-4o',
+                    temperature: map['contact_center_ai_temperature'] ? parseFloat(map['contact_center_ai_temperature']) : 0.3,
+                    botName: map['contact_center_bot_name'] || 'Dora',
+                    timestamp: now
+                };
+                cachedChatbotConfig = resolved;
+                return resolved;
+            }
+        }
+    } catch (err) {
+        console.warn('[chatbot-config] Error obteniendo configuración dinámica desde app_config:', err);
+    }
+
+    return {
+        systemPrompt: '',
+        model: 'gpt-4o',
+        temperature: 0.3,
+        botName: 'Dora'
+    };
+}
+
 /**
  * Motor Conversacional Inteligente para WhatsApp potenciado por ChatGPT (OpenAI GPT-4o).
  * Permite mantener conversaciones fluidas, empáticas y naturales, responder consultas institucionales
@@ -975,7 +1035,8 @@ async function generateChatGptConversationalResponse(
         isExistingPatient: boolean;
         dni: string | null;
         obraSocial: string | null;
-    }
+    },
+    supabaseClient?: any
 ): Promise<{
     replyText: string;
     intent: string;
@@ -1012,7 +1073,26 @@ async function generateChatGptConversationalResponse(
               ).join('\n') + `\n(Si el paciente consulta sobre su cita o detalles de su turno, bríndale esta información de forma cálida, clara y completa).\n`
             : '';
 
-        const systemPrompt = `Eres el Asistente Virtual Inteligente oficial de Sanatorio Argentino (San Juan, Argentina), una prestigiosa institución de salud fundada en 1957.
+        // Obtener configuración dinámica (System Prompt editable desde el Contact Center)
+        const dynamicConfig = await getDynamicChatbotConfig(supabaseClient);
+
+        let finalSystemPrompt = '';
+        if (dynamicConfig.systemPrompt && dynamicConfig.systemPrompt.trim().length > 20) {
+            finalSystemPrompt = dynamicConfig.systemPrompt
+                .replace(/\{nombre\}/g, pName)
+                .replace(/\{dni\}/g, pDni)
+                .replace(/\{cobertura\}/g, pOs)
+                .replace(/\{turnos\}/g, turnosContextStr);
+
+            if (!dynamicConfig.systemPrompt.includes('{nombre}') && !dynamicConfig.systemPrompt.includes(pName)) {
+                finalSystemPrompt += `\n\nDATOS DEL PACIENTE ACTUAL:\n- Nombre: ${pName}\n- DNI: ${pDni}\n- Cobertura: ${pOs}\n${turnosContextStr}`;
+            }
+
+            if (!finalSystemPrompt.includes('"replyText"') || !finalSystemPrompt.includes('"transferToAgent"')) {
+                finalSystemPrompt += `\n\nDevuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:\n{\n  "replyText": "Texto de la respuesta en WhatsApp...",\n  "intent": "derivacion_agente | turno | autorizacion | guardia | chequeo | informes | agradecimiento | general",\n  "transferToAgent": boolean,\n  "summary": "Resumen breve de la consulta en 1 línea para el equipo"\n}`;
+            }
+        } else {
+            finalSystemPrompt = `Eres el Asistente Virtual Inteligente oficial de Sanatorio Argentino (San Juan, Argentina), una prestigiosa institución de salud fundada en 1957.
 Tu misión es mantener una conversación natural, cálida, empática, ágil y resolutiva con los pacientes a través de WhatsApp.
 
 DATOS DEL PACIENTE:
@@ -1051,6 +1131,12 @@ Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
   "transferToAgent": boolean,
   "summary": "Resumen breve de la consulta en 1 línea para el equipo"
 }`;
+        }
+
+        const selectedModel = dynamicConfig.model || 'gpt-4o';
+        const selectedTemp = Number.isFinite(dynamicConfig.temperature) ? dynamicConfig.temperature : 0.3;
+
+        console.log(`[conversational-bot] Invocando OpenAI con System Prompt dinámico (Modelo: ${selectedModel}, Temp: ${selectedTemp}, Caracteres: ${finalSystemPrompt.length})`);
 
         const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
@@ -1059,13 +1145,13 @@ Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
                 'Authorization': `Bearer ${openAiKey}`
             },
             body: JSON.stringify({
-                model: 'gpt-4o',
+                model: selectedModel,
                 response_format: { type: 'json_object' },
                 messages: [
-                    { role: 'system', content: systemPrompt },
+                    { role: 'system', content: finalSystemPrompt },
                     { role: 'user', content: `Historial de la conversación reciente:\n${thread || '(Sin mensajes previos)'}\n\nÚltimo mensaje recibido del paciente:\n"${userText}"` }
                 ],
-                temperature: 0.3,
+                temperature: selectedTemp,
                 max_tokens: 350
             })
         });
@@ -2964,7 +3050,8 @@ async function handleChatbotTriage(
                 isExistingPatient,
                 dni: resolvedDni,
                 obraSocial: paciente?.coseguro || updates.obra_social || conv?.obra_social || null
-            }
+            },
+            supabase
         );
 
         replyText = convResult.replyText;

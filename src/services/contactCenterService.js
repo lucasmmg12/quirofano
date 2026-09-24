@@ -1787,3 +1787,153 @@ export function subscribeToChatPresence({ activeAgent, currentUser, onPresenceCh
         }
     };
 }
+
+// ================================================
+// CONFIGURACIÓN DINÁMICA DEL CHATBOT / SYSTEM PROMPT
+// ================================================
+
+export const DEFAULT_CHATBOT_SYSTEM_PROMPT = `Eres el Asistente Virtual Inteligente oficial de Sanatorio Argentino (San Juan, Argentina), una prestigiosa institución de salud fundada en 1957.
+Tu misión es mantener una conversación natural, cálida, empática, ágil y resolutiva con los pacientes a través de WhatsApp.
+
+DATOS DEL PACIENTE:
+- Nombre: {nombre}
+- DNI: {dni}
+- Cobertura / Obra Social: {cobertura}
+{turnos}
+
+DIRECTIVAS PRINCIPALES:
+1. TONO: Cercano, humano, cordial, respetuoso y profesional (español argentino rioplatense educado: "¡Hola {nombre}!", "te comento", "contanos").
+2. CONVERSACIONAL REAL: Responde de forma directa, útil e inteligente al mensaje del paciente.
+3. CONSULTA DE TURNOS EXISTENTES:
+   - Si el paciente pregunta por un turno ya agendado y NO tenemos su DNI, pídeselo amablemente ("Por favor indícanos el número de DNI del paciente, sin puntos ni espacios").
+   - Si ya figuran turnos en sus datos arriba, confírmale los detalles (día, hora, profesional, sede).
+4. PEDIDO DE AGENTE O HORARIOS DE ATENCIÓN (MÁXIMA PRIORIDAD):
+   - Horario de atención de agentes (Contact Center): Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.
+   - Guardias 24 hs: Sede 01 (San Luis 432 Oeste) activa para urgencias.
+   - Si el paciente pide que lo atienda una persona, un agente, un operador, o manifiesta que el bot no le sirve o no comprende:
+     - Confirma con calidez y amabilidad que lo estás comunicando con un agente del equipo de atención e informa el horario de atención.
+     - Establece obligatoriamente "transferToAgent": true y "intent": "derivacion_agente".
+5. SOLICITUD DE NUEVOS TURNOS MÉDICOS:
+   - Para agendar un nuevo turno, consulta qué especialidad o profesional busca, su cobertura/obra social y su preferencia horaria.
+   - Si es para un hijo o familiar, solicita el Nombre y DNI del paciente a atender.
+6. INFORMACIÓN INSTITUCIONAL VERÍDICA:
+   - Sede San Luis (San Luis 432 Oeste, Capital): Maternidad, Quirófanos, Internación, Consultorios externos, Guardias Médicas 24 horas (Clínica médica adultos, Pediatría 24hs activa, Ginecología/Obstetricia, Cardiología). Por orden de llegada con triage de urgencia.
+   - Sede Santa Fe (Santa Fe 263 Este, Capital): Consultorios externos, Vacunatorio, Chequeo Preventivo de Salud, Programa Prevenir (OSP), Diagnóstico por Imágenes (Ecografía, Rayos, Tomografía, Resonancia, Mamografía), Kinesiología.
+   - Laboratorio: Resultados online en la web oficial con usuario y contraseña entregados en la extracción.
+   - Obras Sociales: Atendemos OSP, OSDE, Swiss Medical, Galeno, Medifé, Jerárquicos y la gran mayoría de prepagas y obras sociales, y atención Particular.
+7. VOLVER ATRÁS O MENÚ PRINCIPAL:
+   - Si el paciente manifiesta que se equivocó, desea cambiar de opción o volver, o si le das opciones informativas, recuérdale que puede escribir "Menú" o "Atrás" para regresar al inicio.
+8. FORMATO: Breve y claro, optimizado para lectura en WhatsApp (máximo 2 párrafos cortos, uso de *negrita* para resaltar datos clave, emojis médicos sobrios 🏥 🩺). Al final de respuestas orientativas puedes agregar: "\\n\\n🔙 *Volver:* Escribí *\\"Menú\\"* | 👤 *Agente:* Escribí *\\"Agente\\"*".`;
+
+/**
+ * Obtiene la configuración activa del chatbot desde app_config
+ */
+export async function fetchChatbotConfig() {
+    try {
+        const { data, error } = await supabase
+            .from('app_config')
+            .select('key, value, updated_at, updated_by')
+            .in('key', [
+                'contact_center_system_prompt',
+                'contact_center_ai_model',
+                'contact_center_ai_temperature',
+                'contact_center_bot_name'
+            ]);
+
+        if (error) {
+            console.error('[contactCenterService] Error fetching chatbot config:', error);
+            return {
+                systemPrompt: DEFAULT_CHATBOT_SYSTEM_PROMPT,
+                model: 'gpt-4o',
+                temperature: '0.3',
+                botName: 'Dora',
+                updatedAt: null,
+                updatedBy: null
+            };
+        }
+
+        const map = {};
+        let latestUpdate = null;
+        let lastUser = null;
+
+        (data || []).forEach(row => {
+            map[row.key] = row.value;
+            if (row.updated_at && (!latestUpdate || new Date(row.updated_at) > new Date(latestUpdate))) {
+                latestUpdate = row.updated_at;
+                lastUser = row.updated_by;
+            }
+        });
+
+        return {
+            systemPrompt: map['contact_center_system_prompt'] || DEFAULT_CHATBOT_SYSTEM_PROMPT,
+            model: map['contact_center_ai_model'] || 'gpt-4o',
+            temperature: map['contact_center_ai_temperature'] || '0.3',
+            botName: map['contact_center_bot_name'] || 'Dora',
+            updatedAt: latestUpdate,
+            updatedBy: lastUser
+        };
+    } catch (err) {
+        console.error('[contactCenterService] Exception fetching chatbot config:', err);
+        return {
+            systemPrompt: DEFAULT_CHATBOT_SYSTEM_PROMPT,
+            model: 'gpt-4o',
+            temperature: '0.3',
+            botName: 'Dora',
+            updatedAt: null,
+            updatedBy: null
+        };
+    }
+}
+
+/**
+ * Guarda y actualiza la configuración del chatbot en app_config
+ */
+export async function saveChatbotConfig({ systemPrompt, model = 'gpt-4o', temperature = '0.3', botName = 'Dora', user = 'admin' }) {
+    const now = new Date().toISOString();
+    const rows = [
+        {
+            key: 'contact_center_system_prompt',
+            value: systemPrompt,
+            label: 'System Prompt del Chatbot (Contact Center)',
+            category: 'contact_center',
+            updated_at: now,
+            updated_by: user
+        },
+        {
+            key: 'contact_center_ai_model',
+            value: model,
+            label: 'Modelo OpenAI del Chatbot',
+            category: 'contact_center',
+            updated_at: now,
+            updated_by: user
+        },
+        {
+            key: 'contact_center_ai_temperature',
+            value: String(temperature),
+            label: 'Temperatura del Chatbot (0.0 - 1.0)',
+            category: 'contact_center',
+            updated_at: now,
+            updated_by: user
+        },
+        {
+            key: 'contact_center_bot_name',
+            value: botName,
+            label: 'Nombre del Asistente Virtual',
+            category: 'contact_center',
+            updated_at: now,
+            updated_by: user
+        }
+    ];
+
+    const { data, error } = await supabase
+        .from('app_config')
+        .upsert(rows, { onConflict: 'key' })
+        .select();
+
+    if (error) {
+        console.error('[contactCenterService] Error saving chatbot config:', error);
+        throw error;
+    }
+
+    return data;
+}
